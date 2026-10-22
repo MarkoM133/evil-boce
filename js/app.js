@@ -123,6 +123,7 @@ async function useStore(store) {
   state.logo = await store.logoUrl();
   state.decks = await store.listDecks();
   state.deck = null;
+  replaceNext = true;
 }
 
 async function reloadDb() {
@@ -162,6 +163,7 @@ async function pickFolder() {
 async function resume(handle) {
   if ((await fs.permission(handle, true)) !== 'granted') throw new Error('Pristup folderu nije dopušten.');
   await useStore(folderStore(handle));
+  await applyHash();
 }
 
 async function runImport() {
@@ -238,8 +240,67 @@ function render() {
   if (state.store) {
     app.replaceChildren(renderHeader(), renderMain());
     updateStrip();
+    cardPushed = false;
+    syncHash();
   } else app.replaceChildren(renderWelcome());
 }
+
+// ---------- adresa: svaki pogled ima svoj #/…, pa gesta ili tipka Natrag vraća korak unatrag ----------
+
+const TAB_SLUG = { import: 'uvoz', browse: 'pregled', decks: 'deckovi' };
+const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]));
+let replaceNext = true; // sljedeća promjena adrese zamjenjuje trenutnu umjesto da doda korak
+let cardPushed = false; // karta je otvorena iz mreže, pa je Zatvori isto što i Natrag
+
+function currentHash() {
+  const parts = [TAB_SLUG[state.tab]];
+  if (state.tab === 'browse' && state.selected) parts.push(state.selected);
+  if (state.tab === 'decks' && state.deck) {
+    parts.push(state.deck.slug ?? 'novi');
+    if (state.deckView === 'deck') parts.push('deck');
+  }
+  return '#/' + parts.map(encodeURIComponent).join('/');
+}
+
+function syncHash() {
+  const hash = currentHash();
+  if (hash !== location.hash) history[replaceNext ? 'replaceState' : 'pushState'](null, '', hash);
+  replaceNext = false;
+}
+
+// Postavi stanje prema adresi. Vraća false ako korisnik ne želi odbaciti nespremljeni deck.
+async function applyHash() {
+  const [tabSlug, id, view] = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
+  const tab = SLUG_TAB[tabSlug];
+  if (!tab) return true;
+  if (tab === 'decks') {
+    const want = id || null;
+    const have = state.deck ? (state.deck.slug ?? 'novi') : null;
+    if (want !== have) {
+      if (!confirmDiscard()) return false;
+      if (!want) state.deck = null;
+      else if (want === 'novi') state.deck = newDeck();
+      else if (state.decks.some(d => d.slug === want && !d.broken)) await openDeck(want);
+      else {
+        state.deck = null;
+        toast('Taj deck više ne postoji.', 'warn');
+      }
+    }
+    state.deckView = view === 'deck' ? 'deck' : 'pool';
+  }
+  if (tab === 'browse') state.selected = id && cardById(id) ? id : null;
+  state.tab = tab;
+  return true;
+}
+
+window.addEventListener('popstate', () => {
+  if (!state.store) return;
+  cardPushed = false;
+  guard(async () => {
+    // Odbijeno odbacivanje: render vrati adresu trenutnog decka.
+    if (!(await applyHash())) replaceNext = false;
+  });
+});
 
 // Traka s herojima iza zaglavlja: svi heroji iz baze, kose kriške s crtežom s karte.
 function heroStrip() {
@@ -440,12 +501,33 @@ function renderGrid() {
 }
 
 function tile(c) {
-  return h('button', { class: `tile${c.deleted ? ' deleted' : ''}${state.selected === c.id ? ' selected' : ''}`, onclick: () => { state.selected = c.id; renderGrid(); renderDetail(); } },
+  return h('button', { class: `tile${c.deleted ? ' deleted' : ''}${state.selected === c.id ? ' selected' : ''}`, onclick: () => openCard(c.id) },
     h('div', { class: 'art' }, cardImg(c)),
     h('div', { class: 'meta' },
       h('span', { class: `dot c-${c.color ?? 'none'}` }),
       h('span', { class: 'name' }, c.name),
       h('span', { class: 'sub' }, h('span', {}, c.id), h('span', {}, c.type), c.cost !== undefined ? h('span', { class: 'cost', title: 'Cost' }, c.cost) : null)));
+}
+
+// Iz mreže u kartu je jedan korak; prelazak s karte na kartu ne dodaje nove, pa Natrag vodi ravno u mrežu.
+function openCard(id) {
+  if (state.selected) replaceNext = true;
+  else cardPushed = true;
+  state.selected = id;
+  renderGrid();
+  renderDetail();
+  syncHash();
+}
+
+function closeCard() {
+  if (cardPushed) {
+    history.back();
+    return;
+  }
+  state.selected = null;
+  renderGrid();
+  renderDetail();
+  syncHash();
 }
 
 function renderDetail() {
@@ -470,7 +552,7 @@ function renderDetail() {
     .filter(k => c[k] !== undefined)
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
   box.replaceChildren(
-    h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: () => { state.selected = null; renderGrid(); renderDetail(); } }, 'Zatvori')),
+    h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: closeCard }, 'Zatvori')),
     h('div', { class: 'detail-body' }, h('div', { class: 'big' }, cardImg(c, { alt: c.name, full: true })), h('div', {}, h('table', { class: 'fields' }, rows), editor)));
 }
 
@@ -513,6 +595,7 @@ async function saveDeck() {
   }
   if (d.slug && d.slug !== slug) await state.store.deleteDeck(d.slug, d.rev).catch(() => {});
   state.deck = { ...d, slug, name, rev: saved.rev, dirty: false };
+  replaceNext = true;
   state.decks = await state.store.listDecks();
   toast(`Spremljeno: ${name}`);
 }
@@ -528,6 +611,7 @@ async function deleteDeck() {
   }
   state.decks = await state.store.listDecks();
   state.deck = null;
+  replaceNext = true;
   toast(`Obrisano: ${d.name}`);
 }
 
@@ -625,6 +709,7 @@ function setDeckView(v) {
   $('.deck-editor')?.classList.remove('view-pool', 'view-deck');
   $('.deck-editor')?.classList.add(`view-${v}`);
   renderSwitch();
+  syncHash();
 }
 
 function refreshDeck() {
@@ -826,5 +911,6 @@ const info = await probeServer();
 if (info) {
   await useStore(serverStore(info));
   state.tab = 'decks';
+  await applyHash().catch(e => toast(e.message || String(e), 'error'));
 }
 render();
