@@ -1,14 +1,14 @@
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, CE_FIELDS } from './importer.js';
-import { TYPES, COLOR_NAMES } from './parse.js';
+import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, CE_FIELDS } from './importer.js';
+import { TYPES, COLOR_NAMES, DECK_TYPES } from './parse.js';
+import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, LIMITS, DECK_SIZE } from './deck.js';
+import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
 import * as fs from './fsdir.js';
 
 const DB_PATH = 'data/cards.json';
 const STEAM_PATH = 'data/steam-urls.json';
-// Logo je u Drive folderu, ne u javnom repou (§2 plana).
-const LOGO_FILES = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'];
 
 const state = {
-  root: null,
+  store: null,
   db: null,
   logo: null,
   analysis: null,
@@ -16,9 +16,14 @@ const state = {
   filter: { q: '', type: '', color: '', deleted: false },
   selected: null,
   busy: false,
+  decks: [],
+  deck: null,
+  deckView: 'pool',
+  pool: { q: '', type: '', color: '' },
+  focus: { color: '', value: 0.6 },
 };
 
-const urls = new Map();
+const pngUrls = new Map();
 
 // ---------- DOM pomoćnici ----------
 
@@ -36,6 +41,11 @@ function h(tag, props = {}, ...kids) {
 }
 
 const $ = sel => document.querySelector(sel);
+
+// replaceChildren bez praznih mjesta (null bi se ispisao kao tekst "null").
+function fill(el, ...kids) {
+  el.replaceChildren(...kids.flat().filter(k => k !== null && k !== undefined && k !== false));
+}
 
 function toast(msg, kind = 'ok') {
   const t = h('div', { class: `toast ${kind}`, role: 'status' }, msg);
@@ -59,31 +69,38 @@ async function guard(fn) {
   }
 }
 
-function blobUrl(key, blob) {
-  if (!urls.has(key)) urls.set(key, URL.createObjectURL(blob));
-  return urls.get(key);
+function cardImg(card, props = {}) {
+  const img = h('img', { alt: props.alt ?? '', loading: 'lazy', ...props });
+  if (card) state.store.imageUrl(card).then(u => { if (u) img.src = u; });
+  return img;
 }
 
-function dropUrls() {
-  for (const u of urls.values()) URL.revokeObjectURL(u);
-  urls.clear();
-}
+const cardById = id => state.db.cards.find(c => c.id === id);
 
 // ---------- podaci ----------
 
-async function readDb() {
-  const t = await fs.readText(state.root, DB_PATH);
-  return t ? JSON.parse(t) : emptyDb();
+async function useStore(store) {
+  if (state.logo?.startsWith('blob:')) URL.revokeObjectURL(state.logo);
+  state.store?.dropImageUrls?.();
+  state.store = store;
+  state.analysis = null;
+  state.selected = null;
+  state.db = await store.readDb();
+  state.logo = await store.logoUrl();
+  state.decks = await store.listDecks();
+  state.deck = null;
 }
 
-async function loadDb() {
-  state.db = await readDb();
-  dropUrls();
+async function reloadDb() {
+  state.db = await state.store.readDb();
+  state.store.dropImageUrls?.();
 }
+
+const root = () => state.store.root;
 
 // Drive sinkronizira između dva računala: prije pisanja provjeri da baza nije promijenjena u međuvremenu.
 async function assertFresh() {
-  const disk = await readDb();
+  const disk = await state.store.readDb();
   if (disk.version !== state.db.version) {
     state.db = disk;
     state.analysis = null;
@@ -92,44 +109,17 @@ async function assertFresh() {
 }
 
 async function writeDb(db) {
-  await fs.writeFile(state.root, DB_PATH, JSON.stringify(db, null, 2) + '\n');
+  await fs.writeFile(root(), DB_PATH, JSON.stringify(db, null, 2) + '\n');
   state.db = db;
 }
 
-async function cardImageUrl(card) {
-  if (!card.image) return null;
-  const key = `db:${card.image}`;
-  if (urls.has(key)) return urls.get(key);
-  const f = await fs.getFile(state.root, `data/${card.image}`);
-  return f ? blobUrl(key, f) : null;
-}
-
-// ---------- akcije ----------
-
-async function connect(handle) {
-  state.root = handle;
-  state.analysis = null;
-  state.selected = null;
-  await loadDb();
-  await loadLogo();
-}
-
-async function loadLogo() {
-  if (state.logo) URL.revokeObjectURL(state.logo);
-  state.logo = null;
-  for (const name of LOGO_FILES) {
-    const f = await fs.getFile(state.root, name);
-    if (f) {
-      state.logo = URL.createObjectURL(f);
-      return;
-    }
-  }
-}
+// ---------- akcije: folder i uvoz ----------
 
 async function pickFolder() {
-  if (!window.showDirectoryPicker) throw new Error('Ovaj preglednik nema File System Access API. Otvori stranicu u Chromeu ili Edgeu.');
+  if (!window.showDirectoryPicker) throw new Error('Ovaj preglednik ne može otvoriti folder. Otvori stranicu u Chromeu ili Edgeu na računalu.');
   const handle = await fs.pickRoot();
-  await connect(handle);
+  await useStore(folderStore(handle));
+  state.tab = 'import';
   if (!(await fs.getDir(handle, 'export')) && !(await fs.getDir(handle, 'data'))) {
     toast(`U folderu "${handle.name}" nema ni export/ ni data/. Je li to folder "Evil Boce"?`, 'warn');
   }
@@ -137,13 +127,13 @@ async function pickFolder() {
 
 async function resume(handle) {
   if ((await fs.permission(handle, true)) !== 'granted') throw new Error('Pristup folderu nije dopušten.');
-  await connect(handle);
+  await useStore(folderStore(handle));
 }
 
 async function runImport() {
-  const exportDir = await fs.getDir(state.root, 'export');
+  const exportDir = await fs.getDir(root(), 'export');
   if (!exportDir) throw new Error('Nema foldera export/ u odabranom folderu.');
-  await loadDb();
+  await reloadDb();
   const files = await fs.walkFiles(exportDir, 'export');
   const xmlFiles = [];
   const pngFiles = [];
@@ -165,14 +155,14 @@ async function publish() {
     toast('Nema promjena za objavu.');
     return;
   }
-  for (const w of writes) await fs.writeFile(state.root, w.path, await w.png.getBytes());
+  for (const w of writes) await fs.writeFile(root(), w.path, await w.png.getBytes());
   await writeDb(db);
-  const steamText = await fs.readText(state.root, STEAM_PATH);
+  const steamText = await fs.readText(root(), STEAM_PATH);
   const steam = steamText ? JSON.parse(steamText) : {};
-  const old = obsoleteImages(db, await fs.listFileNames(state.root, 'data/images'), steam);
-  for (const f of old) await fs.removeFile(state.root, `data/images/${f}`);
+  const old = obsoleteImages(db, await fs.listFileNames(root(), 'data/images'), steam);
+  for (const f of old) await fs.removeFile(root(), `data/images/${f}`);
   state.analysis = null;
-  dropUrls();
+  state.store.dropImageUrls();
   toast(`Objavljeno: verzija ${db.version}, ${changed} karata${old.length ? `, obrisano ${old.length} starih slika` : ''}.`);
 }
 
@@ -187,11 +177,11 @@ async function saveEdits(id, edits) {
   toast(`Spremljeno: verzija ${db.version}.`);
 }
 
-// ---------- prikaz ----------
+// ---------- prikaz: okvir ----------
 
 function render() {
   const app = $('#app');
-  if (state.root) app.replaceChildren(renderHeader(), renderMain());
+  if (state.store) app.replaceChildren(renderHeader(), renderMain());
   else app.replaceChildren(renderWelcome());
 }
 
@@ -202,14 +192,15 @@ function wordmark(size) {
 
 function renderHeader() {
   const n = state.db.cards.length;
+  const server = state.store.kind === 'server';
   return h('header', { class: 'top' },
     h('div', { class: 'brand' },
       state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
       h('span', { class: 'brand-sub' }, 'Baza karata')),
     h('div', { class: 'folder' },
-      h('span', { class: 'folder-name', title: 'Odabrani Drive folder' }, state.root.name),
+      h('span', { class: 'folder-name', title: server ? 'Podaci s računala preko servera' : 'Odabrani Drive folder' }, server ? `${state.store.name} preko servera` : state.store.name),
       h('span', { class: 'folder-db' }, `Verzija ${state.db.version}`, h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${n === 1 ? 'karta' : 'karata'}`),
-      h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, 'Promijeni folder')));
+      !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? 'Odaberi folder' : 'Promijeni folder') : null));
 }
 
 function renderWelcome() {
@@ -223,7 +214,7 @@ function renderWelcome() {
       actions,
       !window.showDirectoryPicker ? h('p', { class: 'error-text' }, 'Ovaj preglednik ne može otvoriti folder. Otvori stranicu u Chromeu ili Edgeu.') : null));
   fs.loadRoot().then(handle => {
-    if (!handle || state.root) return;
+    if (!handle || state.store) return;
     actions.append(h('button', { class: 'ghost', onclick: () => guard(() => resume(handle)) }, `Nastavi s "${handle.name}"`));
   });
   return box;
@@ -233,19 +224,26 @@ function renderMain() {
   const tabs = [
     ['import', 'Uvoz'],
     ['browse', 'Pregled'],
+    ['decks', 'Deckovi'],
   ];
+  const view = { import: renderImport, browse: renderBrowse, decks: renderDecks }[state.tab]();
   return h('main', {},
     h('nav', { class: 'tabs', role: 'tablist' },
       tabs.map(([key, label]) => h('button', { role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, label)),
-      h('span', { class: 'soon' }, 'Deck builder i Katalog dolaze u kasnijim fazama')),
-    state.tab === 'import' ? renderImport() : renderBrowse());
+      h('span', { class: 'soon' }, 'Katalog i TTS dolaze u kasnijim fazama')),
+    view);
 }
 
-// ----- Uvoz -----
+// ---------- Uvoz ----------
 
 const STATUS_LABEL = { new: 'Nova', changed: 'Promijenjena', same: 'Bez promjene' };
 
 function renderImport() {
+  if (!state.store.canImport) {
+    return h('section', { class: 'panel' },
+      h('p', { class: 'muted' }, 'Uvoz i Objava rade samo s odabranim Drive folderom, u Chromeu ili Edgeu na računalu. Ovdje su karte i deckovi s računala preko servera.'),
+      window.showDirectoryPicker ? h('div', { class: 'toolbar' }, h('button', { class: 'primary', onclick: () => guard(pickFolder) }, 'Odaberi folder')) : null);
+  }
   const a = state.analysis;
   const wrap = h('section', { class: 'panel' },
     h('div', { class: 'toolbar' },
@@ -261,14 +259,14 @@ function renderImport() {
     stat('Nove', count('new'), 'new'),
     stat('Promijenjene', count('changed'), 'changed'),
     stat('Bez promjene', count('same'), 'same'),
-    stat('Greške', a.errors.length, a.errors.length ? 'error' : ''),
-    stat('Upozorenja', a.warnings.length, a.warnings.length ? 'warn' : ''),
+    stat('Greške', a.errors.length, 'error'),
+    stat('Upozorenja', a.warnings.length, 'warn'),
     h('p', { class: 'muted small' }, `${a.fileCount.xml} XML, ${a.fileCount.png} PNG u export/`)));
   wrap.append(...[messages('Greške', a.errors, 'error'), messages('Upozorenja', a.warnings, 'warn'), messages('Info', a.infos, 'info', true)].filter(Boolean));
   const changes = a.entries.filter(e => e.status !== 'same');
   if (changes.length) wrap.append(h('h3', {}, 'Promjene'), h('div', { class: 'changes' }, changes.map(renderEntry)));
   const same = a.entries.filter(e => e.status === 'same');
-  if (same.length) wrap.append(h('details', { class: 'same' }, h('summary', {}, `Bez promjene (${same.length})`), h('p', { class: 'muted' }, same.map(e => `${e.id} ${e.card.name}`).join(' · '))));
+  if (same.length) wrap.append(h('details', { class: 'same' }, h('summary', {}, `Bez promjene (${same.length})`), h('p', { class: 'muted' }, same.map(e => `${e.id} ${e.card.name}`).join(', '))));
   return wrap;
 }
 
@@ -294,10 +292,13 @@ function renderEntry(e) {
   const imgs = h('div', { class: 'thumbs' });
   if (e.old && e.imageChanged) {
     const oldImg = h('img', { alt: 'stara slika', loading: 'lazy' });
-    cardImageUrl(e.old).then(u => { if (u) oldImg.src = u; else oldImg.replaceWith(h('div', { class: 'noimg' }, 'stara slika nije u data/images')); });
+    state.store.imageUrl(e.old).then(u => { if (u) oldImg.src = u; else oldImg.replaceWith(h('div', { class: 'noimg' }, 'stara slika nije u data/images')); });
     imgs.append(h('figure', {}, oldImg, h('figcaption', {}, 'prije')));
   }
-  if (e.png) imgs.append(h('figure', {}, h('img', { alt: e.card.name, src: blobUrl(`png:${e.png.path}`, e.png.file), loading: 'lazy' }), h('figcaption', {}, e.old ? (e.imageChanged ? 'nova slika' : 'slika ista') : 'slika')));
+  if (e.png) {
+    if (!pngUrls.has(e.png.path)) pngUrls.set(e.png.path, URL.createObjectURL(e.png.file));
+    imgs.append(h('figure', {}, h('img', { alt: e.card.name, src: pngUrls.get(e.png.path), loading: 'lazy' }), h('figcaption', {}, e.old ? (e.imageChanged ? 'nova slika' : 'slika ista') : 'slika')));
+  }
   const rows = e.old
     ? e.diffs.map(k => h('tr', {}, h('th', {}, k), h('td', { class: 'was' }, fmt(e.old[k])), h('td', { class: 'now' }, fmt(e.card[k]))))
     : CE_FIELDS.filter(k => e.card[k] !== undefined).map(k => h('tr', {}, h('th', {}, k), h('td', { colspan: 2 }, fmt(e.card[k]))));
@@ -313,7 +314,7 @@ function renderEntry(e) {
         e.old && !e.diffs.length ? h('p', { class: 'muted' }, e.imageChanged ? 'Promijenjena je samo slika.' : '') : null)));
 }
 
-// ----- Pregled -----
+// ---------- Pregled ----------
 
 function filtered() {
   const { q, type, color, deleted } = state.filter;
@@ -352,10 +353,8 @@ function renderGrid() {
 }
 
 function tile(c) {
-  const img = h('img', { alt: '', loading: 'lazy' });
-  cardImageUrl(c).then(u => { if (u) img.src = u; });
   return h('button', { class: `tile${c.deleted ? ' deleted' : ''}${state.selected === c.id ? ' selected' : ''}`, onclick: () => { state.selected = c.id; renderGrid(); renderDetail(); } },
-    h('div', { class: 'art' }, img),
+    h('div', { class: 'art' }, cardImg(c)),
     h('div', { class: 'meta' },
       h('span', { class: `dot c-${c.color ?? 'none'}` }),
       h('span', { class: 'name' }, c.name),
@@ -368,26 +367,374 @@ function renderDetail() {
   const c = state.db.cards.find(x => x.id === state.selected);
   if (!c) { box.replaceChildren(); box.className = ''; return; }
   box.className = 'detail';
-  const img = h('img', { alt: c.name });
-  cardImageUrl(c).then(u => { if (u) img.src = u; });
   const edits = {};
   const field = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
-  const editor = h('form', { class: 'editor', onsubmit: e => { e.preventDefault(); guard(() => saveEdits(c.id, edits)); } },
-    h('h3', {}, 'App polja'),
-    c.type === 'Character' ? [
-      field('Težina bakugana (wt)', h('input', { type: 'number', min: 1, step: 1, value: c.wt ?? '', oninput: e => { if (e.target.value === '') delete edits.wt; else edits.wt = Number(e.target.value); } })),
-      field('Bakugan u TTS-u', h('input', { type: 'text', value: c.bakugan ?? '', oninput: e => { edits.bakugan = e.target.value.trim(); } })),
-    ] : null,
-    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!c.deleted, onchange: e => { edits.deleted = e.target.checked; } }), 'Maknuta (deleted) – builder je više ne nudi'),
-    h('button', { class: 'primary', type: 'submit' }, 'Spremi'));
-  const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'values', 'traits', 'text', 'rev', 'imageHash']
+  const editor = state.store.canImport
+    ? h('form', { class: 'editor', onsubmit: e => { e.preventDefault(); guard(() => saveEdits(c.id, edits)); } },
+        h('h3', {}, 'App polja'),
+        c.type === 'Character' ? [
+          field('Težina bakugana (wt)', h('input', { type: 'number', min: 1, step: 1, value: c.wt ?? '', oninput: e => { if (e.target.value === '') delete edits.wt; else edits.wt = Number(e.target.value); } })),
+          field('Bakugan u TTS-u', h('input', { type: 'text', value: c.bakugan ?? '', oninput: e => { edits.bakugan = e.target.value.trim(); } })),
+        ] : null,
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!c.deleted, onchange: e => { edits.deleted = e.target.checked; } }), 'Maknuta (deleted) – builder je više ne nudi'),
+        h('button', { class: 'primary', type: 'submit' }, 'Spremi'))
+    : null;
+  const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bakugan', 'bonus', 'values', 'traits', 'text', 'rev', 'imageHash']
     .filter(k => c[k] !== undefined)
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
   box.replaceChildren(
     h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: () => { state.selected = null; renderGrid(); renderDetail(); } }, 'Zatvori')),
-    h('div', { class: 'detail-body' }, h('div', { class: 'big' }, img), h('div', {}, h('table', { class: 'fields' }, rows), editor)));
+    h('div', { class: 'detail-body' }, h('div', { class: 'big' }, cardImg(c, { alt: c.name })), h('div', {}, h('table', { class: 'fields' }, rows), editor)));
+}
+
+// ---------- Deckovi ----------
+
+function newDeck() {
+  return { ...emptyDeck(''), slug: null, rev: 0, dirty: false };
+}
+
+function confirmDiscard() {
+  return !state.deck?.dirty || window.confirm('Deck ima nespremljene promjene. Odbaciti ih?');
+}
+
+async function openDeck(slug) {
+  const d = await state.store.readDeck(slug);
+  state.deck = { slug: d.slug, name: d.name, heroes: d.heroes ?? [], cards: { ...d.cards }, rev: d.rev ?? 0, catalogVersion: d.catalogVersion, dirty: false };
+  state.deckView = 'deck';
+}
+
+async function saveDeck() {
+  const d = state.deck;
+  const name = d.name.trim();
+  if (!name) throw new Error('Upiši ime decka.');
+  const slug = slugify(name);
+  if (!slug) throw new Error('Ime decka mora imati barem jedno slovo ili broj.');
+  let base = d.slug === slug ? d.rev : 0;
+  if (d.slug !== slug) {
+    const other = state.decks.find(x => x.slug === slug);
+    if (other) {
+      if (!window.confirm(`Deck "${other.name}" već postoji. Presnimiti ga?`)) return;
+      base = other.rev;
+    }
+  }
+  let saved;
+  try {
+    saved = await state.store.saveDeck(slug, { name, heroes: d.heroes, cards: d.cards, catalogVersion: state.db.version }, base);
+  } catch (e) {
+    if (e instanceof ConflictError) throw new Error('Deck je u međuvremenu spremljen na drugom uređaju. Otvori ga ponovno ili spremi pod drugim imenom.');
+    throw e;
+  }
+  if (d.slug && d.slug !== slug) await state.store.deleteDeck(d.slug, d.rev).catch(() => {});
+  state.deck = { ...d, slug, name, rev: saved.rev, dirty: false };
+  state.decks = await state.store.listDecks();
+  toast(`Spremljeno: ${name}`);
+}
+
+async function deleteDeck() {
+  const d = state.deck;
+  if (!d.slug || !window.confirm(`Obrisati deck "${d.name}"?`)) return;
+  try {
+    await state.store.deleteDeck(d.slug, d.rev);
+  } catch (e) {
+    if (e instanceof ConflictError) throw new Error('Deck je u međuvremenu promijenjen na drugom uređaju. Otvori ga ponovno prije brisanja.');
+    throw e;
+  }
+  state.decks = await state.store.listDecks();
+  state.deck = null;
+  toast(`Obrisano: ${d.name}`);
+}
+
+function changeDeck(fn) {
+  fn(state.deck);
+  state.deck.dirty = true;
+  refreshDeck();
+}
+
+function addCard(id, delta) {
+  const c = cardById(id);
+  changeDeck(d => {
+    const n = Math.max(0, Math.min(LIMITS[c.type], (d.cards[id] ?? 0) + delta));
+    if (n) d.cards[id] = n;
+    else delete d.cards[id];
+  });
+}
+
+function renderDecks() {
+  return h('section', { class: 'decks' },
+    h('aside', { class: 'deck-list' },
+      h('div', { class: 'deck-list-head' },
+        h('h2', {}, 'Moji deckovi'),
+        h('button', { class: 'primary', onclick: () => { if (confirmDiscard()) { state.deck = newDeck(); state.deckView = 'pool'; render(); } } }, 'Novi deck')),
+      state.decks.length
+        ? h('ul', {}, state.decks.map(x => h('li', {},
+            h('button', {
+              class: `deck-item${state.deck?.slug === x.slug ? ' active' : ''}`,
+              onclick: () => { if (confirmDiscard()) guard(() => openDeck(x.slug)); },
+            },
+              h('span', { class: 'deck-item-name' }, x.name),
+              h('span', { class: 'deck-item-sub' }, x.broken ? 'neispravan file' : `${x.heroes.map(id => cardById(id)?.name ?? id).join(', ') || 'bez heroja'}`),
+              h('span', { class: 'deck-item-count' }, x.broken ? '' : `${x.count}/${DECK_SIZE}`)))))
+        : h('p', { class: 'muted' }, 'Još nema spremljenih deckova.'),
+      h('details', { class: 'code-import' },
+        h('summary', {}, 'Učitaj deck kod'),
+        h('form', { onsubmit: e => { e.preventDefault(); importCode(e.target.elements.code.value); } },
+          h('input', { name: 'code', placeholder: 'EB1|v1|…', autocomplete: 'off', spellcheck: false }),
+          h('button', { type: 'submit' }, 'Učitaj')))),
+    state.deck ? renderDeckEditor() : h('div', { class: 'deck-empty' },
+      h('h2', {}, 'Složi deck'),
+      h('p', { class: 'muted' }, 'Otvori spremljeni deck ili napravi novi: odabereš 3 heroja, pa dodaješ karte njihovih boja do 40.')));
+}
+
+function importCode(code) {
+  let parsed;
+  try {
+    parsed = decodeDeck(code);
+  } catch (e) {
+    toast(e.message, 'error');
+    return;
+  }
+  if (!confirmDiscard()) return;
+  state.deck = { ...newDeck(), heroes: parsed.heroes, cards: parsed.cards, dirty: true };
+  state.deckView = 'deck';
+  if (parsed.catalogVersion > state.db.version) toast(`Kod je iz novije baze (v${parsed.catalogVersion}, ovdje v${state.db.version}). Neke karte možda nedostaju.`, 'warn');
+  render();
+}
+
+function renderDeckEditor() {
+  const d = state.deck;
+  return h('div', { class: `deck-editor view-${state.deckView}` },
+    h('div', { class: 'deck-head' },
+      h('input', { class: 'deck-name', placeholder: 'Ime decka', value: d.name, 'aria-label': 'Ime decka', oninput: e => { d.name = e.target.value; d.dirty = true; renderDeckStatus(); } }),
+      h('div', { id: 'deck-status' }),
+      h('div', { class: 'deck-actions' },
+        h('button', { class: 'publish', onclick: () => guard(saveDeck) }, 'Spremi'),
+        h('button', { class: 'ghost', onclick: copyCode }, 'Kopiraj kod'),
+        d.slug ? h('button', { class: 'ghost', onclick: () => guard(deleteDeck) }, 'Obriši') : null)),
+    h('div', { id: 'deck-code' }),
+    h('div', { id: 'deck-heroes', class: 'hero-slots' }),
+    h('div', { class: 'view-switch', role: 'tablist' },
+      h('button', { id: 'sw-pool', role: 'tab', onclick: () => setDeckView('pool') }, 'Bazen'),
+      h('button', { id: 'sw-deck', role: 'tab', onclick: () => setDeckView('deck') }, 'Deck')),
+    h('div', { class: 'deck-cols' },
+      h('section', { class: 'pool-pane' },
+        h('div', { class: 'filters' },
+          h('input', { type: 'search', placeholder: 'Traži u bazenu…', value: state.pool.q, oninput: e => { state.pool.q = e.target.value; renderPool(); } }),
+          h('select', { onchange: e => { state.pool.type = e.target.value; renderPool(); } }, h('option', { value: '' }, 'Svi tipovi'), DECK_TYPES.map(t => h('option', { value: t, selected: state.pool.type === t }, t))),
+          h('select', { id: 'pool-color', onchange: e => { state.pool.color = e.target.value; renderPool(); } })),
+        h('div', { id: 'pool', class: 'pool' })),
+      h('section', { id: 'deck-panel', class: 'deck-panel' })),
+    queueRefresh());
+}
+
+function queueRefresh() {
+  queueMicrotask(refreshDeck);
+  return null;
+}
+
+function setDeckView(v) {
+  state.deckView = v;
+  $('.deck-editor')?.classList.remove('view-pool', 'view-deck');
+  $('.deck-editor')?.classList.add(`view-${v}`);
+  renderSwitch();
+}
+
+function refreshDeck() {
+  if (!state.deck || !$('.deck-editor')) return;
+  renderHeroes();
+  renderPool();
+  renderDeckPanel();
+  renderDeckStatus();
+  renderSwitch();
+}
+
+function renderSwitch() {
+  const n = Object.values(state.deck.cards).reduce((s, x) => s + x, 0);
+  const pool = $('#sw-pool');
+  const deck = $('#sw-deck');
+  if (!pool) return;
+  pool.className = state.deckView === 'pool' ? 'active' : '';
+  deck.className = state.deckView === 'deck' ? 'active' : '';
+  pool.setAttribute('aria-selected', String(state.deckView === 'pool'));
+  deck.setAttribute('aria-selected', String(state.deckView === 'deck'));
+  deck.textContent = `Deck ${n}/${DECK_SIZE}`;
+}
+
+function renderDeckStatus() {
+  const box = $('#deck-status');
+  if (!box) return;
+  const r = checkDeck(state.db, state.deck);
+  box.className = `deck-status ${r.ready ? 'ready' : 'not-ready'}`;
+  fill(box,
+    h('strong', {}, `${r.count}/${DECK_SIZE}`),
+    h('span', {}, r.ready ? 'Spreman za igru' : 'Nije spreman'),
+    state.deck.dirty ? h('span', { class: 'unsaved' }, 'nespremljeno') : null);
+}
+
+function renderHeroes() {
+  const box = $('#deck-heroes');
+  const d = state.deck;
+  const taken = new Set(d.heroes);
+  const free = heroCards(state.db).filter(c => !taken.has(c.id));
+  const slots = [0, 1, 2].map(i => {
+    const hero = cardById(d.heroes[i]);
+    if (hero) {
+      return h('div', { class: `hero-slot filled c-border-${hero.color}` },
+        cardImg(hero, { alt: hero.name }),
+        h('div', { class: 'hero-info' },
+          h('span', { class: 'hero-name' }, hero.name),
+          h('span', { class: 'muted small' }, hero.color),
+          h('button', { class: 'ghost small-btn', onclick: () => changeDeck(x => { x.heroes = x.heroes.filter(id => id !== hero.id); }) }, 'Makni')));
+    }
+    return h('label', { class: 'hero-slot empty' },
+      h('span', { class: 'muted' }, `Heroj ${i + 1}`),
+      h('select', { onchange: e => { if (e.target.value) changeDeck(x => { x.heroes = [...x.heroes, e.target.value]; }); } },
+        h('option', { value: '' }, 'Odaberi heroja'),
+        free.map(c => h('option', { value: c.id }, `${c.name} (${c.color})`))));
+  });
+  box.replaceChildren(...slots);
+}
+
+function renderPool() {
+  const box = $('#pool');
+  if (!box) return;
+  const d = state.deck;
+  const all = deckPool(state.db, d.heroes);
+  const colorSel = $('#pool-color');
+  const colors = [...new Set(all.map(c => c.color))];
+  if (state.pool.color && !colors.includes(state.pool.color)) state.pool.color = '';
+  colorSel.replaceChildren(h('option', { value: '' }, 'Sve boje heroja'), ...colors.map(c => h('option', { value: c, selected: state.pool.color === c }, c)));
+  if (!d.heroes.length) {
+    box.replaceChildren(h('p', { class: 'muted' }, 'Odaberi heroje, pa se ovdje pokažu karte njihovih boja.'));
+    return;
+  }
+  const { q, type, color } = state.pool;
+  const needle = q.trim().toLowerCase();
+  const cards = all
+    .filter(c => (!type || c.type === type) && (!color || c.color === color) && (!needle || [c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)))
+    .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+  box.replaceChildren(...(cards.length ? cards.map(poolCard) : [h('p', { class: 'muted' }, 'Nijedna karta ne odgovara filtru.')]));
+}
+
+function poolCard(c) {
+  const n = state.deck.cards[c.id] ?? 0;
+  const max = LIMITS[c.type];
+  return h('div', { class: `pool-card${n ? ' in-deck' : ''}${n >= max ? ' maxed' : ''}` },
+    h('button', { class: 'pool-art', title: `Dodaj ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, cardImg(c, { alt: c.name }),
+      n ? h('span', { class: 'pool-count' }, `${n}/${max}`) : null),
+    h('div', { class: 'pool-meta' },
+      h('span', { class: 'pool-name' }, c.name),
+      h('span', { class: 'stepper' },
+        h('button', { class: 'step', 'aria-label': `Makni jednu ${c.name}`, disabled: !n, onclick: () => addCard(c.id, -1) }, '−'),
+        h('button', { class: 'step', 'aria-label': `Dodaj jednu ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, '+'))));
+}
+
+function renderDeckPanel() {
+  const box = $('#deck-panel');
+  if (!box) return;
+  const d = state.deck;
+  const r = checkDeck(state.db, d);
+  const heroColors = [...new Set(d.heroes.map(id => cardById(id)?.color).filter(Boolean))];
+  if (state.focus.color && !heroColors.includes(state.focus.color)) state.focus.color = '';
+
+  const rows = Object.entries(d.cards)
+    .map(([id, n]) => ({ c: cardById(id), id, n }))
+    .sort((a, b) => DECK_TYPES.indexOf(a.c?.type) - DECK_TYPES.indexOf(b.c?.type) || (a.c?.cost ?? 0) - (b.c?.cost ?? 0) || String(a.c?.name).localeCompare(String(b.c?.name)));
+  const groups = DECK_TYPES.map(t => [t, rows.filter(x => x.c?.type === t)]).filter(([, list]) => list.length);
+  const unknown = rows.filter(x => !x.c);
+
+  fill(box,
+    h('div', { class: 'deck-count' },
+      h('strong', {}, r.count), h('span', {}, `od ${DECK_SIZE}`),
+      h('div', { class: 'meter', role: 'img', 'aria-label': `${r.count} od ${DECK_SIZE} karata` }, h('span', { style: `width:${Math.min(100, (r.count / DECK_SIZE) * 100)}%` }))),
+    r.problems.length ? h('ul', { class: 'deck-problems' }, r.problems.map(p => h('li', { class: p.level }, p.msg))) : null,
+    h('div', { class: 'random-box' },
+      h('div', { class: 'random-row' },
+        h('label', { class: 'field' }, h('span', {}, 'Naglasak boje'),
+          h('select', { onchange: e => { state.focus.color = e.target.value; renderDeckPanel(); } },
+            h('option', { value: '' }, 'Bez naglaska'),
+            heroColors.map(c => h('option', { value: c, selected: state.focus.color === c }, c)))),
+        state.focus.color ? h('label', { class: 'field' }, h('span', {}, 'Koliko'),
+          h('input', { type: 'range', min: 0, max: 1, step: 0.1, value: state.focus.value, oninput: e => { state.focus.value = Number(e.target.value); } })) : null),
+      h('div', { class: 'random-row' },
+        h('button', { class: 'primary', disabled: d.heroes.length === 0 || r.count >= DECK_SIZE, onclick: fillRandom }, 'Popuni nasumično'),
+        h('button', { class: 'ghost', disabled: !r.count, onclick: () => { if (window.confirm('Izbaciti sve karte iz decka? Heroji ostaju.')) changeDeck(x => { x.cards = {}; }); } }, 'Isprazni'))),
+    r.count ? h('div', { class: 'deck-charts' }, costCurve(r.curve), colorSplit(r.byColor, r.count)) : null,
+    groups.length || unknown.length
+      ? h('div', { class: 'deck-rows' },
+          groups.map(([t, list]) => h('div', { class: 'deck-group' },
+            h('h3', {}, t, h('span', { class: 'muted' }, list.reduce((s, x) => s + x.n, 0))),
+            list.map(deckRow))),
+          unknown.length ? h('div', { class: 'deck-group' }, h('h3', {}, 'Nepoznate karte'), unknown.map(deckRow)) : null)
+      : h('p', { class: 'muted' }, d.heroes.length ? 'Dodaj karte iz bazena ili klikni Popuni nasumično.' : 'Prvo odaberi heroje.'));
+}
+
+function deckRow({ c, id, n }) {
+  return h('div', { class: 'deck-row' },
+    h('span', { class: `dot c-${c?.color ?? 'none'}` }),
+    h('span', { class: 'deck-row-cost', title: 'Cost' }, c?.cost ?? '?'),
+    h('span', { class: 'deck-row-name' }, c?.name ?? id),
+    h('span', { class: 'stepper' },
+      h('button', { class: 'step', 'aria-label': `Makni jednu ${c?.name ?? id}`, onclick: () => (c ? addCard(id, -1) : changeDeck(d => { delete d.cards[id]; })) }, '−'),
+      h('span', { class: 'deck-row-n' }, n),
+      h('button', { class: 'step', 'aria-label': `Dodaj jednu ${c?.name ?? id}`, disabled: !c || n >= LIMITS[c.type], onclick: () => addCard(id, 1) }, '+')));
+}
+
+function fillRandom() {
+  const next = randomFill(state.db, state.deck, { focusColor: state.focus.color || null, focus: state.focus.color ? state.focus.value : 0 });
+  changeDeck(d => { d.cards = next.cards; });
+  if (next.missing) toast(`Bazen nije dovoljan: nedostaje ${next.missing} karata do ${DECK_SIZE}.`, 'warn');
+}
+
+// Krivulja costova: jedna serija, stupci s brojem iznad, hover daje točan iznos.
+function costCurve(curve) {
+  const costs = Object.keys(curve).map(Number);
+  const max = Math.max(...costs, 3);
+  const top = Math.max(...Object.values(curve));
+  const bars = [];
+  for (let cost = 0; cost <= max; cost++) {
+    const n = curve[cost] ?? 0;
+    bars.push(h('div', { class: 'bar', title: `Cost ${cost}: ${n} ${n === 1 ? 'karta' : 'karata'}` },
+      h('span', { class: 'bar-n' }, n || ''),
+      h('span', { class: 'bar-fill', style: `height:${top ? (n / top) * 100 : 0}%` }),
+      h('span', { class: 'bar-x' }, cost)));
+  }
+  return h('figure', { class: 'curve' }, h('figcaption', {}, 'Krivulja costova'), h('div', { class: 'bars' }, bars));
+}
+
+// Udio boja: boje su boje karata iz igre; svaka ima i natpis s brojem, pa boja nije jedini nositelj.
+function colorSplit(byColor, total) {
+  const entries = Object.entries(byColor).sort((a, b) => b[1] - a[1]);
+  return h('figure', { class: 'split' },
+    h('figcaption', {}, 'Boje'),
+    h('div', { class: 'split-bar', role: 'img', 'aria-label': entries.map(([c, n]) => `${c} ${n}`).join(', ') },
+      entries.map(([c, n]) => h('span', { class: `c-${c}`, style: `flex:${n}`, title: `${c}: ${n}` }))),
+    h('ul', { class: 'split-legend' }, entries.map(([c, n]) => h('li', {}, h('span', { class: `dot c-${c}` }), `${c} ${n}`, h('span', { class: 'muted' }, ` ${Math.round((n / total) * 100)}%`)))));
+}
+
+async function copyCode() {
+  const code = encodeDeck(state.deck, state.db.version);
+  const box = $('#deck-code');
+  try {
+    await navigator.clipboard.writeText(code);
+    toast('Deck kod je kopiran.');
+    box.replaceChildren();
+  } catch {
+    // Bez HTTPS-a (npr. mobitel preko Tailscale adrese) preglednik ne da pisati u clipboard.
+    const input = h('input', { readOnly: true, value: code, 'aria-label': 'Deck kod', onfocus: e => e.target.select() });
+    box.replaceChildren(h('label', { class: 'field code-out' }, h('span', {}, 'Deck kod (označi i kopiraj)'), input));
+    input.focus();
+  }
 }
 
 // ---------- start ----------
 
+window.addEventListener('beforeunload', e => {
+  if (state.deck?.dirty) e.preventDefault();
+});
+
+const info = await probeServer();
+if (info) {
+  await useStore(serverStore(info));
+  state.tab = 'decks';
+}
 render();

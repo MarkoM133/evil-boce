@@ -1,2 +1,4 @@
 docs/private/
 node_modules/
+server/config.local.json
+server/logs/

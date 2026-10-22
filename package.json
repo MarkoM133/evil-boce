@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node tools/serve.mjs",
+    "start": "node server/server.mjs",
     "test": "node --test"
   }
 }
