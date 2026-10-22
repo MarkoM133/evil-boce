@@ -4,9 +4,11 @@ Web app za igru Evil Boće: uvoz Card Engine exporta u `cards.json`, pregled kar
 
 Repo ima samo kod. Karte, slike, logo i pravila nisu ovdje; app radi nad zajedničkim Drive folderom.
 
+App: https://markom133.github.io/evil-boce/
+
 ## Dva načina rada
 
-- **Folder (računalo, Chrome ili Edge):** otvori stranicu i odaberi Drive folder `Evil Boce/`. Sve radi: Uvoz, Objava, Pregled, Deckovi.
+- **Folder (računalo, Chrome ili Edge):** otvori stranicu (gornji link ili lokalni server) i odaberi Drive folder `Evil Boce/`. Sve radi: Uvoz, Objava, Pregled, Deckovi.
 - **Preko servera (npr. mobitel):** lokalni server na računalu poslužuje app, karte i deckove. App ga sam prepozna; tu su Pregled i Deckovi, bez Uvoza.
 
 ## Lokalni server
