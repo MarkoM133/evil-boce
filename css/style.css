@@ -330,6 +330,8 @@ main { min-width: 0; }
 .badge { font: italic 700 15px var(--display); }
 .badge.new { color: var(--straw); }
 .badge.changed { color: var(--bone); }
+.badge.stale { color: var(--straw); }
+.thumbs figcaption.stale { color: var(--straw); font-weight: 600; }
 .entry-body { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; }
 .thumbs { display: flex; gap: 10px; }
 .thumbs figure { margin: 0; }

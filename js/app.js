@@ -177,7 +177,6 @@ async function runImport() {
     if (/\.xml$/i.test(path)) xmlFiles.push({ path, text: await file.text(), lastModified: file.lastModified });
     else if (/\.png$/i.test(path)) pngFiles.push({ path, file, lastModified: file.lastModified, getBytes: async () => new Uint8Array(await file.arrayBuffer()) });
   }
-  if (!xmlFiles.length && pngFiles.length) throw new Error('U export/ ima PNG-ova, ali nema nijednog XML-a.');
   state.analysis = await analyzeExport({ xmlFiles, pngFiles, db: state.db });
   state.analysis.files = files.map(({ path, file }) => ({ path, lastModified: file.lastModified, size: file.size }));
   state.analysis.fileCount = { xml: xmlFiles.length, png: pngFiles.length };
@@ -473,7 +472,12 @@ function renderEntry(e) {
   }
   if (e.png) {
     if (!pngUrls.has(e.png.path)) pngUrls.set(e.png.path, URL.createObjectURL(e.png.file));
-    imgs.append(h('figure', {}, h('img', { alt: e.card.name, src: pngUrls.get(e.png.path), loading: 'lazy' }), h('figcaption', {}, e.old ? (e.imageChanged ? 'nova slika' : 'slika ista') : 'slika')));
+    imgs.append(h('figure', {}, h('img', { alt: e.card.name, src: pngUrls.get(e.png.path), loading: 'lazy' }),
+      h('figcaption', { class: e.staleImage ? 'stale' : null }, e.old ? (e.imageChanged ? 'nova slika' : e.staleImage ? 'slika ista: stara?' : 'slika ista') : 'slika')));
+  } else if (e.staleImage) {
+    const oldImg = h('img', { alt: 'stara slika', loading: 'lazy' });
+    state.store.imageUrl(e.old).then(u => { if (u) oldImg.src = u; else oldImg.replaceWith(h('div', { class: 'noimg' }, 'stara slika nije u data/images')); });
+    imgs.append(h('figure', {}, oldImg, h('figcaption', { class: 'stale' }, 'nema PNG-a: ostaje stara')));
   }
   const rows = e.old
     ? e.diffs.map(k => h('tr', {}, h('th', {}, k), h('td', { class: 'was' }, fmt(e.old[k])), h('td', { class: 'now' }, fmt(e.card[k]))))
@@ -481,6 +485,7 @@ function renderEntry(e) {
   return h('article', { class: `entry ${e.status}` },
     h('header', {},
       h('span', { class: `badge ${e.status}` }, STATUS_LABEL[e.status]),
+      e.staleImage ? h('span', { class: 'badge stale' }, 'Slika možda stara') : null,
       h('code', {}, e.id), h('strong', {}, e.card.name),
       e.card.color ? h('span', { class: `chip c-${e.card.color}` }, e.card.color) : null,
       h('span', { class: 'muted small' }, e.file)),

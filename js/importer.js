@@ -95,15 +95,31 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     if (png) {
       usedPngs.add(p.card.name);
       imageHash = await imageHashOf(await png.getBytes());
-    } else if (old?.imageHash) {
-      add(warnings, p.code, `nema PNG-a "${p.card.name}.png"; ostaje stara slika`);
-    } else {
+    } else if (!old?.imageHash) {
       add(errors, p.code, `nova karta bez PNG-a "${p.card.name}.png"`);
     }
     const diffs = old ? CE_FIELDS.filter(k => !same(old[k], p.card[k])) : [];
     const imageChanged = !!old && !!imageHash && imageHash !== old.imageHash;
     const status = !old ? 'new' : diffs.length || imageChanged ? 'changed' : 'same';
-    entries.push({ id: p.code, status, card: p.card, old, diffs, imageChanged, imageHash, png, file: p.file });
+    // PNG je nacrtana karta: promijenjeni podaci, a ista slika znači da je slika vjerojatno stara.
+    const staleImage = diffs.length > 0 && !imageChanged;
+    if (staleImage) add(warnings, p.code, `promijenjeno (${diffs.join(', ')}), a ${png ? 'PNG je isti kao prije' : 'nema PNG-a, pa ostaje stara slika'}; slika je možda stara, treba li novi "${p.card.name}.png"?`);
+    entries.push({ id: p.code, status, card: p.card, old, diffs, imageChanged, staleImage, imageHash, png, file: p.file });
+  }
+
+  // PNG bez XML-a: nova slika postojeće karte, po imenu karte u bazi.
+  const pickedIds = new Set(picked.keys());
+  const dbByName = new Map();
+  for (const c of db.cards) if (!dbByName.has(c.name) || dbByName.get(c.name).deleted) dbByName.set(c.name, c);
+  for (const [name, png] of pngs) {
+    const old = dbByName.get(name);
+    if (usedPngs.has(name) || !old || pickedIds.has(old.id)) continue;
+    usedPngs.add(name);
+    const imageHash = await imageHashOf(await png.getBytes());
+    const imageChanged = imageHash !== old.imageHash;
+    const card = { id: old.id };
+    for (const k of CE_FIELDS) if (old[k] !== undefined) card[k] = old[k];
+    entries.push({ id: old.id, status: imageChanged ? 'changed' : 'same', card, old, diffs: [], imageChanged, staleImage: false, imageHash, png, file: png.path });
   }
   entries.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 

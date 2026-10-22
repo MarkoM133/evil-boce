@@ -235,3 +235,38 @@ test('prazan export/: nema grešaka ni promjena', async () => {
   const a = await analyzeExport({ xmlFiles: [], pngFiles: [], db: emptyDb() });
   assert.deepEqual([a.entries, a.errors, a.warnings], [[], [], []]);
 });
+
+test('promijenjeni podaci, a isti PNG: upozorenje da je slika možda stara', async () => {
+  const { pub } = await firstImport();
+  const a = await analyzeExport({
+    xmlFiles: [{ path: 'export/x.xml', text: xml(card({ ...ACTION, cost: '2' })), lastModified: 1 }],
+    pngFiles: [png([2], 'export/Punch.png')],
+    db: pub.db,
+  });
+  const e = a.entries.find(x => x.id === 'OP9-002');
+  assert.equal(e.status, 'changed');
+  assert.equal(e.staleImage, true);
+  assert.match(a.warnings.map(w => w.msg).join('\n'), /promijenjeno \(cost\), a PNG je isti kao prije; slika je možda stara/);
+  const fresh = await analyzeExport({
+    xmlFiles: [{ path: 'export/x.xml', text: xml(card({ ...ACTION, cost: '2' })), lastModified: 1 }],
+    pngFiles: [png([9], 'export/Punch.png')],
+    db: pub.db,
+  });
+  assert.equal(fresh.entries.find(x => x.id === 'OP9-002').staleImage, false);
+  assert.deepEqual(fresh.warnings, []);
+});
+
+test('sam PNG bez XML-a: nova slika postojeće karte po imenu', async () => {
+  const { pub } = await firstImport();
+  const a = await analyzeExport({ xmlFiles: [], pngFiles: [png([9], 'export/Punch.png'), png([3], 'export/Hero A, Big Form.png'), png([7], 'export/Nepoznato.png')], db: pub.db });
+  assert.deepEqual(a.errors, []);
+  assert.deepEqual(a.entries.map(e => [e.id, e.status, e.imageChanged]), [['OP9-002', 'changed', true], ['OP9-003', 'same', false]]);
+  assert.ok(a.infos.some(i => /Nepoznato\.png/.test(i.msg)));
+  const next = buildPublish(pub.db, a);
+  const old = pub.db.cards.find(c => c.id === 'OP9-002');
+  const now = next.db.cards.find(c => c.id === 'OP9-002');
+  assert.notEqual(now.imageHash, old.imageHash);
+  assert.equal(now.rev, old.rev + 1);
+  for (const k of ['name', 'type', 'cost', 'text', 'traits']) assert.deepEqual(now[k], old[k]);
+  assert.equal(next.writes.length, 1);
+});
