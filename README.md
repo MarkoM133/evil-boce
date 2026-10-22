@@ -9,7 +9,7 @@ Repo ima samo kod. Karte, slike i pravila nisu ovdje; app radi nad zajedničkim 
 Statična stranica bez builda (GitHub Pages ili bilo koji lokalni server), u Chromeu ili Edgeu (File System Access API).
 
 ```
-npx serve .        # ili bilo koji statični server
+npm start          # http://localhost:5101/
 ```
 
 Otvori stranicu, odaberi folder `Evil Boce/` (s `export/` i `data/`), pa **Uvezi** i **Objavi**.
