@@ -4,10 +4,13 @@ import * as fs from './fsdir.js';
 
 const DB_PATH = 'data/cards.json';
 const STEAM_PATH = 'data/steam-urls.json';
+// Logo je u Drive folderu, ne u javnom repou (§2 plana).
+const LOGO_FILES = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'];
 
 const state = {
   root: null,
   db: null,
+  logo: null,
   analysis: null,
   tab: 'import',
   filter: { q: '', type: '', color: '', deleted: false },
@@ -108,6 +111,19 @@ async function connect(handle) {
   state.analysis = null;
   state.selected = null;
   await loadDb();
+  await loadLogo();
+}
+
+async function loadLogo() {
+  if (state.logo) URL.revokeObjectURL(state.logo);
+  state.logo = null;
+  for (const name of LOGO_FILES) {
+    const f = await fs.getFile(state.root, name);
+    if (f) {
+      state.logo = URL.createObjectURL(f);
+      return;
+    }
+  }
 }
 
 async function pickFolder() {
@@ -175,30 +191,40 @@ async function saveEdits(id, edits) {
 
 function render() {
   const app = $('#app');
-  app.replaceChildren(renderHeader(), state.root ? renderMain() : renderWelcome());
+  if (state.root) app.replaceChildren(renderHeader(), renderMain());
+  else app.replaceChildren(renderWelcome());
+}
+
+function wordmark(size) {
+  return h('span', { class: `wordmark ${size}`, role: 'img', 'aria-label': 'Evil Boće' },
+    h('span', { class: 'w-evil' }, 'Evil'), h('span', { class: 'w-boce' }, 'Boće'));
 }
 
 function renderHeader() {
+  const n = state.db.cards.length;
   return h('header', { class: 'top' },
-    h('div', { class: 'brand' }, h('span', { class: 'mark' }, 'EB'), h('div', {}, h('h1', {}, 'Evil Boće'), h('p', {}, 'Baza karata'))),
-    state.root
-      ? h('div', { class: 'folder' },
-          h('span', { class: 'muted' }, 'Folder'), h('strong', {}, state.root.name),
-          h('span', { class: 'pill' }, `cards.json v${state.db.version} · ${state.db.cards.length} karata`),
-          h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, 'Promijeni'))
-      : null,
-  );
+    h('div', { class: 'brand' },
+      state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
+      h('span', { class: 'brand-sub' }, 'Baza karata')),
+    h('div', { class: 'folder' },
+      h('span', { class: 'folder-name', title: 'Odabrani Drive folder' }, state.root.name),
+      h('span', { class: 'folder-db' }, `Verzija ${state.db.version}`, h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${n === 1 ? 'karta' : 'karata'}`),
+      h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, 'Promijeni folder')));
 }
 
 function renderWelcome() {
-  const box = h('section', { class: 'welcome' },
-    h('h2', {}, 'Odaberi folder "Evil Boce"'),
-    h('p', {}, 'Zajednički Drive folder s podfolderima export/ i data/. Odabire se jednom, preglednik ga zapamti.'),
+  const actions = h('div', { class: 'welcome-actions' },
     h('button', { class: 'primary', onclick: () => guard(pickFolder) }, 'Odaberi folder'));
-  if (!window.showDirectoryPicker) box.append(h('p', { class: 'error-text' }, 'Ovaj preglednik ne podržava rad s folderima. Koristi Chrome ili Edge.'));
+  const box = h('section', { class: 'welcome' },
+    h('div', { class: 'emblem', 'aria-hidden': 'true' }, h('span', { class: 'ring' }), wordmark('big')),
+    h('div', { class: 'welcome-text' },
+      h('h1', {}, 'Baza karata'),
+      h('p', {}, 'Odaberi zajednički Drive folder "Evil Boce". U njemu su export/ s exportima iz Card Enginea i data/ s bazom karata. Preglednik ga zapamti, pa se bira samo jednom.'),
+      actions,
+      !window.showDirectoryPicker ? h('p', { class: 'error-text' }, 'Ovaj preglednik ne može otvoriti folder. Otvori stranicu u Chromeu ili Edgeu.') : null));
   fs.loadRoot().then(handle => {
     if (!handle || state.root) return;
-    box.append(h('button', { class: 'ghost', onclick: () => guard(() => resume(handle)) }, `Nastavi s "${handle.name}"`));
+    actions.append(h('button', { class: 'ghost', onclick: () => guard(() => resume(handle)) }, `Nastavi s "${handle.name}"`));
   });
   return box;
 }
@@ -247,7 +273,7 @@ function renderImport() {
 }
 
 function stat(label, n, kind) {
-  return h('div', { class: `stat ${kind}` }, h('strong', {}, n), h('span', {}, label));
+  return h('div', { class: `stat ${n ? kind : 'zero'}` }, h('strong', {}, n), h('span', {}, label));
 }
 
 function messages(title, list, kind, collapsed = false) {
@@ -333,7 +359,7 @@ function tile(c) {
     h('div', { class: 'meta' },
       h('span', { class: `dot c-${c.color ?? 'none'}` }),
       h('span', { class: 'name' }, c.name),
-      h('span', { class: 'muted small' }, `${c.id} · ${c.type}${c.cost !== undefined ? ` · ${c.cost}` : ''}`)));
+      h('span', { class: 'sub' }, h('span', {}, c.id), h('span', {}, c.type), c.cost !== undefined ? h('span', { class: 'cost', title: 'Cost' }, c.cost) : null)));
 }
 
 function renderDetail() {
