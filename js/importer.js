@@ -107,7 +107,8 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
   }
   entries.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-  for (const [name, p] of pngs) if (!usedPngs.has(name)) add(infos, null, `PNG preskočen (nije karta s kodom): ${p.path}`);
+  const skipped = [...pngs.keys()].filter(name => !usedPngs.has(name));
+  if (skipped.length) add(infos, null, `preskočeno ${skipped.length} PNG-ova koji nisu karte s kodom: ${skipped.map(n => `${n}.png`).join(', ')}`);
 
   // 4. Provjere na bazi kakva će biti nakon Objave.
   const final = mergedCards(db, entries);
