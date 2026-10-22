@@ -28,6 +28,7 @@
 
 body {
   margin: 0;
+  overflow-x: clip;
   background: var(--black);
   color: var(--bone);
   font: 16px/1.5 var(--text);
@@ -162,12 +163,84 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
 /* ---------- zaglavlje i kartice ---------- */
 
 .top {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-wrap: wrap;
   gap: 12px 24px;
   align-items: center;
   justify-content: space-between;
+  min-height: 108px;
   padding: 16px 0 12px;
+}
+.top > .brand, .top > .folder { position: relative; z-index: 1; }
+.folder { text-shadow: 0 1px 8px var(--black); }
+
+/* Traka s herojima: preko cijele širine prozora, kose kriške, zatamnjeno; prijelaz u crnu iza loga i desnog teksta. */
+.hero-strip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  z-index: 0;
+  display: flex;
+  gap: 6px;
+  padding-left: 26%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, transparent 20%, #000 40%, #000 66%, transparent 92%), linear-gradient(to bottom, #000 55%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent 20%, #000 40%, #000 66%, transparent 92%), linear-gradient(to bottom, #000 55%, transparent);
+  mask-composite: intersect;
+}
+.slice {
+  flex: 1 1 0;
+  min-width: 72px;
+  max-width: 200px;
+  position: relative;
+  padding: 0;
+  clip-path: none;
+  background: var(--surface);
+  overflow: hidden;
+  transform: skewX(-14deg);
+  --edge: var(--c-none);
+}
+.slice:hover { background: var(--surface); }
+.slice:focus-visible { outline: 2px solid var(--straw); outline-offset: -2px; }
+.slice-art {
+  position: absolute;
+  inset: 0 -30%;
+  transform: skewX(14deg);
+  background-size: 100% auto;
+  background-position: 50% 24%;
+  filter: brightness(.5) saturate(.75);
+  transition: filter .2s ease-out;
+}
+.slice::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--edge); }
+.slice-name {
+  position: absolute;
+  left: 14px;
+  bottom: 8px;
+  transform: skewX(14deg);
+  font: italic 800 17px/1 var(--display);
+  color: var(--bone);
+  text-shadow: 0 1px 6px var(--black);
+  opacity: 0;
+  transition: opacity .2s ease-out;
+}
+.slice:hover .slice-art, .slice:focus-visible .slice-art { filter: brightness(.95) saturate(1); }
+.slice:hover .slice-name, .slice:focus-visible .slice-name, .slice.picked .slice-name { opacity: 1; }
+.hero-strip.has-picked .slice-art { filter: brightness(.25) saturate(.3); }
+.hero-strip.has-picked .slice.picked .slice-art { filter: none; }
+.c-edge-Cyan { --edge: var(--c-Cyan); }
+.c-edge-Yellow { --edge: var(--c-Yellow); }
+.c-edge-Purple { --edge: var(--c-Purple); }
+.c-edge-Red { --edge: var(--c-Red); }
+.c-edge-Blue { --edge: var(--c-Blue); }
+.c-edge-Green { --edge: var(--c-Green); }
+@media (prefers-reduced-motion: reduce) {
+  .slice-art, .slice-name { transition: none; }
 }
 .brand { display: flex; gap: 14px; align-items: center; }
 .brand .logo { width: 64px; height: 64px; object-fit: contain; }
@@ -332,6 +405,11 @@ td.now { font-weight: 600; }
 .toast.warn { border-left-color: var(--red); }
 
 @media (max-width: 760px) {
+  .top { min-height: 0; }
+  .hero-strip { bottom: auto; height: 96px; padding-left: 30%; gap: 4px; }
+  .slice { min-width: 64px; }
+  .slice-art { background-size: 175% auto; background-position: 50% 21%; }
+  .brand-sub { display: none; }
   .welcome { grid-template-columns: 1fr; gap: 24px; padding: 32px 0; min-height: auto; }
   .emblem { width: min(100%, 360px); margin: 0 auto; }
   .entry-body, .detail-body { grid-template-columns: 1fr; }

@@ -203,3 +203,20 @@ export function obsoleteImages(db, imageFiles, steamUrls) {
     return cur && hash !== cur && !!steamUrls[`${id}.${cur}`];
   });
 }
+
+// Male sličice (data/thumbs/ID.hash.jpg) za trake, bazen i galeriju; ime ide uz verziju slike.
+export const THUMB_WIDTH = 300;
+
+export function thumbName(card) {
+  return card.imageHash ? `${card.id}.${card.imageHash}.jpg` : null;
+}
+
+// Koje sličice treba napraviti i koje su višak (TTS ih ne koristi, pa se stare brišu odmah).
+export function thumbPlan(db, thumbFiles) {
+  const have = new Set(thumbFiles);
+  const wanted = new Set(db.cards.map(thumbName).filter(Boolean));
+  return {
+    missing: db.cards.filter(c => c.image && !have.has(thumbName(c))),
+    extra: thumbFiles.filter(f => /\.jpg$/i.test(f) && !wanted.has(f)),
+  };
+}

@@ -42,11 +42,14 @@ const TYPES = {
   '.svg': 'image/svg+xml',
 };
 
-function send(res, status, body, type = 'application/json; charset=utf-8') {
+function send(res, status, body, type = 'application/json; charset=utf-8', cache = 'no-store') {
   const data = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
-  res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+  res.writeHead(status, { 'Content-Type': type, 'Cache-Control': cache });
   res.end(data);
 }
+
+// Slike i sličice nose hash u imenu (ID.hash.png/jpg), pa nova verzija ima novo ime i smije se pamtiti zauvijek.
+const IMMUTABLE = 'public, max-age=31536000, immutable';
 
 const fail = (res, status, msg) => send(res, status, { error: msg });
 
@@ -56,10 +59,10 @@ function inside(base, rel) {
   return file === base || file.startsWith(base + path.sep) ? file : null;
 }
 
-async function sendFile(res, file) {
+async function sendFile(res, file, cache) {
   try {
     const data = await fs.readFile(file);
-    send(res, 200, data, TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream');
+    send(res, 200, data, TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream', cache);
   } catch (e) {
     if (e.code === 'ENOENT' || e.code === 'EISDIR') fail(res, 404, 'nema');
     else throw e;
@@ -208,7 +211,8 @@ async function handle(req, res) {
   // Podaci iz Drive foldera: samo data/ (cards.json, slike) i logo.
   if (parts[0] === 'data') {
     const file = inside(path.join(cfg.drive, 'data'), parts.slice(1).join('/'));
-    return file ? sendFile(res, file) : fail(res, 403, 'zabranjeno');
+    const hashed = ['images', 'thumbs'].includes(parts[1]) && /\.[0-9a-f]{8}\.(png|jpg)$/i.test(rel);
+    return file ? sendFile(res, file, hashed ? IMMUTABLE : 'no-store') : fail(res, 403, 'zabranjeno');
   }
   if (rel === '/logo') {
     const name = await findLogo();

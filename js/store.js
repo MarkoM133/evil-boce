@@ -1,6 +1,6 @@
 // Izvor podataka za app: Drive folder (File System Access, računalo) ili lokalni server (mobitel preko Tailscalea).
 // Oba imaju isto sučelje za bazu karata, slike i deckove; uvoz i Objava postoje samo u folderu.
-import { emptyDb } from './importer.js';
+import { emptyDb, thumbName } from './importer.js';
 import * as fs from './fsdir.js';
 
 export class ConflictError extends Error {
@@ -52,8 +52,10 @@ export function serverStore(info) {
       if (r.status === 404) return emptyDb();
       return json(r);
     },
-    async imageUrl(card) {
-      return card.image ? `data/${card.image}` : null;
+    // thumb: URL sličice; ako je nema na serveru, pozivatelj padne na punu sliku (onerror).
+    async imageUrl(card, { thumb = false } = {}) {
+      if (!card.image) return null;
+      return thumb ? `data/thumbs/${thumbName(card)}` : `data/${card.image}`;
     },
     async logoUrl() {
       return info.logo ? 'logo' : null;
@@ -97,13 +99,15 @@ export function folderStore(root) {
     async readDb() {
       return (await readJson('data/cards.json')) ?? emptyDb();
     },
-    async imageUrl(card) {
+    // thumb: sličica ako postoji, inače null (pozivatelj uzme punu sliku).
+    async imageUrl(card, { thumb = false } = {}) {
       if (!card.image) return null;
-      if (!urls.has(card.image)) {
-        const f = await fs.getFile(root, `data/${card.image}`);
-        urls.set(card.image, f ? URL.createObjectURL(f) : null);
+      const path = thumb ? `data/thumbs/${thumbName(card)}` : `data/${card.image}`;
+      if (!urls.has(path)) {
+        const f = await fs.getFile(root, path);
+        urls.set(path, f ? URL.createObjectURL(f) : null);
       }
-      return urls.get(card.image);
+      return urls.get(path);
     },
     dropImageUrls() {
       for (const u of urls.values()) if (u) URL.revokeObjectURL(u);

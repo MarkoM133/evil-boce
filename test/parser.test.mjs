@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCardEngineXml, cleanText } from '../js/parse.js';
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb } from '../js/importer.js';
+import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, thumbPlan } from '../js/importer.js';
 
 const RGB = { Cyan: [0, 255, 255], Red: [255, 0, 0], White: [255, 255, 255], Odd: [10, 20, 30] };
 const ICON = { kb: 24, pwr: 25, rng: 26, dmg: 27, hp: 28 };
@@ -215,4 +215,11 @@ test('obsoleteImages: briše se tek kad nova verzija ima Steam URL', () => {
   const files = ['OP9-001.aaaaaaaa.png', 'OP9-001.bbbbbbbb.png'];
   assert.deepEqual(obsoleteImages(db, files, {}), []);
   assert.deepEqual(obsoleteImages(db, files, { 'OP9-001.bbbbbbbb': 'https://x' }), ['OP9-001.aaaaaaaa.png']);
+});
+
+test('thumbPlan: nedostajuće i stare sličice', () => {
+  const db = { cards: [{ id: 'OP9-001', image: 'images/OP9-001.bbbbbbbb.png', imageHash: 'bbbbbbbb' }, { id: 'OP9-002', image: 'images/OP9-002.cccccccc.png', imageHash: 'cccccccc' }, { id: 'X', image: null, imageHash: null }] };
+  const plan = thumbPlan(db, ['OP9-001.aaaaaaaa.jpg', 'OP9-002.cccccccc.jpg']);
+  assert.deepEqual(plan.missing.map(c => c.id), ['OP9-001']);
+  assert.deepEqual(plan.extra, ['OP9-001.aaaaaaaa.jpg']);
 });

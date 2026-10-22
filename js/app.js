@@ -1,4 +1,4 @@
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, CE_FIELDS } from './importer.js';
+import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, THUMB_WIDTH, CE_FIELDS } from './importer.js';
 import { TYPES, COLOR_NAMES, DECK_TYPES } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
@@ -69,10 +69,44 @@ async function guard(fn) {
   }
 }
 
-function cardImg(card, props = {}) {
+// Sličica ako postoji, inače puna slika. full: true za detalj karte.
+function cardImg(card, { full = false, ...props } = {}) {
   const img = h('img', { alt: props.alt ?? '', loading: 'lazy', ...props });
-  if (card) state.store.imageUrl(card).then(u => { if (u) img.src = u; });
+  if (card) imageFor(card, !full).then(u => { if (u) img.src = u; });
   return img;
+}
+
+const loaded = new Map();
+
+function loads(url) {
+  if (!loaded.has(url)) {
+    loaded.set(url, new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = url;
+    }));
+  }
+  return loaded.get(url);
+}
+
+async function imageFor(card, thumb) {
+  if (thumb) {
+    const t = await state.store.imageUrl(card, { thumb: true });
+    if (t && (await loads(t))) return t;
+  }
+  return state.store.imageUrl(card);
+}
+
+async function makeThumb(blob) {
+  const bmp = await createImageBitmap(blob);
+  const height = Math.round((bmp.height / bmp.width) * THUMB_WIDTH);
+  const canvas = new OffscreenCanvas(THUMB_WIDTH, height);
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bmp, 0, 0, THUMB_WIDTH, height);
+  bmp.close();
+  return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
 }
 
 const cardById = id => state.db.cards.find(c => c.id === id);
@@ -144,6 +178,7 @@ async function runImport() {
   if (!xmlFiles.length) throw new Error('U export/ nema nijednog XML-a.');
   state.analysis = await analyzeExport({ xmlFiles, pngFiles, db: state.db });
   state.analysis.fileCount = { xml: xmlFiles.length, png: pngFiles.length };
+  state.analysis.missingThumbs = thumbPlan(state.db, await fs.listFileNames(root(), 'data/thumbs')).missing.length;
 }
 
 async function publish() {
@@ -151,19 +186,38 @@ async function publish() {
   if (!a || a.errors.length) return;
   await assertFresh();
   const { db, writes, changed } = buildPublish(state.db, a);
-  if (!changed) {
+  let old = [];
+  if (changed) {
+    for (const w of writes) await fs.writeFile(root(), w.path, await w.png.getBytes());
+    await writeDb(db);
+    const steamText = await fs.readText(root(), STEAM_PATH);
+    const steam = steamText ? JSON.parse(steamText) : {};
+    old = obsoleteImages(db, await fs.listFileNames(root(), 'data/images'), steam);
+    for (const f of old) await fs.removeFile(root(), `data/images/${f}`);
+  }
+  const thumbs = await updateThumbs(db);
+  state.analysis = null;
+  state.store.dropImageUrls();
+  if (!changed && !thumbs) {
     toast('Nema promjena za objavu.');
     return;
   }
-  for (const w of writes) await fs.writeFile(root(), w.path, await w.png.getBytes());
-  await writeDb(db);
-  const steamText = await fs.readText(root(), STEAM_PATH);
-  const steam = steamText ? JSON.parse(steamText) : {};
-  const old = obsoleteImages(db, await fs.listFileNames(root(), 'data/images'), steam);
-  for (const f of old) await fs.removeFile(root(), `data/images/${f}`);
-  state.analysis = null;
-  state.store.dropImageUrls();
-  toast(`Objavljeno: verzija ${db.version}, ${changed} karata${old.length ? `, obrisano ${old.length} starih slika` : ''}.`);
+  const parts = [];
+  if (changed) parts.push(`verzija ${db.version}, ${changed} karata`);
+  if (thumbs) parts.push(`${thumbs} sličica`);
+  if (old.length) parts.push(`obrisano ${old.length} starih slika`);
+  toast(`Objavljeno: ${parts.join(', ')}.`);
+}
+
+// Sličice za sve karte kojima nedostaju; stare verzije se brišu.
+async function updateThumbs(db) {
+  const plan = thumbPlan(db, await fs.listFileNames(root(), 'data/thumbs'));
+  for (const c of plan.missing) {
+    const f = await fs.getFile(root(), `data/${c.image}`);
+    if (f) await fs.writeFile(root(), `data/thumbs/${thumbName(c)}`, await makeThumb(f));
+  }
+  for (const f of plan.extra) await fs.removeFile(root(), `data/thumbs/${f}`);
+  return plan.missing.length;
 }
 
 async function saveEdits(id, edits) {
@@ -181,8 +235,36 @@ async function saveEdits(id, edits) {
 
 function render() {
   const app = $('#app');
-  if (state.store) app.replaceChildren(renderHeader(), renderMain());
-  else app.replaceChildren(renderWelcome());
+  if (state.store) {
+    app.replaceChildren(renderHeader(), renderMain());
+    updateStrip();
+  } else app.replaceChildren(renderWelcome());
+}
+
+// Traka s herojima iza zaglavlja: svi heroji iz baze, kose kriške s crtežom s karte.
+function heroStrip() {
+  const heroes = heroCards(state.db).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  if (!heroes.length) return null;
+  return h('div', { class: 'hero-strip', id: 'hero-strip' }, heroes.map(c => {
+    const art = h('span', { class: 'slice-art' });
+    imageFor(c, true).then(u => { if (u) art.style.backgroundImage = `url("${u}")`; });
+    return h('button', {
+      class: `slice c-edge-${c.color}`,
+      'data-id': c.id,
+      title: c.name,
+      'aria-label': `${c.name}: otvori u Pregledu`,
+      onclick: () => { state.tab = 'browse'; state.selected = c.id; render(); },
+    }, art, h('span', { class: 'slice-name' }, c.name));
+  }));
+}
+
+// U deck builderu svijetle samo heroji iz decka.
+function updateStrip() {
+  const strip = $('#hero-strip');
+  if (!strip) return;
+  const picked = new Set(state.tab === 'decks' && state.deck ? state.deck.heroes : []);
+  strip.classList.toggle('has-picked', picked.size > 0);
+  for (const s of strip.children) s.classList.toggle('picked', picked.has(s.dataset.id));
 }
 
 function wordmark(size) {
@@ -194,6 +276,7 @@ function renderHeader() {
   const n = state.db.cards.length;
   const server = state.store.kind === 'server';
   return h('header', { class: 'top' },
+    heroStrip(),
     h('div', { class: 'brand' },
       state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
       h('span', { class: 'brand-sub' }, 'Baza karata')),
@@ -248,8 +331,9 @@ function renderImport() {
   const wrap = h('section', { class: 'panel' },
     h('div', { class: 'toolbar' },
       h('button', { class: 'primary', onclick: () => guard(runImport) }, a ? 'Ponovno učitaj export/' : 'Uvezi iz export/'),
-      a ? h('button', { class: 'publish', disabled: a.errors.length > 0 || !a.entries.some(e => e.status !== 'same'), onclick: () => guard(publish) }, 'Objavi') : null,
-      a?.errors.length ? h('span', { class: 'error-text' }, 'Objava je blokirana dok ima grešaka.') : null));
+      a ? h('button', { class: 'publish', disabled: a.errors.length > 0 || (!a.entries.some(e => e.status !== 'same') && !a.missingThumbs), onclick: () => guard(publish) }, 'Objavi') : null,
+      a?.errors.length ? h('span', { class: 'error-text' }, 'Objava je blokirana dok ima grešaka.') : null,
+      a?.missingThumbs ? h('span', { class: 'muted' }, `Nedostaje ${a.missingThumbs} malih sličica (za brže učitavanje); Objavi ih napravi.`) : null));
   if (!a) {
     wrap.append(h('p', { class: 'muted' }, 'Čita sve XML-ove i PNG-ove iz export/ (i podfoldera), uspoređuje ih s data/cards.json i pokaže što će se promijeniti. Ništa se ne zapisuje dok ne klikneš Objavi.'));
     return wrap;
@@ -384,7 +468,7 @@ function renderDetail() {
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
   box.replaceChildren(
     h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: () => { state.selected = null; renderGrid(); renderDetail(); } }, 'Zatvori')),
-    h('div', { class: 'detail-body' }, h('div', { class: 'big' }, cardImg(c, { alt: c.name })), h('div', {}, h('table', { class: 'fields' }, rows), editor)));
+    h('div', { class: 'detail-body' }, h('div', { class: 'big' }, cardImg(c, { alt: c.name, full: true })), h('div', {}, h('table', { class: 'fields' }, rows), editor)));
 }
 
 // ---------- Deckovi ----------
@@ -545,6 +629,7 @@ function refreshDeck() {
   renderDeckPanel();
   renderDeckStatus();
   renderSwitch();
+  updateStrip();
 }
 
 function renderSwitch() {
