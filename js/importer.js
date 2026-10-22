@@ -204,6 +204,19 @@ export function obsoleteImages(db, imageFiles, steamUrls) {
   });
 }
 
+// export/ je sanduče: nakon Objave pročitani fileovi idu u export/objavljeno/<datum vrijeme>/, a Uvoz arhivu preskače.
+export const ARCHIVE_DIR = 'export/objavljeno';
+
+export function archiveFolder(now = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `${ARCHIVE_DIR}/${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}.${p(now.getMinutes())}`;
+}
+
+// export/Nove/Luffy.png -> export/objavljeno/2026-10-23 21.10/Nove/Luffy.png
+export function archivePath(path, folder) {
+  return `${folder}/${path.replace(/^export\//, '')}`;
+}
+
 // Male sličice (data/thumbs/ID.hash.jpg) za trake, bazen i galeriju; ime ide uz verziju slike.
 export const THUMB_WIDTH = 300;
 

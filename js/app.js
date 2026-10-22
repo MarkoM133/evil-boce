@@ -1,4 +1,4 @@
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, THUMB_WIDTH, CE_FIELDS } from './importer.js';
+import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, THUMB_WIDTH, CE_FIELDS, ARCHIVE_DIR, archiveFolder, archivePath } from './importer.js';
 import { TYPES, COLOR_NAMES, DECK_TYPES } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
@@ -170,15 +170,16 @@ async function runImport() {
   const exportDir = await fs.getDir(root(), 'export');
   if (!exportDir) throw new Error('Nema foldera export/ u odabranom folderu.');
   await reloadDb();
-  const files = await fs.walkFiles(exportDir, 'export');
+  const files = await fs.walkFiles(exportDir, 'export', path => path === ARCHIVE_DIR);
   const xmlFiles = [];
   const pngFiles = [];
   for (const { path, file } of files) {
     if (/\.xml$/i.test(path)) xmlFiles.push({ path, text: await file.text(), lastModified: file.lastModified });
     else if (/\.png$/i.test(path)) pngFiles.push({ path, file, lastModified: file.lastModified, getBytes: async () => new Uint8Array(await file.arrayBuffer()) });
   }
-  if (!xmlFiles.length) throw new Error('U export/ nema nijednog XML-a.');
+  if (!xmlFiles.length && pngFiles.length) throw new Error('U export/ ima PNG-ova, ali nema nijednog XML-a.');
   state.analysis = await analyzeExport({ xmlFiles, pngFiles, db: state.db });
+  state.analysis.files = files.map(({ path, file }) => ({ path, lastModified: file.lastModified, size: file.size }));
   state.analysis.fileCount = { xml: xmlFiles.length, png: pngFiles.length };
   state.analysis.missingThumbs = thumbPlan(state.db, await fs.listFileNames(root(), 'data/thumbs')).missing.length;
 }
@@ -198,17 +199,43 @@ async function publish() {
     for (const f of old) await fs.removeFile(root(), `data/images/${f}`);
   }
   const thumbs = await updateThumbs(db);
+  const archived = await archiveExport(a.files);
   state.analysis = null;
   state.store.dropImageUrls();
-  if (!changed && !thumbs) {
-    toast('Nema promjena za objavu.');
-    return;
-  }
   const parts = [];
   if (changed) parts.push(`verzija ${db.version}, ${changed} karata`);
   if (thumbs) parts.push(`${thumbs} sličica`);
   if (old.length) parts.push(`obrisano ${old.length} starih slika`);
-  toast(`Objavljeno: ${parts.join(', ')}.`);
+  if (archived.moved) parts.push(`${archived.moved} fileova iz export/ premješteno u ${archived.folder}/`);
+  const msg = changed || thumbs ? `Objavljeno: ${parts.join(', ')}.`
+    : parts.length ? `Nema promjena karata; ${parts.join(', ')}.` : 'Nema promjena za objavu.';
+  if (archived.left.length) toast(`${msg} U export/ je ostalo ${archived.left.length} fileova promijenjenih nakon Uvoza; ponovi Uvezi.`, 'warn');
+  else toast(msg);
+}
+
+// Sanduče export/: sve što je Uvoz pročitao ide u arhivu, osim fileova promijenjenih u međuvremenu.
+async function archiveExport(files) {
+  const folder = archiveFolder();
+  const left = [];
+  let moved = 0;
+  for (const f of files) {
+    const now = await fs.getFile(root(), f.path);
+    if (!now) continue;
+    if (now.lastModified !== f.lastModified || now.size !== f.size) {
+      left.push(f.path);
+      continue;
+    }
+    await fs.moveFile(root(), f.path, archivePath(f.path, folder));
+    moved++;
+  }
+  // Prazni podfolderi sanduča, od najdubljih prema gore.
+  const dirs = new Set();
+  for (const f of files) {
+    const parts = f.path.split('/').slice(1, -1);
+    for (let i = parts.length; i > 0; i--) dirs.add(`export/${parts.slice(0, i).join('/')}`);
+  }
+  for (const d of [...dirs].sort((x, y) => y.split('/').length - x.split('/').length)) await fs.removeDirIfEmpty(root(), d);
+  return { folder, moved, left };
 }
 
 // Sličice za sve karte kojima nedostaju; stare verzije se brišu.
@@ -395,13 +422,14 @@ function renderImport() {
   const wrap = h('section', { class: 'panel' },
     h('div', { class: 'toolbar' },
       h('button', { class: 'primary', onclick: () => guard(runImport) }, a ? 'Ponovno učitaj export/' : 'Uvezi iz export/'),
-      a ? h('button', { class: 'publish', disabled: a.errors.length > 0 || (!a.entries.some(e => e.status !== 'same') && !a.missingThumbs), onclick: () => guard(publish) }, 'Objavi') : null,
+      a ? h('button', { class: 'publish', disabled: a.errors.length > 0 || (!a.entries.some(e => e.status !== 'same') && !a.missingThumbs && !a.files.length), onclick: () => guard(publish) }, 'Objavi') : null,
       a?.errors.length ? h('span', { class: 'error-text' }, 'Objava je blokirana dok ima grešaka.') : null,
       a?.missingThumbs ? h('span', { class: 'muted' }, `Nedostaje ${a.missingThumbs} malih sličica (za brže učitavanje); Objavi ih napravi.`) : null));
   if (!a) {
-    wrap.append(h('p', { class: 'muted' }, 'Čita sve XML-ove i PNG-ove iz export/ (i podfoldera), uspoređuje ih s data/cards.json i pokaže što će se promijeniti. Ništa se ne zapisuje dok ne klikneš Objavi.'));
+    wrap.append(h('p', { class: 'muted' }, 'Čita sve XML-ove i PNG-ove iz export/ (i podfoldera), uspoređuje ih s data/cards.json i pokaže što će se promijeniti. Ništa se ne zapisuje dok ne klikneš Objavi. Nakon Objave fileovi iz export/ idu u export/objavljeno/, pa u export/ ostaje samo ono što još nije objavljeno.'));
     return wrap;
   }
+  if (!a.files.length) wrap.append(h('p', { class: 'muted' }, 'export/ je prazan: sve je već objavljeno (arhiva je u export/objavljeno/).'));
   const count = s => a.entries.filter(e => e.status === s).length;
   wrap.append(h('div', { class: 'stats' },
     stat('Nove', count('new'), 'new'),
@@ -409,7 +437,7 @@ function renderImport() {
     stat('Bez promjene', count('same'), 'same'),
     stat('Greške', a.errors.length, 'error'),
     stat('Upozorenja', a.warnings.length, 'warn'),
-    h('p', { class: 'muted small' }, `${a.fileCount.xml} XML, ${a.fileCount.png} PNG u export/`)));
+    h('p', { class: 'muted small' }, `${a.fileCount.xml} XML, ${a.fileCount.png} PNG u export/; nakon Objave idu u export/objavljeno/`)));
   wrap.append(...[messages('Greške', a.errors, 'error'), messages('Upozorenja', a.warnings, 'warn'), messages('Info', a.infos, 'info', true)].filter(Boolean));
   const changes = a.entries.filter(e => e.status !== 'same');
   if (changes.length) wrap.append(h('h3', {}, 'Promjene'), h('div', { class: 'changes' }, changes.map(renderEntry)));

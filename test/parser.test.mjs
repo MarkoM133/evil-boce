@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCardEngineXml, cleanText } from '../js/parse.js';
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, thumbPlan } from '../js/importer.js';
+import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, thumbPlan, archiveFolder, archivePath } from '../js/importer.js';
 
 const RGB = { Cyan: [0, 255, 255], Red: [255, 0, 0], White: [255, 255, 255], Odd: [10, 20, 30] };
 const ICON = { kb: 24, pwr: 25, rng: 26, dmg: 27, hp: 28 };
@@ -222,4 +222,16 @@ test('thumbPlan: nedostajuće i stare sličice', () => {
   const plan = thumbPlan(db, ['OP9-001.aaaaaaaa.jpg', 'OP9-002.cccccccc.jpg']);
   assert.deepEqual(plan.missing.map(c => c.id), ['OP9-001']);
   assert.deepEqual(plan.extra, ['OP9-001.aaaaaaaa.jpg']);
+});
+
+test('sanduče: arhiva po datumu, ista struktura podfoldera', () => {
+  const folder = archiveFolder(new Date(2026, 9, 23, 9, 5));
+  assert.equal(folder, 'export/objavljeno/2026-10-23 09.05');
+  assert.equal(archivePath('export/Nove/Luffy.png', folder), 'export/objavljeno/2026-10-23 09.05/Nove/Luffy.png');
+  assert.equal(archivePath('export/a.xml', folder), 'export/objavljeno/2026-10-23 09.05/a.xml');
+});
+
+test('prazan export/: nema grešaka ni promjena', async () => {
+  const a = await analyzeExport({ xmlFiles: [], pngFiles: [], db: emptyDb() });
+  assert.deepEqual([a.entries, a.errors, a.warnings], [[], [], []]);
 });

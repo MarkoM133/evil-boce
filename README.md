@@ -33,7 +33,8 @@ Postavke u `server/config.local.json` (nije u gitu):
 
 ```
 Evil Boce/
-  export/            Card Engine exporti: XML-ovi bilo kojeg imena + PNG po karti (ime PNG-a = ime karte)
+  export/            sanduče za Card Engine exporte: XML-ovi bilo kojeg imena + PNG po karti (ime PNG-a = ime karte)
+  export/objavljeno/ nakon Objave app ovamo premjesti pročitane exporte (podfolder po datumu); Uvoz ga preskače
   data/cards.json    baza karata (piše je app)
   data/images/       slike, ID.hash.png
   decks/             deckovi, ime-decka.json

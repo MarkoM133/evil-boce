@@ -95,13 +95,34 @@ export async function listFileNames(root, path) {
   return out;
 }
 
-// Svi fileovi ispod foldera, rekurzivno: [{ path, file }]
-export async function walkFiles(dir, prefix) {
+// Svi fileovi ispod foldera, rekurzivno: [{ path, file }]. skip(path) preskače podfolder.
+export async function walkFiles(dir, prefix, skip = () => false) {
   const out = [];
   for await (const [name, h] of dir.entries()) {
     const path = `${prefix}/${name}`;
-    if (h.kind === 'directory') out.push(...(await walkFiles(h, path)));
-    else out.push({ path, file: await h.getFile() });
+    if (h.kind === 'directory') {
+      if (!skip(path)) out.push(...(await walkFiles(h, path, skip)));
+    } else out.push({ path, file: await h.getFile() });
   }
   return out;
+}
+
+// Premjesti file (kopija + brisanje). Promjena datuma izmjene nije bitna, file ide u arhivu.
+export async function moveFile(root, from, to) {
+  const f = await getFile(root, from);
+  if (!f) return;
+  await writeFile(root, to, f);
+  await removeFile(root, from);
+}
+
+// Obriše folder ako je prazan; inače ga ostavi.
+export async function removeDirIfEmpty(root, path) {
+  const { dirs, name } = split(path);
+  const d = await dirAt(root, dirs, false);
+  if (!d) return;
+  try {
+    await d.removeEntry(name);
+  } catch (e) {
+    if (e.name !== 'InvalidModificationError' && e.name !== 'NotFoundError') throw e;
+  }
 }
