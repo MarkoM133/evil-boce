@@ -310,11 +310,14 @@ function renderMain() {
     ['decks', 'Deckovi'],
   ];
   const view = { import: renderImport, browse: renderBrowse, decks: renderDecks }[state.tab]();
-  return h('main', {},
-    h('nav', { class: 'tabs', role: 'tablist' },
-      tabs.map(([key, label]) => h('button', { role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, label)),
-      h('span', { class: 'soon' }, 'Katalog i TTS dolaze u kasnijim fazama')),
-    view);
+  // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
+  return h('div', { class: 'shell' },
+    h('aside', { class: 'side' },
+      h('nav', { class: 'tabs', role: 'tablist' },
+        tabs.map(([key, label]) => h('button', { role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, label))),
+      state.tab === 'decks' ? renderDeckList() : null,
+      h('p', { class: 'soon' }, 'Katalog i TTS dolaze u kasnijim fazama.')),
+    h('main', {}, view));
 }
 
 // ---------- Uvoz ----------
@@ -544,29 +547,31 @@ function addCard(id, delta) {
 }
 
 function renderDecks() {
-  return h('section', { class: 'decks' },
-    h('aside', { class: 'deck-list' },
-      h('div', { class: 'deck-list-head' },
-        h('h2', {}, 'Moji deckovi'),
-        h('button', { class: 'primary', onclick: () => { if (confirmDiscard()) { state.deck = newDeck(); state.deckView = 'pool'; render(); } } }, 'Novi deck')),
-      state.decks.length
-        ? h('ul', {}, state.decks.map(x => h('li', {},
-            h('button', {
-              class: `deck-item${state.deck?.slug === x.slug ? ' active' : ''}`,
-              onclick: () => { if (confirmDiscard()) guard(() => openDeck(x.slug)); },
-            },
-              h('span', { class: 'deck-item-name' }, x.name),
-              h('span', { class: 'deck-item-sub' }, x.broken ? 'neispravan file' : `${x.heroes.map(id => cardById(id)?.name ?? id).join(', ') || 'bez heroja'}`),
-              h('span', { class: 'deck-item-count' }, x.broken ? '' : `${x.count}/${DECK_SIZE}`)))))
-        : h('p', { class: 'muted' }, 'Još nema spremljenih deckova.'),
-      h('details', { class: 'code-import' },
-        h('summary', {}, 'Učitaj deck kod'),
-        h('form', { onsubmit: e => { e.preventDefault(); importCode(e.target.elements.code.value); } },
-          h('input', { name: 'code', placeholder: 'EB1|v1|…', autocomplete: 'off', spellcheck: false }),
-          h('button', { type: 'submit' }, 'Učitaj')))),
-    state.deck ? renderDeckEditor() : h('div', { class: 'deck-empty' },
-      h('h2', {}, 'Složi deck'),
-      h('p', { class: 'muted' }, 'Otvori spremljeni deck ili napravi novi: odabereš 3 heroja, pa dodaješ karte njihovih boja do 40.')));
+  return state.deck ? renderDeckEditor() : h('div', { class: 'deck-empty' },
+    h('h2', {}, 'Složi deck'),
+    h('p', { class: 'muted' }, 'Otvori spremljeni deck ili napravi novi: odabereš 3 heroja, pa dodaješ karte njihovih boja do 40.'));
+}
+
+function renderDeckList() {
+  return h('section', { class: 'deck-list' },
+    h('div', { class: 'deck-list-head' },
+      h('h2', {}, 'Moji deckovi'),
+      h('button', { class: 'primary', onclick: () => { if (confirmDiscard()) { state.deck = newDeck(); state.deckView = 'pool'; render(); } } }, 'Novi deck')),
+    state.decks.length
+      ? h('ul', {}, state.decks.map(x => h('li', {},
+          h('button', {
+            class: `deck-item${state.deck?.slug === x.slug ? ' active' : ''}`,
+            onclick: () => { if (confirmDiscard()) guard(() => openDeck(x.slug)); },
+          },
+            h('span', { class: 'deck-item-name' }, x.name),
+            h('span', { class: 'deck-item-sub' }, x.broken ? 'neispravan file' : `${x.heroes.map(id => cardById(id)?.name ?? id).join(', ') || 'bez heroja'}`),
+            h('span', { class: 'deck-item-count' }, x.broken ? '' : `${x.count}/${DECK_SIZE}`)))))
+      : h('p', { class: 'muted' }, 'Još nema spremljenih deckova.'),
+    h('details', { class: 'code-import' },
+      h('summary', {}, 'Učitaj deck kod'),
+      h('form', { onsubmit: e => { e.preventDefault(); importCode(e.target.elements.code.value); } },
+        h('input', { name: 'code', placeholder: 'EB1|v1|…', autocomplete: 'off', spellcheck: false }),
+        h('button', { type: 'submit' }, 'Učitaj'))));
 }
 
 function importCode(code) {
