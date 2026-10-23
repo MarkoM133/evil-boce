@@ -2033,7 +2033,10 @@ function onObjectDrop(color, o)
       end
     end
 
-    if isWall(o) then return end   -- zid ne ide u utore ni inventar
+    if isWall(o) then   -- zid ne ide u utore ni inventar
+      if o.hasTag("Kopija") then standWall(o, color) end
+      return
+    end
 
     -- spusten na utor?
     for name, _ in pairs(heroCards) do
@@ -2382,6 +2385,42 @@ function payIfPlayed(o, color)
     broadcastToAll(color .. ": " .. o.getName() .. " (cost " .. cost .. ") -> energy " .. (free - cost) .. "/" .. max, {1, 0.9, 0.4})
   end
   refreshEnergySafe()
+end
+
+---------------------------------------------------------------- zid
+-- Zid (kopija s izvora) spusten na mapu stane uspravno i zakljuca se: tvrd je za bounce i ostaje do Nove igre
+-- (Nova igra brise kopije). Okreni ga (Q/E) dok ga drzis. Mora biti u rangeu heroja strane koja ga stavlja:
+-- skripta samo upozori, ne vraca ga. Desni klik "Makni zid" ga brise.
+
+function wallInRange(o, color)
+  local side = sideOfColor(color)
+  local p = o.getPosition()
+  for name, body in pairs(bodies) do
+    if body ~= nil and heroCards[name] ~= nil and (side == nil or sideOfHero(name) == side)
+      and (stats[name].hp or 0) > 0 and zoneAt(body.getPosition()) == nil and not offMap(body.getPosition())
+      and dist(p, body.getPosition()) <= eff(name, "rng") * rangeUnit() then
+      return name
+    end
+  end
+  return nil
+end
+
+function standWall(o, color)
+  if offMap(o.getPosition()) then return end
+  local r = o.getRotation()
+  o.setLock(false)
+  o.setRotation({90, r.y, 0})
+  Wait.frames(function()
+    if o == nil then return end
+    local q, b = o.getPosition(), o.getBounds()
+    o.setPosition({q.x, getMap().top + b.size.y / 2 + 0.02, q.z})
+    o.setLock(true)
+  end, 2)
+  o.clearContextMenu()
+  o.addContextMenuItem("Makni zid", function() o.destruct() end)
+  if color and wallInRange(o, color) == nil then
+    broadcastToColor("Zid je izvan rangea tvojih heroja u igri (pravilo: u rangeu). Pomakni ga ili desni klik > Makni zid.", color, {1, 0.6, 0.2})
+  end
 end
 
 ---------------------------------------------------------------- novi turn
