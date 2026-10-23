@@ -75,8 +75,33 @@ async function guard(fn) {
 // Sličica ako postoji, inače puna slika. full: true za detalj karte.
 function cardImg(card, { full = false, ...props } = {}) {
   const img = h('img', { alt: props.alt ?? '', loading: 'lazy', ...props });
-  if (card) imageFor(card, !full).then(u => { if (u) img.src = u; });
+  if (!card) return img;
+  if (full) showBest(card, null, u => { img.src = u; });
+  else imageFor(card, true).then(u => { if (u) img.src = u; });
   return img;
+}
+
+// Puna slika (PNG od ~2 MB) preko mreže se crta komad po komad: dok se cijela ne učita, stoji sličica.
+// url: puna slika koja nije karta iz baze (npr. PNG u Uvozu). show(u) se zove sa sličicom, pa s punom slikom.
+// Vraća promise koji završi kad je puna slika učitana (ili nije uspjela).
+function showBest(card, url, show) {
+  let full = false;
+  if (card) state.store.imageUrl(card, { thumb: true }).then(u => u && loads(u).then(ok => { if (ok && !full) show(u); }));
+  return Promise.resolve(url ?? state.store.imageUrl(card)).then(u => u && loads(u).then(ok => { if (ok) { full = true; show(u); } }));
+}
+
+// Ikone kao SVG: znakovi poput ⤢ i ✕ na mobitelu dolaze iz drugog fonta i ne sjednu u krug.
+const ICONS = {
+  zoom: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  prev: '<path d="M15 5l-7 7 7 7"/>',
+  next: '<path d="M9 5l7 7-7 7"/>',
+};
+
+function icon(name) {
+  const span = h('span', { class: 'icon', 'aria-hidden': 'true' });
+  span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+  return span;
 }
 
 const loaded = new Map();
@@ -136,6 +161,7 @@ function closeViewer(fromPop = false) {
   if (!viewer.el) return;
   viewer.el.remove();
   viewer.el = null;
+  viewer.shown = null;
   document.body.classList.remove('viewer-open');
   viewer.back?.focus?.();
   if (!fromPop) {
@@ -157,23 +183,15 @@ async function viewerUrl(it) {
   return it.card ? state.store.imageUrl(it.card) : it.url;
 }
 
-function showViewer() {
-  const it = viewer.items[viewer.i];
-  const n = viewer.items.length;
-  const img = h('img', { class: 'viewer-img', alt: viewerTitle(it) });
-  // Sličica odmah, puna slika čim se učita.
-  if (it.card) imageFor(it.card, true).then(u => { if (u && !img.getAttribute('src')) img.src = u; });
-  viewerUrl(it).then(u => {
-    if (!u) return;
-    loads(u).then(ok => { if (ok && img.isConnected) img.src = u; });
-  });
-  for (const d of [1, -1]) if (n > 1) viewerUrl(viewer.items[(viewer.i + d + n) % n]).then(u => u && loads(u));
-  const el = h('div', { class: 'viewer', role: 'dialog', 'aria-modal': 'true', 'aria-label': viewerTitle(it), onclick: e => { if (e.target === el || e.target === img) closeViewer(); } },
+// Okvir se gradi jednom; pri listanju ostaje stara slika dok nova nije učitana, pa nema bljeska.
+function buildViewer() {
+  const img = h('img', { class: 'viewer-img', alt: '' });
+  const el = h('div', { class: 'viewer', role: 'dialog', 'aria-modal': 'true', onclick: e => { if (e.target === el || e.target === img) closeViewer(); } },
     img,
-    h('div', { class: 'viewer-bar' }, h('span', { class: 'viewer-title' }, viewerTitle(it)), n > 1 ? h('span', { class: 'viewer-n' }, `${viewer.i + 1}/${n}`) : null),
-    n > 1 ? h('button', { class: 'viewer-nav prev', 'aria-label': 'Prethodna karta', onclick: () => stepViewer(-1) }, '‹') : null,
-    n > 1 ? h('button', { class: 'viewer-nav next', 'aria-label': 'Sljedeća karta', onclick: () => stepViewer(1) }, '›') : null,
-    h('button', { class: 'viewer-close', 'aria-label': 'Zatvori', onclick: () => closeViewer() }, '✕'));
+    h('div', { class: 'viewer-bar' }, h('span', { class: 'viewer-title' }), h('span', { class: 'viewer-n' })),
+    h('button', { class: 'viewer-nav prev', 'aria-label': 'Prethodna karta', onclick: () => stepViewer(-1) }, icon('prev')),
+    h('button', { class: 'viewer-nav next', 'aria-label': 'Sljedeća karta', onclick: () => stepViewer(1) }, icon('next')),
+    h('button', { class: 'viewer-close', 'aria-label': 'Zatvori', onclick: () => closeViewer() }, icon('close')));
   let x0 = null;
   el.addEventListener('touchstart', e => { x0 = e.touches.length === 1 && (window.visualViewport?.scale ?? 1) < 1.05 ? e.touches[0].clientX : null; }, { passive: true });
   el.addEventListener('touchend', e => {
@@ -182,10 +200,30 @@ function showViewer() {
     x0 = null;
     if (Math.abs(dx) > 50) stepViewer(dx < 0 ? 1 : -1);
   });
-  if (viewer.el) viewer.el.replaceWith(el);
-  else document.body.append(el);
+  document.body.append(el);
   viewer.el = el;
   el.querySelector('.viewer-close').focus();
+}
+
+function showViewer() {
+  if (!viewer.el) buildViewer();
+  const it = viewer.items[viewer.i];
+  const n = viewer.items.length;
+  const el = viewer.el;
+  const title = viewerTitle(it);
+  el.setAttribute('aria-label', title);
+  el.classList.toggle('single', n < 2);
+  el.querySelector('.viewer-title').textContent = title;
+  el.querySelector('.viewer-n').textContent = n > 1 ? `${viewer.i + 1}/${n}` : '';
+  const img = el.querySelector('.viewer-img');
+  img.alt = title;
+  viewer.shown = it;
+  if (it.card && !it.card.image) img.removeAttribute('src');
+  const neighbours = n > 1 ? [1, -1].map(d => viewer.items[(viewer.i + d + n) % n]) : [];
+  // Sličice susjeda odmah (male su), njihove pune slike tek kad je trenutna gotova, da joj ne uzimaju mrežu.
+  for (const next of neighbours) if (next.card) state.store.imageUrl(next.card, { thumb: true }).then(u => u && loads(u));
+  showBest(it.card, it.card ? null : it.url, u => { if (viewer.shown === it) img.src = u; })
+    .then(() => { if (viewer.shown === it) for (const next of neighbours) viewerUrl(next).then(u => u && loads(u)); });
 }
 
 // Prečaci izvan polja za unos: / za tražilicu, Ctrl+Z za Poništi u decku.
@@ -215,7 +253,7 @@ document.addEventListener('keydown', e => {
 
 // Gumb koji otvara sliku karte preko cijelog ekrana; list je popis kroz koji se lista strelicama.
 function zoomButton(card, list, label = 'Povećaj') {
-  return h('button', { class: 'zoom', title: `${label}: ${card.name}`, 'aria-label': `${label}: ${card.name}`, onclick: e => { e.stopPropagation(); openViewer(list.map(c => ({ card: c })), list.indexOf(card)); } }, '⤢');
+  return h('button', { class: 'zoom', title: `${label}: ${card.name}`, 'aria-label': `${label}: ${card.name}`, onclick: e => { e.stopPropagation(); openViewer(list.map(c => ({ card: c })), list.indexOf(card)); } }, icon('zoom'));
 }
 
 // ---------- podaci ----------
@@ -815,7 +853,7 @@ function renderDetail() {
     h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: closeCard }, 'Zatvori')),
     h('div', { class: 'detail-body' },
       h('button', { class: 'big', title: 'Preko cijelog ekrana', onclick: () => { const list = filtered(); openViewer((list.includes(c) ? list : [c]).map(x => ({ card: x })), list.includes(c) ? list.indexOf(c) : 0); } },
-        cardImg(c, { alt: c.name, full: true }), h('span', { class: 'zoom', 'aria-hidden': 'true' }, '⤢')),
+        cardImg(c, { alt: c.name, full: true }), h('span', { class: 'zoom', 'aria-hidden': 'true' }, icon('zoom'))),
       h('div', {}, h('table', { class: 'fields' }, rows), editor)));
 }
 
