@@ -395,3 +395,17 @@ test('ponovni uvoz heroja čuva oblik i boju bakugana i sprite', async () => {
   assert.deepEqual([h.bakuganShape, h.bakuganColor, h.traits], ['dragonoid', '#ff0000', ['Crew']]);
   assert.equal(h.sprite, withSprite.cards.find(c => c.id === 'OP9-001').sprite);
 });
+
+test('kod na početku imena karte se miče (Card Engine ime = ime PNG-a), Evolution nađe heroja', async () => {
+  const hero = { ...HERO, name: 'JO9-001 Giorno', code: 'JO9-001', color: 'Red' };
+  const evo = { ...EVO, name: 'JO9-012 Giorno, Requiem', code: 'JO9-012', color: 'Red' };
+  const other = { ...ACTION, name: 'OP9-002 Punch', code: 'OP9-099' };
+  const parsed = parseCardEngineXml(xml(card(hero), card(evo), card(other)));
+  assert.deepEqual(parsed.map(p => [p.code, p.card.name, p.card.hero]), [['JO9-001', 'Giorno', undefined], ['JO9-012', 'Giorno, Requiem', 'Giorno'], ['OP9-099', 'OP9-002 Punch', undefined]]);
+  const a = await analyzeExport({
+    xmlFiles: [{ path: 'export/XMLs/jo.xml', text: xml(card(hero), card(evo)), lastModified: 1 }],
+    pngFiles: [png([1], 'export/cards/JO9-001 Giorno.png'), png([2], 'export/cards/JO9-012 Giorno, Requiem.png')],
+    db: emptyDb(),
+  });
+  assert.deepEqual(a.errors, []);
+});

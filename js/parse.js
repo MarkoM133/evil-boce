@@ -71,7 +71,7 @@ export function parseCardEngineXml(xmlText) {
 }
 
 function parseCard(node) {
-  const name = (text(node, 'Name') ?? '').trim();
+  const rawName = (text(node, 'Name') ?? '').trim();
   const els = readElements(node);
   const texts = els.filter(e => e.kind === 'text');
   const problems = [];
@@ -79,10 +79,13 @@ function parseCard(node) {
   let code = texts.find(e => CODE_RE.test(e.t))?.t;
   if (!code) {
     const loose = texts.find(e => LOOSE_CODE_RE.test(e.t))?.t;
-    if (!loose) return { skip: true, name };
+    if (!loose) return { skip: true, name: rawName };
     problems.push({ level: 'error', msg: `kod "${loose}" ne odgovara uzorku SET-001 (OP1-001, DBZ-001, Stage-001)` });
     code = loose;
   }
+  // Card Engine PNG nazove po imenu karte, pa frend u ime stavi i kod ("JO1-001 Giorno Giovanna").
+  // Kod je već id karte, pa se iz imena makne.
+  const name = rawName.startsWith(`${code} `) ? rawName.slice(code.length).trim() : rawName;
 
   let type = texts.find(e => TYPE_TEXTS.includes(e.t))?.t;
   if (!type && code.startsWith('Stage-')) type = 'Stage';
