@@ -72,6 +72,10 @@ local CFG = {
   RINGOUT_HP       = 0,       -- koliko HP-a gubi na ring-out (0 = nista)
 
   ENERGY_MAX       = 8,       -- max energy = broj turna, najvise ovoliko
+
+  WALL_FIELDS      = 2,       -- zid: duljina u poljima grida
+  WALL_HEIGHT      = 1.2,     -- zid: visina kad stoji (bakugan je ~0.6)
+  WALL_THICK       = 0.3,     -- zid: debljina
 }
 
 local HP_DEFAULT = {hp = 8, max = 8, dmg = 3, pwr = 3, rng = 4, kb = 3, wt = 2}
@@ -175,6 +179,7 @@ function onLoad(save)
         print("[Evil Boce] Pocetni raspored spremljen (" .. n .. " objekata, " .. d .. " deckova). Gumb Spremi pozicije ga mijenja.")
       end, 3)
     end
+    for _, w in ipairs(getObjectsWithTag("Wall")) do fitWall(w) end
     Wait.time(updateOverheads, 0.5, -1)
     Wait.time(refreshEnergySafe, 0.5, -1)
     Wait.time(physicsTick, 0.25, -1)
@@ -2391,6 +2396,18 @@ end
 -- Zid (kopija s izvora) spusten na mapu stane uspravno i zakljuca se: tvrd je za bounce i ostaje do Nove igre
 -- (Nova igra brise kopije). Okreni ga (Q/E) dok ga drzis. Mora biti u rangeu heroja strane koja ga stavlja:
 -- skripta samo upozori, ne vraca ga. Desni klik "Makni zid" ga brise.
+-- Zid je Custom Tile (Box) sa slikom zida; TTS mu osnovnu velicinu racuna iz slike, pa ga fitWall dovede na
+-- WALL_FIELDS polja x WALL_HEIGHT x WALL_THICK (dok lezi: x = duljina, z = visina, y = debljina).
+
+function fitWall(o)
+  if o == nil or o.type ~= "Tile" then return end
+  local b, s = o.getBoundsNormalized().size, o.getScale()
+  if b.x <= 0 or b.y <= 0 or b.z <= 0 then return end
+  local nx = s.x * CFG.WALL_FIELDS * rangeUnit() / b.x
+  local ny = s.y * CFG.WALL_THICK / b.y
+  local nz = s.z * CFG.WALL_HEIGHT / b.z
+  if math.abs(nx - s.x) + math.abs(ny - s.y) + math.abs(nz - s.z) > 0.01 then o.setScale({nx, ny, nz}) end
+end
 
 function wallInRange(o, color)
   local side = sideOfColor(color)
@@ -2409,6 +2426,7 @@ function standWall(o, color)
   if offMap(o.getPosition()) then return end
   local r = o.getRotation()
   o.setLock(false)
+  fitWall(o)
   o.setRotation({90, r.y, 0})
   Wait.frames(function()
     if o == nil then return end

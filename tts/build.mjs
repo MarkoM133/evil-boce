@@ -18,6 +18,20 @@ const SAVES = process.env.TTS_SAVES ?? path.join(os.homedir(), 'Documents', 'My 
 const TARGET = path.join(SAVES, 'Evil Boce (dev).json');
 const SAVE_NAME = 'Evil Boće (dev)';
 
+// Slike stola (npr. zid) idu u zajednički folder kao i slike karata, pa ih Cloud Manager "Upload All Loaded Files" digne na Steam.
+const CONFIG = path.join(ROOT, 'server', 'config.local.json');
+const DRIVE = fs.existsSync(CONFIG) ? JSON.parse(fs.readFileSync(CONFIG, 'utf8')).driveFolder : null;
+function asset(name) {
+  if (!DRIVE) throw new Error(`Nema driveFolder u ${CONFIG}.`);
+  const to = path.join(DRIVE, 'tts', name);
+  const from = path.join(ROOT, 'tts', 'assets', name);
+  if (!fs.existsSync(to) || !fs.readFileSync(to).equals(fs.readFileSync(from))) {
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
+  }
+  return 'file:///' + to.replace(/\\/g, '/');
+}
+
 const args = new Set(process.argv.slice(2));
 const sha = text => crypto.createHash('sha256').update(text).digest('hex');
 const readStamp = () => (fs.existsSync(STAMP) ? JSON.parse(fs.readFileSync(STAMP, 'utf8')) : null);
@@ -50,6 +64,17 @@ save.SaveName = SAVE_NAME;
 const steps = [
   // 2026-10-23: energy više nije hrpa karata (max = broj turna), Energy slotovi se miču.
   ['bez Energy slotova', s => { s.ObjectStates = s.ObjectStates.filter(o => !['e9e001', 'e9e002'].includes(o.GUID)); }],
+  // 2026-10-23: zid nije ravni token nego kvadar (Custom Tile, Box) sa slikom zida, 2 polja dug; global.lua ga dovede
+  // na točnu veličinu (fitWall). Samo dok je još token: kad je baza preuzeta nakon Steam uploada, URL ostaje Steamov.
+  ['zid kao Custom Tile', s => {
+    for (const o of s.ObjectStates) {
+      if (o.Name !== 'Custom_Token' || !(o.Tags ?? []).includes('Wall')) continue;
+      const url = asset('wall.png');
+      o.Name = 'Custom_Tile';
+      o.Transform = { ...o.Transform, rotX: 0, rotY: 90, rotZ: 0, scaleX: 1, scaleY: 1, scaleZ: 1 };
+      o.CustomImage = { ImageURL: url, ImageSecondaryURL: url, ImageScalar: 1, WidthScale: 0, CustomTile: { Type: 0, Thickness: 0.2, Stackable: false, Stretch: true } };
+    }
+  }],
 ];
 for (const [name, step] of steps) {
   const before = JSON.stringify(save.ObjectStates).length;
