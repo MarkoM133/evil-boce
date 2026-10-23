@@ -28,8 +28,9 @@ export const STAT_KEYS = ['hp', 'dmg', 'pwr', 'rng', 'kb'];
 
 const SPRITES = { 0: 'HP', 1: 'DMG', 2: 'Power', 3: 'Range', 4: 'Knockback' };
 
-// Kod karte: SET-001. One Piece ima broj seta (OP1), Stage je Stage, ostali setovi su slova i brojke (DBZ, JJ5).
-export const CODE_RE = /^(?:OP\d+|Stage|(?!OP)[A-Z][A-Z0-9]{1,5})-\d{3}$/;
+// Kod karte: SET-001, SET je veliko slovo pa do 5 slova ili brojki (OP1, DBZ, JJ5, OPM, Stage).
+// Samo "OP" bez broja nije set: One Piece uvijek ima broj seta.
+export const CODE_RE = /^(?:Stage|(?!OP-)[A-Z][A-Z0-9]{1,5})-\d{3}$/;
 const LOOSE_CODE_RE = /^[A-Za-z][A-Za-z0-9]{0,5}-\d+$/;
 const NUM_RE = /^[+-]?\d+$/;
 

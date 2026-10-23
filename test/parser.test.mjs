@@ -301,9 +301,9 @@ test('povijest: zapis po verziji, promjene od verzije, promjene u decku', async 
   assert.deepEqual(deckChanges(deck, changesSince(log, 0)), [{ id: 'OP9-002', changes: [{ version: 2, kind: 'changed', fields: ['cost'], image: true }] }]);
 });
 
-test('kodovi drugih setova: DBZ-015 i JJ5-001 su ispravni, OP bez broja seta nije', () => {
-  const parsed = parseCardEngineXml(xml(card({ ...ACTION, code: 'DBZ-015' }), card({ ...ACTION, name: 'Kick', code: 'JJ5-001' }), card({ ...ACTION, name: 'Bad', code: 'OP-033' })));
-  assert.deepEqual(parsed.map(p => [p.code, p.problems.filter(x => x.level === 'error').length]), [['DBZ-015', 0], ['JJ5-001', 0], ['OP-033', 1]]);
+test('kodovi drugih setova: DBZ-015, JJ5-001 i OPM-001 su ispravni, OP bez broja seta nije', () => {
+  const parsed = parseCardEngineXml(xml(card({ ...ACTION, code: 'DBZ-015' }), card({ ...ACTION, name: 'Kick', code: 'JJ5-001' }), card({ ...ACTION, name: 'Punch!', code: 'OPM-001' }), card({ ...ACTION, name: 'Bad', code: 'OP-033' })));
+  assert.deepEqual(parsed.map(p => [p.code, p.problems.filter(x => x.level === 'error').length]), [['DBZ-015', 0], ['JJ5-001', 0], ['OPM-001', 0], ['OP-033', 1]]);
 });
 
 test('PNG "KOD Ime.png": isto ime u dva seta, svaka karta svoju sliku', async () => {
