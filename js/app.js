@@ -236,6 +236,14 @@ function showViewer() {
     .then(() => { if (viewer.shown === it) for (const next of neighbours) if (next.card) bigUrl(next.card); else loads(next.url); });
 }
 
+// Pregled: klik bilo gdje izvan detalja karte ga zatvori. Klik na drugu kartu ili heroja u traci je otvori,
+// a prikaz preko cijelog ekrana i poruke ga ne zatvaraju.
+document.addEventListener('click', e => {
+  if (state.tab !== 'browse' || !state.selected || viewer.el || state.busy) return;
+  if (!e.target.isConnected || e.target.closest('#detail, .tile, .slice, .viewer, #toasts')) return;
+  closeCard();
+});
+
 // Prečaci izvan polja za unos: / za tražilicu, Ctrl+Z za Poništi u decku.
 document.addEventListener('keydown', e => {
   if (viewer.el || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
