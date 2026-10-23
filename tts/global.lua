@@ -2845,6 +2845,9 @@ local function bakuganParts(d)
   return ball, fig
 end
 
+local BAKUGAN_SPECULAR = 0.25         -- jacina odsjaja obojanog bakugana (mod: 0.6, bijeli)
+local BAKUGAN_FRESNEL = 0.3           -- posvjetljenje rubova (mod: 1)
+
 local function sameColor(a, b)
   if a == nil or b == nil then return false end
   return math.abs((a.r or 0) - b.r) < 0.002 and math.abs((a.g or 0) - b.g) < 0.002 and math.abs((a.b or 0) - b.b) < 0.002
@@ -2858,10 +2861,16 @@ local function applyBakugan(d, hero, figFallback)
   if ball ~= nil and b ~= nil then
     local col = { r = b.color[1], g = b.color[2], b = b.color[3] }
     ball.CustomMesh = ball.CustomMesh or {}
-    if ball.CustomMesh.MeshURL ~= b.mesh or ball.CustomMesh.DiffuseURL ~= b.texture or not sameColor(ball.ColorDiffuse, col) then
+    -- Modovi bakugani imaju jak bijeli odsjaj (specular 0.6, fresnel 1); na sivoj teksturi puta boja on
+    -- prekrije boju svugdje gdje pada svjetlo. Odsjaj zato u boji bakugana i slabiji.
+    local sh = ball.CustomMesh.CustomShader or {}
+    local shaderOk = sameColor(sh.SpecularColor, col) and math.abs((sh.SpecularIntensity or 0) - BAKUGAN_SPECULAR) < 0.01
+      and math.abs((sh.FresnelStrength or 0) - BAKUGAN_FRESNEL) < 0.01
+    if ball.CustomMesh.MeshURL ~= b.mesh or ball.CustomMesh.DiffuseURL ~= b.texture or not sameColor(ball.ColorDiffuse, col) or not shaderOk then
       ball.CustomMesh.MeshURL = b.mesh
       ball.CustomMesh.DiffuseURL = b.texture
       ball.ColorDiffuse = col
+      ball.CustomMesh.CustomShader = { SpecularColor = col, SpecularIntensity = BAKUGAN_SPECULAR, SpecularSharpness = 6, FresnelStrength = BAKUGAN_FRESNEL }
       changed = true
     end
   end
