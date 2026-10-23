@@ -16,7 +16,8 @@ const state = {
   logo: null,
   analysis: null,
   tab: 'import',
-  filter: { q: '', type: '', color: '', deleted: false, sort: 'id', since: 0, set: '', special: '' },
+  // Brzi filteri: unutar skupine "ili", između skupina "i".
+  filter: { q: '', types: [], colors: [], sets: [], specials: [], deleted: false, sort: 'id', since: 0 },
   changelog: null,
   inbox: 0, // fileova u sanduču export/ (samo folder)
   selected: null,
@@ -820,16 +821,16 @@ function specialFilter(name) {
 }
 
 function filtered() {
-  const { q, type, color, deleted, sort, since, set, special } = state.filter;
+  const { q, types, colors, sets, specials, deleted, sort, since } = state.filter;
   const needle = q.trim().toLowerCase();
   const changed = since ? changesSince(state.changelog, since - 1) : null;
-  const extra = specialFilter(special);
+  const extras = specials.map(specialFilter);
   return state.db.cards.filter(c =>
     (deleted || !c.deleted) &&
-    (!type || c.type === type) &&
-    (!color || c.color === color) &&
-    (!set || setOf(c) === set) &&
-    extra(c) &&
+    (!types.length || types.includes(c.type)) &&
+    (!colors.length || colors.includes(c.color)) &&
+    (!sets.length || sets.includes(setOf(c))) &&
+    (!extras.length || extras.some(fn => fn(c))) &&
     (!changed || changed.has(c.id)) &&
     (!needle || [c.id, c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)))
     .sort((a, b) => SORTS[sort][1](a, b) || byCode(a, b));
@@ -864,15 +865,12 @@ function renderBrowse() {
   const panel = h('section', { class: 'panel' },
     h('div', { class: 'filters' },
       h('input', { type: 'search', placeholder: 'Traži ime, tekst, trait, kod…', value: f.q, oninput: e => set('q', e.target.value) }),
-      h('select', { onchange: e => set('type', e.target.value) }, h('option', { value: '' }, 'Svi tipovi'), TYPES.map(t => h('option', { value: t, selected: f.type === t }, t))),
-      h('select', { onchange: e => set('color', e.target.value) }, h('option', { value: '' }, 'Sve boje'), COLOR_NAMES.map(c => h('option', { value: c, selected: f.color === c }, c))),
       h('select', { 'aria-label': 'Poredaj', onchange: e => set('sort', e.target.value) }, Object.entries(SORTS).map(([k, [label]]) => h('option', { value: k, selected: f.sort === k }, `Poredaj: ${label}`))),
       state.changelog?.entries.length > 1
         ? h('select', { 'aria-label': 'Promjene', onchange: e => set('since', Number(e.target.value)) },
             h('option', { value: 0 }, 'Sve karte'),
             [...state.changelog.entries].reverse().map(e => h('option', { value: e.version, selected: f.since === e.version }, `Promijenjene od v${e.version} (${shortDate(e.date)})`)))
-        : null,
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.deleted, onchange: e => set('deleted', e.target.checked) }), 'prikaži maknute')),
+        : null),
     renderQuickFilters(),
     h('p', { id: 'grid-count', class: 'muted small' }),
     renderHistory(),
@@ -882,19 +880,28 @@ function renderBrowse() {
   return panel;
 }
 
-// Gumbi: tip, boja, set, posebni. Klik uključi, drugi klik isključi; skupine se kombiniraju.
+// Gumbi: tip, boja, set, posebni. Klik uključi ili isključi; unutar skupine "ili" (Action + Equipment),
+// između skupina "i" (Heroji i crvena). Maknute su prekidač; Očisti sve vrati.
 function renderQuickFilters() {
   const f = state.filter;
-  const toggle = (k, v) => { f[k] = f[k] === v ? '' : v; render(); };
-  const chip = (k, v, label, title) => h('button', { type: 'button', class: `qf${f[k] === v ? ' active' : ''}`, title: title ?? '', 'aria-pressed': String(f[k] === v), onclick: () => toggle(k, v) }, label);
+  const on = (k, v) => f[k].includes(v);
+  const toggle = (k, v) => { f[k] = on(k, v) ? f[k].filter(x => x !== v) : [...f[k], v]; render(); };
+  const chip = (k, v, label, title) => h('button', { type: 'button', class: `qf${on(k, v) ? ' active' : ''}`, title: title ?? '', 'aria-pressed': String(on(k, v)), onclick: () => toggle(k, v) }, label);
   const sets = [...new Set(state.db.cards.filter(c => c.type !== 'Stage').map(setOf))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const any = f.types.length || f.colors.length || f.sets.length || f.specials.length || f.deleted || f.since || f.q;
   return h('div', { class: 'quick' },
-    h('div', { class: 'qf-group' }, TYPES.map(t => chip('type', t, t === 'Character' ? 'Heroji' : t))),
+    h('div', { class: 'qf-group' }, TYPES.map(t => chip('types', t, t === 'Character' ? 'Heroji' : t))),
     h('div', { class: 'qf-group' }, COLOR_NAMES.map(c => h('button', {
-      type: 'button', class: `qf-color c-${c}${f.color === c ? ' active' : ''}`, title: c, 'aria-label': c, 'aria-pressed': String(f.color === c), onclick: () => toggle('color', c),
+      type: 'button', class: `qf-color c-${c}${on('colors', c) ? ' active' : ''}`, title: c, 'aria-label': c, 'aria-pressed': String(on('colors', c)), onclick: () => toggle('colors', c),
     }))),
-    sets.length > 1 ? h('div', { class: 'qf-group' }, sets.map(x => chip('set', x, x, `Set ${x}`))) : null,
-    h('div', { class: 'qf-group' }, Object.entries(SPECIAL).map(([k, [label, title]]) => chip('special', k, label, title))));
+    sets.length > 1 ? h('div', { class: 'qf-group' }, sets.map(x => chip('sets', x, x, `Set ${x}`))) : null,
+    h('div', { class: 'qf-group' },
+      Object.entries(SPECIAL).map(([k, [label, title]]) => chip('specials', k, label, title)),
+      h('button', { type: 'button', class: `qf${f.deleted ? ' active' : ''}`, title: 'Prikaži i maknute karte', 'aria-pressed': String(f.deleted), onclick: () => { f.deleted = !f.deleted; render(); } }, 'Maknute')),
+    any ? h('button', { type: 'button', class: 'qf qf-clear', onclick: () => {
+      Object.assign(f, { q: '', types: [], colors: [], sets: [], specials: [], deleted: false, since: 0 });
+      render();
+    } }, 'Očisti') : null);
 }
 
 function renderGrid() {
