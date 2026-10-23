@@ -4,6 +4,7 @@ import { TYPES, COLOR_NAMES, DECK_TYPES } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
 import { GAME_COLORS, heroDefaultColor, paintThumb, createPreview } from './bakugan.js';
+import { bakuganTextureId } from './tts.js';
 import * as fs from './fsdir.js';
 
 const DB_PATH = 'data/cards.json';
@@ -280,6 +281,7 @@ async function useStore(store) {
   state.decks = await store.listDecks();
   state.deck = null;
   state.inbox = await countInbox();
+  if (store.canImport) await ensureBakuganTextures(state.db).catch(e => console.warn("teksture bakugana", e));
   replaceNext = true;
   whatsNew();
 }
@@ -396,6 +398,7 @@ async function publish() {
     for (const f of old) await fs.removeFile(root(), `data/images/${f}`);
   }
   const thumbs = await updateThumbs(db);
+  await ensureBakuganTextures(db);
   const archived = await archiveExport(a.files, publishedPngPaths(a));
   state.inbox = await countInbox();
   state.analysis = null;
@@ -469,6 +472,31 @@ async function updateThumbs(db) {
   return made;
 }
 
+// Obojane teksture bakugana (data/bakugani/boje/<oblik>-<rrggbb>.jpg) koje fale: siva tekstura oblika puta boja,
+// isto množenje kao sličice u appu. TTS ne boji dijelove modela s teksturom, pa boja mora biti u teksturi.
+async function ensureBakuganTextures(db) {
+  let made = 0;
+  const have = new Set(await fs.listFileNames(root(), 'data/bakugani/boje'));
+  for (const c of db.cards) {
+    const id = c.type === 'Character' && !c.deleted ? bakuganTextureId(c) : null;
+    if (!id || have.has(`${id}.jpg`)) continue;
+    const gray = await fs.getFile(root(), `data/bakugani/${c.bakuganShape}.jpg`);
+    if (!gray) continue;
+    const bmp = await createImageBitmap(gray);
+    const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+    const g = canvas.getContext('2d');
+    g.drawImage(bmp, 0, 0);
+    bmp.close();
+    g.globalCompositeOperation = 'multiply';
+    g.fillStyle = `#${id.slice(-6)}`;
+    g.fillRect(0, 0, canvas.width, canvas.height);
+    await fs.writeFile(root(), `data/bakugani/boje/${id}.jpg`, await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.9 }));
+    have.add(`${id}.jpg`);
+    made++;
+  }
+  return made;
+}
+
 async function saveEdits(id, edits) {
   await assertFresh();
   const { db, changed } = applyAppEdits(state.db, { [id]: edits });
@@ -477,6 +505,7 @@ async function saveEdits(id, edits) {
     return;
   }
   await writeDb(db);
+  if ('bakuganShape' in edits || 'bakuganColor' in edits) await ensureBakuganTextures(db);
   toast(`Spremljeno: verzija ${db.version}.`);
 }
 

@@ -31,7 +31,7 @@ test('payload: lokalne putanje dok nema Steam URL-a, heroji sa statsima i bakuga
   assert.deepEqual(p.heroes, [{
     id: 'OP9-001', name: 'Hero A',
     stats: { max: 8, dmg: 3, pwr: 3, rng: 4, kb: 3, wt: 3 },
-    bakugan: { shape: 'dragonoid', name: 'Dragonoid', mesh: 'https://steamusercontent-a.akamaihd.net/ugc/2/M/', texture: 'file:///C:/Users/x/EvilBoce/data/bakugani/dragonoid.jpg', textureKey: 'bakugan:dragonoid', color: [1, 0, 0] },
+    bakugan: { shape: 'dragonoid', name: 'Dragonoid', mesh: 'https://steamusercontent-a.akamaihd.net/ugc/2/M/', texture: 'file:///C:/Users/x/EvilBoce/data/bakugani/boje/dragonoid-ff0000.jpg', textureKey: 'bakugan:dragonoid-ff0000', color: [1, 1, 1] },
     sprite: 'file:///C:/Users/x/EvilBoce/data/sprites/OP9-001.cccccccc.png', spriteKey: 'sprite:OP9-001.cccccccc',
   }]);
 });

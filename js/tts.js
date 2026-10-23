@@ -45,12 +45,15 @@ export const imageKey = card => `${card.id}.${card.imageHash}`;
 export const spriteKey = card => `sprite:${card.id}.${card.spriteHash}`;
 export const bakuganKey = shape => `bakugan:${shape}`;
 
-function hexToRgb(hex) {
-  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex ?? '');
-  return m ? [1, 2, 3].map(i => Math.round((parseInt(m[i], 16) / 255) * 1000) / 1000) : [1, 1, 1];
-}
-
 const GAME_COLORS = { Cyan: '#00ffff', Yellow: '#ffff00', Purple: '#ff00ff', Red: '#ff0000', Blue: '#0000ff', Green: '#00ff00' };
+
+// Obojana tekstura bakugana: siva tekstura oblika puta boja, upečena u file (TTS ne boji dijelove modela s
+// teksturom, pa ColorDiffuse ne pomaže). Isti oblik iste boje dijeli file: data/bakugani/boje/<oblik>-<rrggbb>.jpg.
+export function bakuganTextureId(card) {
+  if (!card.bakuganShape) return null;
+  const hex = (card.bakuganColor ?? GAME_COLORS[card.color] ?? '#ffffff').replace('#', '').toLowerCase();
+  return `${card.bakuganShape}-${hex}`;
+}
 
 // Sve što TTS treba: karte (master kopije) i heroji (statsi, bakugan, sprite).
 // opts: { steam: {key: url}, drivePath: 'C:/…/EvilBoce', bakugani: [{id, name, meshUrl}] }
@@ -90,9 +93,9 @@ export function ttsPayload(db, opts) {
           shape: shape.id,
           name: shape.name,
           mesh: shape.meshUrl,
-          texture: assetUrl(bakuganKey(shape.id), `bakugani/${shape.id}.jpg`, opts),
-          textureKey: bakuganKey(shape.id),
-          color: hexToRgb(c.bakuganColor ?? GAME_COLORS[c.color]),
+          texture: assetUrl(bakuganKey(bakuganTextureId(c)), `bakugani/boje/${bakuganTextureId(c)}.jpg`, opts),
+          textureKey: bakuganKey(bakuganTextureId(c)),
+          color: [1, 1, 1],
         } : null,
         sprite: c.sprite ? assetUrl(spriteKey(c), c.sprite, opts) : null,
         spriteKey: c.sprite ? spriteKey(c) : null,
