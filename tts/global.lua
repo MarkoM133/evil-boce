@@ -70,6 +70,8 @@ local CFG = {
 
   LAUNCH_DETECT    = 6,       -- brzina iznad koje se smatra da je bakugan bacen (i pinchom)
   RINGOUT_HP       = 0,       -- koliko HP-a gubi na ring-out (0 = nista)
+
+  ENERGY_MAX       = 8,       -- max energy = broj turna, najvise ovoliko
 }
 
 local HP_DEFAULT = {hp = 8, max = 8, dmg = 3, pwr = 3, rng = 4, kb = 3, wt = 2}
@@ -114,7 +116,7 @@ local slingMode = {}               -- [player color] = true kad je praćka uklju
 local openedByBattle = {}          -- [ime] = true ako je figurinu otvorio battle range
 
 -- energy / turn / setup coreova
-energy = { p = { spent = 0, added = 0 }, n = { spent = 0, added = 0 } }  -- p = strana z>0, n = z<0
+energy = { p = { spent = 0 }, n = { spent = 0 } }  -- p = strana z>0, n = z<0
 turnNo = 0
 setupPhase = false
 coreOwner = {}                     -- [token guid] = boja igraca koji ga je postavio
@@ -1680,7 +1682,7 @@ function novaIgra()
   end, 1)
 
   -- energy, turn, setup coreova
-  energy = { p = { spent = 0, added = 0 }, n = { spent = 0, added = 0 } }
+  energy = { p = { spent = 0 }, n = { spent = 0 } }
   turnNo = 0
   setupPhase = true
   coreOwner = {}
@@ -1965,9 +1967,8 @@ local function snapToSlot(o, color)
   local sp, sr = slot.getPosition(), slot.getRotation()
   local face = o.getRotation().z
   local sn = slot.getName()
-  if sn == "Graveyard" or sn == "Stage" or sn == "Defeated Enemy" then face = 0 elseif sn == "Deck" or sn == "Energy" then face = 180 end
+  if sn == "Graveyard" or sn == "Stage" or sn == "Defeated Enemy" then face = 0 elseif sn == "Deck" then face = 180 end
   local rot = {0, sr.y, face}
-  if sn == "Energy" then energyCardAdded(sp.z >= 0 and 1 or -1, color) end
 
   -- hrpa koja vec lezi na placeholderu
   local pile = nil
@@ -2267,89 +2268,68 @@ function onObjectLeaveZone(zone, o)
 end
 
 ---------------------------------------------------------------- energy
+-- Max energy = broj turna, najvise CFG.ENERGY_MAX (pravilo od 2026-10-23; nema energy karata ni hrpe).
+-- Svaka strana trosi svoj; Novi turn podigne turn i napuni obje strane. Prikaz je traka na ekranu (XML: energyBar).
 
 local function sideKey(side) return side == 1 and "p" or "n" end
 
 function energyState(side)
   local k = sideKey(side)
   energy = energy or {}
-  energy[k] = energy[k] or { spent = 0, added = 0 }
+  energy[k] = energy[k] or { spent = 0 }
   energy[k].spent = energy[k].spent or 0
-  energy[k].added = energy[k].added or 0
   return energy[k]
 end
 
-function energySlots()
-  local r = {}
-  for _, o in ipairs(getObjects()) do
-    if o.type == "Card" and o.hasTag("Slot") and o.getName() == "Energy" then
-      r[o.getPosition().z >= 0 and 1 or -1] = o
-    end
-  end
-  return r
-end
-
--- max energy = broj karata na Energy hrpi
-function energyMax(slot)
-  local sp = slot.getPosition()
-  local n = 0
-  for _, q in ipairs(getObjects()) do
-    if q ~= slot and (q.type == "Deck" or q.type == "Card") and not q.hasTag("Slot") and not q.held_by_color
-      and near(q.getPosition(), sp, 0.9) then
-      if q.type == "Deck" then n = n + #q.getObjects() else n = n + 1 end
-    end
-  end
-  return n
+function energyMax()
+  return math.min(turnNo or 0, CFG.ENERGY_MAX)
 end
 
 function energyInfo(side)
-  local slot = energySlots()[side]
   local e = energyState(side)
-  local max = slot and energyMax(slot) or 0
+  local max = energyMax()
   if e.spent > max then e.spent = max end
   if e.spent < 0 then e.spent = 0 end
-  return max - e.spent, max, slot
+  return max - e.spent, max
 end
 
-function decorateEnergy(slot, side)
-  local k = sideKey(side)
-  _G["enLabel_" .. k] = function(_, _, alt) energyAdjust(side, alt and -1 or 1) end
-  _G["enMinus_" .. k] = function() energyAdjust(side, 1) end
-  _G["enPlus_" .. k] = function() energyAdjust(side, -1) end
-  slot.clearButtons()
-  energySig[slot.getGUID()] = nil
-  local s3 = {CFG.BTN_SCALE, CFG.BTN_SCALE, CFG.BTN_SCALE}
-  slot.createButton({ click_function = "enLabel_" .. k, function_owner = Global, label = "ENERGY",
-    position = {0, 0.6, -0.2}, scale = s3, width = 1700, height = 900, font_size = 300,
-    color = {0.12, 0.1, 0.2, 0.92}, font_color = {1, 0.9, 0.4}, tooltip = "Klik: potrosi 1, desni klik: vrati 1" })
-  slot.createButton({ click_function = "enMinus_" .. k, function_owner = Global, label = "-",
-    position = {-0.6, 0.6, 1.05}, scale = s3, width = 450, height = 400, font_size = 340,
-    color = {0.12, 0.1, 0.2, 0.92}, font_color = {1, 1, 1}, tooltip = "Potrosi 1 energy" })
-  slot.createButton({ click_function = "enPlus_" .. k, function_owner = Global, label = "+",
-    position = {0.6, 0.6, 1.05}, scale = s3, width = 450, height = 400, font_size = 340,
-    color = {0.12, 0.1, 0.2, 0.92}, font_color = {1, 1, 1}, tooltip = "Vrati 1 energy (recharge efekt)" })
+-- Ime strane u traci: boje igraca koji sjede na toj strani (ruka), inace boje ruku te strane.
+function energySideName(side)
+  local names = {}
+  for _, p in ipairs(Player.getPlayers()) do
+    if p.seated and p.color ~= "Grey" and p.color ~= "Black" and sideOfColor(p.color) == side then
+      table.insert(names, p.color)
+    end
+  end
+  if #names == 0 then return side == 1 and "Green/Blue" or "Red/Yellow" end
+  table.sort(names)
+  return table.concat(names, "/")
 end
 
 function refreshEnergy()
-  local slots = energySlots()
+  local turnText = setupPhase and "Setup" or (turnNo or 0) == 0 and "Prije igre" or ("Turn " .. turnNo)
+  local parts = { turnText }
+  local texts = {}
   for _, side in ipairs({1, -1}) do
-    local slot = slots[side]
-    if slot ~= nil then
-      local b = slot.getButtons()
-      if b == nil or #b < 3 then decorateEnergy(slot, side) end
-      local free, max = energyInfo(side)
-      local e = energyState(side)
-      local lbl = "ENERGY\n" .. free .. " / " .. max
-      local col = free > 0 and {1, 0.9, 0.4} or {0.65, 0.65, 0.65}
-      local tip = "Slobodno " .. free .. " od " .. max .. ". Ovaj turn stavljeno: " .. e.added .. "\nKlik: potrosi 1, desni klik: vrati 1"
-      local sig = lbl .. "|" .. tip
-      if energySig[slot.getGUID()] ~= sig then
-        energySig[slot.getGUID()] = sig
-        slot.editButton({ index = 0, label = lbl, font_color = col, tooltip = tip })
-      end
-    end
+    local free, max = energyInfo(side)
+    texts[side] = { text = energySideName(side) .. "  " .. free .. " / " .. max, color = free > 0 and "#FFE680" or "#A6A6A6" }
+    table.insert(parts, texts[side].text)
   end
+  local sig = table.concat(parts, "|")
+  if energySig.bar == sig then return end
+  energySig.bar = sig
+  UI.setAttribute("energyTurn", "text", turnText)
+  UI.setAttribute("energyP", "text", texts[1].text)
+  UI.setAttribute("energyP", "color", texts[1].color)
+  UI.setAttribute("energyN", "text", texts[-1].text)
+  UI.setAttribute("energyN", "color", texts[-1].color)
 end
+
+-- Gumbi u traci: - potrosi 1, + vrati 1 (recharge efekt ili ispravak).
+function enSpend_p() energyAdjust(1, 1) end
+function enGive_p() energyAdjust(1, -1) end
+function enSpend_n() energyAdjust(-1, 1) end
+function enGive_n() energyAdjust(-1, -1) end
 
 function refreshEnergySafe()
   local ok, err = pcall(refreshEnergy)
@@ -2364,16 +2344,6 @@ function energyAdjust(side, spend)
   local _, max = energyInfo(side)
   e.spent = math.max(0, math.min(max, e.spent + spend))
   refreshEnergySafe()
-end
-
--- karta spustena na Energy hrpu
-function energyCardAdded(side, color)
-  local e = energyState(side)
-  e.added = e.added + 1
-  if e.added > 1 and color then
-    broadcastToColor("Ovaj turn je vec stavljena energy karta (pravilo: 1 po turnu).", color, {1, 0.6, 0.2})
-  end
-  Wait.time(refreshEnergySafe, 0.6)
 end
 
 function cardCost(o)
@@ -2422,13 +2392,9 @@ function noviTurnClick(player)
     setupPhase = false
     redrawLines()
   end
-  for _, side in ipairs({1, -1}) do
-    local e = energyState(side)
-    e.spent = 0
-    e.added = 0
-  end
+  for _, side in ipairs({1, -1}) do energyState(side).spent = 0 end
   refreshEnergySafe()
-  broadcastToAll("Turn " .. turnNo .. " - Draw faza: svatko vuce 1 kartu, energy napunjen, smijete staviti 1 kartu na Energy.", {1, 0.9, 0.4})
+  broadcastToAll("Turn " .. turnNo .. " - Draw faza: svatko vuce 1 kartu, energy " .. energyMax() .. " / " .. energyMax() .. ".", {1, 0.9, 0.4})
 end
 
 ---------------------------------------------------------------- coreovi: setup i KO

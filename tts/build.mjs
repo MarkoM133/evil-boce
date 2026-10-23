@@ -43,7 +43,19 @@ if (args.has('--adopt')) {
 
 const save = JSON.parse(fs.readFileSync(BASE, 'utf8'));
 save.LuaScript = fs.readFileSync(path.join(ROOT, 'tts', 'global.lua'), 'utf8');
+save.XmlUI = fs.readFileSync(path.join(ROOT, 'tts', 'ui.xml'), 'utf8');
 save.SaveName = SAVE_NAME;
+
+// Promjene objekata, redom; svaka smije ići više puta (baza može već biti promijenjena kroz --adopt).
+const steps = [
+  // 2026-10-23: energy više nije hrpa karata (max = broj turna), Energy slotovi se miču.
+  ['bez Energy slotova', s => { s.ObjectStates = s.ObjectStates.filter(o => !['e9e001', 'e9e002'].includes(o.GUID)); }],
+];
+for (const [name, step] of steps) {
+  const before = JSON.stringify(save.ObjectStates).length;
+  step(save);
+  if (JSON.stringify(save.ObjectStates).length !== before) console.log(`  ${name}`);
+}
 
 const text = JSON.stringify(save, null, 2);
 fs.writeFileSync(OUT, text);
