@@ -5,6 +5,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ttsPayload, mergeSteamUrls } from '../js/tts.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = path.join(ROOT, 'server', 'config.local.json');
@@ -27,6 +28,7 @@ async function loadConfig() {
 
 const cfg = await loadConfig();
 const DECKS = path.join(cfg.drive, 'decks');
+const STEAM_PATH = path.join(cfg.drive, 'data', 'steam-urls.json');
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,59}$/;
 const LOGO_FILES = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'];
 const TYPES = {
@@ -130,6 +132,26 @@ async function api(req, res, parts) {
   if (what === 'info' && req.method === 'GET') {
     const db = await readJson(path.join(cfg.drive, 'data', 'cards.json'));
     return send(res, 200, { folder: path.basename(cfg.drive), version: db?.version ?? 0, cards: db?.cards.length ?? 0, logo: (await findLogo()) ? 'logo' : null });
+  }
+  // TTS (Sync karata): karte, heroji i bakugani u obliku koji global.lua samo primijeni.
+  if (what === 'tts' && req.method === 'GET') {
+    const db = await readJson(path.join(cfg.drive, 'data', 'cards.json'));
+    if (!db) return fail(res, 404, 'nema data/cards.json');
+    const steam = (await readJson(STEAM_PATH)) ?? {};
+    const bakugani = (await readJson(path.join(cfg.drive, 'data', 'bakugani', 'catalog.json')))?.bakugani ?? [];
+    return send(res, 200, ttsPayload(db, { steam, drivePath: cfg.drive, bakugani }));
+  }
+  // Nakon Cloud Manager "Upload All Loaded Files" TTS pošalje Steam URL-ove slika: { urls: { "OP1-008.a1b2c3d4": "https://…" } }.
+  if (what === 'steam-urls' && req.method === 'POST') {
+    let body;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch {
+      return fail(res, 400, 'neispravan JSON');
+    }
+    const { steam, added } = mergeSteamUrls((await readJson(STEAM_PATH)) ?? {}, body?.urls);
+    if (added) await writeJson(STEAM_PATH, steam);
+    return send(res, 200, { added, total: Object.keys(steam).length });
   }
   if (what !== 'decks') return fail(res, 404, 'nepoznat API');
 
