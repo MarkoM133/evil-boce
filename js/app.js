@@ -330,7 +330,7 @@ function whatsNew() {
   const count = (...k) => kinds.filter(x => k.includes(x)).length;
   const parts = [[count('new'), 'new'], [count('changed', 'restored'), 'changed'], [count('deleted'), 'deleted']]
     .filter(([n]) => n).map(([n, w]) => `${n} ${w}`);
-  toast(`Cards updated to v${state.db.version}${parts.length ? `: ${parts.join(', ')}` : ''}. Details: Browse → Change history.`);
+  toast(`Cards updated to v${state.db.version}${parts.length ? `: ${parts.join(', ')}` : ''}. Details: click the version at the top.`);
 }
 
 const root = () => state.store.root;
@@ -532,7 +532,8 @@ function render() {
 
 // ---------- adresa: svaki pogled ima svoj #/…, pa gesta ili tipka Natrag vraća korak unatrag ----------
 
-const TAB_SLUG = { import: 'import', browse: 'browse', decks: 'decks' };
+// history nije u izborniku: otvara se klikom na verziju u zaglavlju ili u detalju karte.
+const TAB_SLUG = { import: 'import', browse: 'browse', decks: 'decks', history: 'history' };
 const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]));
 // Stare hrvatske adrese (#/uvoz, #/pregled, #/deckovi/novi) i dalje rade.
 const OLD_SLUG_TAB = { uvoz: 'import', pregled: 'browse', deckovi: 'decks' };
@@ -641,7 +642,9 @@ function renderHeader() {
       h('span', { class: 'brand-sub' }, 'Card database')),
     h('div', { class: 'folder' },
       h('span', { class: 'folder-name', title: server ? 'Data from the computer, via server' : 'Chosen Drive folder' }, server ? `${state.store.name} via server` : state.store.name),
-      h('span', { class: 'folder-db' }, `Version ${state.db.version}`, h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
+      h('span', { class: 'folder-db' },
+        h('button', { class: `version-link${state.tab === 'history' ? ' active' : ''}`, title: 'Change history', onclick: () => openHistory() }, `Version ${state.db.version}`),
+        h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
       server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder for Import and editing', onclick: () => guard(() => resume(state.savedRoot)) }, `Continue with "${state.savedRoot.name}"`) : null,
       !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Other folder' : 'Choose folder') : 'Change folder') : null));
 }
@@ -675,7 +678,7 @@ function renderMain() {
     ['browse', 'Browse'],
     ['decks', 'Decks'],
   ];
-  const view = { import: renderImport, browse: renderBrowse, decks: renderDecks }[state.tab]();
+  const view = { import: renderImport, browse: renderBrowse, decks: renderDecks, history: renderHistory }[state.tab]();
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
@@ -844,21 +847,35 @@ function filtered() {
 const plural = (n, one, other) => (n === 1 ? one : other);
 const shortDate = iso => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'numeric', year: 'numeric' }) : '');
 
-// Povijest promjena baze, od najnovije verzije; imena karata otvaraju kartu.
+// Povijest promjena baze (#/history), od najnovije verzije; imena karata otvaraju kartu u pregledu.
 function renderHistory() {
   const entries = [...(state.changelog?.entries ?? [])].reverse();
-  if (!entries.length) return null;
-  const cardLink = c => h('button', { class: 'link', onclick: () => openCard(c.id) }, `${c.id} ${c.name}`);
-  return h('details', { class: 'history' },
-    h('summary', {}, `Change history (${entries.length} ${plural(entries.length, 'version', 'versions')})`),
+  const cardLink = c => h('button', { class: 'link', onclick: () => showCard(c.id) }, `${c.id} ${c.name}`);
+  return h('section', { class: 'panel history' },
+    h('h2', {}, 'Change history'),
+    entries.length ? null : h('p', { class: 'muted' }, 'No published versions yet.'),
     entries.map(e => {
       const fresh = e.cards.filter(c => c.kind === 'new');
       const rest = e.cards.filter(c => c.kind !== 'new');
-      return h('section', { class: 'history-entry' },
+      return h('section', { class: 'history-entry', id: `history-v${e.version}` },
         h('h3', {}, `v${e.version}`, h('span', { class: 'muted' }, ` ${shortDate(e.date)} · ${e.cards.length} ${plural(e.cards.length, 'card', 'cards')}`)),
         rest.length ? h('ul', {}, rest.map(c => h('li', {}, cardLink(c), h('span', { class: `change ${c.kind}` }, describeChange(c))))) : null,
         fresh.length ? h('p', { class: 'history-new' }, h('span', { class: 'change new' }, `new (${fresh.length}):`), ' ', fresh.flatMap((c, i) => [i ? ', ' : null, cardLink(c)]).filter(Boolean)) : null);
     }));
+}
+
+// Povijest, po želji odmah na zadanoj verziji.
+function openHistory(version) {
+  state.tab = 'history';
+  render();
+  if (version) $(`#history-v${version}`)?.scrollIntoView({ block: 'start' });
+}
+
+// Karta iz povijesti: pregled s otvorenom kartom (Natrag vraća u povijest).
+function showCard(id) {
+  state.tab = 'browse';
+  state.selected = id;
+  render();
 }
 
 // Deckovi u kojima je karta (kao heroj ili u decku).
@@ -878,7 +895,6 @@ function renderBrowse() {
         : null),
     renderQuickFilters(),
     h('p', { id: 'grid-count', class: 'muted small' }),
-    renderHistory(),
     h('div', { id: 'grid', class: 'grid' }),
     h('div', { id: 'detail' }));
   queueMicrotask(() => { renderGrid(); renderDetail(); });
@@ -979,8 +995,12 @@ function renderDetail() {
     rows.push(h('tr', {}, h('th', {}, 'sprite'), h('td', {}, h('button', { class: 'sprite-btn', title: 'Full screen',
       onclick: () => state.store.dataUrl(c.sprite).then(u => u && openViewer([{ url: u, title: `${c.id} · ${c.name} · sprite` }])) }, img))));
   }
-  const history = (state.changelog?.entries ?? []).flatMap(e => e.cards.filter(x => x.id === c.id).map(x => `v${e.version}: ${describeChange(x)}`)).reverse();
-  if (history.length) rows.push(h('tr', {}, h('th', {}, 'history'), h('td', {}, history.join(' · '))));
+  // Povijest ove karte; verzija otvara cijelu povijest na toj verziji.
+  const changes = (state.changelog?.entries ?? []).flatMap(e => e.cards.filter(x => x.id === c.id).map(x => ({ v: e.version, x }))).reverse();
+  if (changes.length) {
+    rows.push(h('tr', {}, h('th', {}, 'changes'), h('td', {}, h('ul', { class: 'card-changes' }, changes.map(({ v, x }) =>
+      h('li', {}, h('button', { class: 'link', title: `v${v} in Change history`, onclick: () => openHistory(v) }, `v${v}`), ' ', h('span', { class: `change ${x.kind}` }, describeChange(x))))))));
+  }
   const inDecks = decksWith(c.id);
   if (inDecks.length) {
     rows.push(h('tr', {}, h('th', {}, 'in decks'), h('td', {}, inDecks.flatMap((d, i) => [i ? ', ' : null,

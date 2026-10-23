@@ -679,9 +679,9 @@ button.link:hover { color: var(--straw); text-decoration-color: currentColor; }
 button.link:focus-visible { outline: 2px solid var(--straw); outline-offset: 2px; }
 
 #grid-count { margin: 10px 0 0; }
-.history { margin: 10px 0 4px; background: var(--surface); padding: 10px 14px; }
-.history summary { cursor: pointer; font: italic 700 18px var(--display); }
+.history h2 { margin: 0 0 4px; }
 .history-entry { border-top: 1px solid var(--line); padding: 10px 0 6px; margin-top: 8px; }
+.history-entry { scroll-margin-top: 16px; }
 .history-entry h3 { margin: 0 0 6px; font-size: 20px; }
 .history-entry ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .history-entry li { font-size: 15px; }
@@ -690,6 +690,11 @@ button.link:focus-visible { outline: 2px solid var(--straw); outline-offset: 2px
 .change.new, .change.restored { color: var(--straw); }
 .change.deleted { color: var(--red); }
 .history-new .change { margin-left: 0; }
+.card-changes { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.card-changes .change { margin-left: 4px; }
+button.version-link { all: unset; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
+button.version-link:hover, button.version-link.active { color: var(--straw); text-decoration-color: currentColor; }
+button.version-link:focus-visible { outline: 2px solid var(--straw); outline-offset: 2px; }
 
 .deck-item-flags { grid-column: 1; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; font-weight: 600; }
 .deck-item-flags .ok { color: var(--c-Green); }
