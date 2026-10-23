@@ -728,3 +728,12 @@ button.link:focus-visible { outline: 2px solid var(--straw); outline-offset: 2px
 }
 .sprite-btn { padding: 4px; clip-path: none; background: none; border-radius: 6px; cursor: zoom-in; }
 .sprite-btn:hover { background: var(--surface-2); }
+
+/* Traitovi u decku: klik filtrira bazen. */
+.traits { margin: 0; }
+.traits figcaption { font: italic 700 16px var(--display); color: var(--muted); margin-bottom: 6px; }
+.trait-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.trait-chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 4px 10px; clip-path: none; border-radius: 14px; background: var(--surface-2); font: 600 13px var(--text); }
+.trait-chip span { color: var(--muted); font-weight: 700; }
+.trait-chip.active { background: var(--straw); color: var(--black); }
+.trait-chip.active span { color: var(--black); }

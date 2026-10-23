@@ -23,7 +23,7 @@ const state = {
   decks: [],
   deck: null,
   deckView: 'pool',
-  pool: { q: '', type: '', color: '' },
+  pool: { q: '', type: '', color: '', trait: '' },
   focus: { color: '', value: 0.6 },
   bakugani: [], // biblioteka oblika bakugana (data/bakugani/catalog.json)
 };
@@ -1131,7 +1131,8 @@ function renderDeckEditor() {
         h('div', { class: 'filters' },
           h('input', { type: 'search', placeholder: 'Traži u bazenu…', value: state.pool.q, oninput: e => { state.pool.q = e.target.value; renderPool(); } }),
           h('select', { onchange: e => { state.pool.type = e.target.value; renderPool(); } }, h('option', { value: '' }, 'Svi tipovi'), DECK_TYPES.map(t => h('option', { value: t, selected: state.pool.type === t }, t))),
-          h('select', { id: 'pool-color', onchange: e => { state.pool.color = e.target.value; renderPool(); } })),
+          h('select', { id: 'pool-color', onchange: e => { state.pool.color = e.target.value; renderPool(); } }),
+          h('select', { id: 'pool-trait', 'aria-label': 'Trait', onchange: e => { state.pool.trait = e.target.value; renderPool(); } })),
         h('div', { id: 'pool', class: 'pool' })),
       h('section', { id: 'deck-panel', class: 'deck-panel' })),
     queueRefresh());
@@ -1219,16 +1220,40 @@ function renderPool() {
   const colors = [...new Set(all.map(c => c.color))];
   if (state.pool.color && !colors.includes(state.pool.color)) state.pool.color = '';
   colorSel.replaceChildren(h('option', { value: '' }, 'Sve boje heroja'), ...colors.map(c => h('option', { value: c, selected: state.pool.color === c }, c)));
+  // Traitovi bazena, najčešći prvi (npr. {Luffy} karte za heroja ili evoluciju koja ih poziva).
+  const traits = traitCounts(all.map(c => [c, 1]));
+  if (state.pool.trait && !traits.some(([t]) => t === state.pool.trait)) state.pool.trait = '';
+  $('#pool-trait')?.replaceChildren(h('option', { value: '' }, 'Svi traitovi'), ...traits.map(([t, n]) => h('option', { value: t, selected: state.pool.trait === t }, `${t} (${n})`)));
   if (!d.heroes.length) {
     box.replaceChildren(h('p', { class: 'muted' }, 'Odaberi heroje, pa se ovdje pokažu karte njihovih boja.'));
     return;
   }
-  const { q, type, color } = state.pool;
+  const { q, type, color, trait } = state.pool;
   const needle = q.trim().toLowerCase();
   const cards = all
-    .filter(c => (!type || c.type === type) && (!color || c.color === color) && (!needle || [c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)))
+    .filter(c => (!type || c.type === type) && (!color || c.color === color) && (!trait || (c.traits ?? []).includes(trait)) && (!needle || [c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)))
     .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
   box.replaceChildren(...(cards.length ? cards.map(c => poolCard(c, cards)) : [h('p', { class: 'muted' }, 'Nijedna karta ne odgovara filtru.')]));
+}
+
+// [[trait, broj], ...] od najčešćeg; entries su [karta, kopija].
+function traitCounts(entries) {
+  const counts = new Map();
+  for (const [c, n] of entries) for (const t of c?.traits ?? []) counts.set(t, (counts.get(t) ?? 0) + n);
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+// Traitovi u decku (s kopijama); klik filtrira bazen po tom traitu.
+function deckTraits(d) {
+  const list = traitCounts(Object.entries(d.cards).map(([id, n]) => [cardById(id), n]));
+  if (!list.length) return null;
+  return h('figure', { class: 'traits' },
+    h('figcaption', {}, 'Traitovi u decku'),
+    h('div', { class: 'trait-chips' }, list.map(([t, n]) => h('button', {
+      class: `trait-chip${state.pool.trait === t ? ' active' : ''}`,
+      title: `Bazen: samo karte s traitom ${t}`,
+      onclick: () => { state.pool.trait = state.pool.trait === t ? '' : t; renderPool(); renderDeckPanel(); if (state.pool.trait) setDeckView('pool'); },
+    }, t, h('span', {}, n)))));
 }
 
 function poolCard(c, list) {
@@ -1278,6 +1303,7 @@ function renderDeckPanel() {
         h('button', { class: 'primary', disabled: d.heroes.length === 0 || r.count >= DECK_SIZE, onclick: fillRandom }, 'Popuni nasumično'),
         h('button', { class: 'ghost', disabled: !r.count, onclick: () => { changeDeck(x => { x.cards = {}; }); toast('Deck je ispražnjen (heroji ostaju). Poništi ili Ctrl+Z ga vraća.'); } }, 'Isprazni'))),
     r.count ? h('div', { class: 'deck-charts' }, costCurve(r.curve), colorSplit(r.byColor, r.count)) : null,
+    r.count ? deckTraits(d) : null,
     groups.length || unknown.length
       ? h('div', { class: 'deck-rows' },
           groups.map(([t, list]) => h('div', { class: 'deck-group' },
