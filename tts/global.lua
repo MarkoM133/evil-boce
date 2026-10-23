@@ -2662,6 +2662,12 @@ end
 
 -- Novi objekt s istim GUID-om (pozicije za Novu igru, utori i karte heroja ga pamte po GUID-u).
 -- Stvara se frame kasnije: dok stari nije unisten, GUID je zauzet i TTS bi dao novi.
+local function statesOf(d)
+  local r = {}
+  for _, s in pairs(d.States or {}) do table.insert(r, s) end
+  return r
+end
+
 local function respawn(o, data)
   local p, r = o.getPosition(), o.getRotation()
   data.GUID = o.getGUID()
@@ -2686,12 +2692,14 @@ function collectSteamUrls()
       if m.key and isSteam(f) then urls[m.key] = f; n = n + 1 end
     end
   end
-  for _, b in ipairs(getObjectsWithTag("Bakugan")) do
-    local m = memoOf({ Memo = b.memo })
-    local d = b.getData()
-    if m.textureKey and d.CustomMesh and isSteam(d.CustomMesh.DiffuseURL) then urls[m.textureKey] = d.CustomMesh.DiffuseURL; n = n + 1 end
-    for _, s in pairs(d.States or {}) do
-      if m.spriteKey and s.CustomImage and isSteam(s.CustomImage.ImageURL) then urls[m.spriteKey] = s.CustomImage.ImageURL; n = n + 1 end
+  for _, body in pairs(bodies) do
+    if body ~= nil then
+      local d = body.getData()
+      local m = memoOf(d)
+      for _, part in ipairs({ d, table.unpack(statesOf(d)) }) do
+        if m.textureKey and part.CustomMesh and isSteam(part.CustomMesh.DiffuseURL) then urls[m.textureKey] = part.CustomMesh.DiffuseURL; n = n + 1 end
+        if m.spriteKey and part.CustomImage and isSteam(part.CustomImage.ImageURL) then urls[m.spriteKey] = part.CustomImage.ImageURL; n = n + 1 end
+      end
     end
   end
   return urls, n
@@ -2800,7 +2808,7 @@ function applySync(p)
       if full or st.hp > st.max then st.hp = st.max end
     end
   end
-  if syncBakugans then syncBakugans(p) end
+  local bakuganMsg = syncBakugans(p)
   Wait.frames(scanHeroes, 10)
 
   local parts = {}
@@ -2812,10 +2820,115 @@ function applySync(p)
     if nDeleted > 0 then table.insert(parts, nDeleted .. " maknute") end
   end
   if nClones > 0 then table.insert(parts, "osvjezeno karata na stolu: " .. nClones) end
+  if bakuganMsg ~= "" then table.insert(parts, bakuganMsg) end
   local msg = "Sync karata (baza v" .. tostring(p.version) .. "): " .. (#parts > 0 and table.concat(parts, ", ") or "nema promjena") .. "."
   if nHand > 0 then msg = msg .. " U rukama je " .. nHand .. " starih karata: vrati ih na stol i ponovi Sync." end
   if lib == nil or nNew > 0 or nChanged > 0 then
     msg = msg .. " Za Steam: Modding > Cloud Manager > Upload All Loaded Files, pa spremi save."
   end
   syncMessage(msg)
+end
+
+---------------------------------------------------------------- bakugani heroja (Sync karata)
+-- Iz web appa: oblik (model iz Bakugan moda, siva tekstura) i boja (ColorDiffuse mnozi teksturu) za kuglu (stanje 1),
+-- sprite za figurinu (stanje 2). Velicina i collider ostaju (svi modeli moda su 0.56 i dijele collider kugle).
+-- Postojeci bakugan heroja se osvjezi; heroj bez bakugana dobije novog (kopija postojeceg kao predlozak),
+-- zakljucanog pokraj biblioteke. Bakugan u igri ili u necijoj ruci se ne dira.
+
+-- Kugla i figurina iz podataka objekta, bez obzira je li trenutno stanje 1 ili 2.
+local function bakuganParts(d)
+  local ball, fig
+  if d.Name == "Custom_Model" then ball = d elseif d.Name == "Figurine_Custom" then fig = d end
+  for _, s in pairs(d.States or {}) do
+    if s.Name == "Custom_Model" then ball = s elseif s.Name == "Figurine_Custom" then fig = s end
+  end
+  return ball, fig
+end
+
+local function sameColor(a, b)
+  if a == nil or b == nil then return false end
+  return math.abs((a.r or 0) - b.r) < 0.002 and math.abs((a.g or 0) - b.g) < 0.002 and math.abs((a.b or 0) - b.b) < 0.002
+end
+
+-- true ako se nesto promijenilo. figFallback: slika figurine za novog bakugana kad heroj nema sprite.
+local function applyBakugan(d, hero, figFallback)
+  local ball, fig = bakuganParts(d)
+  local b = hero.bakugan
+  local changed = false
+  if ball ~= nil and b ~= nil then
+    local col = { r = b.color[1], g = b.color[2], b = b.color[3] }
+    ball.CustomMesh = ball.CustomMesh or {}
+    if ball.CustomMesh.MeshURL ~= b.mesh or ball.CustomMesh.DiffuseURL ~= b.texture or not sameColor(ball.ColorDiffuse, col) then
+      ball.CustomMesh.MeshURL = b.mesh
+      ball.CustomMesh.DiffuseURL = b.texture
+      ball.ColorDiffuse = col
+      changed = true
+    end
+  end
+  local img = hero.sprite or figFallback
+  if fig ~= nil and img ~= nil then
+    fig.CustomImage = fig.CustomImage or {}
+    if fig.CustomImage.ImageURL ~= img then
+      fig.CustomImage.ImageURL = img
+      changed = true
+    end
+  end
+  local memo = JSON.encode({ textureKey = b and b.textureKey or nil, spriteKey = hero.spriteKey })
+  for _, part in ipairs({ d, ball, fig }) do
+    if part ~= nil and part.Memo ~= memo then part.Memo = memo; changed = true end
+  end
+  return changed
+end
+
+local function stripGuids(d)
+  d.GUID = nil
+  for _, s in pairs(d.States or {}) do s.GUID = nil end
+end
+
+function syncBakugans(p)
+  local faceById = {}
+  for _, c in ipairs(p.cards or {}) do faceById[c.id] = c.face end
+  local template = nil
+  for _, body in pairs(bodies) do
+    if body ~= nil then template = body.getData(); break end
+  end
+  local lib = libraryDeck()
+  local base = lib and lib.getPosition() or { x = CFG.LIBRARY_POS[1], y = CFG.LIBRARY_POS[2], z = CFG.LIBRARY_POS[3] }
+  local nUpdated, nNew, nSkipped, slot = 0, 0, 0, 0
+  for _, hero in ipairs(p.heroes or {}) do
+    local body = bodies[hero.name]
+    if body ~= nil then
+      if inPlay[hero.name] or body.held_by_color then
+        nSkipped = nSkipped + 1
+      else
+        local d = body.getData()
+        if applyBakugan(d, hero, nil) then
+          local pos, rot = body.getPosition(), body.getRotation()
+          d.GUID = body.getGUID()
+          body.destruct()
+          Wait.frames(function() spawnObjectData({ data = d, position = { pos.x, pos.y, pos.z }, rotation = { rot.x, rot.y, rot.z } }) end, 1)
+          nUpdated = nUpdated + 1
+        end
+      end
+    elseif hero.bakugan ~= nil and template ~= nil then
+      local d = JSON.decode(JSON.encode(template))
+      stripGuids(d)
+      local ball, fig = bakuganParts(d)
+      for _, part in ipairs({ d, ball, fig }) do
+        if part ~= nil then part.Nickname = hero.name; part.Description = "" end
+      end
+      if ball ~= nil then ball.Tags = { "Core" } end
+      if fig ~= nil then fig.Tags = { "Bakugan" } end
+      d.Locked = true
+      applyBakugan(d, hero, faceById[hero.id])
+      slot = slot + 1
+      spawnObjectData({ data = d, position = { base.x + 1.6 * slot, base.y + 1, base.z + 4 }, rotation = { 0, 180, 0 } })
+      nNew = nNew + 1
+    end
+  end
+  local parts = {}
+  if nUpdated > 0 then table.insert(parts, "bakugani osvjezeni: " .. nUpdated) end
+  if nNew > 0 then table.insert(parts, "novi bakugani pokraj biblioteke: " .. nNew) end
+  if nSkipped > 0 then table.insert(parts, "bakugani u igri preskoceni: " .. nSkipped) end
+  return table.concat(parts, ", ")
 end
