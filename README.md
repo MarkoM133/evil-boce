@@ -43,6 +43,18 @@ Evil Boce/
   logo.jpg           logo (po želji)
 ```
 
+## TTS (Tabletop Simulator)
+
+Global skripta je `tts/global.lua`. Raspored stola (bazni save) je privatan i nije u repou.
+
+```
+npm run tts                 # bazni save + tts/global.lua -> "Evil Boce (dev).json" u TTS Saves
+npm run tts -- --adopt      # save spremljen u TTS-u postaje nova baza
+npm run tts -- --force      # prepiši save u TTS-u
+```
+
+Build ne prepisuje save koji je spremljen u TTS-u nakon zadnjeg builda; tada traži `--adopt` ili `--force`.
+
 ## Testovi
 
 ```

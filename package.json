@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node server/server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "tts": "node tts/build.mjs",
+    "test:tts": "py docs/private/tts/tests/test37.py && py docs/private/tts/tests/test_real.py"
   }
 }
