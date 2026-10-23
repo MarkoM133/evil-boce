@@ -37,6 +37,7 @@ Evil Boce/
   export/objavljeno/ nakon Objave app ovamo premjesti pročitane exporte (podfolder po datumu); Uvoz ga preskače
   data/cards.json    baza karata (piše je app)
   data/images/       slike, ID.hash.png (original, za TTS)
+  data/sprites/      spriteovi heroja i evolucija (figurina u TTS-u), ID.hash.png; u export/ kao "KOD Ime Sprite.png"
   data/thumbs/       sličice 300 px, data/large/ velike slike 1000 px (JPEG, radi ih Objavi)
   data/changelog.json povijest promjena po verziji baze (piše je app)
   data/bakugani/     biblioteka oblika bakugana: catalog.json, 3D model (.obj), siva tekstura (.jpg), sličica (.png)

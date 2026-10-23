@@ -6,9 +6,14 @@ import { parseCardEngineXml, CODE_RE } from './parse.js';
 export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'values', 'traits', 'text'];
 // Polja koja se uređuju samo u appu. Ponovni uvoz ih ne dira.
 export const APP_FIELDS = ['wt', 'bakugan', 'bakuganShape', 'bakuganColor', 'deleted'];
-const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'bakugan', 'bakuganShape', 'bakuganColor', 'image', 'imageHash', 'rev', 'deleted'];
+const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'bakugan', 'bakuganShape', 'bakuganColor', 'image', 'imageHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
+
+// Sprite = slika figurine (otvoreni bakugan u TTS-u): "OP1-001 Luffy Sprite.png" ili "Luffy Sprite.png".
+const SPRITE_RE = /\s+sprite$/i;
+const SPRITE_TYPES = ['Character', 'Evolution'];
+const normName = s => s.replace(/\s*,\s*/g, ', ').trim();
 
 export function emptyDb() {
   return { version: 0, updated: null, cards: [] };
@@ -77,12 +82,19 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
 
   // 2. PNG: "OP1-012 Sword Slash.png" (ili "OP1-012.png") ide karti po kodu, "Sword Slash.png" po imenu.
   // Isti PNG u više podfoldera -> noviji.
+  // "... Sprite.png" je sprite (figurina u TTS-u), ne slika karte; po imenu se zarez s razmakom ili bez ne razlikuje.
   const pngByCode = new Map();
   const pngByName = new Map();
+  const spriteByCode = new Map();
+  const spriteByName = new Map();
   for (const p of [...pngFiles].sort((a, b) => a.lastModified - b.lastModified || a.path.localeCompare(b.path))) {
     const name = baseName(p.path).replace(/\.png$/i, '');
-    const code = name.split(/\s+/)[0];
-    const [map, key] = CODE_RE.test(code) ? [pngByCode, code] : [pngByName, name];
+    const sprite = SPRITE_RE.test(name);
+    const rest = sprite ? name.replace(SPRITE_RE, '') : name;
+    const code = rest.split(/\s+/)[0];
+    const [map, key] = CODE_RE.test(code)
+      ? [sprite ? spriteByCode : pngByCode, code]
+      : sprite ? [spriteByName, normName(rest)] : [pngByName, rest];
     if (map.has(key)) add(infos, null, `PNG "${name}" postoji više puta; vrijedi noviji ${p.path}`);
     map.set(key, p);
   }
@@ -139,9 +151,48 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     for (const k of CE_FIELDS) if (old[k] !== undefined) card[k] = old[k];
     entries.push({ id: old.id, status: imageChanged ? 'changed' : 'same', card, old, diffs: [], imageChanged, staleImage: false, imageHash, png, file: png.path });
   }
+
+  // Sprite: samo heroji i Evolution karte. Ide uz kartu iz XML-a ili uz postojeću kartu iz baze.
+  const pool = new Map(db.cards.map(c => [c.id, c]));
+  for (const p of picked.values()) pool.set(p.code, { ...pool.get(p.code), ...p.card });
+  const poolByName = new Map();
+  for (const c of pool.values()) poolByName.set(normName(c.name), [...(poolByName.get(normName(c.name)) ?? []), c]);
+  const entryById = new Map(entries.map(e => [e.id, e]));
+  for (const [sprite, found] of [
+    ...[...spriteByCode].map(([code, s]) => [s, pool.has(code) ? [pool.get(code)] : []]),
+    ...[...spriteByName].map(([name, s]) => [s, poolByName.get(name) ?? []]),
+  ]) {
+    if (!found.length) continue;
+    usedPngs.add(sprite);
+    const live = found.filter(c => !c.deleted);
+    const candidates = live.length ? live : found;
+    if (candidates.length > 1) {
+      add(errors, null, `${sprite.path}: isto ime imaju ${candidates.map(c => c.id).join(' i ')}; sprite mora počinjati kodom, npr. "${candidates[0].id} ${candidates[0].name} Sprite.png"`);
+      continue;
+    }
+    const target = candidates[0];
+    if (!SPRITE_TYPES.includes(target.type)) {
+      add(warnings, target.id, `${sprite.path}: sprite je samo za heroje i Evolution karte (${target.name} je ${target.type}); preskočen`);
+      continue;
+    }
+    const old = oldById.get(target.id);
+    let e = entryById.get(target.id);
+    if (!e) {
+      const card = { id: old.id };
+      for (const k of CE_FIELDS) if (old[k] !== undefined) card[k] = old[k];
+      e = { id: old.id, status: 'same', card, old, diffs: [], imageChanged: false, staleImage: false, imageHash: null, png: null, file: sprite.path };
+      entries.push(e);
+      entryById.set(e.id, e);
+    }
+    e.spritePng = sprite;
+    e.spriteHash = await imageHashOf(await sprite.getBytes());
+    e.spriteChanged = !!old && e.spriteHash !== old.spriteHash;
+    if (e.status === 'same' && e.spriteChanged) e.status = 'changed';
+  }
   entries.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-  const skipped = [...pngByCode.values(), ...pngByName.values()].filter(png => !usedPngs.has(png)).map(png => baseName(png.path));
+  const skipped = [...pngByCode.values(), ...pngByName.values(), ...spriteByCode.values(), ...spriteByName.values()]
+    .filter(png => !usedPngs.has(png)).map(png => baseName(png.path));
   if (skipped.length) add(infos, null, `preskočeno ${skipped.length} PNG-ova koji nisu karte s kodom: ${skipped.join(', ')}`);
 
   // 4. Provjere na bazi kakva će biti nakon Objave.
@@ -182,6 +233,8 @@ function withAppFields(ce, old) {
     card.wt = old?.wt ?? DEFAULT_WT;
     card.bakugan = old?.bakugan ?? ce.name;
   }
+  // Ostala app polja (npr. oblik i boja bakugana) ostaju kakva su bila.
+  for (const k of APP_FIELDS) if (card[k] === undefined && old?.[k] !== undefined) card[k] = old[k];
   card.deleted = old?.deleted ?? false;
   return card;
 }
@@ -201,6 +254,14 @@ export function buildPublish(db, analysis, now = new Date()) {
     } else {
       card.image = e.old?.image ?? null;
       card.imageHash = e.old?.imageHash ?? null;
+    }
+    if (e.spriteHash && (!e.old || e.spriteChanged)) {
+      card.sprite = `sprites/${e.id}.${e.spriteHash}.png`;
+      card.spriteHash = e.spriteHash;
+      writes.push({ path: `data/${card.sprite}`, png: e.spritePng });
+    } else if (e.old?.sprite) {
+      card.sprite = e.old.sprite;
+      card.spriteHash = e.old.spriteHash;
     }
     card.rev = (e.old?.rev ?? 0) + 1;
     touched.set(e.id, ordered(card));
@@ -266,8 +327,9 @@ export function changelogEntry(oldDb, newDb) {
     }
     const fields = [...CE_FIELDS, 'wt', 'bakugan', 'bakuganShape', 'bakuganColor'].filter(k => !same(o[k], c[k]));
     const image = o.imageHash !== c.imageHash;
+    const sprite = o.spriteHash !== c.spriteHash;
     const kind = !o.deleted && c.deleted ? 'deleted' : o.deleted && !c.deleted ? 'restored' : 'changed';
-    if (fields.length || image || kind !== 'changed') cards.push({ id: c.id, name: c.name, kind, fields, image });
+    if (fields.length || image || sprite || kind !== 'changed') cards.push({ id: c.id, name: c.name, kind, fields, image, ...(sprite ? { sprite } : {}) });
   }
   return { version: newDb.version, date: newDb.updated, cards };
 }
@@ -297,7 +359,7 @@ export function describeChange(c) {
   if (c.kind === 'new') return 'nova';
   if (c.kind === 'deleted') return 'maknuta';
   if (c.kind === 'restored') return 'vraćena';
-  return [...c.fields.map(f => FIELD_LABELS[f] ?? f), ...(c.image ? ['slika'] : [])].join(', ');
+  return [...c.fields.map(f => FIELD_LABELS[f] ?? f), ...(c.image ? ['slika'] : []), ...(c.sprite ? ['sprite'] : [])].join(', ');
 }
 
 // export/ je sanduče: nakon Objave pročitani fileovi idu u export/objavljeno/<datum vrijeme>/, a Uvoz arhivu preskače.

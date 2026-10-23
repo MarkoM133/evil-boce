@@ -352,3 +352,46 @@ test('sam PNG: po kodu radi uvijek, po imenu samo kad je ime jednoznačno', asyn
   assert.match(byName.errors.map(e => e.msg).join('\n'), /isto ime imaju DBZ-002 i OP9-002; PNG mora počinjati kodom/);
   assert.deepEqual(byName.entries, []);
 });
+
+test('sprite: uz heroja iz XML-a, sam za postojećeg, Evolution bez razmaka iza zareza', async () => {
+  const a = await analyzeExport({
+    xmlFiles: [{ path: 'export/x.xml', text: xml(card(HERO)), lastModified: 1 }],
+    pngFiles: [png([1], 'export/OP9-001 Hero A.png'), png([11], 'export/OP9-001 Hero A Sprite.png')],
+    db: emptyDb(),
+  });
+  assert.deepEqual(a.errors, []);
+  assert.equal(a.entries[0].png.path, 'export/OP9-001 Hero A.png');
+  assert.equal(a.entries[0].spritePng.path, 'export/OP9-001 Hero A Sprite.png');
+  const pub = buildPublish(emptyDb(), a);
+  const hero = pub.db.cards[0];
+  assert.match(hero.sprite, /^sprites\/OP9-001\.[0-9a-f]{8}\.png$/);
+  assert.deepEqual(pub.writes.map(w => w.path).sort(), [`data/${hero.image}`, `data/${hero.sprite}`].sort());
+
+  const { pub: base } = await firstImport();
+  const only = await analyzeExport({ xmlFiles: [], pngFiles: [png([12], 'export/Hero A Sprite.png'), png([13], 'export/Hero A,Big Form Sprite.png')], db: base.db });
+  assert.deepEqual(only.errors, []);
+  assert.deepEqual(only.entries.map(e => [e.id, e.status, !!e.spriteChanged, e.imageChanged]), [['OP9-001', 'changed', true, false], ['OP9-003', 'changed', true, false]]);
+  const next = buildPublish(base.db, only);
+  const h = next.db.cards.find(c => c.id === 'OP9-001');
+  assert.equal(h.image, base.db.cards.find(c => c.id === 'OP9-001').image, 'slika karte ista');
+  assert.ok(h.sprite);
+  const entry = changelogEntry(base.db, next.db);
+  assert.deepEqual(entry.cards.map(c => [c.id, describeChange(c)]), [['OP9-001', 'sprite'], ['OP9-003', 'sprite']]);
+});
+
+test('sprite za kartu koja nije heroj ni Evolution se preskače uz upozorenje', async () => {
+  const { pub } = await firstImport();
+  const a = await analyzeExport({ xmlFiles: [], pngFiles: [png([5], 'export/Punch Sprite.png')], db: pub.db });
+  assert.match(a.warnings.map(w => w.msg).join('\n'), /sprite je samo za heroje i Evolution karte/);
+  assert.deepEqual(a.entries, []);
+});
+
+test('ponovni uvoz heroja čuva oblik i boju bakugana i sprite', async () => {
+  const { pub } = await firstImport();
+  const edited = applyAppEdits(pub.db, { 'OP9-001': { bakuganShape: 'dragonoid', bakuganColor: '#ff0000' } }).db;
+  const withSprite = buildPublish(edited, await analyzeExport({ xmlFiles: [], pngFiles: [png([12], 'export/Hero A Sprite.png')], db: edited })).db;
+  const a = await analyzeExport({ xmlFiles: [{ path: 'export/x.xml', text: xml(card({ ...HERO, traits: 'Crew' })), lastModified: 1 }], pngFiles: [png([1], 'export/Hero A.png')], db: withSprite });
+  const h = buildPublish(withSprite, a).db.cards.find(c => c.id === 'OP9-001');
+  assert.deepEqual([h.bakuganShape, h.bakuganColor, h.traits], ['dragonoid', '#ff0000', ['Crew']]);
+  assert.equal(h.sprite, withSprite.cards.find(c => c.id === 'OP9-001').sprite);
+});

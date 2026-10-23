@@ -720,3 +720,11 @@ button.link:focus-visible { outline: 2px solid var(--straw); outline-offset: 2px
   .bk-main { grid-template-columns: 1fr; }
   .bk-3d { width: 100%; max-width: 280px; height: auto; aspect-ratio: 1; }
 }
+
+/* Sprite (figurina u TTS-u): mala slika s prozirnom pozadinom, na šahovnici da se vidi prozirnost. */
+.thumbs figure.sprite img, .sprite-img {
+  width: auto; height: 120px; max-width: 120px; object-fit: contain; aspect-ratio: auto;
+  background: repeating-conic-gradient(#2a2a2a 0 25%, #1e1e1e 0 50%) 0 0 / 16px 16px;
+}
+.sprite-btn { padding: 4px; clip-path: none; background: none; border-radius: 6px; cursor: zoom-in; }
+.sprite-btn:hover { background: var(--surface-2); }

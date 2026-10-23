@@ -713,6 +713,14 @@ function renderEntry(e) {
     state.store.imageUrl(e.old).then(u => { if (u) oldImg.src = u; else oldImg.replaceWith(h('div', { class: 'noimg' }, 'stara slika nije u data/images')); });
     imgs.append(zoomable(h('figure', {}, oldImg, h('figcaption', { class: 'stale' }, 'nema PNG-a: ostaje stara')), { card: e.old }));
   }
+  if (e.spritePng) {
+    const p = e.spritePng;
+    if (!pngUrls.has(p.path)) pngUrls.set(p.path, URL.createObjectURL(p.file));
+    imgs.append(zoomable(h('figure', { class: 'sprite' }, h('img', { alt: `${e.card.name} sprite`, src: pngUrls.get(p.path), loading: 'lazy' }),
+      h('figcaption', {}, e.old ? (e.spriteChanged ? 'novi sprite' : 'sprite isti') : 'sprite')),
+      { url: pngUrls.get(p.path), title: `${e.id} · ${e.card.name} · ${p.path}` }));
+  }
+  const only = [e.imageChanged && 'slika', e.spriteChanged && 'sprite'].filter(Boolean);
   const rows = e.old
     ? e.diffs.map(k => h('tr', {}, h('th', {}, k), h('td', { class: 'was' }, fmt(e.old[k])), h('td', { class: 'now' }, fmt(e.card[k]))))
     : CE_FIELDS.filter(k => e.card[k] !== undefined).map(k => h('tr', {}, h('th', {}, k), h('td', { colspan: 2 }, fmt(e.card[k]))));
@@ -726,7 +734,7 @@ function renderEntry(e) {
     h('div', { class: 'entry-body' }, imgs,
       h('div', {},
         rows.length ? h('table', { class: 'diff' }, rows) : null,
-        e.old && !e.diffs.length ? h('p', { class: 'muted' }, e.imageChanged ? 'Promijenjena je samo slika.' : '') : null)));
+        e.old && !e.diffs.length && only.length ? h('p', { class: 'muted' }, `Promijenjen${only.length > 1 ? 'i su' : only[0] === 'slika' ? 'a je' : ' je'} samo ${only.join(' i ')}.`) : null)));
 }
 
 // ---------- Pregled ----------
@@ -862,6 +870,12 @@ function renderDetail() {
   const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'rev', 'imageHash']
     .filter(k => c[k] !== undefined)
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
+  if (c.sprite) {
+    const img = h('img', { class: 'sprite-img', alt: `${c.name} sprite` });
+    state.store.dataUrl(c.sprite).then(u => { if (u) img.src = u; });
+    rows.push(h('tr', {}, h('th', {}, 'sprite'), h('td', {}, h('button', { class: 'sprite-btn', title: 'Preko cijelog ekrana',
+      onclick: () => state.store.dataUrl(c.sprite).then(u => u && openViewer([{ url: u, title: `${c.id} · ${c.name} · sprite` }])) }, img))));
+  }
   const history = (state.changelog?.entries ?? []).flatMap(e => e.cards.filter(x => x.id === c.id).map(x => `v${e.version}: ${describeChange(x)}`)).reverse();
   if (history.length) rows.push(h('tr', {}, h('th', {}, 'povijest'), h('td', {}, history.join(' · '))));
   const inDecks = decksWith(c.id);
