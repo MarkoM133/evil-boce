@@ -350,6 +350,7 @@ async function writeDb(db) {
 async function pickFolder() {
   if (!window.showDirectoryPicker) throw new Error('Ovaj preglednik ne može otvoriti folder. Otvori stranicu u Chromeu ili Edgeu na računalu.');
   const handle = await fs.pickRoot();
+  state.savedRoot = handle;
   await useStore(folderStore(handle));
   state.tab = 'import';
   if (!(await fs.getDir(handle, 'export')) && !(await fs.getDir(handle, 'data'))) {
@@ -586,7 +587,8 @@ function renderHeader() {
     h('div', { class: 'folder' },
       h('span', { class: 'folder-name', title: server ? 'Podaci s računala preko servera' : 'Odabrani Drive folder' }, server ? `${state.store.name} preko servera` : state.store.name),
       h('span', { class: 'folder-db' }, `Verzija ${state.db.version}`, h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${n === 1 ? 'karta' : 'karata'}`),
-      !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? 'Odaberi folder' : 'Promijeni folder') : null));
+      server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder za Uvoz i uređivanje', onclick: () => guard(() => resume(state.savedRoot)) }, `Nastavi s "${state.savedRoot.name}"`) : null,
+      !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Drugi folder' : 'Odaberi folder') : 'Promijeni folder') : null));
 }
 
 function renderWelcome() {
@@ -637,7 +639,9 @@ function renderImport() {
   if (!state.store.canImport) {
     return h('section', { class: 'panel' },
       h('p', { class: 'muted' }, 'Uvoz i Objava rade samo s odabranim Drive folderom, u Chromeu ili Edgeu na računalu. Ovdje su karte i deckovi s računala preko servera.'),
-      window.showDirectoryPicker ? h('div', { class: 'toolbar' }, h('button', { class: 'primary', onclick: () => guard(pickFolder) }, 'Odaberi folder')) : null);
+      window.showDirectoryPicker ? h('div', { class: 'toolbar' },
+        state.savedRoot ? h('button', { class: 'primary', onclick: () => guard(() => resume(state.savedRoot)) }, `Nastavi s "${state.savedRoot.name}"`) : null,
+        h('button', { class: state.savedRoot ? 'ghost' : 'primary', onclick: () => guard(pickFolder) }, state.savedRoot ? 'Drugi folder' : 'Odaberi folder')) : null);
   }
   const a = state.analysis;
   const wrap = h('section', { class: 'panel' },
@@ -1378,8 +1382,14 @@ window.addEventListener('beforeunload', e => {
   if (state.deck?.dirty) e.preventDefault();
 });
 
+// Zapamćeni folder s trajnom dozvolom ("Dopusti pri svakom posjetu") otvara se sam, i na lokalnom serveru;
+// inače preko servera (mobitel), ili početni ekran s "Nastavi s …".
+state.savedRoot = window.showDirectoryPicker ? await fs.loadRoot() : null;
 const info = await probeServer();
-if (info) {
+if (state.savedRoot && (await fs.permission(state.savedRoot).catch(() => 'denied')) === 'granted') {
+  await useStore(folderStore(state.savedRoot));
+  await applyHash().catch(e => toast(e.message || String(e), 'error'));
+} else if (info) {
   await useStore(serverStore(info));
   state.tab = 'decks';
   await applyHash().catch(e => toast(e.message || String(e), 'error'));
