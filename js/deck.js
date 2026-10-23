@@ -143,3 +143,12 @@ export function decodeDeck(code) {
   }
   return { catalogVersion: parseInt(version[1], 10), heroes, cards };
 }
+
+// Karte iz decka (heroji i karte) promijenjene nakon verzije baze s kojom je deck spremljen.
+// changes: rezultat changesSince(changelog, deck.catalogVersion). Vraća [{ id, changes }] redom kao u decku.
+export function deckChanges(deck, changes) {
+  const ids = [...deck.heroes, ...Object.keys(deck.cards).filter(id => deck.cards[id] > 0)];
+  return [...new Set(ids)]
+    .map(id => ({ id, changes: (changes.get(id) ?? []).filter(c => c.kind !== 'new') }))
+    .filter(x => x.changes.length);
+}

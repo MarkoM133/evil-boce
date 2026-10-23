@@ -117,7 +117,9 @@ function deckSummary(slug, d) {
     slug,
     name: d.name,
     heroes: d.heroes ?? [],
+    cards: d.cards ?? {},
     count: Object.values(d.cards ?? {}).reduce((s, n) => s + n, 0),
+    catalogVersion: d.catalogVersion ?? 0,
     rev: d.rev ?? 0,
     updated: d.updated ?? null,
   };
@@ -227,12 +229,18 @@ async function handle(req, res) {
   return file ? sendFile(res, file) : fail(res, 403, 'zabranjeno');
 }
 
-for (const host of cfg.hosts) {
+// Tailscale adresa pri prijavi u Windows zna kasniti: adresa koje još nema pokušava se ponovo svakih 30 s.
+function listen(host, retry = false) {
   http
     .createServer((req, res) => handle(req, res).catch(e => {
       console.error(e);
       if (!res.headersSent) fail(res, 500, 'greška na serveru');
     }))
-    .on('error', e => console.error(`${host}:${cfg.port}: ${e.message}`))
+    .on('error', e => {
+      if (!retry) console.error(`${host}:${cfg.port}: ${e.message}`);
+      if (e.code === 'EADDRNOTAVAIL') setTimeout(() => listen(host, true), 30_000);
+    })
     .listen(cfg.port, host, () => console.log(`Evil Boće server: http://${host === '127.0.0.1' ? 'localhost' : host}:${cfg.port}/  (folder ${cfg.drive})`));
 }
+
+for (const host of cfg.hosts) listen(host);

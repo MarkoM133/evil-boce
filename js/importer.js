@@ -220,6 +220,58 @@ export function obsoleteImages(db, imageFiles, steamUrls) {
   });
 }
 
+// Povijest promjena (data/changelog.json): jedan zapis po verziji baze, piše ga app pri Objavi i spremanju app polja.
+// { entries: [{ version, date, cards: [{ id, name, kind: new|changed|deleted|restored, fields: [...], image }] }] }
+export const CHANGELOG_PATH = 'data/changelog.json';
+
+export function emptyChangelog() {
+  return { entries: [] };
+}
+
+// Razlika dvije verzije baze, za zapis u povijest.
+export function changelogEntry(oldDb, newDb) {
+  const oldById = new Map(oldDb.cards.map(c => [c.id, c]));
+  const cards = [];
+  for (const c of newDb.cards) {
+    const o = oldById.get(c.id);
+    if (!o) {
+      cards.push({ id: c.id, name: c.name, kind: 'new', fields: [], image: false });
+      continue;
+    }
+    const fields = [...CE_FIELDS, 'wt', 'bakugan'].filter(k => !same(o[k], c[k]));
+    const image = o.imageHash !== c.imageHash;
+    const kind = !o.deleted && c.deleted ? 'deleted' : o.deleted && !c.deleted ? 'restored' : 'changed';
+    if (fields.length || image || kind !== 'changed') cards.push({ id: c.id, name: c.name, kind, fields, image });
+  }
+  return { version: newDb.version, date: newDb.updated, cards };
+}
+
+export function appendChangelog(log, entry) {
+  if (!entry.cards.length) return log;
+  return { entries: [...log.entries.filter(e => e.version !== entry.version), entry].sort((a, b) => a.version - b.version) };
+}
+
+// Što se promijenilo nakon verzije `since`: id -> [{ version, kind, fields, image }], od starijih prema novijima.
+export function changesSince(log, since) {
+  const out = new Map();
+  for (const e of log.entries) {
+    if (e.version <= since) continue;
+    for (const c of e.cards) {
+      if (!out.has(c.id)) out.set(c.id, []);
+      out.get(c.id).push({ version: e.version, kind: c.kind, fields: c.fields, image: c.image });
+    }
+  }
+  return out;
+}
+
+// Kratak opis promjene karte: "values, slika", "nova", "maknuta".
+export function describeChange(c) {
+  if (c.kind === 'new') return 'nova';
+  if (c.kind === 'deleted') return 'maknuta';
+  if (c.kind === 'restored') return 'vraćena';
+  return [...c.fields, ...(c.image ? ['slika'] : [])].join(', ');
+}
+
 // export/ je sanduče: nakon Objave pročitani fileovi idu u export/objavljeno/<datum vrijeme>/, a Uvoz arhivu preskače.
 export const ARCHIVE_DIR = 'export/objavljeno';
 

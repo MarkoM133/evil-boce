@@ -1,6 +1,6 @@
 // Izvor podataka za app: Drive folder (File System Access, računalo) ili lokalni server (mobitel preko Tailscalea).
 // Oba imaju isto sučelje za bazu karata, slike i deckove; uvoz i Objava postoje samo u folderu.
-import { emptyDb, thumbName } from './importer.js';
+import { emptyDb, emptyChangelog, thumbName, CHANGELOG_PATH } from './importer.js';
 import * as fs from './fsdir.js';
 
 export class ConflictError extends Error {
@@ -15,7 +15,9 @@ function summary(slug, d) {
     slug,
     name: d.name,
     heroes: d.heroes ?? [],
+    cards: d.cards ?? {},
     count: Object.values(d.cards ?? {}).reduce((s, n) => s + n, 0),
+    catalogVersion: d.catalogVersion ?? 0,
     rev: d.rev ?? 0,
     updated: d.updated ?? null,
   };
@@ -51,6 +53,10 @@ export function serverStore(info) {
       const r = await fetch('data/cards.json', { cache: 'no-store' });
       if (r.status === 404) return emptyDb();
       return json(r);
+    },
+    async readChangelog() {
+      const r = await fetch(CHANGELOG_PATH, { cache: 'no-store' });
+      return r.ok ? r.json() : emptyChangelog();
     },
     // thumb: URL sličice; ako je nema na serveru, pozivatelj padne na punu sliku (onerror).
     async imageUrl(card, { thumb = false } = {}) {
@@ -98,6 +104,9 @@ export function folderStore(root) {
     root,
     async readDb() {
       return (await readJson('data/cards.json')) ?? emptyDb();
+    },
+    async readChangelog() {
+      return (await readJson(CHANGELOG_PATH)) ?? emptyChangelog();
     },
     // thumb: sličica ako postoji, inače null (pozivatelj uzme punu sliku).
     async imageUrl(card, { thumb = false } = {}) {

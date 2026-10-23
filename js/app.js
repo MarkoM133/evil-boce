@@ -1,6 +1,7 @@
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, THUMB_WIDTH, CE_FIELDS, ARCHIVE_DIR, archiveFolder, archivePath } from './importer.js';
+import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, THUMB_WIDTH, CE_FIELDS, ARCHIVE_DIR, archiveFolder, archivePath,
+  CHANGELOG_PATH, changelogEntry, appendChangelog, changesSince, describeChange } from './importer.js';
 import { TYPES, COLOR_NAMES, DECK_TYPES } from './parse.js';
-import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, LIMITS, DECK_SIZE } from './deck.js';
+import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
 import * as fs from './fsdir.js';
 
@@ -13,7 +14,9 @@ const state = {
   logo: null,
   analysis: null,
   tab: 'import',
-  filter: { q: '', type: '', color: '', deleted: false },
+  filter: { q: '', type: '', color: '', deleted: false, sort: 'id', since: 0 },
+  changelog: null,
+  inbox: 0, // fileova u sanduču export/ (samo folder)
   selected: null,
   busy: false,
   decks: [],
@@ -185,6 +188,22 @@ function showViewer() {
   el.querySelector('.viewer-close').focus();
 }
 
+// Prečaci izvan polja za unos: / za tražilicu, Ctrl+Z za Poništi u decku.
+document.addEventListener('keydown', e => {
+  if (viewer.el || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+  if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const search = $('main input[type=search]');
+    if (search) {
+      e.preventDefault();
+      search.focus();
+      search.select();
+    }
+  } else if (e.key.toLowerCase() === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey && state.tab === 'decks' && state.deck?.undo?.length) {
+    e.preventDefault();
+    undoDeck();
+  }
+});
+
 document.addEventListener('keydown', e => {
   if (!viewer.el) return;
   if (e.key === 'Escape') closeViewer();
@@ -208,15 +227,51 @@ async function useStore(store) {
   state.analysis = null;
   state.selected = null;
   state.db = await store.readDb();
+  state.changelog = await store.readChangelog();
   state.logo = await store.logoUrl();
   state.decks = await store.listDecks();
   state.deck = null;
+  state.inbox = await countInbox();
   replaceNext = true;
+  whatsNew();
 }
 
 async function reloadDb() {
   state.db = await state.store.readDb();
+  state.changelog = await state.store.readChangelog();
   state.store.dropImageUrls?.();
+}
+
+// Fileovi koji čekaju u sanduču export/ (bez arhive).
+async function countInbox() {
+  if (!state.store?.canImport) return 0;
+  const dir = await fs.getDir(root(), 'export');
+  return dir ? (await fs.walkFiles(dir, 'export', path => path === ARCHIVE_DIR)).length : 0;
+}
+
+// Kad se vratiš u app (npr. iz OneDrivea), broj u sanduču se osvježi bez ponovnog crtanja stranice.
+window.addEventListener('focus', async () => {
+  if (!state.store?.canImport || state.busy) return;
+  const n = await countInbox().catch(() => state.inbox);
+  if (n === state.inbox) return;
+  state.inbox = n;
+  $('#tab-import')?.replaceChildren(...tabLabel('import', 'Uvoz'));
+  if (state.tab === 'import' && !state.analysis) render();
+});
+
+const SEEN_KEY = 'evil-boce-seen-version';
+
+// Nova verzija baze od zadnjeg otvaranja na ovom uređaju: kratka poruka što se promijenilo.
+function whatsNew() {
+  let seen = null;
+  try { seen = Number(localStorage.getItem(SEEN_KEY)) || null; } catch {}
+  try { localStorage.setItem(SEEN_KEY, String(state.db.version)); } catch {}
+  if (!seen || state.db.version <= seen) return;
+  const kinds = [...changesSince(state.changelog, seen).values()].map(list => (list.some(c => c.kind === 'new') ? 'new' : list.at(-1).kind));
+  const count = (...k) => kinds.filter(x => k.includes(x)).length;
+  const parts = [[count('new'), 'nova', 'nove', 'novih'], [count('changed', 'restored'), 'promijenjena', 'promijenjene', 'promijenjenih'], [count('deleted'), 'maknuta', 'maknute', 'maknutih']]
+    .filter(([n]) => n).map(([n, ...w]) => `${n} ${plural(n, ...w)}`);
+  toast(`Nova verzija karata v${state.db.version}${parts.length ? `: ${parts.join(', ')}` : ''}. Detalji: Pregled → Povijest promjena.`);
 }
 
 const root = () => state.store.root;
@@ -231,9 +286,15 @@ async function assertFresh() {
   }
 }
 
+// Uz bazu se zapiše i povijest promjena (razlika prema dosadašnjoj verziji).
 async function writeDb(db) {
+  const old = state.db;
   await fs.writeFile(root(), DB_PATH, JSON.stringify(db, null, 2) + '\n');
   state.db = db;
+  const log = appendChangelog(await state.store.readChangelog(), changelogEntry(old, db));
+  await fs.writeFile(root(), CHANGELOG_PATH, JSON.stringify(log, null, 2) + '\n');
+  state.changelog = log;
+  try { localStorage.setItem(SEEN_KEY, String(db.version)); } catch {}
 }
 
 // ---------- akcije: folder i uvoz ----------
@@ -287,13 +348,14 @@ async function publish() {
   }
   const thumbs = await updateThumbs(db);
   const archived = await archiveExport(a.files);
+  state.inbox = await countInbox();
   state.analysis = null;
   state.store.dropImageUrls();
   const parts = [];
-  if (changed) parts.push(`verzija ${db.version}, ${changed} karata`);
-  if (thumbs) parts.push(`${thumbs} sličica`);
-  if (old.length) parts.push(`obrisano ${old.length} starih slika`);
-  if (archived.moved) parts.push(`${archived.moved} fileova iz export/ premješteno u ${archived.folder}/`);
+  if (changed) parts.push(`verzija ${db.version}, ${changed} ${plural(changed, 'karta', 'karte', 'karata')}`);
+  if (thumbs) parts.push(`${thumbs} ${plural(thumbs, 'sličica', 'sličice', 'sličica')}`);
+  if (old.length) parts.push(`obrisano starih slika: ${old.length}`);
+  if (archived.moved) parts.push(`${archived.moved} ${plural(archived.moved, 'file', 'filea', 'fileova')} iz export/ premješteno u ${archived.folder}/`);
   const msg = changed || thumbs ? `Objavljeno: ${parts.join(', ')}.`
     : parts.length ? `Nema promjena karata; ${parts.join(', ')}.` : 'Nema promjena za objavu.';
   if (archived.left.length) toast(`${msg} U export/ je ostalo ${archived.left.length} fileova promijenjenih nakon Uvoza; ponovi Uvezi.`, 'warn');
@@ -486,6 +548,12 @@ function renderWelcome() {
   return box;
 }
 
+// Uvoz nosi broj fileova koji čekaju u sanduču export/.
+function tabLabel(key, label) {
+  const n = key === 'import' ? state.inbox : 0;
+  return [label, n ? h('span', { class: 'tab-badge', title: `${n} fileova čeka u export/` }, n) : null].filter(Boolean);
+}
+
 function renderMain() {
   const tabs = [
     ['import', 'Uvoz'],
@@ -497,7 +565,7 @@ function renderMain() {
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
       h('nav', { class: 'tabs', role: 'tablist' },
-        tabs.map(([key, label]) => h('button', { role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, label))),
+        tabs.map(([key, label]) => h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, tabLabel(key, label)))),
       state.tab === 'decks' ? renderDeckList() : null,
       h('p', { class: 'soon' }, 'Katalog i TTS dolaze u kasnijim fazama.')),
     h('main', {}, view));
@@ -521,6 +589,8 @@ function renderImport() {
       a?.errors.length ? h('span', { class: 'error-text' }, 'Objava je blokirana dok ima grešaka.') : null,
       a?.missingThumbs ? h('span', { class: 'muted' }, `Nedostaje ${a.missingThumbs} malih sličica (za brže učitavanje); Objavi ih napravi.`) : null));
   if (!a) {
+    wrap.append(h('p', { class: `inbox-line${state.inbox ? ' waiting' : ''}` },
+      state.inbox ? `U export/ čeka ${state.inbox} ${state.inbox === 1 ? 'file' : 'fileova'}.` : 'export/ je prazan: nema ništa novo za uvoz.'));
     wrap.append(h('p', { class: 'muted' }, 'Čita sve XML-ove i PNG-ove iz export/ (i podfoldera), uspoređuje ih s data/cards.json i pokaže što će se promijeniti. Ništa se ne zapisuje dok ne klikneš Objavi. Nakon Objave fileovi iz export/ idu u export/objavljeno/, pa u export/ ostaje samo ono što još nije objavljeno.'));
     return wrap;
   }
@@ -603,15 +673,49 @@ function renderEntry(e) {
 
 // ---------- Pregled ----------
 
+const SORTS = {
+  id: ['Kod', () => 0],
+  cost: ['Cost', (a, b) => (a.cost ?? 99) - (b.cost ?? 99)],
+  name: ['Ime', (a, b) => a.name.localeCompare(b.name)],
+  type: ['Tip', (a, b) => TYPES.indexOf(a.type) - TYPES.indexOf(b.type)],
+};
+const byCode = (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true });
+
 function filtered() {
-  const { q, type, color, deleted } = state.filter;
+  const { q, type, color, deleted, sort, since } = state.filter;
   const needle = q.trim().toLowerCase();
+  const changed = since ? changesSince(state.changelog, since - 1) : null;
   return state.db.cards.filter(c =>
     (deleted || !c.deleted) &&
     (!type || c.type === type) &&
     (!color || c.color === color) &&
-    (!needle || [c.id, c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)));
+    (!changed || changed.has(c.id)) &&
+    (!needle || [c.id, c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)))
+    .sort((a, b) => SORTS[sort][1](a, b) || byCode(a, b));
 }
+
+const plural = (n, one, few, many) => (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many);
+const shortDate = iso => (iso ? new Date(iso).toLocaleDateString('hr-HR', { day: 'numeric', month: 'numeric', year: 'numeric' }) : '');
+
+// Povijest promjena baze, od najnovije verzije; imena karata otvaraju kartu.
+function renderHistory() {
+  const entries = [...(state.changelog?.entries ?? [])].reverse();
+  if (!entries.length) return null;
+  const cardLink = c => h('button', { class: 'link', onclick: () => openCard(c.id) }, `${c.id} ${c.name}`);
+  return h('details', { class: 'history' },
+    h('summary', {}, `Povijest promjena (${entries.length} ${plural(entries.length, 'verzija', 'verzije', 'verzija')})`),
+    entries.map(e => {
+      const fresh = e.cards.filter(c => c.kind === 'new');
+      const rest = e.cards.filter(c => c.kind !== 'new');
+      return h('section', { class: 'history-entry' },
+        h('h3', {}, `v${e.version}`, h('span', { class: 'muted' }, ` ${shortDate(e.date)} · ${e.cards.length} ${plural(e.cards.length, 'karta', 'karte', 'karata')}`)),
+        rest.length ? h('ul', {}, rest.map(c => h('li', {}, cardLink(c), h('span', { class: `change ${c.kind}` }, describeChange(c))))) : null,
+        fresh.length ? h('p', { class: 'history-new' }, h('span', { class: 'change new' }, `${plural(fresh.length, 'nova', 'nove', 'novih')} (${fresh.length}):`), ' ', fresh.flatMap((c, i) => [i ? ', ' : null, cardLink(c)]).filter(Boolean)) : null);
+    }));
+}
+
+// Deckovi u kojima je karta (kao heroj ili u decku).
+const decksWith = id => state.decks.filter(d => !d.broken && (d.heroes.includes(id) || d.cards?.[id] > 0));
 
 function renderBrowse() {
   const f = state.filter;
@@ -621,7 +725,15 @@ function renderBrowse() {
       h('input', { type: 'search', placeholder: 'Traži ime, tekst, trait, kod…', value: f.q, oninput: e => set('q', e.target.value) }),
       h('select', { onchange: e => set('type', e.target.value) }, h('option', { value: '' }, 'Svi tipovi'), TYPES.map(t => h('option', { value: t, selected: f.type === t }, t))),
       h('select', { onchange: e => set('color', e.target.value) }, h('option', { value: '' }, 'Sve boje'), COLOR_NAMES.map(c => h('option', { value: c, selected: f.color === c }, c))),
+      h('select', { 'aria-label': 'Poredaj', onchange: e => set('sort', e.target.value) }, Object.entries(SORTS).map(([k, [label]]) => h('option', { value: k, selected: f.sort === k }, `Poredaj: ${label}`))),
+      state.changelog?.entries.length > 1
+        ? h('select', { 'aria-label': 'Promjene', onchange: e => set('since', Number(e.target.value)) },
+            h('option', { value: 0 }, 'Sve karte'),
+            [...state.changelog.entries].reverse().map(e => h('option', { value: e.version, selected: f.since === e.version }, `Promijenjene od v${e.version} (${shortDate(e.date)})`)))
+        : null,
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.deleted, onchange: e => set('deleted', e.target.checked) }), 'prikaži maknute')),
+    h('p', { id: 'grid-count', class: 'muted small' }),
+    renderHistory(),
     h('div', { id: 'grid', class: 'grid' }),
     h('div', { id: 'detail' }));
   queueMicrotask(() => { renderGrid(); renderDetail(); });
@@ -637,6 +749,8 @@ function renderGrid() {
     return;
   }
   grid.replaceChildren(...(cards.length ? cards.map(tile) : [h('p', { class: 'muted' }, 'Nijedna karta ne odgovara filtru.')]));
+  const all = state.db.cards.filter(c => state.filter.deleted || !c.deleted).length;
+  $('#grid-count')?.replaceChildren(cards.length === all ? `${all} ${plural(all, 'karta', 'karte', 'karata')}` : `${cards.length} od ${all} karata`);
 }
 
 function tile(c) {
@@ -690,6 +804,13 @@ function renderDetail() {
   const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bakugan', 'bonus', 'values', 'traits', 'text', 'rev', 'imageHash']
     .filter(k => c[k] !== undefined)
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
+  const history = (state.changelog?.entries ?? []).flatMap(e => e.cards.filter(x => x.id === c.id).map(x => `v${e.version}: ${describeChange(x)}`)).reverse();
+  if (history.length) rows.push(h('tr', {}, h('th', {}, 'povijest'), h('td', {}, history.join(' · '))));
+  const inDecks = decksWith(c.id);
+  if (inDecks.length) {
+    rows.push(h('tr', {}, h('th', {}, 'u deckovima'), h('td', {}, inDecks.flatMap((d, i) => [i ? ', ' : null,
+      h('button', { class: 'link', onclick: () => { if (confirmDiscard()) { state.tab = 'decks'; guard(() => openDeck(d.slug)); } } }, d.name)]).filter(Boolean))));
+  }
   box.replaceChildren(
     h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: closeCard }, 'Zatvori')),
     h('div', { class: 'detail-body' },
@@ -736,7 +857,7 @@ async function saveDeck() {
     throw e;
   }
   if (d.slug && d.slug !== slug) await state.store.deleteDeck(d.slug, d.rev).catch(() => {});
-  state.deck = { ...d, slug, name, rev: saved.rev, dirty: false };
+  state.deck = { ...d, slug, name, rev: saved.rev, catalogVersion: state.db.version, dirty: false };
   replaceNext = true;
   state.decks = await state.store.listDecks();
   toast(`Spremljeno: ${name}`);
@@ -758,8 +879,12 @@ async function deleteDeck() {
 }
 
 function changeDeck(fn) {
-  fn(state.deck);
-  state.deck.dirty = true;
+  const d = state.deck;
+  d.undo ??= [];
+  d.undo.push(JSON.stringify({ heroes: d.heroes, cards: d.cards }));
+  if (d.undo.length > 100) d.undo.shift();
+  fn(d);
+  d.dirty = true;
   refreshDeck();
 }
 
@@ -791,6 +916,7 @@ function renderDeckList() {
           },
             h('span', { class: 'deck-item-name' }, x.name),
             h('span', { class: 'deck-item-sub' }, x.broken ? 'neispravan file' : `${x.heroes.map(id => cardById(id)?.name ?? id).join(', ') || 'bez heroja'}`),
+            x.broken ? null : deckFlags(x),
             h('span', { class: 'deck-item-count' }, x.broken ? '' : `${x.count}/${DECK_SIZE}`)))))
       : h('p', { class: 'muted' }, 'Još nema spremljenih deckova.'),
     h('details', { class: 'code-import' },
@@ -798,6 +924,53 @@ function renderDeckList() {
       h('form', { onsubmit: e => { e.preventDefault(); importCode(e.target.elements.code.value); } },
         h('input', { name: 'code', placeholder: 'EB1|v1|…', autocomplete: 'off', spellcheck: false }),
         h('button', { type: 'submit' }, 'Učitaj'))));
+}
+
+// Karte iz decka promijenjene od kad je spremljen (prema povijesti promjena).
+function changedInDeck(deck) {
+  if (deck.catalogVersion === undefined || deck.catalogVersion >= state.db.version || !state.changelog) return [];
+  return deckChanges(deck, changesSince(state.changelog, deck.catalogVersion));
+}
+
+// Na popisu: spreman ili ne, i koliko se karata promijenilo od spremanja.
+function deckFlags(x) {
+  const ready = checkDeck(state.db, x).ready;
+  const changed = changedInDeck(x).length;
+  return h('span', { class: 'deck-item-flags' },
+    h('span', { class: ready ? 'ok' : 'bad' }, ready ? 'Spreman' : 'Nije spreman'),
+    changed ? h('span', { class: 'changed' }, `${changed} ${plural(changed, 'karta promijenjena', 'karte promijenjene', 'karata promijenjeno')}`) : null);
+}
+
+// U otvorenom decku: što se promijenilo od spremanja; nestane kad se deck ponovno spremi.
+function renderDeckChanges() {
+  const list = changedInDeck(state.deck);
+  if (!list.length) return null;
+  const cards = list.map(x => cardById(x.id)).filter(Boolean);
+  return h('div', { class: 'deck-changes' },
+    h('strong', {}, `Od kad je deck spremljen (baza v${state.deck.catalogVersion}) promijenilo se:`),
+    h('ul', {}, list.map(x => {
+      const c = cardById(x.id);
+      const what = x.changes.map(ch => `v${ch.version}: ${describeChange(ch)}`).join('; ');
+      return h('li', {}, c ? h('button', { class: 'link', onclick: () => openViewer(cards.map(k => ({ card: k })), cards.indexOf(c)) }, c.name) : x.id, h('span', { class: 'muted' }, ` ${what}`));
+    })),
+    h('span', { class: 'muted small' }, 'Spremi deck da ovo nestane.'));
+}
+
+// Poništi: stanje heroja i karata prije svake promjene decka (ime ima svoj Ctrl+Z u polju).
+function undoDeck() {
+  const d = state.deck;
+  const prev = d?.undo?.pop();
+  if (!prev) return;
+  Object.assign(d, JSON.parse(prev), { dirty: true });
+  refreshDeck();
+}
+
+function duplicateDeck() {
+  const d = state.deck;
+  state.deck = { ...newDeck(), name: `${d.name.trim() || 'Deck'} (kopija)`, heroes: [...d.heroes], cards: { ...d.cards }, catalogVersion: d.catalogVersion, dirty: true };
+  state.deckView = 'deck';
+  render();
+  toast('Napravljena kopija. Promijeni ime i spremi je.');
 }
 
 function importCode(code) {
@@ -809,7 +982,7 @@ function importCode(code) {
     return;
   }
   if (!confirmDiscard()) return;
-  state.deck = { ...newDeck(), heroes: parsed.heroes, cards: parsed.cards, dirty: true };
+  state.deck = { ...newDeck(), heroes: parsed.heroes, cards: parsed.cards, catalogVersion: parsed.catalogVersion, dirty: true };
   state.deckView = 'deck';
   if (parsed.catalogVersion > state.db.version) toast(`Kod je iz novije baze (v${parsed.catalogVersion}, ovdje v${state.db.version}). Neke karte možda nedostaju.`, 'warn');
   render();
@@ -824,8 +997,11 @@ function renderDeckEditor() {
       h('div', { class: 'deck-actions' },
         h('button', { class: 'publish', onclick: () => guard(saveDeck) }, 'Spremi'),
         h('button', { class: 'ghost', onclick: copyCode }, 'Kopiraj kod'),
+        h('button', { id: 'undo-btn', class: 'ghost', title: 'Poništi zadnju promjenu heroja ili karata (Ctrl+Z)', onclick: undoDeck }, 'Poništi'),
+        h('button', { class: 'ghost', title: 'Napravi kopiju ovog decka pod novim imenom', onclick: duplicateDeck }, 'Dupliciraj'),
         d.slug ? h('button', { class: 'ghost', onclick: () => guard(deleteDeck) }, 'Obriši') : null)),
     h('div', { id: 'deck-code' }),
+    renderDeckChanges(),
     h('div', { id: 'deck-heroes', class: 'hero-slots' }),
     h('div', { class: 'view-switch', role: 'tablist' },
       h('button', { id: 'sw-pool', role: 'tab', onclick: () => setDeckView('pool') }, 'Bazen'),
@@ -862,6 +1038,8 @@ function refreshDeck() {
   renderDeckStatus();
   renderSwitch();
   updateStrip();
+  const undo = $('#undo-btn');
+  if (undo) undo.disabled = !state.deck.undo?.length;
 }
 
 function renderSwitch() {
@@ -978,7 +1156,7 @@ function renderDeckPanel() {
           h('input', { type: 'range', min: 0, max: 1, step: 0.1, value: state.focus.value, oninput: e => { state.focus.value = Number(e.target.value); } })) : null),
       h('div', { class: 'random-row' },
         h('button', { class: 'primary', disabled: d.heroes.length === 0 || r.count >= DECK_SIZE, onclick: fillRandom }, 'Popuni nasumično'),
-        h('button', { class: 'ghost', disabled: !r.count, onclick: () => { if (window.confirm('Izbaciti sve karte iz decka? Heroji ostaju.')) changeDeck(x => { x.cards = {}; }); } }, 'Isprazni'))),
+        h('button', { class: 'ghost', disabled: !r.count, onclick: () => { changeDeck(x => { x.cards = {}; }); toast('Deck je ispražnjen (heroji ostaju). Poništi ili Ctrl+Z ga vraća.'); } }, 'Isprazni'))),
     r.count ? h('div', { class: 'deck-charts' }, costCurve(r.curve), colorSplit(r.byColor, r.count)) : null,
     groups.length || unknown.length
       ? h('div', { class: 'deck-rows' },

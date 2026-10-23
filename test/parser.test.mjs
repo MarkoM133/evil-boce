@@ -3,7 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCardEngineXml, cleanText } from '../js/parse.js';
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, thumbPlan, archiveFolder, archivePath } from '../js/importer.js';
+import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, thumbPlan, archiveFolder, archivePath, emptyChangelog, changelogEntry, appendChangelog, changesSince, describeChange } from '../js/importer.js';
+import { deckChanges } from '../js/deck.js';
 
 const RGB = { Cyan: [0, 255, 255], Red: [255, 0, 0], White: [255, 255, 255], Odd: [10, 20, 30] };
 const ICON = { kb: 24, pwr: 25, rng: 26, dmg: 27, hp: 28 };
@@ -269,4 +270,33 @@ test('sam PNG bez XML-a: nova slika postojeće karte po imenu', async () => {
   assert.equal(now.rev, old.rev + 1);
   for (const k of ['name', 'type', 'cost', 'text', 'traits']) assert.deepEqual(now[k], old[k]);
   assert.equal(next.writes.length, 1);
+});
+
+test('povijest: zapis po verziji, promjene od verzije, promjene u decku', async () => {
+  const { pub } = await firstImport();
+  let log = appendChangelog(emptyChangelog(), changelogEntry(emptyDb(), pub.db));
+  assert.equal(log.entries[0].version, 1);
+  assert.deepEqual(log.entries[0].cards.map(c => c.kind), ['new', 'new', 'new', 'new']);
+
+  // v2: Punch dobije novi cost i sliku; v3: Island maknut (app polje).
+  const a = await analyzeExport({ xmlFiles: [{ path: 'export/x.xml', text: xml(card({ ...ACTION, cost: '2' })), lastModified: 1 }], pngFiles: [png([9], 'export/Punch.png')], db: pub.db });
+  const v2 = buildPublish(pub.db, a, new Date('2026-10-23T10:00:00Z')).db;
+  log = appendChangelog(log, changelogEntry(pub.db, v2));
+  const v3 = applyAppEdits(v2, { 'Stage-009': { deleted: true } }).db;
+  log = appendChangelog(log, changelogEntry(v2, v3));
+  assert.deepEqual(log.entries.map(e => e.version), [1, 2, 3]);
+  assert.deepEqual(log.entries[1].cards, [{ id: 'OP9-002', name: 'Punch', kind: 'changed', fields: ['cost'], image: true }]);
+  assert.equal(describeChange(log.entries[1].cards[0]), 'cost, slika');
+  assert.equal(describeChange(log.entries[2].cards[0]), 'maknuta');
+
+  // Bez promjena nema novog zapisa.
+  assert.equal(appendChangelog(log, changelogEntry(v3, v3)), log);
+
+  const since1 = changesSince(log, 1);
+  assert.deepEqual([...since1.keys()], ['OP9-002', 'Stage-009']);
+  assert.deepEqual([...changesSince(log, 2).keys()], ['Stage-009']);
+
+  const deck = { heroes: ['OP9-001'], cards: { 'OP9-002': 2, 'OP9-003': 0 } };
+  assert.deepEqual(deckChanges(deck, since1).map(x => [x.id, x.changes.map(c => c.version)]), [['OP9-002', [2]]]);
+  assert.deepEqual(deckChanges(deck, changesSince(log, 0)), [{ id: 'OP9-002', changes: [{ version: 2, kind: 'changed', fields: ['cost'], image: true }] }]);
 });

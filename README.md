@@ -37,6 +37,7 @@ Evil Boce/
   export/objavljeno/ nakon Objave app ovamo premjesti pročitane exporte (podfolder po datumu); Uvoz ga preskače
   data/cards.json    baza karata (piše je app)
   data/images/       slike, ID.hash.png
+  data/changelog.json povijest promjena po verziji baze (piše je app)
   decks/             deckovi, ime-decka.json
   logo.jpg           logo (po želji)
 ```
