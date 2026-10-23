@@ -376,7 +376,8 @@ test('sprite: uz heroja iz XML-a, sam za postojećeg, Evolution bez razmaka iza 
   assert.equal(h.image, base.db.cards.find(c => c.id === 'OP9-001').image, 'slika karte ista');
   assert.ok(h.sprite);
   const entry = changelogEntry(base.db, next.db);
-  assert.deepEqual(entry.cards.map(c => [c.id, describeChange(c)]), [['OP9-001', 'sprite'], ['OP9-003', 'sprite']]);
+  assert.deepEqual(entry.cards.map(c => [c.id, describeChange(c)]), [['OP9-001', 'izgled: sprite'], ['OP9-003', 'izgled: sprite']]);
+  assert.equal(next.db.version, base.db.version, 'samo sprite: verzija ostaje');
 });
 
 test('sprite za kartu koja nije heroj ni Evolution se preskače uz upozorenje', async () => {
@@ -417,4 +418,31 @@ test('arhiva: objavljeni PNG-ovi (slika karte, sprite) su u data/, token PNG ost
     db: emptyDb(),
   });
   assert.deepEqual([...publishedPngPaths(a)].sort(), ['export/cards/OP9-001 Hero A.png', 'export/sprites/OP9-001 Hero A Sprite.png']);
+});
+
+test('izgled (bakugan, sprite) ne diže verziju, skuplja se pod nju i ne broji se kao promjena karte', async () => {
+  const { pub } = await firstImport();
+  let log = appendChangelog(emptyChangelog(), changelogEntry(emptyDb(), pub.db));
+  // oblik i boja bakugana: verzija ostaje 1, karta ne dobije novi rev
+  const a = applyAppEdits(pub.db, { 'OP9-001': { bakuganShape: 'dragonoid' } });
+  assert.deepEqual([a.db.version, a.bumped, a.db.cards[0].rev], [1, false, pub.db.cards[0].rev]);
+  log = appendChangelog(log, changelogEntry(pub.db, a.db));
+  const b = applyAppEdits(a.db, { 'OP9-001': { bakuganColor: '#ff0000' } });
+  log = appendChangelog(log, changelogEntry(a.db, b.db));
+  assert.deepEqual(log.entries.map(e => e.version), [1], 'izgled ide pod v1');
+  const hero = log.entries[0].cards.find(c => c.id === 'OP9-001');
+  assert.equal(describeChange(hero), 'nova · izgled: oblik bakugana, boja bakugana');
+  // igra (wt) diže verziju; deckovi vide samo igru
+  const c = applyAppEdits(b.db, { 'OP9-001': { wt: 3 } });
+  assert.deepEqual([c.db.version, c.bumped], [2, true]);
+  log = appendChangelog(log, changelogEntry(b.db, c.db));
+  const d = applyAppEdits(c.db, { 'OP9-001': { bakuganColor: '#00ff00' } });
+  log = appendChangelog(log, changelogEntry(c.db, d.db));
+  assert.deepEqual(log.entries.map(e => e.version), [1, 2]);
+  assert.equal(describeChange(log.entries[1].cards[0]), 'wt · izgled: boja bakugana');
+  assert.deepEqual([...changesSince(log, 1)].map(([id, l]) => [id, l.map(x => x.fields)]), [['OP9-001', [['wt']]]]);
+  // stari zapisi: izgled u fields ili sprite: true ne pali deckove
+  const old = { entries: [{ version: 3, cards: [{ id: 'X', name: 'X', kind: 'changed', fields: [], image: false, sprite: true }] }, { version: 4, cards: [{ id: 'X', name: 'X', kind: 'changed', fields: ['bakuganShape'], image: false }] }] };
+  assert.equal(changesSince(old, 2).size, 0);
+  assert.deepEqual(old.entries.map(e => describeChange(e.cards[0])), ['izgled: sprite', 'izgled: oblik bakugana']);
 });

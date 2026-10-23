@@ -329,7 +329,7 @@ const root = () => state.store.root;
 // Drive sinkronizira između dva računala: prije pisanja provjeri da baza nije promijenjena u međuvremenu.
 async function assertFresh() {
   const disk = await state.store.readDb();
-  if (disk.version !== state.db.version) {
+  if (disk.version !== state.db.version || disk.updated !== state.db.updated) {
     state.db = disk;
     state.analysis = null;
     throw new Error(`cards.json je u međuvremenu promijenjen (verzija ${disk.version}). Ponovi Uvezi.`);
@@ -387,7 +387,7 @@ async function publish() {
   const a = state.analysis;
   if (!a || a.errors.length) return;
   await assertFresh();
-  const { db, writes, changed } = buildPublish(state.db, a);
+  const { db, writes, changed, bumped } = buildPublish(state.db, a);
   let old = [];
   if (changed) {
     for (const w of writes) await fs.writeFile(root(), w.path, await w.png.getBytes());
@@ -404,7 +404,7 @@ async function publish() {
   state.analysis = null;
   state.store.dropImageUrls();
   const parts = [];
-  if (changed) parts.push(`verzija ${db.version}, ${changed} ${plural(changed, 'karta', 'karte', 'karata')}`);
+  if (changed) parts.push(bumped ? `verzija ${db.version}, ${changed} ${plural(changed, 'karta', 'karte', 'karata')}` : `izgled ${changed} ${plural(changed, 'karte', 'karte', 'karata')} (verzija ostaje v${db.version})`);
   if (thumbs) parts.push(`${thumbs} ${plural(thumbs, 'umanjena slika', 'umanjene slike', 'umanjenih slika')}`);
   if (old.length) parts.push(`obrisano starih slika: ${old.length}`);
   if (archived.moved) parts.push(`${archived.moved} ${plural(archived.moved, 'file', 'filea', 'fileova')} iz export/ premješteno u ${archived.folder}/`);
@@ -499,14 +499,14 @@ async function ensureBakuganTextures(db) {
 
 async function saveEdits(id, edits) {
   await assertFresh();
-  const { db, changed } = applyAppEdits(state.db, { [id]: edits });
+  const { db, changed, bumped } = applyAppEdits(state.db, { [id]: edits });
   if (!changed) {
     toast('Nema promjena.');
     return;
   }
   await writeDb(db);
   if ('bakuganShape' in edits || 'bakuganColor' in edits) await ensureBakuganTextures(db);
-  toast(`Spremljeno: verzija ${db.version}.`);
+  toast(bumped ? `Spremljeno: verzija ${db.version}.` : `Spremljeno (izgled; verzija ostaje v${db.version}).`);
 }
 
 // ---------- prikaz: okvir ----------

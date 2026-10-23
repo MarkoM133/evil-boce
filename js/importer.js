@@ -6,6 +6,8 @@ import { parseCardEngineXml, CODE_RE } from './parse.js';
 export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'values', 'traits', 'text'];
 // Polja koja se uređuju samo u appu. Ponovni uvoz ih ne dira.
 export const APP_FIELDS = ['wt', 'bakugan', 'bakuganShape', 'bakuganColor', 'deleted'];
+// Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
+export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor'];
 const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'bakugan', 'bakuganShape', 'bakuganColor', 'image', 'imageHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
@@ -244,6 +246,7 @@ function withAppFields(ce, old) {
 export function buildPublish(db, analysis, now = new Date()) {
   const writes = [];
   const touched = new Map();
+  let gameChanges = 0;
   for (const e of analysis.entries) {
     if (e.status === 'same') continue;
     const card = withAppFields(e.card, e.old);
@@ -263,23 +266,29 @@ export function buildPublish(db, analysis, now = new Date()) {
       card.sprite = e.old.sprite;
       card.spriteHash = e.old.spriteHash;
     }
-    card.rev = (e.old?.rev ?? 0) + 1;
+    const game = !e.old || e.diffs.length > 0 || e.imageChanged;
+    if (game) gameChanges++;
+    card.rev = (e.old?.rev ?? 0) + (game ? 1 : 0);
     touched.set(e.id, ordered(card));
   }
-  if (!touched.size) return { db, writes, changed: 0 };
+  if (!touched.size) return { db, writes, changed: 0, bumped: false };
   const cards = db.cards.map(c => touched.get(c.id) ?? c);
   for (const [id, c] of touched) if (!db.cards.some(o => o.id === id)) cards.push(c);
   cards.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  // Samo izgled (npr. novi sprite): verzija ostaje, promjena se skuplja pod nju (vidi LOOK_FIELDS).
   return {
-    db: { version: db.version + 1, updated: now.toISOString(), cards },
+    db: { version: db.version + (gameChanges ? 1 : 0), updated: now.toISOString(), cards },
     writes,
     changed: touched.size,
+    bumped: gameChanges > 0,
   };
 }
 
 // Izmjena app polja (wt, bakugan, deleted). edits: { [id]: { wt?, bakugan?, deleted? } }
+// Igra (wt, deleted) diže verziju; samo izgled (oblik i boja bakugana) ne, nego se skuplja pod trenutnu verziju.
 export function applyAppEdits(db, edits, now = new Date()) {
   let changed = 0;
+  let game = 0;
   const cards = db.cards.map(c => {
     const e = edits[c.id];
     if (!e) return c;
@@ -287,11 +296,15 @@ export function applyAppEdits(db, edits, now = new Date()) {
     for (const k of APP_FIELDS) if (k in e) next[k] = e[k];
     if (same(next, c)) return c;
     changed++;
-    next.rev = (c.rev ?? 0) + 1;
+    const isGame = APP_FIELDS.some(k => !LOOK_FIELDS.includes(k) && !same(next[k], c[k]));
+    if (isGame) {
+      game++;
+      next.rev = (c.rev ?? 0) + 1;
+    }
     return ordered(next);
   });
-  if (!changed) return { db, changed };
-  return { db: { version: db.version + 1, updated: now.toISOString(), cards }, changed };
+  if (!changed) return { db, changed, bumped: false };
+  return { db: { version: db.version + (game ? 1 : 0), updated: now.toISOString(), cards }, changed, bumped: game > 0 };
 }
 
 // Stare verzije slika (data/images/ID.hash.png) koje se smiju obrisati: samo kad za trenutnu
@@ -315,7 +328,8 @@ export function emptyChangelog() {
   return { entries: [] };
 }
 
-// Razlika dvije verzije baze, za zapis u povijest.
+// Razlika dvije verzije baze, za zapis u povijest. fields = igra (polja karte, wt), image = slika karte,
+// look = izgled (oblik i boja bakugana, sprite): izgled ne diže verziju i ne broji se kao promjena karte.
 export function changelogEntry(oldDb, newDb) {
   const oldById = new Map(oldDb.cards.map(c => [c.id, c]));
   const cards = [];
@@ -325,41 +339,69 @@ export function changelogEntry(oldDb, newDb) {
       cards.push({ id: c.id, name: c.name, kind: 'new', fields: [], image: false });
       continue;
     }
-    const fields = [...CE_FIELDS, 'wt', 'bakugan', 'bakuganShape', 'bakuganColor'].filter(k => !same(o[k], c[k]));
+    const fields = [...CE_FIELDS, 'wt'].filter(k => !same(o[k], c[k]));
     const image = o.imageHash !== c.imageHash;
-    const sprite = o.spriteHash !== c.spriteHash;
+    const look = [...LOOK_FIELDS.filter(k => !same(o[k], c[k])), ...(o.spriteHash !== c.spriteHash ? ['sprite'] : [])];
     const kind = !o.deleted && c.deleted ? 'deleted' : o.deleted && !c.deleted ? 'restored' : 'changed';
-    if (fields.length || image || sprite || kind !== 'changed') cards.push({ id: c.id, name: c.name, kind, fields, image, ...(sprite ? { sprite } : {}) });
+    if (fields.length || image || look.length || kind !== 'changed') cards.push({ id: c.id, name: c.name, kind, fields, image, ...(look.length ? { look } : {}) });
   }
   return { version: newDb.version, date: newDb.updated, cards };
 }
 
+const union = (a = [], b = []) => [...new Set([...a, ...b])];
+
+// Zapis iste verzije (izgled skupljen pod trenutnu verziju) spaja se s postojećim, karta po karta.
 export function appendChangelog(log, entry) {
   if (!entry.cards.length) return log;
-  return { entries: [...log.entries.filter(e => e.version !== entry.version), entry].sort((a, b) => a.version - b.version) };
+  const prev = log.entries.find(e => e.version === entry.version);
+  let merged = entry;
+  if (prev) {
+    const byId = new Map(prev.cards.map(c => [c.id, { ...c }]));
+    for (const c of entry.cards) {
+      const p = byId.get(c.id);
+      if (!p) { byId.set(c.id, c); continue; }
+      const look = union(p.look, c.look);
+      byId.set(c.id, {
+        ...p,
+        kind: c.kind !== 'changed' ? c.kind : p.kind,
+        fields: union(p.fields, c.fields),
+        image: !!(p.image || c.image),
+        ...(look.length ? { look } : {}),
+      });
+    }
+    merged = { ...prev, cards: [...byId.values()] };
+  }
+  return { entries: [...log.entries.filter(e => e.version !== entry.version), merged].sort((a, b) => a.version - b.version) };
 }
 
-// Što se promijenilo nakon verzije `since`: id -> [{ version, kind, fields, image }], od starijih prema novijima.
+// Stari zapisi (do v4) imaju izgled u fields ('bakuganShape') ili kao sprite: true.
+const lookOf = c => union(union(c.look, (c.fields ?? []).filter(f => LOOK_FIELDS.includes(f))), c.sprite ? ['sprite'] : []);
+const gameFieldsOf = c => (c.fields ?? []).filter(f => !LOOK_FIELDS.includes(f));
+const isGameChange = c => c.kind !== 'changed' || c.image || gameFieldsOf(c).length > 0;
+
+// Promjene igre nakon verzije `since` (izgled se ne broji): id -> [{ version, kind, fields, image }].
+// Za deckove ("karta promijenjena od spremanja") i poruku "nova verzija".
 export function changesSince(log, since) {
   const out = new Map();
   for (const e of log.entries) {
     if (e.version <= since) continue;
     for (const c of e.cards) {
+      if (!isGameChange(c)) continue;
       if (!out.has(c.id)) out.set(c.id, []);
-      out.get(c.id).push({ version: e.version, kind: c.kind, fields: c.fields, image: c.image });
+      out.get(c.id).push({ version: e.version, kind: c.kind, fields: gameFieldsOf(c), image: c.image });
     }
   }
   return out;
 }
 
-// Kratak opis promjene karte: "values, slika", "nova", "maknuta".
-const FIELD_LABELS = { bakuganShape: 'oblik bakugana', bakuganColor: 'boja bakugana' };
+// Kratak opis promjene karte: "values, slika", "nova", "maknuta", "izgled: oblik bakugana, sprite".
+const FIELD_LABELS = { bakuganShape: 'oblik bakugana', bakuganColor: 'boja bakugana', bakugan: 'bakugan', sprite: 'sprite' };
 
 export function describeChange(c) {
-  if (c.kind === 'new') return 'nova';
-  if (c.kind === 'deleted') return 'maknuta';
-  if (c.kind === 'restored') return 'vraćena';
-  return [...c.fields.map(f => FIELD_LABELS[f] ?? f), ...(c.image ? ['slika'] : []), ...(c.sprite ? ['sprite'] : [])].join(', ');
+  const kind = { new: 'nova', deleted: 'maknuta', restored: 'vraćena' }[c.kind];
+  const game = kind ? [kind] : [...gameFieldsOf(c), ...(c.image ? ['slika'] : [])];
+  const look = lookOf(c).map(f => FIELD_LABELS[f] ?? f);
+  return [game.join(', '), look.length ? `izgled: ${look.join(', ')}` : ''].filter(Boolean).join(' · ');
 }
 
 // export/ je sanduče: nakon Objave pročitani fileovi idu u export/objavljeno/<datum vrijeme>/, a Uvoz arhivu preskače.
