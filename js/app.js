@@ -200,9 +200,9 @@ function buildViewer() {
   const el = h('div', { class: 'viewer', role: 'dialog', 'aria-modal': 'true', onclick: e => { if (e.target === el || e.target === img) closeViewer(); } },
     img,
     h('div', { class: 'viewer-bar' }, h('span', { class: 'viewer-title' }), h('span', { class: 'viewer-n' })),
-    h('button', { class: 'viewer-nav prev', 'aria-label': 'Prethodna karta', onclick: () => stepViewer(-1) }, icon('prev')),
-    h('button', { class: 'viewer-nav next', 'aria-label': 'Sljedeća karta', onclick: () => stepViewer(1) }, icon('next')),
-    h('button', { class: 'viewer-close', 'aria-label': 'Zatvori', onclick: () => closeViewer() }, icon('close')));
+    h('button', { class: 'viewer-nav prev', 'aria-label': 'Previous card', onclick: () => stepViewer(-1) }, icon('prev')),
+    h('button', { class: 'viewer-nav next', 'aria-label': 'Next card', onclick: () => stepViewer(1) }, icon('next')),
+    h('button', { class: 'viewer-close', 'aria-label': 'Close', onclick: () => closeViewer() }, icon('close')));
   let x0 = null;
   el.addEventListener('touchstart', e => { x0 = e.touches.length === 1 && (window.visualViewport?.scale ?? 1) < 1.05 ? e.touches[0].clientX : null; }, { passive: true });
   el.addEventListener('touchend', e => {
@@ -271,7 +271,7 @@ document.addEventListener('keydown', e => {
 });
 
 // Gumb koji otvara sliku karte preko cijelog ekrana; list je popis kroz koji se lista strelicama.
-function zoomButton(card, list, label = 'Povećaj') {
+function zoomButton(card, list, label = 'Enlarge') {
   return h('button', { class: 'zoom', title: `${label}: ${card.name}`, 'aria-label': `${label}: ${card.name}`, onclick: e => { e.stopPropagation(); openViewer(list.map(c => ({ card: c })), list.indexOf(card)); } }, icon('zoom'));
 }
 
@@ -290,7 +290,7 @@ async function useStore(store) {
   state.decks = await store.listDecks();
   state.deck = null;
   state.inbox = await countInbox();
-  if (store.canImport) await ensureBakuganTextures(state.db).catch(e => console.warn("teksture bakugana", e));
+  if (store.canImport) await ensureBakuganTextures(state.db).catch(e => console.warn("bakugan textures", e));
   replaceNext = true;
   whatsNew();
 }
@@ -314,7 +314,7 @@ window.addEventListener('focus', async () => {
   const n = await countInbox().catch(() => state.inbox);
   if (n === state.inbox) return;
   state.inbox = n;
-  $('#tab-import')?.replaceChildren(...tabLabel('import', 'Uvoz'));
+  $('#tab-import')?.replaceChildren(...tabLabel('import', 'Import'));
   if (state.tab === 'import' && !state.analysis) render();
 });
 
@@ -328,9 +328,9 @@ function whatsNew() {
   if (!seen || state.db.version <= seen) return;
   const kinds = [...changesSince(state.changelog, seen).values()].map(list => (list.some(c => c.kind === 'new') ? 'new' : list.at(-1).kind));
   const count = (...k) => kinds.filter(x => k.includes(x)).length;
-  const parts = [[count('new'), 'nova', 'nove', 'novih'], [count('changed', 'restored'), 'promijenjena', 'promijenjene', 'promijenjenih'], [count('deleted'), 'maknuta', 'maknute', 'maknutih']]
-    .filter(([n]) => n).map(([n, ...w]) => `${n} ${plural(n, ...w)}`);
-  toast(`Nova verzija karata v${state.db.version}${parts.length ? `: ${parts.join(', ')}` : ''}. Detalji: Pregled → Povijest promjena.`);
+  const parts = [[count('new'), 'new'], [count('changed', 'restored'), 'changed'], [count('deleted'), 'deleted']]
+    .filter(([n]) => n).map(([n, w]) => `${n} ${w}`);
+  toast(`Cards updated to v${state.db.version}${parts.length ? `: ${parts.join(', ')}` : ''}. Details: Browse → Change history.`);
 }
 
 const root = () => state.store.root;
@@ -341,7 +341,7 @@ async function assertFresh() {
   if (disk.version !== state.db.version || disk.updated !== state.db.updated) {
     state.db = disk;
     state.analysis = null;
-    throw new Error(`cards.json je u međuvremenu promijenjen (verzija ${disk.version}). Ponovi Uvezi.`);
+    throw new Error(`cards.json was changed in the meantime (version ${disk.version}). Run Import again.`);
   }
 }
 
@@ -359,25 +359,25 @@ async function writeDb(db) {
 // ---------- akcije: folder i uvoz ----------
 
 async function pickFolder() {
-  if (!window.showDirectoryPicker) throw new Error('Ovaj preglednik ne može otvoriti folder. Otvori stranicu u Chromeu ili Edgeu na računalu.');
+  if (!window.showDirectoryPicker) throw new Error('This browser can\'t open a folder. Open the page in Chrome or Edge on a computer.');
   const handle = await fs.pickRoot();
   state.savedRoot = handle;
   await useStore(folderStore(handle));
   state.tab = 'import';
   if (!(await fs.getDir(handle, 'export')) && !(await fs.getDir(handle, 'data'))) {
-    toast(`U folderu "${handle.name}" nema ni export/ ni data/. Je li to folder "Evil Boce"?`, 'warn');
+    toast(`The folder "${handle.name}" has neither export/ nor data/. Is it the "Evil Boce" folder?`, 'warn');
   }
 }
 
 async function resume(handle) {
-  if ((await fs.permission(handle, true)) !== 'granted') throw new Error('Pristup folderu nije dopušten.');
+  if ((await fs.permission(handle, true)) !== 'granted') throw new Error('Access to the folder was not allowed.');
   await useStore(folderStore(handle));
   await applyHash();
 }
 
 async function runImport() {
   const exportDir = await fs.getDir(root(), 'export');
-  if (!exportDir) throw new Error('Nema foldera export/ u odabranom folderu.');
+  if (!exportDir) throw new Error('The chosen folder has no export/ folder.');
   await reloadDb();
   const files = await fs.walkFiles(exportDir, 'export', path => path === ARCHIVE_DIR);
   const xmlFiles = [];
@@ -413,14 +413,14 @@ async function publish() {
   state.analysis = null;
   state.store.dropImageUrls();
   const parts = [];
-  if (changed) parts.push(bumped ? `verzija ${db.version}, ${changed} ${plural(changed, 'karta', 'karte', 'karata')}` : `izgled ${changed} ${plural(changed, 'karte', 'karte', 'karata')} (verzija ostaje v${db.version})`);
-  if (thumbs) parts.push(`${thumbs} ${plural(thumbs, 'umanjena slika', 'umanjene slike', 'umanjenih slika')}`);
-  if (old.length) parts.push(`obrisano starih slika: ${old.length}`);
-  if (archived.moved) parts.push(`${archived.moved} ${plural(archived.moved, 'file', 'filea', 'fileova')} iz export/ premješteno u ${archived.folder}/`);
-  if (archived.removed) parts.push(`${archived.removed} objavljenih PNG-ova maknuto iz export/ (već su u data/)`);
-  const msg = changed || thumbs ? `Objavljeno: ${parts.join(', ')}.`
-    : parts.length ? `Nema promjena karata; ${parts.join(', ')}.` : 'Nema promjena za objavu.';
-  if (archived.left.length) toast(`${msg} U export/ je ostalo ${archived.left.length} fileova promijenjenih nakon Uvoza; ponovi Uvezi.`, 'warn');
+  if (changed) parts.push(bumped ? `version ${db.version}, ${changed} ${plural(changed, 'card', 'cards')}` : `look of ${changed} ${plural(changed, 'card', 'cards')} (version stays v${db.version})`);
+  if (thumbs) parts.push(`${thumbs} ${plural(thumbs, 'resized image', 'resized images')}`);
+  if (old.length) parts.push(`old images deleted: ${old.length}`);
+  if (archived.moved) parts.push(`${archived.moved} ${plural(archived.moved, 'file', 'files')} moved from export/ to ${archived.folder}/`);
+  if (archived.removed) parts.push(`${archived.removed} published ${plural(archived.removed, 'PNG', 'PNGs')} removed from export/ (already in data/)`);
+  const msg = changed || thumbs ? `Published: ${parts.join(', ')}.`
+    : parts.length ? `No card changes; ${parts.join(', ')}.` : 'Nothing to publish.';
+  if (archived.left.length) toast(`${msg} Left in export/: ${archived.left.length} ${plural(archived.left.length, 'file', 'files')} changed after Import; run Import again.`, 'warn');
   else toast(msg);
 }
 
@@ -510,12 +510,12 @@ async function saveEdits(id, edits) {
   await assertFresh();
   const { db, changed, bumped } = applyAppEdits(state.db, { [id]: edits });
   if (!changed) {
-    toast('Nema promjena.');
+    toast('No changes.');
     return;
   }
   await writeDb(db);
   if ('bakuganShape' in edits || 'bakuganColor' in edits) await ensureBakuganTextures(db);
-  toast(bumped ? `Spremljeno: verzija ${db.version}.` : `Spremljeno (izgled; verzija ostaje v${db.version}).`);
+  toast(bumped ? `Saved: version ${db.version}.` : `Saved (look only; version stays v${db.version}).`);
 }
 
 // ---------- prikaz: okvir ----------
@@ -532,8 +532,11 @@ function render() {
 
 // ---------- adresa: svaki pogled ima svoj #/…, pa gesta ili tipka Natrag vraća korak unatrag ----------
 
-const TAB_SLUG = { import: 'uvoz', browse: 'pregled', decks: 'deckovi' };
+const TAB_SLUG = { import: 'import', browse: 'browse', decks: 'decks' };
 const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]));
+// Stare hrvatske adrese (#/uvoz, #/pregled, #/deckovi/novi) i dalje rade.
+const OLD_SLUG_TAB = { uvoz: 'import', pregled: 'browse', deckovi: 'decks' };
+const NEW_DECK = 'new';
 let replaceNext = true; // sljedeća promjena adrese zamjenjuje trenutnu umjesto da doda korak
 let cardPushed = false; // karta je otvorena iz mreže, pa je Zatvori isto što i Natrag
 
@@ -541,7 +544,7 @@ function currentHash() {
   const parts = [TAB_SLUG[state.tab]];
   if (state.tab === 'browse' && state.selected) parts.push(state.selected);
   if (state.tab === 'decks' && state.deck) {
-    parts.push(state.deck.slug ?? 'novi');
+    parts.push(state.deck.slug ?? NEW_DECK);
     if (state.deckView === 'deck') parts.push('deck');
   }
   return '#/' + parts.map(encodeURIComponent).join('/');
@@ -555,20 +558,22 @@ function syncHash() {
 
 // Postavi stanje prema adresi. Vraća false ako korisnik ne želi odbaciti nespremljeni deck.
 async function applyHash() {
-  const [tabSlug, id, view] = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
-  const tab = SLUG_TAB[tabSlug];
+  const [tabSlug, rawId, view] = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
+  const old = Object.hasOwn(OLD_SLUG_TAB, tabSlug);
+  const tab = old ? OLD_SLUG_TAB[tabSlug] : SLUG_TAB[tabSlug];
   if (!tab) return true;
+  const id = old && rawId === 'novi' ? NEW_DECK : rawId;
   if (tab === 'decks') {
     const want = id || null;
-    const have = state.deck ? (state.deck.slug ?? 'novi') : null;
+    const have = state.deck ? (state.deck.slug ?? NEW_DECK) : null;
     if (want !== have) {
       if (!confirmDiscard()) return false;
       if (!want) state.deck = null;
-      else if (want === 'novi') state.deck = newDeck();
+      else if (want === NEW_DECK) state.deck = newDeck();
       else if (state.decks.some(d => d.slug === want && !d.broken)) await openDeck(want);
       else {
         state.deck = null;
-        toast('Taj deck više ne postoji.', 'warn');
+        toast('That deck no longer exists.', 'warn');
       }
     }
     state.deckView = view === 'deck' ? 'deck' : 'pool';
@@ -606,7 +611,7 @@ function heroStrip() {
       class: `slice c-edge-${c.color}`,
       'data-id': c.id,
       title: c.name,
-      'aria-label': `${c.name}: otvori u Pregledu`,
+      'aria-label': `${c.name}: open in Browse`,
       onclick: () => { state.tab = 'browse'; state.selected = c.id; render(); },
     }, art, h('span', { class: 'slice-name' }, c.name));
   }));
@@ -633,27 +638,27 @@ function renderHeader() {
     heroStrip(),
     h('div', { class: 'brand' },
       state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
-      h('span', { class: 'brand-sub' }, 'Baza karata')),
+      h('span', { class: 'brand-sub' }, 'Card database')),
     h('div', { class: 'folder' },
-      h('span', { class: 'folder-name', title: server ? 'Podaci s računala preko servera' : 'Odabrani Drive folder' }, server ? `${state.store.name} preko servera` : state.store.name),
-      h('span', { class: 'folder-db' }, `Verzija ${state.db.version}`, h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${n === 1 ? 'karta' : 'karata'}`),
-      server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder za Uvoz i uređivanje', onclick: () => guard(() => resume(state.savedRoot)) }, `Nastavi s "${state.savedRoot.name}"`) : null,
-      !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Drugi folder' : 'Odaberi folder') : 'Promijeni folder') : null));
+      h('span', { class: 'folder-name', title: server ? 'Data from the computer, via server' : 'Chosen Drive folder' }, server ? `${state.store.name} via server` : state.store.name),
+      h('span', { class: 'folder-db' }, `Version ${state.db.version}`, h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
+      server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder for Import and editing', onclick: () => guard(() => resume(state.savedRoot)) }, `Continue with "${state.savedRoot.name}"`) : null,
+      !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Other folder' : 'Choose folder') : 'Change folder') : null));
 }
 
 function renderWelcome() {
   const actions = h('div', { class: 'welcome-actions' },
-    h('button', { class: 'primary', onclick: () => guard(pickFolder) }, 'Odaberi folder'));
+    h('button', { class: 'primary', onclick: () => guard(pickFolder) }, 'Choose folder'));
   const box = h('section', { class: 'welcome' },
     h('div', { class: 'emblem', 'aria-hidden': 'true' }, h('span', { class: 'ring' }), wordmark('big')),
     h('div', { class: 'welcome-text' },
-      h('h1', {}, 'Baza karata'),
-      h('p', {}, 'Odaberi zajednički Drive folder "Evil Boce". U njemu su export/ s exportima iz Card Enginea i data/ s bazom karata. Preglednik ga zapamti, pa se bira samo jednom.'),
+      h('h1', {}, 'Card database'),
+      h('p', {}, 'Choose the shared Drive folder "Evil Boce". It holds export/ with the Card Engine exports and data/ with the card database. The browser remembers it, so you only choose it once.'),
       actions,
-      !window.showDirectoryPicker ? h('p', { class: 'error-text' }, 'Ovaj preglednik ne može otvoriti folder. Otvori stranicu u Chromeu ili Edgeu.') : null));
+      !window.showDirectoryPicker ? h('p', { class: 'error-text' }, 'This browser can\'t open a folder. Open the page in Chrome or Edge.') : null));
   fs.loadRoot().then(handle => {
     if (!handle || state.store) return;
-    actions.append(h('button', { class: 'ghost', onclick: () => guard(() => resume(handle)) }, `Nastavi s "${handle.name}"`));
+    actions.append(h('button', { class: 'ghost', onclick: () => guard(() => resume(handle)) }, `Continue with "${handle.name}"`));
   });
   return box;
 }
@@ -661,14 +666,14 @@ function renderWelcome() {
 // Uvoz nosi broj fileova koji čekaju u sanduču export/.
 function tabLabel(key, label) {
   const n = key === 'import' ? state.inbox : 0;
-  return [label, n ? h('span', { class: 'tab-badge', title: `${n} fileova čeka u export/` }, n) : null].filter(Boolean);
+  return [label, n ? h('span', { class: 'tab-badge', title: `${n} ${plural(n, 'file', 'files')} waiting in export/` }, n) : null].filter(Boolean);
 }
 
 function renderMain() {
   const tabs = [
-    ['import', 'Uvoz'],
-    ['browse', 'Pregled'],
-    ['decks', 'Deckovi'],
+    ['import', 'Import'],
+    ['browse', 'Browse'],
+    ['decks', 'Decks'],
   ];
   const view = { import: renderImport, browse: renderBrowse, decks: renderDecks }[state.tab]();
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
@@ -677,49 +682,49 @@ function renderMain() {
       h('nav', { class: 'tabs', role: 'tablist' },
         tabs.map(([key, label]) => h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, tabLabel(key, label)))),
       state.tab === 'decks' ? renderDeckList() : null,
-      h('p', { class: 'soon' }, 'Katalog i TTS dolaze u kasnijim fazama.')),
+      h('p', { class: 'soon' }, 'Catalog and TTS come in later phases.')),
     h('main', {}, view));
 }
 
 // ---------- Uvoz ----------
 
-const STATUS_LABEL = { new: 'Nova', changed: 'Promijenjena', same: 'Bez promjene' };
+const STATUS_LABEL = { new: 'New', changed: 'Changed', same: 'Unchanged' };
 
 function renderImport() {
   if (!state.store.canImport) {
     return h('section', { class: 'panel' },
-      h('p', { class: 'muted' }, 'Uvoz i Objava rade samo s odabranim Drive folderom, u Chromeu ili Edgeu na računalu. Ovdje su karte i deckovi s računala preko servera.'),
+      h('p', { class: 'muted' }, 'Import and Publish only work with a chosen Drive folder, in Chrome or Edge on a computer. Here you see the cards and decks from the computer, via server.'),
       window.showDirectoryPicker ? h('div', { class: 'toolbar' },
-        state.savedRoot ? h('button', { class: 'primary', onclick: () => guard(() => resume(state.savedRoot)) }, `Nastavi s "${state.savedRoot.name}"`) : null,
-        h('button', { class: state.savedRoot ? 'ghost' : 'primary', onclick: () => guard(pickFolder) }, state.savedRoot ? 'Drugi folder' : 'Odaberi folder')) : null);
+        state.savedRoot ? h('button', { class: 'primary', onclick: () => guard(() => resume(state.savedRoot)) }, `Continue with "${state.savedRoot.name}"`) : null,
+        h('button', { class: state.savedRoot ? 'ghost' : 'primary', onclick: () => guard(pickFolder) }, state.savedRoot ? 'Other folder' : 'Choose folder')) : null);
   }
   const a = state.analysis;
   const wrap = h('section', { class: 'panel' },
     h('div', { class: 'toolbar' },
-      h('button', { class: 'primary', onclick: () => guard(runImport) }, a ? 'Ponovno učitaj export/' : 'Uvezi iz export/'),
-      a ? h('button', { class: 'publish', disabled: a.errors.length > 0 || (!a.entries.some(e => e.status !== 'same') && !a.missingThumbs && !a.files.length), onclick: () => guard(publish) }, 'Objavi') : null,
-      a?.errors.length ? h('span', { class: 'error-text' }, 'Objava je blokirana dok ima grešaka.') : null,
-      a?.missingThumbs ? h('span', { class: 'muted' }, `Nedostaje ${a.missingThumbs} ${plural(a.missingThumbs, 'umanjena slika', 'umanjene slike', 'umanjenih slika')} (sličice i velike slike za brže učitavanje); Objavi ih napravi.`) : null));
+      h('button', { class: 'primary', onclick: () => guard(runImport) }, a ? 'Reload export/' : 'Import from export/'),
+      a ? h('button', { class: 'publish', disabled: a.errors.length > 0 || (!a.entries.some(e => e.status !== 'same') && !a.missingThumbs && !a.files.length), onclick: () => guard(publish) }, 'Publish') : null,
+      a?.errors.length ? h('span', { class: 'error-text' }, 'Publishing is blocked while there are errors.') : null,
+      a?.missingThumbs ? h('span', { class: 'muted' }, `${a.missingThumbs} resized ${plural(a.missingThumbs, 'image', 'images')} missing (thumbnails and large images for faster loading); Publish creates them.`) : null));
   if (!a) {
     wrap.append(h('p', { class: `inbox-line${state.inbox ? ' waiting' : ''}` },
-      state.inbox ? `U export/ čeka ${state.inbox} ${state.inbox === 1 ? 'file' : 'fileova'}.` : 'export/ je prazan: nema ništa novo za uvoz.'));
-    wrap.append(h('p', { class: 'muted' }, 'Čita sve XML-ove i PNG-ove iz export/ (i podfoldera), uspoređuje ih s data/cards.json i pokaže što će se promijeniti. Ništa se ne zapisuje dok ne klikneš Objavi. Nakon Objave fileovi iz export/ idu u export/objavljeno/, pa u export/ ostaje samo ono što još nije objavljeno.'));
+      state.inbox ? `${state.inbox} ${plural(state.inbox, 'file', 'files')} waiting in export/.` : 'export/ is empty: nothing new to import.'));
+    wrap.append(h('p', { class: 'muted' }, 'Reads all XMLs and PNGs from export/ (and its subfolders), compares them with data/cards.json and shows what will change. Nothing is written until you click Publish. After Publish the files from export/ move to export/objavljeno/, so export/ only holds what is not published yet.'));
     return wrap;
   }
-  if (!a.files.length) wrap.append(h('p', { class: 'muted' }, 'export/ je prazan: sve je već objavljeno (arhiva je u export/objavljeno/).'));
+  if (!a.files.length) wrap.append(h('p', { class: 'muted' }, 'export/ is empty: everything is already published (the archive is in export/objavljeno/).'));
   const count = s => a.entries.filter(e => e.status === s).length;
   wrap.append(h('div', { class: 'stats' },
-    stat('Nove', count('new'), 'new'),
-    stat('Promijenjene', count('changed'), 'changed'),
-    stat('Bez promjene', count('same'), 'same'),
-    stat('Greške', a.errors.length, 'error'),
-    stat('Upozorenja', a.warnings.length, 'warn'),
-    h('p', { class: 'muted small' }, `${a.fileCount.xml} XML, ${a.fileCount.png} PNG u export/; nakon Objave idu u export/objavljeno/`)));
-  wrap.append(...[messages('Greške', a.errors, 'error'), messages('Upozorenja', a.warnings, 'warn'), messages('Info', a.infos, 'info', true)].filter(Boolean));
+    stat('New', count('new'), 'new'),
+    stat('Changed', count('changed'), 'changed'),
+    stat('Unchanged', count('same'), 'same'),
+    stat('Errors', a.errors.length, 'error'),
+    stat('Warnings', a.warnings.length, 'warn'),
+    h('p', { class: 'muted small' }, `${a.fileCount.xml} XML, ${a.fileCount.png} PNG in export/; after Publish they move to export/objavljeno/`)));
+  wrap.append(...[messages('Errors', a.errors, 'error'), messages('Warnings', a.warnings, 'warn'), messages('Info', a.infos, 'info', true)].filter(Boolean));
   const changes = a.entries.filter(e => e.status !== 'same');
-  if (changes.length) wrap.append(h('h3', {}, 'Promjene'), h('div', { class: 'changes' }, changes.map(renderEntry)));
+  if (changes.length) wrap.append(h('h3', {}, 'Changes'), h('div', { class: 'changes' }, changes.map(renderEntry)));
   const same = a.entries.filter(e => e.status === 'same');
-  if (same.length) wrap.append(h('details', { class: 'same' }, h('summary', {}, `Bez promjene (${same.length})`), h('p', { class: 'muted' }, same.map(e => `${e.id} ${e.card.name}`).join(', '))));
+  if (same.length) wrap.append(h('details', { class: 'same' }, h('summary', {}, `Unchanged (${same.length})`), h('p', { class: 'muted' }, same.map(e => `${e.id} ${e.card.name}`).join(', '))));
   return wrap;
 }
 
@@ -748,65 +753,65 @@ function renderEntry(e) {
   const zoomable = (fig, item) => {
     const i = items.push(item) - 1;
     fig.classList.add('zoomable');
-    fig.title = 'Preko cijelog ekrana';
+    fig.title = 'Full screen';
     fig.addEventListener('click', () => openViewer(items, i));
     return fig;
   };
   if (e.old && e.imageChanged) {
-    const oldImg = h('img', { alt: 'stara slika', loading: 'lazy' });
-    state.store.imageUrl(e.old).then(u => { if (u) oldImg.src = u; else oldImg.replaceWith(h('div', { class: 'noimg' }, 'stara slika nije u data/images')); });
-    imgs.append(zoomable(h('figure', {}, oldImg, h('figcaption', {}, 'prije')), { card: e.old, title: `${e.id} · prije` }));
+    const oldImg = h('img', { alt: 'old image', loading: 'lazy' });
+    state.store.imageUrl(e.old).then(u => { if (u) oldImg.src = u; else oldImg.replaceWith(h('div', { class: 'noimg' }, 'old image is not in data/images')); });
+    imgs.append(zoomable(h('figure', {}, oldImg, h('figcaption', {}, 'before')), { card: e.old, title: `${e.id} · before` }));
   }
   if (e.png) {
     if (!pngUrls.has(e.png.path)) pngUrls.set(e.png.path, URL.createObjectURL(e.png.file));
     imgs.append(zoomable(h('figure', {}, h('img', { alt: e.card.name, src: pngUrls.get(e.png.path), loading: 'lazy' }),
-      h('figcaption', { class: e.staleImage ? 'stale' : null }, e.old ? (e.imageChanged ? 'nova slika' : e.staleImage ? 'slika ista: stara?' : 'slika ista') : 'slika')),
+      h('figcaption', { class: e.staleImage ? 'stale' : null }, e.old ? (e.imageChanged ? 'new image' : e.staleImage ? 'same image: outdated?' : 'same image') : 'image')),
       { url: pngUrls.get(e.png.path), title: `${e.id} · ${e.card.name} · ${e.png.path}` }));
   } else if (e.staleImage) {
-    const oldImg = h('img', { alt: 'stara slika', loading: 'lazy' });
-    state.store.imageUrl(e.old).then(u => { if (u) oldImg.src = u; else oldImg.replaceWith(h('div', { class: 'noimg' }, 'stara slika nije u data/images')); });
-    imgs.append(zoomable(h('figure', {}, oldImg, h('figcaption', { class: 'stale' }, 'nema PNG-a: ostaje stara')), { card: e.old }));
+    const oldImg = h('img', { alt: 'old image', loading: 'lazy' });
+    state.store.imageUrl(e.old).then(u => { if (u) oldImg.src = u; else oldImg.replaceWith(h('div', { class: 'noimg' }, 'old image is not in data/images')); });
+    imgs.append(zoomable(h('figure', {}, oldImg, h('figcaption', { class: 'stale' }, 'no PNG: old one stays')), { card: e.old }));
   }
   if (e.spritePng) {
     const p = e.spritePng;
     if (!pngUrls.has(p.path)) pngUrls.set(p.path, URL.createObjectURL(p.file));
     imgs.append(zoomable(h('figure', { class: 'sprite' }, h('img', { alt: `${e.card.name} sprite`, src: pngUrls.get(p.path), loading: 'lazy' }),
-      h('figcaption', {}, e.old ? (e.spriteChanged ? 'novi sprite' : 'sprite isti') : 'sprite')),
+      h('figcaption', {}, e.old ? (e.spriteChanged ? 'new sprite' : 'same sprite') : 'sprite')),
       { url: pngUrls.get(p.path), title: `${e.id} · ${e.card.name} · ${p.path}` }));
   }
-  const only = [e.imageChanged && 'slika', e.spriteChanged && 'sprite'].filter(Boolean);
+  const only = [e.imageChanged && 'image', e.spriteChanged && 'sprite'].filter(Boolean);
   const rows = e.old
     ? e.diffs.map(k => h('tr', {}, h('th', {}, k), h('td', { class: 'was' }, fmt(e.old[k])), h('td', { class: 'now' }, fmt(e.card[k]))))
     : CE_FIELDS.filter(k => e.card[k] !== undefined).map(k => h('tr', {}, h('th', {}, k), h('td', { colspan: 2 }, fmt(e.card[k]))));
   return h('article', { class: `entry ${e.status}` },
     h('header', {},
       h('span', { class: `badge ${e.status}` }, STATUS_LABEL[e.status]),
-      e.staleImage ? h('span', { class: 'badge stale' }, 'Slika možda stara') : null,
+      e.staleImage ? h('span', { class: 'badge stale' }, 'Image may be outdated') : null,
       h('code', {}, e.id), h('strong', {}, e.card.name),
       e.card.color ? h('span', { class: `chip c-${e.card.color}` }, e.card.color) : null,
       h('span', { class: 'muted small' }, e.file)),
     h('div', { class: 'entry-body' }, imgs,
       h('div', {},
         rows.length ? h('table', { class: 'diff' }, rows) : null,
-        e.old && !e.diffs.length && only.length ? h('p', { class: 'muted' }, `Promijenjen${only.length > 1 ? 'i su' : only[0] === 'slika' ? 'a je' : ' je'} samo ${only.join(' i ')}.`) : null)));
+        e.old && !e.diffs.length && only.length ? h('p', { class: 'muted' }, `Only the ${only.join(' and ')} changed.`) : null)));
 }
 
 // ---------- Pregled ----------
 
 const SORTS = {
-  id: ['Kod', () => 0],
+  id: ['Code', () => 0],
   cost: ['Cost', (a, b) => (a.cost ?? 99) - (b.cost ?? 99)],
-  name: ['Ime', (a, b) => a.name.localeCompare(b.name)],
-  type: ['Tip', (a, b) => TYPES.indexOf(a.type) - TYPES.indexOf(b.type)],
+  name: ['Name', (a, b) => a.name.localeCompare(b.name)],
+  type: ['Type', (a, b) => TYPES.indexOf(a.type) - TYPES.indexOf(b.type)],
 };
 const byCode = (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true });
 
 // Brzi filteri (gumbi iznad karata), uz tip i boju: set (prefiks koda) i posebni.
 const setOf = c => c.id.split('-')[0];
 const SPECIAL = {
-  novo: ['Novo', 'Karte nove ili promijenjene u zadnjoj verziji (i izgled pod njom)'],
-  bezBakugana: ['Bez bakugana', 'Heroji kojima još nije izabran bakugan'],
-  bezSpritea: ['Bez spritea', 'Heroji i evolucije bez spritea (figurina u TTS-u)'],
+  novo: ['New', 'Cards new or changed in the latest version (including look changes under it)'],
+  bezBakugana: ['No bakugan', 'Heroes that have no bakugan chosen yet'],
+  bezSpritea: ['No sprite', 'Heroes and evolutions without a sprite (figurine in TTS)'],
 };
 
 function specialFilter(name) {
@@ -836,8 +841,8 @@ function filtered() {
     .sort((a, b) => SORTS[sort][1](a, b) || byCode(a, b));
 }
 
-const plural = (n, one, few, many) => (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many);
-const shortDate = iso => (iso ? new Date(iso).toLocaleDateString('hr-HR', { day: 'numeric', month: 'numeric', year: 'numeric' }) : '');
+const plural = (n, one, other) => (n === 1 ? one : other);
+const shortDate = iso => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'numeric', year: 'numeric' }) : '');
 
 // Povijest promjena baze, od najnovije verzije; imena karata otvaraju kartu.
 function renderHistory() {
@@ -845,14 +850,14 @@ function renderHistory() {
   if (!entries.length) return null;
   const cardLink = c => h('button', { class: 'link', onclick: () => openCard(c.id) }, `${c.id} ${c.name}`);
   return h('details', { class: 'history' },
-    h('summary', {}, `Povijest promjena (${entries.length} ${plural(entries.length, 'verzija', 'verzije', 'verzija')})`),
+    h('summary', {}, `Change history (${entries.length} ${plural(entries.length, 'version', 'versions')})`),
     entries.map(e => {
       const fresh = e.cards.filter(c => c.kind === 'new');
       const rest = e.cards.filter(c => c.kind !== 'new');
       return h('section', { class: 'history-entry' },
-        h('h3', {}, `v${e.version}`, h('span', { class: 'muted' }, ` ${shortDate(e.date)} · ${e.cards.length} ${plural(e.cards.length, 'karta', 'karte', 'karata')}`)),
+        h('h3', {}, `v${e.version}`, h('span', { class: 'muted' }, ` ${shortDate(e.date)} · ${e.cards.length} ${plural(e.cards.length, 'card', 'cards')}`)),
         rest.length ? h('ul', {}, rest.map(c => h('li', {}, cardLink(c), h('span', { class: `change ${c.kind}` }, describeChange(c))))) : null,
-        fresh.length ? h('p', { class: 'history-new' }, h('span', { class: 'change new' }, `${plural(fresh.length, 'nova', 'nove', 'novih')} (${fresh.length}):`), ' ', fresh.flatMap((c, i) => [i ? ', ' : null, cardLink(c)]).filter(Boolean)) : null);
+        fresh.length ? h('p', { class: 'history-new' }, h('span', { class: 'change new' }, `new (${fresh.length}):`), ' ', fresh.flatMap((c, i) => [i ? ', ' : null, cardLink(c)]).filter(Boolean)) : null);
     }));
 }
 
@@ -864,12 +869,12 @@ function renderBrowse() {
   const set = (k, v) => { f[k] = v; renderGrid(); };
   const panel = h('section', { class: 'panel' },
     h('div', { class: 'filters' },
-      h('input', { type: 'search', placeholder: 'Traži ime, tekst, trait, kod…', value: f.q, oninput: e => set('q', e.target.value) }),
-      h('select', { 'aria-label': 'Poredaj', onchange: e => set('sort', e.target.value) }, Object.entries(SORTS).map(([k, [label]]) => h('option', { value: k, selected: f.sort === k }, `Poredaj: ${label}`))),
+      h('input', { type: 'search', placeholder: 'Search name, text, trait, code…', value: f.q, oninput: e => set('q', e.target.value) }),
+      h('select', { 'aria-label': 'Sort', onchange: e => set('sort', e.target.value) }, Object.entries(SORTS).map(([k, [label]]) => h('option', { value: k, selected: f.sort === k }, `Sort: ${label}`))),
       state.changelog?.entries.length > 1
-        ? h('select', { 'aria-label': 'Promjene', onchange: e => set('since', Number(e.target.value)) },
-            h('option', { value: 0 }, 'Sve karte'),
-            [...state.changelog.entries].reverse().map(e => h('option', { value: e.version, selected: f.since === e.version }, `Promijenjene od v${e.version} (${shortDate(e.date)})`)))
+        ? h('select', { 'aria-label': 'Changes', onchange: e => set('since', Number(e.target.value)) },
+            h('option', { value: 0 }, 'All cards'),
+            [...state.changelog.entries].reverse().map(e => h('option', { value: e.version, selected: f.since === e.version }, `Changed since v${e.version} (${shortDate(e.date)})`)))
         : null),
     renderQuickFilters(),
     h('p', { id: 'grid-count', class: 'muted small' }),
@@ -890,18 +895,18 @@ function renderQuickFilters() {
   const sets = [...new Set(state.db.cards.filter(c => c.type !== 'Stage').map(setOf))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const any = f.types.length || f.colors.length || f.sets.length || f.specials.length || f.deleted || f.since || f.q;
   return h('div', { class: 'quick' },
-    h('div', { class: 'qf-group' }, TYPES.map(t => chip('types', t, t === 'Character' ? 'Heroji' : t))),
+    h('div', { class: 'qf-group' }, TYPES.map(t => chip('types', t, t === 'Character' ? 'Heroes' : t))),
     h('div', { class: 'qf-group' }, COLOR_NAMES.map(c => h('button', {
       type: 'button', class: `qf-color c-${c}${on('colors', c) ? ' active' : ''}`, title: c, 'aria-label': c, 'aria-pressed': String(on('colors', c)), onclick: () => toggle('colors', c),
     }))),
     sets.length > 1 ? h('div', { class: 'qf-group' }, sets.map(x => chip('sets', x, x, `Set ${x}`))) : null,
     h('div', { class: 'qf-group qf-specials' },
       Object.entries(SPECIAL).map(([k, [label, title]]) => chip('specials', k, label, title)),
-      h('button', { type: 'button', class: `qf${f.deleted ? ' active' : ''}`, title: 'Prikaži i maknute karte', 'aria-pressed': String(f.deleted), onclick: () => { f.deleted = !f.deleted; render(); } }, 'Maknute')),
+      h('button', { type: 'button', class: `qf${f.deleted ? ' active' : ''}`, title: 'Also show deleted cards', 'aria-pressed': String(f.deleted), onclick: () => { f.deleted = !f.deleted; render(); } }, 'Deleted')),
     any ? h('button', { type: 'button', class: 'qf qf-clear', onclick: () => {
       Object.assign(f, { q: '', types: [], colors: [], sets: [], specials: [], deleted: false, since: 0 });
       render();
-    } }, 'Očisti') : null);
+    } }, 'Clear') : null);
 }
 
 function renderGrid() {
@@ -909,12 +914,12 @@ function renderGrid() {
   if (!grid) return;
   const cards = filtered();
   if (!state.db.cards.length) {
-    grid.replaceChildren(h('p', { class: 'muted' }, 'Baza je prazna. Napravi Uvoz i Objavi.'));
+    grid.replaceChildren(h('p', { class: 'muted' }, 'The database is empty. Run Import, then Publish.'));
     return;
   }
-  grid.replaceChildren(...(cards.length ? cards.map(tile) : [h('p', { class: 'muted' }, 'Nijedna karta ne odgovara filtru.')]));
+  grid.replaceChildren(...(cards.length ? cards.map(tile) : [h('p', { class: 'muted' }, 'No cards match the filter.')]));
   const all = state.db.cards.filter(c => state.filter.deleted || !c.deleted).length;
-  $('#grid-count')?.replaceChildren(cards.length === all ? `${all} ${plural(all, 'karta', 'karte', 'karata')}` : `${cards.length} od ${all} karata`);
+  $('#grid-count')?.replaceChildren(cards.length === all ? `${all} ${plural(all, 'card', 'cards')}` : `${cards.length} of ${all} cards`);
 }
 
 function tile(c) {
@@ -957,13 +962,13 @@ function renderDetail() {
   const field = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
   const editor = state.store.canImport
     ? h('form', { class: 'editor', onsubmit: e => { e.preventDefault(); guard(() => saveEdits(c.id, edits)); } },
-        h('h3', {}, 'App polja'),
+        h('h3', {}, 'App fields'),
         c.type === 'Character' ? [
-          field('Težina bakugana (wt)', h('input', { type: 'number', min: 1, step: 1, value: c.wt ?? '', oninput: e => { if (e.target.value === '') delete edits.wt; else edits.wt = Number(e.target.value); } })),
+          field('Bakugan weight (wt)', h('input', { type: 'number', min: 1, step: 1, value: c.wt ?? '', oninput: e => { if (e.target.value === '') delete edits.wt; else edits.wt = Number(e.target.value); } })),
           bakuganPicker(c, edits),
         ] : null,
-        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!c.deleted, onchange: e => { edits.deleted = e.target.checked; } }), 'Maknuta (deleted) – builder je više ne nudi'),
-        h('button', { class: 'primary', type: 'submit' }, 'Spremi'))
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!c.deleted, onchange: e => { edits.deleted = e.target.checked; } }), 'Deleted – the deck builder no longer offers it'),
+        h('button', { class: 'primary', type: 'submit' }, 'Save'))
     : null;
   const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'rev', 'imageHash']
     .filter(k => c[k] !== undefined)
@@ -971,20 +976,20 @@ function renderDetail() {
   if (c.sprite) {
     const img = h('img', { class: 'sprite-img', alt: `${c.name} sprite` });
     state.store.dataUrl(c.sprite).then(u => { if (u) img.src = u; });
-    rows.push(h('tr', {}, h('th', {}, 'sprite'), h('td', {}, h('button', { class: 'sprite-btn', title: 'Preko cijelog ekrana',
+    rows.push(h('tr', {}, h('th', {}, 'sprite'), h('td', {}, h('button', { class: 'sprite-btn', title: 'Full screen',
       onclick: () => state.store.dataUrl(c.sprite).then(u => u && openViewer([{ url: u, title: `${c.id} · ${c.name} · sprite` }])) }, img))));
   }
   const history = (state.changelog?.entries ?? []).flatMap(e => e.cards.filter(x => x.id === c.id).map(x => `v${e.version}: ${describeChange(x)}`)).reverse();
-  if (history.length) rows.push(h('tr', {}, h('th', {}, 'povijest'), h('td', {}, history.join(' · '))));
+  if (history.length) rows.push(h('tr', {}, h('th', {}, 'history'), h('td', {}, history.join(' · '))));
   const inDecks = decksWith(c.id);
   if (inDecks.length) {
-    rows.push(h('tr', {}, h('th', {}, 'u deckovima'), h('td', {}, inDecks.flatMap((d, i) => [i ? ', ' : null,
+    rows.push(h('tr', {}, h('th', {}, 'in decks'), h('td', {}, inDecks.flatMap((d, i) => [i ? ', ' : null,
       h('button', { class: 'link', onclick: () => { if (confirmDiscard()) { state.tab = 'decks'; guard(() => openDeck(d.slug)); } } }, d.name)]).filter(Boolean))));
   }
   box.replaceChildren(
-    h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: closeCard }, 'Zatvori')),
+    h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: closeCard }, 'Close')),
     h('div', { class: 'detail-body' },
-      h('button', { class: 'big', title: 'Preko cijelog ekrana', onclick: () => { const list = filtered(); openViewer((list.includes(c) ? list : [c]).map(x => ({ card: x })), list.includes(c) ? list.indexOf(c) : 0); } },
+      h('button', { class: 'big', title: 'Full screen', onclick: () => { const list = filtered(); openViewer((list.includes(c) ? list : [c]).map(x => ({ card: x })), list.includes(c) ? list.indexOf(c) : 0); } },
         cardImg(c, { alt: c.name, full: true }), h('span', { class: 'zoom', 'aria-hidden': 'true' }, icon('zoom'))),
       h('div', {}, h('table', { class: 'fields' }, rows), c.type === 'Character' && !editor ? bakuganPicker(c, null) : null, editor)));
 }
@@ -993,16 +998,16 @@ function renderDetail() {
 // edits = null: samo pregled (preko servera se app polja ne mijenjaju).
 function bakuganPicker(c, edits) {
   const lib = state.bakugani ?? [];
-  if (!lib.length) return edits ? h('p', { class: 'muted small' }, 'Nema biblioteke bakugana (data/bakugani/catalog.json).') : null;
+  if (!lib.length) return edits ? h('p', { class: 'muted small' }, 'No bakugan library (data/bakugani/catalog.json).') : null;
   let shape = lib.find(b => b.id === c.bakuganShape) ?? null;
   if (!edits && !shape) return null;
   let color = c.bakuganColor ?? heroDefaultColor(c);
-  const canvas = h('canvas', { class: 'bk-3d', width: 240, height: 240, 'aria-label': 'Bakugan, 3D pregled (povuci za okretanje)' });
+  const canvas = h('canvas', { class: 'bk-3d', width: 240, height: 240, 'aria-label': 'Bakugan, 3D preview (drag to rotate)' });
   const preview = createPreview(canvas);
   const nameEl = h('span', { class: 'bk-name' });
   const thumbs = new Map();
   const show = () => {
-    nameEl.textContent = shape ? shape.name : 'Oblik nije odabran';
+    nameEl.textContent = shape ? shape.name : 'No shape chosen';
     if (shape) Promise.all([state.store.dataUrl(shape.mesh), state.store.dataUrl(shape.texture)]).then(([m, t]) => m && t && preview.show(m, t, color));
   };
   const recolor = () => {
@@ -1012,11 +1017,11 @@ function bakuganPicker(c, edits) {
     if (colorInput) colorInput.value = color;
   };
   const setColor = v => { color = v.toLowerCase(); if (edits) edits.bakuganColor = color; recolor(); };
-  const colorInput = edits ? h('input', { type: 'color', value: color, 'aria-label': 'Bilo koja boja', oninput: e => setColor(e.target.value) }) : null;
+  const colorInput = edits ? h('input', { type: 'color', value: color, 'aria-label': 'Any color', oninput: e => setColor(e.target.value) }) : null;
   const swatches = edits ? h('div', { class: 'bk-colors' },
     Object.entries({ ...GAME_COLORS }).map(([name, hex]) => h('button', { type: 'button', class: 'bk-swatch', style: `--sw:${hex}`, 'data-color': hex, title: name, 'aria-label': name, onclick: () => setColor(hex) })),
-    h('button', { type: 'button', class: 'ghost small-btn', onclick: () => setColor(heroDefaultColor(c)) }, 'Boja heroja'),
-    h('label', { class: 'bk-custom', title: 'Bilo koja boja' }, colorInput)) : null;
+    h('button', { type: 'button', class: 'ghost small-btn', onclick: () => setColor(heroDefaultColor(c)) }, 'Hero color'),
+    h('label', { class: 'bk-custom', title: 'Any color' }, colorInput)) : null;
   const grid = edits ? h('div', { class: 'bk-grid' }, lib.map(b => {
     const cv = h('canvas', { width: 96, height: 96 });
     thumbs.set(b, cv);
@@ -1030,7 +1035,7 @@ function bakuganPicker(c, edits) {
   const picker = h('section', { class: 'bk' },
     h('h3', {}, 'Bakugan'),
     h('div', { class: 'bk-main' }, canvas, h('div', { class: 'bk-side' }, nameEl, swatches,
-      edits ? h('p', { class: 'muted small' }, 'Boja se množi sa sivom teksturom, kao u TTS-u. Odaberi oblik i boju, pa Spremi.') : null)),
+      edits ? h('p', { class: 'muted small' }, 'The color is multiplied with the gray texture, as in TTS. Choose a shape and a color, then Save.') : null)),
     grid);
   show();
   recolor();
@@ -1044,7 +1049,7 @@ function newDeck() {
 }
 
 function confirmDiscard() {
-  return !state.deck?.dirty || window.confirm('Deck ima nespremljene promjene. Odbaciti ih?');
+  return !state.deck?.dirty || window.confirm('The deck has unsaved changes. Discard them?');
 }
 
 async function openDeck(slug) {
@@ -1056,14 +1061,16 @@ async function openDeck(slug) {
 async function saveDeck() {
   const d = state.deck;
   const name = d.name.trim();
-  if (!name) throw new Error('Upiši ime decka.');
-  const slug = slugify(name);
-  if (!slug) throw new Error('Ime decka mora imati barem jedno slovo ili broj.');
+  if (!name) throw new Error('Enter a deck name.');
+  // "new" (i stari "novi") je adresa praznog decka (#/decks/new), pa deck tog imena dobije dodatak.
+  const raw = slugify(name);
+  const slug = ['new', 'novi'].includes(raw) ? `${raw}-deck` : raw;
+  if (!slug) throw new Error('The deck name needs at least one letter or digit.');
   let base = d.slug === slug ? d.rev : 0;
   if (d.slug !== slug) {
     const other = state.decks.find(x => x.slug === slug);
     if (other) {
-      if (!window.confirm(`Deck "${other.name}" već postoji. Presnimiti ga?`)) return;
+      if (!window.confirm(`Deck "${other.name}" already exists. Overwrite it?`)) return;
       base = other.rev;
     }
   }
@@ -1071,29 +1078,29 @@ async function saveDeck() {
   try {
     saved = await state.store.saveDeck(slug, { name, heroes: d.heroes, cards: d.cards, catalogVersion: state.db.version }, base);
   } catch (e) {
-    if (e instanceof ConflictError) throw new Error('Deck je u međuvremenu spremljen na drugom uređaju. Otvori ga ponovno ili spremi pod drugim imenom.');
+    if (e instanceof ConflictError) throw new Error('The deck was saved on another device in the meantime. Open it again or save it under a different name.');
     throw e;
   }
   if (d.slug && d.slug !== slug) await state.store.deleteDeck(d.slug, d.rev).catch(() => {});
   state.deck = { ...d, slug, name, rev: saved.rev, catalogVersion: state.db.version, dirty: false };
   replaceNext = true;
   state.decks = await state.store.listDecks();
-  toast(`Spremljeno: ${name}`);
+  toast(`Saved: ${name}`);
 }
 
 async function deleteDeck() {
   const d = state.deck;
-  if (!d.slug || !window.confirm(`Obrisati deck "${d.name}"?`)) return;
+  if (!d.slug || !window.confirm(`Delete deck "${d.name}"?`)) return;
   try {
     await state.store.deleteDeck(d.slug, d.rev);
   } catch (e) {
-    if (e instanceof ConflictError) throw new Error('Deck je u međuvremenu promijenjen na drugom uređaju. Otvori ga ponovno prije brisanja.');
+    if (e instanceof ConflictError) throw new Error('The deck was changed on another device in the meantime. Open it again before deleting it.');
     throw e;
   }
   state.decks = await state.store.listDecks();
   state.deck = null;
   replaceNext = true;
-  toast(`Obrisano: ${d.name}`);
+  toast(`Deleted: ${d.name}`);
 }
 
 function changeDeck(fn) {
@@ -1117,15 +1124,15 @@ function addCard(id, delta) {
 
 function renderDecks() {
   return state.deck ? renderDeckEditor() : h('div', { class: 'deck-empty' },
-    h('h2', {}, 'Složi deck'),
-    h('p', { class: 'muted' }, 'Otvori spremljeni deck ili napravi novi: odabereš 3 heroja, pa dodaješ karte njihovih boja do 40.'));
+    h('h2', {}, 'Build a deck'),
+    h('p', { class: 'muted' }, 'Open a saved deck or make a new one: pick 3 heroes, then add cards of their colors up to 40.'));
 }
 
 function renderDeckList() {
   return h('section', { class: 'deck-list' },
     h('div', { class: 'deck-list-head' },
-      h('h2', {}, 'Moji deckovi'),
-      h('button', { class: 'primary', onclick: () => { if (confirmDiscard()) { state.deck = newDeck(); state.deckView = 'pool'; render(); } } }, 'Novi deck')),
+      h('h2', {}, 'My decks'),
+      h('button', { class: 'primary', onclick: () => { if (confirmDiscard()) { state.deck = newDeck(); state.deckView = 'pool'; render(); } } }, 'New deck')),
     state.decks.length
       ? h('ul', {}, state.decks.map(x => h('li', {},
           h('button', {
@@ -1133,15 +1140,15 @@ function renderDeckList() {
             onclick: () => { if (confirmDiscard()) guard(() => openDeck(x.slug)); },
           },
             h('span', { class: 'deck-item-name' }, x.name),
-            h('span', { class: 'deck-item-sub' }, x.broken ? 'neispravan file' : `${x.heroes.map(id => cardById(id)?.name ?? id).join(', ') || 'bez heroja'}`),
+            h('span', { class: 'deck-item-sub' }, x.broken ? 'broken file' : `${x.heroes.map(id => cardById(id)?.name ?? id).join(', ') || 'no heroes'}`),
             x.broken ? null : deckFlags(x),
             h('span', { class: 'deck-item-count' }, x.broken ? '' : `${x.count}/${DECK_SIZE}`)))))
-      : h('p', { class: 'muted' }, 'Još nema spremljenih deckova.'),
+      : h('p', { class: 'muted' }, 'No saved decks yet.'),
     h('details', { class: 'code-import' },
-      h('summary', {}, 'Učitaj deck kod'),
+      h('summary', {}, 'Load deck code'),
       h('form', { onsubmit: e => { e.preventDefault(); importCode(e.target.elements.code.value); } },
         h('input', { name: 'code', placeholder: 'EB1|v1|…', autocomplete: 'off', spellcheck: false }),
-        h('button', { type: 'submit' }, 'Učitaj'))));
+        h('button', { type: 'submit' }, 'Load'))));
 }
 
 // Karte iz decka promijenjene od kad je spremljen (prema povijesti promjena).
@@ -1155,8 +1162,8 @@ function deckFlags(x) {
   const ready = checkDeck(state.db, x).ready;
   const changed = changedInDeck(x).length;
   return h('span', { class: 'deck-item-flags' },
-    h('span', { class: ready ? 'ok' : 'bad' }, ready ? 'Spreman' : 'Nije spreman'),
-    changed ? h('span', { class: 'changed' }, `${changed} ${plural(changed, 'karta promijenjena', 'karte promijenjene', 'karata promijenjeno')}`) : null);
+    h('span', { class: ready ? 'ok' : 'bad' }, ready ? 'Ready' : 'Not ready'),
+    changed ? h('span', { class: 'changed' }, `${changed} ${plural(changed, 'card changed', 'cards changed')}`) : null);
 }
 
 // U otvorenom decku: što se promijenilo od spremanja; nestane kad se deck ponovno spremi.
@@ -1165,13 +1172,13 @@ function renderDeckChanges() {
   if (!list.length) return null;
   const cards = list.map(x => cardById(x.id)).filter(Boolean);
   return h('div', { class: 'deck-changes' },
-    h('strong', {}, `Od kad je deck spremljen (baza v${state.deck.catalogVersion}) promijenilo se:`),
+    h('strong', {}, `Changed since the deck was saved (database v${state.deck.catalogVersion}):`),
     h('ul', {}, list.map(x => {
       const c = cardById(x.id);
       const what = x.changes.map(ch => `v${ch.version}: ${describeChange(ch)}`).join('; ');
       return h('li', {}, c ? h('button', { class: 'link', onclick: () => openViewer(cards.map(k => ({ card: k })), cards.indexOf(c)) }, c.name) : x.id, h('span', { class: 'muted' }, ` ${what}`));
     })),
-    h('span', { class: 'muted small' }, 'Spremi deck da ovo nestane.'));
+    h('span', { class: 'muted small' }, 'Save the deck to clear this.'));
 }
 
 // Poništi: stanje heroja i karata prije svake promjene decka (ime ima svoj Ctrl+Z u polju).
@@ -1185,10 +1192,10 @@ function undoDeck() {
 
 function duplicateDeck() {
   const d = state.deck;
-  state.deck = { ...newDeck(), name: `${d.name.trim() || 'Deck'} (kopija)`, heroes: [...d.heroes], cards: { ...d.cards }, catalogVersion: d.catalogVersion, dirty: true };
+  state.deck = { ...newDeck(), name: `${d.name.trim() || 'Deck'} (copy)`, heroes: [...d.heroes], cards: { ...d.cards }, catalogVersion: d.catalogVersion, dirty: true };
   state.deckView = 'deck';
   render();
-  toast('Napravljena kopija. Promijeni ime i spremi je.');
+  toast('Copy made. Rename it and save it.');
 }
 
 function importCode(code) {
@@ -1202,7 +1209,7 @@ function importCode(code) {
   if (!confirmDiscard()) return;
   state.deck = { ...newDeck(), heroes: parsed.heroes, cards: parsed.cards, catalogVersion: parsed.catalogVersion, dirty: true };
   state.deckView = 'deck';
-  if (parsed.catalogVersion > state.db.version) toast(`Kod je iz novije baze (v${parsed.catalogVersion}, ovdje v${state.db.version}). Neke karte možda nedostaju.`, 'warn');
+  if (parsed.catalogVersion > state.db.version) toast(`The code is from a newer database (v${parsed.catalogVersion}, here v${state.db.version}). Some cards may be missing.`, 'warn');
   render();
 }
 
@@ -1210,25 +1217,25 @@ function renderDeckEditor() {
   const d = state.deck;
   return h('div', { class: `deck-editor view-${state.deckView}` },
     h('div', { class: 'deck-head' },
-      h('input', { class: 'deck-name', placeholder: 'Ime decka', value: d.name, 'aria-label': 'Ime decka', oninput: e => { d.name = e.target.value; d.dirty = true; renderDeckStatus(); } }),
+      h('input', { class: 'deck-name', placeholder: 'Deck name', value: d.name, 'aria-label': 'Deck name', oninput: e => { d.name = e.target.value; d.dirty = true; renderDeckStatus(); } }),
       h('div', { id: 'deck-status' }),
       h('div', { class: 'deck-actions' },
-        h('button', { class: 'publish', onclick: () => guard(saveDeck) }, 'Spremi'),
-        h('button', { class: 'ghost', onclick: copyCode }, 'Kopiraj kod'),
-        h('button', { id: 'undo-btn', class: 'ghost', title: 'Poništi zadnju promjenu heroja ili karata (Ctrl+Z)', onclick: undoDeck }, 'Poništi'),
-        h('button', { class: 'ghost', title: 'Napravi kopiju ovog decka pod novim imenom', onclick: duplicateDeck }, 'Dupliciraj'),
-        d.slug ? h('button', { class: 'ghost', onclick: () => guard(deleteDeck) }, 'Obriši') : null)),
+        h('button', { class: 'publish', onclick: () => guard(saveDeck) }, 'Save'),
+        h('button', { class: 'ghost', onclick: copyCode }, 'Copy code'),
+        h('button', { id: 'undo-btn', class: 'ghost', title: 'Undo the last change to heroes or cards (Ctrl+Z)', onclick: undoDeck }, 'Undo'),
+        h('button', { class: 'ghost', title: 'Make a copy of this deck under a new name', onclick: duplicateDeck }, 'Duplicate'),
+        d.slug ? h('button', { class: 'ghost', onclick: () => guard(deleteDeck) }, 'Delete') : null)),
     h('div', { id: 'deck-code' }),
     renderDeckChanges(),
     h('div', { id: 'deck-heroes', class: 'hero-slots' }),
     h('div', { class: 'view-switch', role: 'tablist' },
-      h('button', { id: 'sw-pool', role: 'tab', onclick: () => setDeckView('pool') }, 'Bazen'),
+      h('button', { id: 'sw-pool', role: 'tab', onclick: () => setDeckView('pool') }, 'Pool'),
       h('button', { id: 'sw-deck', role: 'tab', onclick: () => setDeckView('deck') }, 'Deck')),
     h('div', { class: 'deck-cols' },
       h('section', { class: 'pool-pane' },
         h('div', { class: 'filters' },
-          h('input', { type: 'search', placeholder: 'Traži u bazenu…', value: state.pool.q, oninput: e => { state.pool.q = e.target.value; renderPool(); } }),
-          h('select', { onchange: e => { state.pool.type = e.target.value; renderPool(); } }, h('option', { value: '' }, 'Svi tipovi'), DECK_TYPES.map(t => h('option', { value: t, selected: state.pool.type === t }, t))),
+          h('input', { type: 'search', placeholder: 'Search the pool…', value: state.pool.q, oninput: e => { state.pool.q = e.target.value; renderPool(); } }),
+          h('select', { onchange: e => { state.pool.type = e.target.value; renderPool(); } }, h('option', { value: '' }, 'All types'), DECK_TYPES.map(t => h('option', { value: t, selected: state.pool.type === t }, t))),
           h('select', { id: 'pool-color', onchange: e => { state.pool.color = e.target.value; renderPool(); } }),
           h('select', { id: 'pool-trait', 'aria-label': 'Trait', onchange: e => { state.pool.trait = e.target.value; renderPool(); } })),
         h('div', { id: 'pool', class: 'pool' })),
@@ -1280,8 +1287,8 @@ function renderDeckStatus() {
   box.className = `deck-status ${r.ready ? 'ready' : 'not-ready'}`;
   fill(box,
     h('strong', {}, `${r.count}/${DECK_SIZE}`),
-    h('span', {}, r.ready ? 'Spreman za igru' : 'Nije spreman'),
-    state.deck.dirty ? h('span', { class: 'unsaved' }, 'nespremljeno') : null);
+    h('span', {}, r.ready ? 'Ready to play' : 'Not ready'),
+    state.deck.dirty ? h('span', { class: 'unsaved' }, 'unsaved') : null);
 }
 
 function renderHeroes() {
@@ -1294,16 +1301,16 @@ function renderHeroes() {
     if (hero) {
       const heroes = d.heroes.map(cardById).filter(Boolean);
       return h('div', { class: `hero-slot filled c-border-${hero.color}` },
-        h('button', { class: 'hero-art', title: `Preko cijelog ekrana: ${hero.name}`, onclick: () => openViewer(heroes.map(x => ({ card: x })), heroes.indexOf(hero)) }, cardImg(hero, { alt: hero.name })),
+        h('button', { class: 'hero-art', title: `Full screen: ${hero.name}`, onclick: () => openViewer(heroes.map(x => ({ card: x })), heroes.indexOf(hero)) }, cardImg(hero, { alt: hero.name })),
         h('div', { class: 'hero-info' },
           h('span', { class: 'hero-name' }, hero.name),
           h('span', { class: 'muted small' }, hero.color),
-          h('button', { class: 'ghost small-btn', onclick: () => changeDeck(x => { x.heroes = x.heroes.filter(id => id !== hero.id); }) }, 'Makni')));
+          h('button', { class: 'ghost small-btn', onclick: () => changeDeck(x => { x.heroes = x.heroes.filter(id => id !== hero.id); }) }, 'Remove')));
     }
     return h('label', { class: 'hero-slot empty' },
-      h('span', { class: 'muted' }, `Heroj ${i + 1}`),
+      h('span', { class: 'muted' }, `Hero ${i + 1}`),
       h('select', { onchange: e => { if (e.target.value) changeDeck(x => { x.heroes = [...x.heroes, e.target.value]; }); } },
-        h('option', { value: '' }, 'Odaberi heroja'),
+        h('option', { value: '' }, 'Choose a hero'),
         free.map(c => h('option', { value: c.id }, `${c.name} (${c.color})`))));
   });
   box.replaceChildren(...slots);
@@ -1317,13 +1324,13 @@ function renderPool() {
   const colorSel = $('#pool-color');
   const colors = [...new Set(all.map(c => c.color))];
   if (state.pool.color && !colors.includes(state.pool.color)) state.pool.color = '';
-  colorSel.replaceChildren(h('option', { value: '' }, 'Sve boje heroja'), ...colors.map(c => h('option', { value: c, selected: state.pool.color === c }, c)));
+  colorSel.replaceChildren(h('option', { value: '' }, 'All hero colors'), ...colors.map(c => h('option', { value: c, selected: state.pool.color === c }, c)));
   // Traitovi bazena, najčešći prvi (npr. {Luffy} karte za heroja ili evoluciju koja ih poziva).
   const traits = traitCounts(all.map(c => [c, 1]));
   if (state.pool.trait && !traits.some(([t]) => t === state.pool.trait)) state.pool.trait = '';
-  $('#pool-trait')?.replaceChildren(h('option', { value: '' }, 'Svi traitovi'), ...traits.map(([t, n]) => h('option', { value: t, selected: state.pool.trait === t }, `${t} (${n})`)));
+  $('#pool-trait')?.replaceChildren(h('option', { value: '' }, 'All traits'), ...traits.map(([t, n]) => h('option', { value: t, selected: state.pool.trait === t }, `${t} (${n})`)));
   if (!d.heroes.length) {
-    box.replaceChildren(h('p', { class: 'muted' }, 'Odaberi heroje, pa se ovdje pokažu karte njihovih boja.'));
+    box.replaceChildren(h('p', { class: 'muted' }, 'Pick heroes, and cards of their colors show up here.'));
     return;
   }
   const { q, type, color, trait } = state.pool;
@@ -1331,7 +1338,7 @@ function renderPool() {
   const cards = all
     .filter(c => (!type || c.type === type) && (!color || c.color === color) && (!trait || (c.traits ?? []).includes(trait)) && (!needle || [c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)))
     .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
-  box.replaceChildren(...(cards.length ? cards.map(c => poolCard(c, cards)) : [h('p', { class: 'muted' }, 'Nijedna karta ne odgovara filtru.')]));
+  box.replaceChildren(...(cards.length ? cards.map(c => poolCard(c, cards)) : [h('p', { class: 'muted' }, 'No cards match the filter.')]));
 }
 
 // [[trait, broj], ...] od najčešćeg; entries su [karta, kopija].
@@ -1346,10 +1353,10 @@ function deckTraits(d) {
   const list = traitCounts(Object.entries(d.cards).map(([id, n]) => [cardById(id), n]));
   if (!list.length) return null;
   return h('figure', { class: 'traits' },
-    h('figcaption', {}, 'Traitovi u decku'),
+    h('figcaption', {}, 'Traits in the deck'),
     h('div', { class: 'trait-chips' }, list.map(([t, n]) => h('button', {
       class: `trait-chip${state.pool.trait === t ? ' active' : ''}`,
-      title: `Bazen: samo karte s traitom ${t}`,
+      title: `Pool: only cards with the trait ${t}`,
       onclick: () => { state.pool.trait = state.pool.trait === t ? '' : t; renderPool(); renderDeckPanel(); if (state.pool.trait) setDeckView('pool'); },
     }, t, h('span', {}, n)))));
 }
@@ -1359,14 +1366,14 @@ function poolCard(c, list) {
   const max = LIMITS[c.type];
   return h('div', { class: `pool-card${n ? ' in-deck' : ''}${n >= max ? ' maxed' : ''}` },
     h('div', { class: 'pool-art-wrap' },
-      h('button', { class: 'pool-art', title: `Dodaj ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, cardImg(c, { alt: c.name }),
+      h('button', { class: 'pool-art', title: `Add ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, cardImg(c, { alt: c.name }),
         n ? h('span', { class: 'pool-count' }, `${n}/${max}`) : null),
       zoomButton(c, list)),
     h('div', { class: 'pool-meta' },
       h('span', { class: 'pool-name' }, c.name),
       h('span', { class: 'stepper' },
-        h('button', { class: 'step', 'aria-label': `Makni jednu ${c.name}`, disabled: !n, onclick: () => addCard(c.id, -1) }, '−'),
-        h('button', { class: 'step', 'aria-label': `Dodaj jednu ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, '+'))));
+        h('button', { class: 'step', 'aria-label': `Remove one ${c.name}`, disabled: !n, onclick: () => addCard(c.id, -1) }, '−'),
+        h('button', { class: 'step', 'aria-label': `Add one ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, '+'))));
 }
 
 function renderDeckPanel() {
@@ -1386,20 +1393,20 @@ function renderDeckPanel() {
 
   fill(box,
     h('div', { class: 'deck-count' },
-      h('strong', {}, r.count), h('span', {}, `od ${DECK_SIZE}`),
-      h('div', { class: 'meter', role: 'img', 'aria-label': `${r.count} od ${DECK_SIZE} karata` }, h('span', { style: `width:${Math.min(100, (r.count / DECK_SIZE) * 100)}%` }))),
+      h('strong', {}, r.count), h('span', {}, `of ${DECK_SIZE}`),
+      h('div', { class: 'meter', role: 'img', 'aria-label': `${r.count} of ${DECK_SIZE} cards` }, h('span', { style: `width:${Math.min(100, (r.count / DECK_SIZE) * 100)}%` }))),
     r.problems.length ? h('ul', { class: 'deck-problems' }, r.problems.map(p => h('li', { class: p.level }, p.msg))) : null,
     h('div', { class: 'random-box' },
       h('div', { class: 'random-row' },
-        h('label', { class: 'field' }, h('span', {}, 'Naglasak boje'),
+        h('label', { class: 'field' }, h('span', {}, 'Color focus'),
           h('select', { onchange: e => { state.focus.color = e.target.value; renderDeckPanel(); } },
-            h('option', { value: '' }, 'Bez naglaska'),
+            h('option', { value: '' }, 'No focus'),
             heroColors.map(c => h('option', { value: c, selected: state.focus.color === c }, c)))),
-        state.focus.color ? h('label', { class: 'field' }, h('span', {}, 'Koliko'),
+        state.focus.color ? h('label', { class: 'field' }, h('span', {}, 'How much'),
           h('input', { type: 'range', min: 0, max: 1, step: 0.1, value: state.focus.value, oninput: e => { state.focus.value = Number(e.target.value); } })) : null),
       h('div', { class: 'random-row' },
-        h('button', { class: 'primary', disabled: d.heroes.length === 0 || r.count >= DECK_SIZE, onclick: fillRandom }, 'Popuni nasumično'),
-        h('button', { class: 'ghost', disabled: !r.count, onclick: () => { changeDeck(x => { x.cards = {}; }); toast('Deck je ispražnjen (heroji ostaju). Poništi ili Ctrl+Z ga vraća.'); } }, 'Isprazni'))),
+        h('button', { class: 'primary', disabled: d.heroes.length === 0 || r.count >= DECK_SIZE, onclick: fillRandom }, 'Random fill'),
+        h('button', { class: 'ghost', disabled: !r.count, onclick: () => { changeDeck(x => { x.cards = {}; }); toast('Deck emptied (heroes stay). Undo or Ctrl+Z brings it back.'); } }, 'Empty'))),
     r.count ? h('div', { class: 'deck-charts' }, costCurve(r.curve), colorSplit(r.byColor, r.count)) : null,
     r.count ? deckTraits(d) : null,
     groups.length || unknown.length
@@ -1407,26 +1414,26 @@ function renderDeckPanel() {
           groups.map(([t, list]) => h('div', { class: 'deck-group' },
             h('h3', {}, t, h('span', { class: 'muted' }, list.reduce((s, x) => s + x.n, 0))),
             list.map(x => deckRow(x, deckCards)))),
-          unknown.length ? h('div', { class: 'deck-group' }, h('h3', {}, 'Nepoznate karte'), unknown.map(x => deckRow(x, deckCards))) : null)
-      : h('p', { class: 'muted' }, d.heroes.length ? 'Dodaj karte iz bazena ili klikni Popuni nasumično.' : 'Prvo odaberi heroje.'));
+          unknown.length ? h('div', { class: 'deck-group' }, h('h3', {}, 'Unknown cards'), unknown.map(x => deckRow(x, deckCards))) : null)
+      : h('p', { class: 'muted' }, d.heroes.length ? 'Add cards from the pool or click Random fill.' : 'Pick heroes first.'));
 }
 
 function deckRow({ c, id, n }, deckCards) {
   return h('div', { class: 'deck-row' },
     h('span', { class: `dot c-${c?.color ?? 'none'}` }),
     h('span', { class: 'deck-row-cost', title: 'Cost' }, c?.cost ?? '?'),
-    c ? h('button', { class: 'deck-row-name', title: `Preko cijelog ekrana: ${c.name}`, onclick: () => openViewer(deckCards.map(x => ({ card: x })), deckCards.indexOf(c)) }, c.name)
+    c ? h('button', { class: 'deck-row-name', title: `Full screen: ${c.name}`, onclick: () => openViewer(deckCards.map(x => ({ card: x })), deckCards.indexOf(c)) }, c.name)
       : h('span', { class: 'deck-row-name' }, id),
     h('span', { class: 'stepper' },
-      h('button', { class: 'step', 'aria-label': `Makni jednu ${c?.name ?? id}`, onclick: () => (c ? addCard(id, -1) : changeDeck(d => { delete d.cards[id]; })) }, '−'),
+      h('button', { class: 'step', 'aria-label': `Remove one ${c?.name ?? id}`, onclick: () => (c ? addCard(id, -1) : changeDeck(d => { delete d.cards[id]; })) }, '−'),
       h('span', { class: 'deck-row-n' }, n),
-      h('button', { class: 'step', 'aria-label': `Dodaj jednu ${c?.name ?? id}`, disabled: !c || n >= LIMITS[c.type], onclick: () => addCard(id, 1) }, '+')));
+      h('button', { class: 'step', 'aria-label': `Add one ${c?.name ?? id}`, disabled: !c || n >= LIMITS[c.type], onclick: () => addCard(id, 1) }, '+')));
 }
 
 function fillRandom() {
   const next = randomFill(state.db, state.deck, { focusColor: state.focus.color || null, focus: state.focus.color ? state.focus.value : 0 });
   changeDeck(d => { d.cards = next.cards; });
-  if (next.missing) toast(`Bazen nije dovoljan: nedostaje ${next.missing} karata do ${DECK_SIZE}.`, 'warn');
+  if (next.missing) toast(`The pool isn't big enough: ${next.missing} ${plural(next.missing, 'card', 'cards')} short of ${DECK_SIZE}.`, 'warn');
 }
 
 // Krivulja costova: jedna serija, stupci s brojem iznad, hover daje točan iznos.
@@ -1437,19 +1444,19 @@ function costCurve(curve) {
   const bars = [];
   for (let cost = 0; cost <= max; cost++) {
     const n = curve[cost] ?? 0;
-    bars.push(h('div', { class: 'bar', title: `Cost ${cost}: ${n} ${n === 1 ? 'karta' : 'karata'}` },
+    bars.push(h('div', { class: 'bar', title: `Cost ${cost}: ${n} ${plural(n, 'card', 'cards')}` },
       h('span', { class: 'bar-n' }, n || ''),
       h('span', { class: 'bar-fill', style: `height:${top ? (n / top) * 100 : 0}%` }),
       h('span', { class: 'bar-x' }, cost)));
   }
-  return h('figure', { class: 'curve' }, h('figcaption', {}, 'Krivulja costova'), h('div', { class: 'bars' }, bars));
+  return h('figure', { class: 'curve' }, h('figcaption', {}, 'Cost curve'), h('div', { class: 'bars' }, bars));
 }
 
 // Udio boja: boje su boje karata iz igre; svaka ima i natpis s brojem, pa boja nije jedini nositelj.
 function colorSplit(byColor, total) {
   const entries = Object.entries(byColor).sort((a, b) => b[1] - a[1]);
   return h('figure', { class: 'split' },
-    h('figcaption', {}, 'Boje'),
+    h('figcaption', {}, 'Colors'),
     h('div', { class: 'split-bar', role: 'img', 'aria-label': entries.map(([c, n]) => `${c} ${n}`).join(', ') },
       entries.map(([c, n]) => h('span', { class: `c-${c}`, style: `flex:${n}`, title: `${c}: ${n}` }))),
     h('ul', { class: 'split-legend' }, entries.map(([c, n]) => h('li', {}, h('span', { class: `dot c-${c}` }), `${c} ${n}`, h('span', { class: 'muted' }, ` ${Math.round((n / total) * 100)}%`)))));
@@ -1460,12 +1467,12 @@ async function copyCode() {
   const box = $('#deck-code');
   try {
     await navigator.clipboard.writeText(code);
-    toast('Deck kod je kopiran.');
+    toast('Deck code copied.');
     box.replaceChildren();
   } catch {
     // Bez HTTPS-a (npr. mobitel preko Tailscale adrese) preglednik ne da pisati u clipboard.
-    const input = h('input', { readOnly: true, value: code, 'aria-label': 'Deck kod', onfocus: e => e.target.select() });
-    box.replaceChildren(h('label', { class: 'field code-out' }, h('span', {}, 'Deck kod (označi i kopiraj)'), input));
+    const input = h('input', { readOnly: true, value: code, 'aria-label': 'Deck code', onfocus: e => e.target.select() });
+    box.replaceChildren(h('label', { class: 'field code-out' }, h('span', {}, 'Deck code (select and copy)'), input));
     input.focus();
   }
 }

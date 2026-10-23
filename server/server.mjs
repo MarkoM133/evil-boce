@@ -66,7 +66,7 @@ async function sendFile(res, file, cache) {
     const data = await fs.readFile(file);
     send(res, 200, data, TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream', cache);
   } catch (e) {
-    if (e.code === 'ENOENT' || e.code === 'EISDIR') fail(res, 404, 'nema');
+    if (e.code === 'ENOENT' || e.code === 'EISDIR') fail(res, 404, 'not found');
     else throw e;
   }
 }
@@ -105,7 +105,7 @@ function readBody(req, limit = 256 * 1024) {
     req.on('data', c => {
       size += c.length;
       if (size > limit) {
-        reject(Object.assign(new Error('prevelik zahtjev'), { status: 413 }));
+        reject(Object.assign(new Error('request too large'), { status: 413 }));
         req.destroy();
       } else chunks.push(c);
     });
@@ -136,7 +136,7 @@ async function api(req, res, parts) {
   // TTS (Sync karata): karte, heroji i bakugani u obliku koji global.lua samo primijeni.
   if (what === 'tts' && req.method === 'GET') {
     const db = await readJson(path.join(cfg.drive, 'data', 'cards.json'));
-    if (!db) return fail(res, 404, 'nema data/cards.json');
+    if (!db) return fail(res, 404, 'no data/cards.json');
     const steam = (await readJson(STEAM_PATH)) ?? {};
     const bakugani = (await readJson(path.join(cfg.drive, 'data', 'bakugani', 'catalog.json')))?.bakugani ?? [];
     return send(res, 200, ttsPayload(db, { steam, drivePath: cfg.drive, bakugani }));
@@ -147,16 +147,16 @@ async function api(req, res, parts) {
     try {
       body = JSON.parse(await readBody(req));
     } catch {
-      return fail(res, 400, 'neispravan JSON');
+      return fail(res, 400, 'invalid JSON');
     }
     const { steam, added } = mergeSteamUrls((await readJson(STEAM_PATH)) ?? {}, body?.urls);
     if (added) await writeJson(STEAM_PATH, steam);
     return send(res, 200, { added, total: Object.keys(steam).length });
   }
-  if (what !== 'decks') return fail(res, 404, 'nepoznat API');
+  if (what !== 'decks') return fail(res, 404, 'unknown API');
 
   if (!slug) {
-    if (req.method !== 'GET') return fail(res, 405, 'samo GET');
+    if (req.method !== 'GET') return fail(res, 405, 'GET only');
     let names = [];
     try {
       names = (await fs.readdir(DECKS)).filter(n => n.endsWith('.json'));
@@ -178,16 +178,16 @@ async function api(req, res, parts) {
     return send(res, 200, list);
   }
 
-  if (!SLUG_RE.test(slug)) return fail(res, 400, 'neispravno ime decka');
+  if (!SLUG_RE.test(slug)) return fail(res, 400, 'invalid deck name');
   const file = path.join(DECKS, `${slug}.json`);
   const current = await readJson(file);
 
-  if (req.method === 'GET') return current ? send(res, 200, { slug, ...current }) : fail(res, 404, 'nema tog decka');
+  if (req.method === 'GET') return current ? send(res, 200, { slug, ...current }) : fail(res, 404, 'no such deck');
 
   if (req.method === 'DELETE') {
     const base = Number(req.headers['if-match']);
-    if (!current) return fail(res, 404, 'nema tog decka');
-    if (Number.isFinite(base) && base !== (current.rev ?? 0)) return send(res, 409, { error: 'deck je promijenjen u međuvremenu', current: { slug, ...current } });
+    if (!current) return fail(res, 404, 'no such deck');
+    if (Number.isFinite(base) && base !== (current.rev ?? 0)) return send(res, 409, { error: 'the deck was changed in the meantime', current: { slug, ...current } });
     await fs.rm(file);
     return send(res, 200, { ok: true });
   }
@@ -197,15 +197,15 @@ async function api(req, res, parts) {
     try {
       body = JSON.parse(await readBody(req));
     } catch (e) {
-      return fail(res, e.status ?? 400, e.status ? e.message : 'tijelo nije JSON');
+      return fail(res, e.status ?? 400, e.status ? e.message : 'body is not JSON');
     }
     if (typeof body.name !== 'string' || !body.name.trim() || !Array.isArray(body.heroes) || typeof body.cards !== 'object' || body.cards === null) {
-      return fail(res, 400, 'deck mora imati name, heroes i cards');
+      return fail(res, 400, 'deck must have name, heroes and cards');
     }
     // If-Match: rev koji je klijent zadnji vidio; 0 = novi deck. Bez zaglavlja se presnimava.
     const header = req.headers['if-match'];
     if (header !== undefined && Number(header) !== (current?.rev ?? 0)) {
-      return send(res, 409, { error: 'deck je promijenjen u međuvremenu', current: current && { slug, ...current } });
+      return send(res, 409, { error: 'the deck was changed in the meantime', current: current && { slug, ...current } });
     }
     const deck = {
       name: body.name.trim(),
@@ -218,7 +218,7 @@ async function api(req, res, parts) {
     await writeJson(file, deck);
     return send(res, 200, { slug, ...deck });
   }
-  return fail(res, 405, 'nepodržana metoda');
+  return fail(res, 405, 'unsupported method');
 }
 
 async function handle(req, res) {
@@ -226,29 +226,29 @@ async function handle(req, res) {
   try {
     rel = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   } catch {
-    return fail(res, 400, 'neispravan URL');
+    return fail(res, 400, 'invalid URL');
   }
   const parts = rel.split('/').filter(Boolean);
   if (parts[0] === 'api') return api(req, res, parts);
-  if (req.method !== 'GET' && req.method !== 'HEAD') return fail(res, 405, 'samo GET');
+  if (req.method !== 'GET' && req.method !== 'HEAD') return fail(res, 405, 'GET only');
 
   // Podaci iz Drive foldera: samo data/ (cards.json, slike) i logo.
   if (parts[0] === 'data') {
     const file = inside(path.join(cfg.drive, 'data'), parts.slice(1).join('/'));
     const hashed = ['images', 'thumbs', 'large'].includes(parts[1]) && /\.[0-9a-f]{8}\.(png|jpg)$/i.test(rel);
-    return file ? sendFile(res, file, hashed ? IMMUTABLE : 'no-store') : fail(res, 403, 'zabranjeno');
+    return file ? sendFile(res, file, hashed ? IMMUTABLE : 'no-store') : fail(res, 403, 'forbidden');
   }
   if (rel === '/logo') {
     const name = await findLogo();
-    return name ? sendFile(res, path.join(cfg.drive, name)) : fail(res, 404, 'nema loga');
+    return name ? sendFile(res, path.join(cfg.drive, name)) : fail(res, 404, 'no logo');
   }
 
   // Web app iz repoa. server/ i .git/ se ne poslužuju; docs/ (privatno, testna stranica) samo ovom računalu.
   const top = (parts[0] ?? '').toLowerCase();
   const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
-  if (['server', '.git', 'node_modules'].includes(top) || (top === 'docs' && !local)) return fail(res, 404, 'nema');
+  if (['server', '.git', 'node_modules'].includes(top) || (top === 'docs' && !local)) return fail(res, 404, 'not found');
   const file = inside(ROOT, rel.endsWith('/') ? rel + 'index.html' : rel);
-  return file ? sendFile(res, file) : fail(res, 403, 'zabranjeno');
+  return file ? sendFile(res, file) : fail(res, 403, 'forbidden');
 }
 
 // Tailscale adresa pri prijavi u Windows zna kasniti: adresa koje još nema pokušava se ponovo svakih 30 s.
@@ -256,7 +256,7 @@ function listen(host, retry = false) {
   http
     .createServer((req, res) => handle(req, res).catch(e => {
       console.error(e);
-      if (!res.headersSent) fail(res, 500, 'greška na serveru');
+      if (!res.headersSent) fail(res, 500, 'server error');
     }))
     .on('error', e => {
       if (!retry) console.error(`${host}:${cfg.port}: ${e.message}`);

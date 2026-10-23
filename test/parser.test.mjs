@@ -92,12 +92,12 @@ test('parser: greške (kod, boja, cost, statsi)', () => {
     card({ ...ACTION, code: 'OP9-014', type: undefined }),
   ));
   const msgs = r.map(x => x.problems.filter(p => p.level === 'error').map(p => p.msg).join(' | '));
-  assert.match(msgs[0], /ne odgovara uzorku/);
-  assert.match(msgs[1], /nepoznat ton/);
-  assert.match(msgs[2], /nepoznat ton/);
-  assert.match(msgs[3], /nema costa/);
-  assert.match(msgs[4], /nedostaju statsi: dmg, pwr, rng, kb/);
-  assert.match(msgs[5], /nema tipa/);
+  assert.match(msgs[0], /doesn't match the pattern/);
+  assert.match(msgs[1], /unknown frame tint/);
+  assert.match(msgs[2], /unknown frame tint/);
+  assert.match(msgs[3], /no cost/);
+  assert.match(msgs[4], /missing stats: dmg, pwr, rng, kb/);
+  assert.match(msgs[5], /no card type/);
 });
 
 test('parser: neaktivni elementi se ignoriraju', () => {
@@ -118,7 +118,7 @@ test('uvoz u praznu bazu', async () => {
   const { a, pub } = await firstImport();
   assert.deepEqual(a.errors, []);
   assert.deepEqual(a.entries.map(e => e.status), ['new', 'new', 'new', 'new']);
-  assert.ok(a.infos.some(i => /tokeni/.test(i.msg)));
+  assert.ok(a.infos.some(i => /tokens/.test(i.msg)));
   assert.ok(a.infos.some(i => /\+2 Damage\.png/.test(i.msg)));
   assert.equal(pub.db.version, 1);
   assert.equal(pub.writes.length, 4);
@@ -181,7 +181,7 @@ test('ista karta u dva XML-a: vrijedi noviji', async () => {
     db: emptyDb(),
   });
   assert.equal(a.entries[0].card.cost, 3);
-  assert.ok(a.warnings.some(w => /noviji export\/new\.xml/.test(w.msg)));
+  assert.ok(a.warnings.some(w => /newer export\/new\.xml/.test(w.msg)));
 });
 
 test('provjere: dupla imena, Evolution bez heroja, bez PNG-a', async () => {
@@ -191,9 +191,9 @@ test('provjere: dupla imena, Evolution bez heroja, bez PNG-a', async () => {
     db: emptyDb(),
   });
   const msgs = a.errors.map(e => `${e.id}: ${e.msg}`).join('\n');
-  assert.match(msgs, /OP9-003: nova karta bez PNG-a/);
-  assert.match(msgs, /OP9-002: PNG "Punch.png" ne zna se kojoj karti pripada/);
-  assert.match(msgs, /heroj "Hero A" ne postoji/);
+  assert.match(msgs, /OP9-003: new card without a PNG/);
+  assert.match(msgs, /OP9-002: PNG "Punch.png": unclear which card it belongs to/);
+  assert.match(msgs, /hero "Hero A" doesn't exist/);
 });
 
 test('promijenjena karta bez PNG-a zadržava staru sliku', async () => {
@@ -204,7 +204,7 @@ test('promijenjena karta bez PNG-a zadržava staru sliku', async () => {
     db: pub.db,
   });
   assert.deepEqual(a.errors, []);
-  assert.match(a.warnings[0].msg, /ostaje stara slika/);
+  assert.match(a.warnings[0].msg, /the old image stays/);
   const next = buildPublish(pub.db, a);
   assert.equal(next.writes.length, 0);
   const old = pub.db.cards.find(c => c.id === 'OP9-002');
@@ -247,7 +247,7 @@ test('promijenjeni podaci, a isti PNG: upozorenje da je slika možda stara', asy
   const e = a.entries.find(x => x.id === 'OP9-002');
   assert.equal(e.status, 'changed');
   assert.equal(e.staleImage, true);
-  assert.match(a.warnings.map(w => w.msg).join('\n'), /promijenjeno \(cost\), a PNG je isti kao prije; slika je možda stara/);
+  assert.match(a.warnings.map(w => w.msg).join('\n'), /changed \(cost\), but the PNG is the same as before; the image may be outdated/);
   const fresh = await analyzeExport({
     xmlFiles: [{ path: 'export/x.xml', text: xml(card({ ...ACTION, cost: '2' })), lastModified: 1 }],
     pngFiles: [png([9], 'export/Punch.png')],
@@ -286,8 +286,8 @@ test('povijest: zapis po verziji, promjene od verzije, promjene u decku', async 
   log = appendChangelog(log, changelogEntry(v2, v3));
   assert.deepEqual(log.entries.map(e => e.version), [1, 2, 3]);
   assert.deepEqual(log.entries[1].cards, [{ id: 'OP9-002', name: 'Punch', kind: 'changed', fields: ['cost'], image: true }]);
-  assert.equal(describeChange(log.entries[1].cards[0]), 'cost, slika');
-  assert.equal(describeChange(log.entries[2].cards[0]), 'maknuta');
+  assert.equal(describeChange(log.entries[1].cards[0]), 'cost, image');
+  assert.equal(describeChange(log.entries[2].cards[0]), 'deleted');
 
   // Bez promjena nema novog zapisa.
   assert.equal(appendChangelog(log, changelogEntry(v3, v3)), log);
@@ -313,7 +313,7 @@ test('PNG "KOD Ime.png": isto ime u dva seta, svaka karta svoju sliku', async ()
     db: emptyDb(),
   });
   assert.deepEqual(a.errors, []);
-  assert.match(a.warnings.map(w => w.msg).join('\n'), /isto ime "Punch" imaju DBZ-002, OP9-002; to je dopušteno/);
+  assert.match(a.warnings.map(w => w.msg).join('\n'), /same name "Punch" is used by DBZ-002, OP9-002; that's allowed/);
   assert.deepEqual(a.entries.map(e => [e.id, e.png.path]), [['DBZ-002', 'export/DBZ/DBZ-002 Punch.png'], ['OP9-002', 'export/OP9-002 Punch.png']]);
   assert.notEqual(a.entries[0].imageHash, a.entries[1].imageHash);
 });
@@ -326,7 +326,7 @@ test('PNG s kodom ima prednost pred PNG-om s imenom; i sam kod je dovoljan', asy
   });
   assert.deepEqual(a.errors, []);
   assert.deepEqual(a.entries.map(e => [e.id, e.png.path]), [['OP9-001', 'export/OP9-001.png'], ['OP9-002', 'export/OP9-002 Punch.png']]);
-  assert.match(a.infos.map(i => i.msg).join('\n'), /preskočeno 1 PNG-ova.*Punch\.png/);
+  assert.match(a.infos.map(i => i.msg).join('\n'), /skipped 1 PNG.*Punch\.png/);
 });
 
 test('heroj s istim imenom kao druga karta je greška', async () => {
@@ -335,7 +335,7 @@ test('heroj s istim imenom kao druga karta je greška', async () => {
     pngFiles: [png([1], 'export/OP9-001 Hero A.png'), png([2], 'export/DBZ-003 Hero A.png')],
     db: emptyDb(),
   });
-  assert.match(a.errors.map(e => e.msg).join('\n'), /ime "Hero A" imaju .*heroj mora imati jedinstveno ime/);
+  assert.match(a.errors.map(e => e.msg).join('\n'), /name "Hero A" is used by .*a hero must have a unique name/);
 });
 
 test('sam PNG: po kodu radi uvijek, po imenu samo kad je ime jednoznačno', async () => {
@@ -349,7 +349,7 @@ test('sam PNG: po kodu radi uvijek, po imenu samo kad je ime jednoznačno', asyn
   assert.deepEqual(byCode.errors, []);
   assert.deepEqual(byCode.entries.map(e => [e.id, e.status, e.imageChanged]), [['DBZ-002', 'changed', true]]);
   const byName = await analyzeExport({ xmlFiles: [], pngFiles: [png([8], 'export/Punch.png')], db });
-  assert.match(byName.errors.map(e => e.msg).join('\n'), /isto ime imaju DBZ-002 i OP9-002; PNG mora počinjati kodom/);
+  assert.match(byName.errors.map(e => e.msg).join('\n'), /DBZ-002 and OP9-002 share the same name; the PNG must start with the code/);
   assert.deepEqual(byName.entries, []);
 });
 
@@ -376,14 +376,14 @@ test('sprite: uz heroja iz XML-a, sam za postojećeg, Evolution bez razmaka iza 
   assert.equal(h.image, base.db.cards.find(c => c.id === 'OP9-001').image, 'slika karte ista');
   assert.ok(h.sprite);
   const entry = changelogEntry(base.db, next.db);
-  assert.deepEqual(entry.cards.map(c => [c.id, describeChange(c)]), [['OP9-001', 'izgled: sprite'], ['OP9-003', 'izgled: sprite']]);
+  assert.deepEqual(entry.cards.map(c => [c.id, describeChange(c)]), [['OP9-001', 'look: sprite'], ['OP9-003', 'look: sprite']]);
   assert.equal(next.db.version, base.db.version, 'samo sprite: verzija ostaje');
 });
 
 test('sprite za kartu koja nije heroj ni Evolution se preskače uz upozorenje', async () => {
   const { pub } = await firstImport();
   const a = await analyzeExport({ xmlFiles: [], pngFiles: [png([5], 'export/Punch Sprite.png')], db: pub.db });
-  assert.match(a.warnings.map(w => w.msg).join('\n'), /sprite je samo za heroje i Evolution karte/);
+  assert.match(a.warnings.map(w => w.msg).join('\n'), /sprites are only for heroes and Evolution cards/);
   assert.deepEqual(a.entries, []);
 });
 
@@ -431,7 +431,7 @@ test('izgled (bakugan, sprite) ne diže verziju, skuplja se pod nju i ne broji s
   log = appendChangelog(log, changelogEntry(a.db, b.db));
   assert.deepEqual(log.entries.map(e => e.version), [1], 'izgled ide pod v1');
   const hero = log.entries[0].cards.find(c => c.id === 'OP9-001');
-  assert.equal(describeChange(hero), 'nova · izgled: oblik bakugana, boja bakugana');
+  assert.equal(describeChange(hero), 'new · look: bakugan shape, bakugan color');
   // igra (wt) diže verziju; deckovi vide samo igru
   const c = applyAppEdits(b.db, { 'OP9-001': { wt: 3 } });
   assert.deepEqual([c.db.version, c.bumped], [2, true]);
@@ -439,10 +439,10 @@ test('izgled (bakugan, sprite) ne diže verziju, skuplja se pod nju i ne broji s
   const d = applyAppEdits(c.db, { 'OP9-001': { bakuganColor: '#00ff00' } });
   log = appendChangelog(log, changelogEntry(c.db, d.db));
   assert.deepEqual(log.entries.map(e => e.version), [1, 2]);
-  assert.equal(describeChange(log.entries[1].cards[0]), 'wt · izgled: boja bakugana');
+  assert.equal(describeChange(log.entries[1].cards[0]), 'wt · look: bakugan color');
   assert.deepEqual([...changesSince(log, 1)].map(([id, l]) => [id, l.map(x => x.fields)]), [['OP9-001', [['wt']]]]);
   // stari zapisi: izgled u fields ili sprite: true ne pali deckove
   const old = { entries: [{ version: 3, cards: [{ id: 'X', name: 'X', kind: 'changed', fields: [], image: false, sprite: true }] }, { version: 4, cards: [{ id: 'X', name: 'X', kind: 'changed', fields: ['bakuganShape'], image: false }] }] };
   assert.equal(changesSince(old, 2).size, 0);
-  assert.deepEqual(old.entries.map(e => describeChange(e.cards[0])), ['izgled: sprite', 'izgled: oblik bakugana']);
+  assert.deepEqual(old.entries.map(e => describeChange(e.cards[0])), ['look: sprite', 'look: bakugan shape']);
 });

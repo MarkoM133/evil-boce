@@ -5,6 +5,8 @@ export const DECK_SIZE = 40;
 export const LIMITS = { Action: 4, Equipment: 4, Assist: 2, Evolution: 2 };
 export const CODE_PREFIX = 'EB1';
 
+const nCards = n => `${n} ${n === 1 ? 'card' : 'cards'}`;
+
 export function emptyDeck(name = '') {
   return { name, heroes: [], cards: {} };
 }
@@ -56,12 +58,12 @@ export function checkDeck(db, deck) {
   const warn = msg => problems.push({ level: 'warn', msg });
 
   const heroes = deck.heroes.map(id => ids.get(id));
-  if (deck.heroes.length !== 3) err(`odaberi 3 heroja (sad ${deck.heroes.length})`);
-  if (new Set(deck.heroes).size !== deck.heroes.length) err('isti heroj je odabran dvaput');
+  if (deck.heroes.length !== 3) err(`pick 3 heroes (now ${deck.heroes.length})`);
+  if (new Set(deck.heroes).size !== deck.heroes.length) err('the same hero is picked twice');
   deck.heroes.forEach((id, i) => {
-    if (!heroes[i]) err(`heroj ${id} ne postoji u bazi`);
-    else if (heroes[i].type !== 'Character') err(`${id} nije heroj (Character)`);
-    else if (heroes[i].deleted) warn(`heroj ${heroes[i].name} je maknut iz baze`);
+    if (!heroes[i]) err(`hero ${id} is not in the database`);
+    else if (heroes[i].type !== 'Character') err(`${id} is not a hero (Character)`);
+    else if (heroes[i].deleted) warn(`hero ${heroes[i].name} was deleted from the database`);
   });
 
   const colors = new Set(heroes.filter(Boolean).map(h => h.color));
@@ -72,12 +74,12 @@ export function checkDeck(db, deck) {
   for (const [id, n] of Object.entries(deck.cards)) {
     if (!n) continue;
     const c = ids.get(id);
-    if (!c) { err(`karta ${id} ne postoji u bazi`); continue; }
-    if (!DECK_TYPES.includes(c.type)) { err(`${c.name}: ${c.type} ne ide u deck`); continue; }
-    if (c.deleted) warn(`${c.name} je maknuta iz baze`);
-    if (!colors.has(c.color)) err(`${c.name}: boja ${c.color} nije boja odabranih heroja`);
-    if (c.type === 'Evolution' && !names.has(c.hero)) err(`${c.name}: Evolution za heroja kojeg nema u decku`);
-    if (n > LIMITS[c.type]) err(`${c.name}: ${n} kopija, a ${c.type} smije najviše ${LIMITS[c.type]}`);
+    if (!c) { err(`card ${id} is not in the database`); continue; }
+    if (!DECK_TYPES.includes(c.type)) { err(`${c.name}: ${c.type} can't go in a deck`); continue; }
+    if (c.deleted) warn(`${c.name} was deleted from the database`);
+    if (!colors.has(c.color)) err(`${c.name}: color ${c.color} is not a color of the chosen heroes`);
+    if (c.type === 'Evolution' && !names.has(c.hero)) err(`${c.name}: Evolution for a hero who isn't in the deck`);
+    if (n > LIMITS[c.type]) err(`${c.name}: ${n} copies, but ${c.type} allows at most ${LIMITS[c.type]}`);
     byType[c.type] = (byType[c.type] ?? 0) + n;
     byColor[c.color] = (byColor[c.color] ?? 0) + n;
     curve[c.cost] = (curve[c.cost] ?? 0) + n;
@@ -85,13 +87,13 @@ export function checkDeck(db, deck) {
 
   const count = cardCount(deck);
   const capacity = poolCapacity(deckPool(db, deck.heroes));
-  if (count > DECK_SIZE) err(`${count} karata, najviše je ${DECK_SIZE}`);
+  if (count > DECK_SIZE) err(`${nCards(count)}, the maximum is ${DECK_SIZE}`);
   else if (count < DECK_SIZE) {
     if (deck.heroes.length === 3 && capacity < DECK_SIZE) {
-      if (count < capacity) err(`nedostaje ${capacity - count} karata (bazen ovih heroja ima samo ${capacity})`);
-      else warn(`deck ima ${count} karata jer bazen ovih heroja ima samo ${capacity}`);
+      if (count < capacity) err(`${nCards(capacity - count)} missing (the pool of these heroes has only ${capacity})`);
+      else warn(`the deck has ${nCards(count)} because the pool of these heroes has only ${capacity}`);
     } else {
-      err(`nedostaje ${DECK_SIZE - count} karata do ${DECK_SIZE}`);
+      err(`${nCards(DECK_SIZE - count)} short of ${DECK_SIZE}`);
     }
   }
 
@@ -131,14 +133,14 @@ export function encodeDeck(deck, catalogVersion) {
 
 export function decodeDeck(code) {
   const parts = code.trim().split('|');
-  if (parts.length !== 4 || parts[0] !== CODE_PREFIX) throw new Error(`Deck kod mora počinjati s ${CODE_PREFIX}| i imati 4 dijela`);
+  if (parts.length !== 4 || parts[0] !== CODE_PREFIX) throw new Error(`Deck code must start with ${CODE_PREFIX}| and have 4 parts`);
   const version = /^v(\d+)$/.exec(parts[1]);
-  if (!version) throw new Error('Deck kod: neispravna verzija kataloga');
+  if (!version) throw new Error('Deck code: invalid catalog version');
   const heroes = parts[2] ? parts[2].split(',') : [];
   const cards = {};
   for (const item of parts[3] ? parts[3].split(',') : []) {
     const m = /^(.+)\*(\d+)$/.exec(item);
-    if (!m) throw new Error(`Deck kod: neispravan dio "${item}"`);
+    if (!m) throw new Error(`Deck code: invalid part "${item}"`);
     cards[m[1]] = (cards[m[1]] ?? 0) + parseInt(m[2], 10);
   }
   return { catalogVersion: parseInt(version[1], 10), heroes, cards };

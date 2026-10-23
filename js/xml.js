@@ -24,7 +24,7 @@ export function parseXml(src) {
     else if (m[6] !== undefined) top.text += decode(m[6]);
     else if (m[3] !== undefined) {
       if (m[2] === '/') {
-        if (top.tag !== m[3]) throw new Error(`XML: očekivan </${top.tag}>, a došao </${m[3]}>`);
+        if (top.tag !== m[3]) throw new Error(`XML: expected </${top.tag}>, got </${m[3]}>`);
         stack.pop();
       } else {
         const node = { tag: m[3], children: [], text: '' };
@@ -33,7 +33,7 @@ export function parseXml(src) {
       }
     }
   }
-  if (stack.length !== 1) throw new Error(`XML: nije zatvoren <${stack[stack.length - 1].tag}>`);
+  if (stack.length !== 1) throw new Error(`XML: <${stack[stack.length - 1].tag}> is not closed`);
   return root;
 }
 

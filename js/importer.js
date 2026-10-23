@@ -69,18 +69,18 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     const seenHere = new Set();
     for (const p of parsed) {
       if (p.skip) { tokenCount++; continue; }
-      if (seenHere.has(p.code)) add(errors, p.code, `${f.path}: kod je dvaput u istom XML-u`);
+      if (seenHere.has(p.code)) add(errors, p.code, `${f.path}: code appears twice in the same XML`);
       seenHere.add(p.code);
       const prev = picked.get(p.code);
       if (prev && !same(prev.card, p.card)) {
-        add(warnings, p.code, `karta je u više XML-ova s različitim podacima; vrijedi noviji ${f.path} (ne ${prev.file})`);
+        add(warnings, p.code, `card is in several XMLs with different data; using the newer ${f.path} (not ${prev.file})`);
       } else if (prev) {
-        add(infos, p.code, `karta je i u ${prev.file} i u ${f.path} (isti podaci)`);
+        add(infos, p.code, `card is in both ${prev.file} and ${f.path} (same data)`);
       }
       picked.set(p.code, { ...p, file: f.path });
     }
   }
-  if (tokenCount) add(infos, null, `preskočeno ${tokenCount} karata bez koda (tokeni)`);
+  if (tokenCount) add(infos, null, `skipped ${tokenCount} ${tokenCount === 1 ? 'card' : 'cards'} without a code (tokens)`);
 
   // 2. PNG: "OP1-012 Sword Slash.png" (ili "OP1-012.png") ide karti po kodu, "Sword Slash.png" po imenu.
   // Isti PNG u više podfoldera -> noviji.
@@ -97,7 +97,7 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     const [map, key] = CODE_RE.test(code)
       ? [sprite ? spriteByCode : pngByCode, code]
       : sprite ? [spriteByName, normName(rest)] : [pngByName, rest];
-    if (map.has(key)) add(infos, null, `PNG "${name}" postoji više puta; vrijedi noviji ${p.path}`);
+    if (map.has(key)) add(infos, null, `PNG "${name}" exists more than once; using the newer ${p.path}`);
     map.set(key, p);
   }
   const pngName = card => `"${card.id} ${card.name}.png"`;
@@ -116,14 +116,14 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
       usedPngs.add(png);
       imageHash = await imageHashOf(await png.getBytes());
     } else if (!old?.imageHash) {
-      add(errors, p.code, `nova karta bez PNG-a ${pngName(p.card)} (ili "${p.card.name}.png")`);
+      add(errors, p.code, `new card without a PNG ${pngName(p.card)} (or "${p.card.name}.png")`);
     }
     const diffs = old ? CE_FIELDS.filter(k => !same(old[k], p.card[k])) : [];
     const imageChanged = !!old && !!imageHash && imageHash !== old.imageHash;
     const status = !old ? 'new' : diffs.length || imageChanged ? 'changed' : 'same';
     // PNG je nacrtana karta: promijenjeni podaci, a ista slika znači da je slika vjerojatno stara.
     const staleImage = diffs.length > 0 && !imageChanged;
-    if (staleImage) add(warnings, p.code, `promijenjeno (${diffs.join(', ')}), a ${png ? 'PNG je isti kao prije' : 'nema PNG-a, pa ostaje stara slika'}; slika je možda stara, treba li novi ${pngName(p.card)}?`);
+    if (staleImage) add(warnings, p.code, `changed (${diffs.join(', ')}), but ${png ? 'the PNG is the same as before' : 'there is no PNG, so the old image stays'}; the image may be outdated, is a new ${pngName(p.card)} needed?`);
     entries.push({ id: p.code, status, card: p.card, old, diffs, imageChanged, staleImage, imageHash, png, pngByName: !!png && !byCode, file: p.file });
   }
 
@@ -141,7 +141,7 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     const candidates = live.length ? live : found;
     if (candidates.length > 1) {
       usedPngs.add(png);
-      add(errors, null, `${png.path}: isto ime imaju ${candidates.map(c => c.id).join(' i ')}; PNG mora počinjati kodom, npr. ${pngName(candidates[0])}`);
+      add(errors, null, `${png.path}: ${candidates.map(c => c.id).join(' and ')} share the same name; the PNG must start with the code, e.g. ${pngName(candidates[0])}`);
       continue;
     }
     const old = candidates[0];
@@ -169,12 +169,12 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     const live = found.filter(c => !c.deleted);
     const candidates = live.length ? live : found;
     if (candidates.length > 1) {
-      add(errors, null, `${sprite.path}: isto ime imaju ${candidates.map(c => c.id).join(' i ')}; sprite mora počinjati kodom, npr. "${candidates[0].id} ${candidates[0].name} Sprite.png"`);
+      add(errors, null, `${sprite.path}: ${candidates.map(c => c.id).join(' and ')} share the same name; the sprite must start with the code, e.g. "${candidates[0].id} ${candidates[0].name} Sprite.png"`);
       continue;
     }
     const target = candidates[0];
     if (!SPRITE_TYPES.includes(target.type)) {
-      add(warnings, target.id, `${sprite.path}: sprite je samo za heroje i Evolution karte (${target.name} je ${target.type}); preskočen`);
+      add(warnings, target.id, `${sprite.path}: sprites are only for heroes and Evolution cards (${target.name} is ${target.type}); skipped`);
       continue;
     }
     const old = oldById.get(target.id);
@@ -195,7 +195,7 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
 
   const skipped = [...pngByCode.values(), ...pngByName.values(), ...spriteByCode.values(), ...spriteByName.values()]
     .filter(png => !usedPngs.has(png)).map(png => baseName(png.path));
-  if (skipped.length) add(infos, null, `preskočeno ${skipped.length} PNG-ova koji nisu karte s kodom: ${skipped.join(', ')}`);
+  if (skipped.length) add(infos, null, `skipped ${skipped.length} ${skipped.length === 1 ? 'PNG that is not a card' : 'PNGs that are not cards'} with a code: ${skipped.join(', ')}`);
 
   // 4. Provjere na bazi kakva će biti nakon Objave.
   // Heroj mora imati jedinstveno ime (TTS ga veže uz bakugana po imenu, Evolution ga nalazi po imenu).
@@ -207,16 +207,16 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
   for (const [name, list] of byName) {
     if (list.length < 2) continue;
     const ids = list.map(c => c.id).join(', ');
-    if (list.some(c => c.type === 'Character')) add(errors, list[0].id, `ime "${name}" imaju ${ids}; heroj mora imati jedinstveno ime`);
-    else add(warnings, list[0].id, `isto ime "${name}" imaju ${ids}; to je dopušteno, ali PNG-ovi moraju počinjati kodom`);
+    if (list.some(c => c.type === 'Character')) add(errors, list[0].id, `the name "${name}" is used by ${ids}; a hero must have a unique name`);
+    else add(warnings, list[0].id, `the same name "${name}" is used by ${ids}; that's allowed, but the PNGs must start with the code`);
   }
   for (const e of entries) {
-    if (e.pngByName && byName.get(e.card.name)?.length > 1) add(errors, e.id, `PNG "${e.card.name}.png" ne zna se kojoj karti pripada (isto ime ima više karata); preimenuj ga u ${pngName(e.card)}`);
+    if (e.pngByName && byName.get(e.card.name)?.length > 1) add(errors, e.id, `PNG "${e.card.name}.png": unclear which card it belongs to (several cards share that name); rename it to ${pngName(e.card)}`);
   }
   const heroes = new Set(live.filter(c => c.type === 'Character').map(c => c.name));
   for (const c of live) {
-    if (c.type === 'Evolution' && !heroes.has(c.hero)) add(errors, c.id, `Evolution: heroj "${c.hero}" ne postoji`);
-    if (c.type === 'Character' && !c.bakugan) add(warnings, c.id, 'heroj bez bakugana');
+    if (c.type === 'Evolution' && !heroes.has(c.hero)) add(errors, c.id, `Evolution: hero "${c.hero}" doesn't exist`);
+    if (c.type === 'Character' && !c.bakugan) add(warnings, c.id, 'hero without a bakugan');
   }
 
   return { entries, errors, warnings, infos };
@@ -395,13 +395,13 @@ export function changesSince(log, since) {
 }
 
 // Kratak opis promjene karte: "values, slika", "nova", "maknuta", "izgled: oblik bakugana, sprite".
-const FIELD_LABELS = { bakuganShape: 'oblik bakugana', bakuganColor: 'boja bakugana', bakugan: 'bakugan', sprite: 'sprite' };
+const FIELD_LABELS = { bakuganShape: 'bakugan shape', bakuganColor: 'bakugan color', bakugan: 'bakugan', sprite: 'sprite' };
 
 export function describeChange(c) {
-  const kind = { new: 'nova', deleted: 'maknuta', restored: 'vraćena' }[c.kind];
-  const game = kind ? [kind] : [...gameFieldsOf(c), ...(c.image ? ['slika'] : [])];
+  const kind = { new: 'new', deleted: 'deleted', restored: 'restored' }[c.kind];
+  const game = kind ? [kind] : [...gameFieldsOf(c), ...(c.image ? ['image'] : [])];
   const look = lookOf(c).map(f => FIELD_LABELS[f] ?? f);
-  return [game.join(', '), look.length ? `izgled: ${look.join(', ')}` : ''].filter(Boolean).join(' · ');
+  return [game.join(', '), look.length ? `look: ${look.join(', ')}` : ''].filter(Boolean).join(' · ');
 }
 
 // export/ je sanduče: nakon Objave pročitani fileovi idu u export/objavljeno/<datum vrijeme>/, a Uvoz arhivu preskače.

@@ -45,12 +45,12 @@ test('provjera: heroji, limiti, boje, veličina', () => {
   const r = checkDeck(d, { heroes: ['H-1', 'H-1'], cards: { 'Red-S': 3, 'Cyan-A1': 1, 'E-2': 1, 'S-1': 1 } });
   const msgs = r.problems.map(p => p.msg).join('\n');
   assert.equal(r.ready, false);
-  assert.match(msgs, /odaberi 3 heroja/);
-  assert.match(msgs, /isti heroj/);
-  assert.match(msgs, /Assist smije najviše 2/);
-  assert.match(msgs, /boja Cyan nije boja/);
-  assert.match(msgs, /Evolution za heroja kojeg nema/);
-  assert.match(msgs, /Stage ne ide u deck/);
+  assert.match(msgs, /pick 3 heroes/);
+  assert.match(msgs, /same hero/);
+  assert.match(msgs, /Assist allows at most 2/);
+  assert.match(msgs, /color Cyan is not a color/);
+  assert.match(msgs, /Evolution for a hero who isn't/);
+  assert.match(msgs, /Stage can't go in a deck/);
 });
 
 test('random popuni do 40, poštuje limite po tipu, ostaje ispravan', () => {
@@ -94,7 +94,7 @@ test('premali bazen: random staje i javi koliko fali, provjera daje upozorenje',
   assert.equal(deck.missing, 34);
   const r = checkDeck(d, deck);
   assert.ok(r.ready);
-  assert.match(r.problems[0].msg, /bazen ovih heroja ima samo 6/);
+  assert.match(r.problems[0].msg, /pool of these heroes has only 6/);
 });
 
 test('deck kod: tamo i natrag', () => {
@@ -103,7 +103,7 @@ test('deck kod: tamo i natrag', () => {
   assert.equal(code, 'EB1|v12|H-1,H-2,H-3|E-1*2,Red-A2*4,Red-A10*1');
   assert.deepEqual(decodeDeck(code), { catalogVersion: 12, heroes: ['H-1', 'H-2', 'H-3'], cards: { 'E-1': 2, 'Red-A2': 4, 'Red-A10': 1 } });
   assert.throws(() => decodeDeck('XX|v1||'), /EB1/);
-  assert.throws(() => decodeDeck('EB1|v1|H-1|bad'), /neispravan dio/);
+  assert.throws(() => decodeDeck('EB1|v1|H-1|bad'), /invalid part/);
 });
 
 test('slugify za ime filea', () => {

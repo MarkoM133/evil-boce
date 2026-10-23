@@ -66,7 +66,7 @@ function readElements(cardNode) {
 export function parseCardEngineXml(xmlText) {
   const root = parseXml(xmlText);
   const list = child(root, 'ArrayOfCard');
-  if (!list) throw new Error('Nije Card Engine export (nema <ArrayOfCard>)');
+  if (!list) throw new Error('Not a Card Engine export (no <ArrayOfCard>)');
   return children(list, 'Card').map(parseCard);
 }
 
@@ -80,7 +80,7 @@ function parseCard(node) {
   if (!code) {
     const loose = texts.find(e => LOOSE_CODE_RE.test(e.t))?.t;
     if (!loose) return { skip: true, name: rawName };
-    problems.push({ level: 'error', msg: `kod "${loose}" ne odgovara uzorku SET-001 (OP1-001, DBZ-001, Stage-001)` });
+    problems.push({ level: 'error', msg: `code "${loose}" doesn't match the pattern SET-001 (OP1-001, DBZ-001, Stage-001)` });
     code = loose;
   }
   // Card Engine PNG nazove po imenu karte, pa frend u ime stavi i kod ("JO1-001 Giorno Giovanna").
@@ -89,7 +89,7 @@ function parseCard(node) {
 
   let type = texts.find(e => TYPE_TEXTS.includes(e.t))?.t;
   if (!type && code.startsWith('Stage-')) type = 'Stage';
-  if (!type) problems.push({ level: 'error', msg: 'nema tipa karte' });
+  if (!type) problems.push({ level: 'error', msg: 'no card type' });
 
   const card = { id: code, name, type: type ?? null };
 
@@ -98,8 +98,8 @@ function parseCard(node) {
   } else {
     const frame = els.find(e => e.kind === 'image' && e.t === 'p_frame_11');
     card.color = frame ? COLORS[frame.rgb] ?? null : null;
-    if (!frame) problems.push({ level: 'error', msg: 'nema okvira p_frame_11 (boja)' });
-    else if (!card.color) problems.push({ level: 'error', msg: `nepoznat ton okvira (${frame.rgb})` });
+    if (!frame) problems.push({ level: 'error', msg: 'no p_frame_11 frame (color)' });
+    else if (!card.color) problems.push({ level: 'error', msg: `unknown frame tint (${frame.rgb})` });
   }
 
   const row = texts.filter(e => NUM_RE.test(e.t) && Math.abs(e.y - COST_Y) < 5);
@@ -107,7 +107,7 @@ function parseCard(node) {
   const evo = row.find(e => e.x < -200);
   if (DECK_TYPES.includes(type)) {
     if (cost) card.cost = parseInt(cost.t, 10);
-    else problems.push({ level: 'error', msg: 'nema costa' });
+    else problems.push({ level: 'error', msg: 'no cost' });
   }
   if (type === 'Evolution') {
     if (evo) card.evo = parseInt(evo.t, 10);
@@ -126,14 +126,14 @@ function parseCard(node) {
   if (HERO_TYPES.includes(type)) {
     card.stats = Object.fromEntries(Object.entries(ordered).map(([k, v]) => [k, parseInt(v, 10)]));
     const missing = STAT_KEYS.filter(k => !(k in card.stats));
-    if (missing.length) problems.push({ level: 'error', msg: `nedostaju statsi: ${missing.join(', ')}` });
+    if (missing.length) problems.push({ level: 'error', msg: `missing stats: ${missing.join(', ')}` });
   } else if (type && type !== 'Stage') {
     const signed = Object.entries(ordered).filter(([, v]) => /^[+-]/.test(v));
     const plain = Object.entries(ordered).filter(([, v]) => !/^[+-]/.test(v));
     card.bonus = Object.fromEntries(signed.map(([k, v]) => [k, parseInt(v, 10)]));
     if (plain.length) {
       card.values = Object.fromEntries(plain.map(([k, v]) => [k, parseInt(v, 10)]));
-      problems.push({ level: 'warn', msg: `vrijednosti bez predznaka (${plain.map(([k, v]) => `${k} ${v}`).join(', ')}) idu u "values", nisu bonus` });
+      problems.push({ level: 'warn', msg: `unsigned values (${plain.map(([k, v]) => `${k} ${v}`).join(', ')}) go into "values", not bonus` });
     }
   }
 

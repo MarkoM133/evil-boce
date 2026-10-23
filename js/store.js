@@ -5,7 +5,7 @@ import * as fs from './fsdir.js';
 
 export class ConflictError extends Error {
   constructor(current) {
-    super('Deck je u međuvremenu promijenjen na drugom uređaju.');
+    super('The deck was changed on another device in the meantime.');
     this.current = current;
   }
 }
@@ -41,7 +41,7 @@ export async function probeServer() {
 
 async function json(r) {
   const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(body.error || `Server je vratio ${r.status}`);
+  if (!r.ok) throw new Error(body.error || `Server returned ${r.status}`);
   return body;
 }
 
@@ -165,7 +165,7 @@ export function folderStore(root) {
     },
     async readDeck(slug) {
       const d = await readJson(`decks/${slug}.json`);
-      if (!d) throw new Error('Nema tog decka.');
+      if (!d) throw new Error('No such deck.');
       return { slug, ...d };
     },
     async saveDeck(slug, deck, baseRev) {
