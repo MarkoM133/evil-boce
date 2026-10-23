@@ -14,14 +14,20 @@ if ($Remove) {
     return
 }
 
+# Stari server (i njegov prozor, ako je pokrenut starim načinom) se ugasi, pa ga zadatak digne iznova.
+Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*server.mjs*' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
 $node = (Get-Command node -ErrorAction Stop).Source
 $logDir = Join-Path $PSScriptRoot 'logs'
 New-Item -ItemType Directory -Force $logDir | Out-Null
 $log = Join-Path $logDir 'server.log'
 
-# cmd preusmjeri izlaz servera u log; prozor skriva sam Task Scheduler (Hidden).
-$arg = "/c `"`"$node`" `"$Repo\server\server.mjs`" >> `"$log`" 2>&1`""
-$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument $arg -WorkingDirectory $Repo
+# Zadatak radi u prijavi korisnika, pa bi cmd.exe otvorio prazan prozor (-Hidden skriva samo zadatak u popisu).
+# Zato ga pokreće start-hidden.vbs bez prozora; izlaz servera ide u log.
+$arg = "`"$PSScriptRoot\start-hidden.vbs`" `"$node`""
+$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument $arg -WorkingDirectory $Repo
 $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $atLogon = New-ScheduledTaskTrigger -AtLogOn -User $user
 # Čuvar: svakih 5 minuta. Ako server radi, nova instanca se ne pokreće (IgnoreNew); ako je stao, digne se.
