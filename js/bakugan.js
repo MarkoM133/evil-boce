@@ -49,7 +49,8 @@ export function createPreview(canvas) {
   let pending = null;
   const ready = loadThree().then(({ THREE, OBJLoader }) => {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    // canvas.currentCSSZoom: app je na računalu zumiran (CSS zoom), pa se crta u većoj rezoluciji da ne bude mutno
+    renderer.setPixelRatio(Math.min(3, (window.devicePixelRatio || 1) * (canvas.currentCSSZoom || 1)));
     renderer.setSize(canvas.clientWidth || canvas.width, canvas.clientHeight || canvas.height, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     const scene = new THREE.Scene();

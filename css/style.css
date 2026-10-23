@@ -22,7 +22,15 @@
   --text: "Barlow", system-ui, "Segoe UI", sans-serif;
   --slant: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
   color-scheme: dark;
+  --z: 1; /* povećanje cijelog appa na računalu (vidi dolje) */
 }
+
+/* Na računalu je app veći, kao zum preglednika: 125 % na velikim ekranima, 110 % na manjim laptopima.
+   Unutar zumiranog dijela vw/vh se isto povećaju, pa se mjere vezane uz prozor dijele s --z.
+   Prikaz slike preko cijelog ekrana nije zumiran. */
+@media (min-width: 1280px) { :root { --z: 1.1; } }
+@media (min-width: 1600px) { :root { --z: 1.25; } }
+#app, #toasts { zoom: var(--z); }
 
 * { box-sizing: border-box; }
 
@@ -108,7 +116,7 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
 /* ---------- početni ekran ---------- */
 
 .welcome {
-  min-height: 100vh;
+  min-height: calc(100vh / var(--z));
   display: grid;
   grid-template-columns: minmax(280px, 520px) minmax(0, 440px);
   gap: 48px;
@@ -182,7 +190,7 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
   top: 0;
   bottom: 0;
   left: 50%;
-  width: 100vw;
+  width: calc(100vw / var(--z));
   transform: translateX(-50%);
   z-index: 0;
   display: flex;
@@ -257,7 +265,7 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
   top: 16px;
   display: grid;
   gap: 28px;
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh / var(--z) - 32px);
   overflow-y: auto;
   padding-right: 24px;
   border-right: 1px solid var(--line);
