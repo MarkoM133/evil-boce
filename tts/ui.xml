@@ -120,3 +120,9 @@
     <Button onClick="enGive_n" text="+" preferredWidth="28" fontSize="18" fontStyle="Bold" color="#2A3440" textColor="#FFFFFF" tooltip="Vrati 1 energy (recharge efekt ili ispravak)" tooltipPosition="Below"/>
   </HorizontalLayout>
 </Panel>
+
+<!-- Sync karata (Faza 2): karte, biblioteka i heroji s lokalnog servera; isto chat "sync". -->
+<Button id="syncBtn" onClick="syncCardsClick" text="Sync karata"
+    width="140" height="36" fontSize="16" fontStyle="Bold"
+    rectAlignment="UpperCenter" offsetXY="-320 -70" tooltipPosition="Below"
+    color="#103A2CE6" textColor="#B8FFD8" tooltip="Karte s lokalnog servera: biblioteka, karte na stolu, statsi heroja. Nakon Synca: Cloud Manager > Upload All Loaded Files, pa spremi save."/>

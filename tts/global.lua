@@ -76,6 +76,9 @@ local CFG = {
   WALL_FIELDS      = 2,       -- zid: duljina u poljima grida
   WALL_HEIGHT      = 1.2,     -- zid: visina kad stoji (bakugan je ~0.6)
   WALL_THICK       = 0.3,     -- zid: debljina
+
+  SERVER           = "http://localhost:5100",   -- lokalni server (web app, cards.json); Sync karata ga zove
+  LIBRARY_POS      = {32, 3, -42},              -- gdje se prvi put stvori deck "Biblioteka karata" (poslije ostaje gdje ga stavis)
 }
 
 local HP_DEFAULT = {hp = 8, max = 8, dmg = 3, pwr = 3, rng = 4, kb = 3, wt = 2}
@@ -125,6 +128,7 @@ turnNo = 0
 setupPhase = false
 coreOwner = {}                     -- [token guid] = boja igraca koji ga je postavio
 coreRealName = {}                  -- [token guid] = ime dok je token face down (skriveno kao "Core")
+heroBase = {}                      -- [ime] = osnovni statsi heroja iz karte (Sync karata)
 handPick = {}                      -- [card guid] = boja: karta uzeta iz ruke (za placanje costa)
 energySig = {}
 
@@ -142,6 +146,7 @@ function onSave()
   t.setupPhase = setupPhase
   t.coreOwner = coreOwner
   t.coreRealName = coreRealName
+  t.heroBase = heroBase
   return JSON.encode(t)
 end
 
@@ -159,6 +164,7 @@ function onLoad(save)
         elseif k == "setupPhase" then setupPhase = v
         elseif k == "coreOwner" then coreOwner = v
         elseif k == "coreRealName" then coreRealName = v
+        elseif k == "heroBase" then heroBase = v
         else otherSave[k] = v end
       end
     end
@@ -917,7 +923,10 @@ function scanHeroes()
       if n ~= "" and bodies[n] then
         heroCards[n] = o
         if not o.hasTag("HeroCard") then o.addTag("HeroCard") end
-        if stats[n] == nil then stats[n] = copy(HP_DEFAULT) end
+        if stats[n] == nil then
+          stats[n] = copy(heroBase[n] or HP_DEFAULT)
+          stats[n].hp = stats[n].max
+        end
         if stats[n].wt == nil then stats[n].wt = HP_DEFAULT.wt end
         local b = o.getButtons()
         if b == nil or #b == 0 then decorateCard(o, n) end
@@ -2074,6 +2083,7 @@ end
 
 -- u chat napisi: debug
 function onChat(msg, player)
+  if msg == "sync" then syncCards(player and player.color) return end
   if msg ~= "debug" then return end
   local m = getMap()
   print(string.format("Mapa centar %.1f,%.1f  pola %.1f x %.1f  vrh %.2f, stol %.2f, crta nacrtano: %s, greska crtanja: %s",
@@ -2556,4 +2566,256 @@ function placeCoreOnSide(t, side, avoid)
   local r = t.getRotation()
   t.setRotationSmooth({0, r.y, CFG.TOKEN_FACE_Z}, false, true)
   t.setPositionSmooth({best.x, m.top + 0.6, best.z}, false, true)
+end
+
+---------------------------------------------------------------- Sync karata (Faza 2)
+-- Gumb "Sync karata" ili chat "sync": podaci s lokalnog servera (CFG.SERVER .. "/api/tts") se primijene na stol.
+--   1. Steam URL-ovi koje je Cloud Manager upisao ("Upload All Loaded Files") prvo idu serveru,
+--      da Sync ne vrati lokalne putanje.
+--   2. Biblioteka: jedan zakljucan deck (tag Biblioteka) s master kopijom svake karte. Deck, a ne vreca:
+--      TTS ucita slike svih karata u decku, pa ih Upload vidi (sadrzaj vrece se ne ucitava).
+--   3. Klonovi na stolu i u deckovima (po GMNotes = kod karte): ime, opis, slika.
+--   4. Heroji: osnovni statsi iz karte (max HP, DMG, PWR, RNG, KB, WT).
+-- Karta u ruci se ne dira (TTS bi je izbacio iz ruke); poruka kaze koliko ih je ostalo.
+
+local syncBusy = false
+local DELETED_MARK = "[MAKNUTA] "
+
+local function isCode(s)
+  return type(s) == "string" and s:match("^%u%w*%-%d%d%d$") ~= nil
+end
+
+local function isSteam(u)
+  return type(u) == "string" and u:find("^https://steamusercontent") ~= nil
+end
+
+local function faceOf(d)
+  for _, v in pairs(d.CustomDeck or {}) do return v.FaceURL end
+  return nil
+end
+
+local function memoOf(d)
+  local ok, m = pcall(JSON.decode, d.Memo or "")
+  return ok and type(m) == "table" and m or {}
+end
+
+local function customDeck(c, back)
+  local cd = {}
+  cd[c.deck] = { FaceURL = c.face or "", BackURL = back, NumWidth = 1, NumHeight = 1, BackIsHidden = true, UniqueBack = false, Type = 0 }
+  return cd
+end
+
+local function masterData(c, back)
+  return {
+    Name = "CardCustom",
+    Transform = { posX = 0, posY = 0, posZ = 0, rotX = 0, rotY = 180, rotZ = 180, scaleX = 1, scaleY = 1, scaleZ = 1 },
+    Nickname = c.nickname,
+    Description = (c.deleted and DELETED_MARK or "") .. c.description,
+    GMNotes = c.id,
+    Memo = JSON.encode({ key = c.key, rev = c.rev }),
+    CardID = c.deck * 100,
+    CustomDeck = customDeck(c, back),
+    HideWhenFaceDown = true,
+    Hands = true,
+    SidewaysCard = false,
+    ColorDiffuse = { r = 0.713, g = 0.713, b = 0.713 },
+    Tags = {},
+  }
+end
+
+-- Podaci jedne karte (sama ili unutar decka) prema karti s servera; true ako se nesto promijenilo.
+local function applyCard(d, c, back)
+  local cur = nil
+  for _, v in pairs(d.CustomDeck or {}) do cur = v end
+  local face = c.face or ""
+  if d.Nickname == c.nickname and d.Description == c.description and cur ~= nil and cur.FaceURL == face
+    and d.CardID == c.deck * 100 then
+    return false
+  end
+  d.Nickname = c.nickname
+  d.Description = c.description
+  d.GMNotes = c.id
+  d.Memo = JSON.encode({ key = c.key, rev = c.rev })
+  d.CardID = c.deck * 100
+  d.CustomDeck = customDeck(c, (cur and cur.BackURL) or back)
+  return true
+end
+
+-- Deck: karte unutra po kodu; CustomDeck i DeckIDs decka se slozi iz karata. Vraca broj promijenjenih karata.
+local function applyDeck(d, byId, back)
+  local changed = 0
+  for _, e in ipairs(d.ContainedObjects or {}) do
+    local c = isCode(e.GMNotes) and byId[e.GMNotes] or nil
+    if c ~= nil and applyCard(e, c, back) then changed = changed + 1 end
+  end
+  if changed > 0 then
+    local decks, ids = {}, {}
+    for i, e in ipairs(d.ContainedObjects) do
+      for k, v in pairs(e.CustomDeck or {}) do decks[k] = v end
+      ids[i] = e.CardID
+    end
+    d.CustomDeck = decks
+    d.DeckIDs = ids
+  end
+  return changed
+end
+
+-- Novi objekt s istim GUID-om (pozicije za Novu igru, utori i karte heroja ga pamte po GUID-u).
+-- Stvara se frame kasnije: dok stari nije unisten, GUID je zauzet i TTS bi dao novi.
+local function respawn(o, data)
+  local p, r = o.getPosition(), o.getRotation()
+  data.GUID = o.getGUID()
+  o.destruct()
+  Wait.frames(function()
+    spawnObjectData({ data = data, position = { p.x, p.y, p.z }, rotation = { r.x, r.y, r.z } })
+  end, 1)
+end
+
+function libraryDeck()
+  return getObjectsWithTag("Biblioteka")[1]
+end
+
+-- Steam URL-ovi s mastera (i bakugana, vidi dolje) koje TTS jos nije javio serveru: { kljuc = url }.
+function collectSteamUrls()
+  local urls, n = {}, 0
+  local lib = libraryDeck()
+  if lib ~= nil then
+    for _, e in ipairs(lib.getData().ContainedObjects or {}) do
+      local m = memoOf(e)
+      local f = faceOf(e)
+      if m.key and isSteam(f) then urls[m.key] = f; n = n + 1 end
+    end
+  end
+  for _, b in ipairs(getObjectsWithTag("Bakugan")) do
+    local m = memoOf({ Memo = b.memo })
+    local d = b.getData()
+    if m.textureKey and d.CustomMesh and isSteam(d.CustomMesh.DiffuseURL) then urls[m.textureKey] = d.CustomMesh.DiffuseURL; n = n + 1 end
+    for _, s in pairs(d.States or {}) do
+      if m.spriteKey and s.CustomImage and isSteam(s.CustomImage.ImageURL) then urls[m.spriteKey] = s.CustomImage.ImageURL; n = n + 1 end
+    end
+  end
+  return urls, n
+end
+
+local function syncMessage(msg, col)
+  broadcastToAll("[Evil Boce] " .. msg, col or { 1, 0.9, 0.4 })
+end
+
+function syncCards(color)
+  if syncBusy then return end
+  syncBusy = true
+  local function fail(msg)
+    syncBusy = false
+    syncMessage("Sync karata: " .. msg, { 1, 0.45, 0.3 })
+  end
+  local function fetch()
+    WebRequest.get(CFG.SERVER .. "/api/tts", function(req)
+      if req.is_error then return fail("server ne odgovara (" .. tostring(req.error) .. "). Je li upaljen?") end
+      local ok, p = pcall(JSON.decode, req.text)
+      if not ok or type(p) ~= "table" or type(p.cards) ~= "table" then return fail("neispravan odgovor servera") end
+      local ok2, err = pcall(applySync, p)
+      syncBusy = false
+      if not ok2 then syncMessage("Sync karata: greska " .. tostring(err), { 1, 0.45, 0.3 }) end
+    end)
+  end
+  local urls, n = collectSteamUrls()
+  if n == 0 then return fetch() end
+  WebRequest.custom(CFG.SERVER .. "/api/steam-urls", "POST", true, JSON.encode({ urls = urls }),
+    { ["Content-Type"] = "application/json" }, function() fetch() end)
+end
+
+function syncCardsClick(player)
+  syncCards(player and player.color)
+end
+
+function applySync(p)
+  local byId = {}
+  for _, c in ipairs(p.cards) do byId[c.id] = c end
+
+  -- 1. Biblioteka: master kopija svake karte, iz pocetka (redom po kodu).
+  local lib = libraryDeck()
+  local before = {}
+  if lib ~= nil then
+    for _, e in ipairs(lib.getData().ContainedObjects or {}) do before[e.GMNotes] = e end
+  end
+  local masters, ids, decks = {}, {}, {}
+  local nNew, nChanged, nDeleted = 0, 0, 0
+  for i, c in ipairs(p.cards) do
+    local m = masterData(c, p.back)
+    local old = before[c.id]
+    if old == nil then
+      nNew = nNew + 1
+    elseif old.Description ~= m.Description or old.Nickname ~= m.Nickname or faceOf(old) ~= (c.face or "") then
+      if c.deleted and (old.Description or ""):sub(1, #DELETED_MARK) ~= DELETED_MARK then nDeleted = nDeleted + 1 else nChanged = nChanged + 1 end
+    end
+    masters[i] = m
+    ids[i] = m.CardID
+    decks[c.deck] = m.CustomDeck[c.deck]
+  end
+  local data = {
+    Name = "Deck", Nickname = "Biblioteka karata",
+    Description = "Master kopije svih karata (Sync karata). Ne vadi karte rucno; deck mozes pomaknuti.",
+    Locked = true, Tags = { "Biblioteka" }, HideWhenFaceDown = true, Hands = false,
+    Transform = { posX = 0, posY = 0, posZ = 0, rotX = 0, rotY = 180, rotZ = 180, scaleX = 1, scaleY = 1, scaleZ = 1 },
+    ContainedObjects = masters, DeckIDs = ids, CustomDeck = decks,
+  }
+  if lib ~= nil then
+    respawn(lib, data)
+  else
+    spawnObjectData({ data = data, position = CFG.LIBRARY_POS, rotation = { 0, 180, 180 } })
+  end
+
+  -- 2. Klonovi na stolu i u deckovima.
+  local nClones, nHand = 0, 0
+  for _, o in ipairs(getObjects()) do
+    if o ~= lib and not o.hasTag("Biblioteka") then
+      if o.type == "Card" and isCode(o.getGMNotes()) and byId[o.getGMNotes()] ~= nil then
+        local d = o.getData()
+        if applyCard(d, byId[o.getGMNotes()], p.back) then
+          if inAnyHand(o.getPosition()) then
+            nHand = nHand + 1
+          else
+            respawn(o, d)
+            nClones = nClones + 1
+          end
+        end
+      elseif o.type == "Deck" then
+        local d = o.getData()
+        local n = applyDeck(d, byId, p.back)
+        if n > 0 then
+          respawn(o, d)
+          nClones = nClones + n
+        end
+      end
+    end
+  end
+
+  -- 3. Heroji: osnovni statsi iz karte. Pun HP ostaje pun; inace se samo ogranici na novi max.
+  for _, hero in ipairs(p.heroes or {}) do
+    heroBase[hero.name] = copy(hero.stats)
+    local st = stats[hero.name]
+    if st ~= nil then
+      local full = (st.hp or 0) >= (st.max or 0)
+      for k, v in pairs(hero.stats) do st[k] = v end
+      if full or st.hp > st.max then st.hp = st.max end
+    end
+  end
+  if syncBakugans then syncBakugans(p) end
+  Wait.frames(scanHeroes, 10)
+
+  local parts = {}
+  if lib == nil then
+    table.insert(parts, "biblioteka napravljena (" .. #p.cards .. " karata)")
+  else
+    if nNew > 0 then table.insert(parts, nNew .. " nove") end
+    if nChanged > 0 then table.insert(parts, nChanged .. " promijenjene") end
+    if nDeleted > 0 then table.insert(parts, nDeleted .. " maknute") end
+  end
+  if nClones > 0 then table.insert(parts, "osvjezeno karata na stolu: " .. nClones) end
+  local msg = "Sync karata (baza v" .. tostring(p.version) .. "): " .. (#parts > 0 and table.concat(parts, ", ") or "nema promjena") .. "."
+  if nHand > 0 then msg = msg .. " U rukama je " .. nHand .. " starih karata: vrati ih na stol i ponovi Sync." end
+  if lib == nil or nNew > 0 or nChanged > 0 then
+    msg = msg .. " Za Steam: Modding > Cloud Manager > Upload All Loaded Files, pa spremi save."
+  end
+  syncMessage(msg)
 end
