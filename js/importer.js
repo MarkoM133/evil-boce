@@ -375,6 +375,17 @@ export function archivePath(path, folder) {
   return `${folder}/${path.replace(/^export\//, '')}`;
 }
 
+// PNG-ovi iz exporta čiji je sadržaj nakon Objave u data/ (slika karte ili sprite, isti hash): u arhivi bi bili
+// duplikat, pa se brišu. PNG koji nije uz kartu (npr. token) ostaje u arhivi.
+export function publishedPngPaths(analysis) {
+  const out = new Set();
+  for (const e of analysis.entries) {
+    if (e.png) out.add(e.png.path);
+    if (e.spritePng) out.add(e.spritePng.path);
+  }
+  return out;
+}
+
 // Umanjene slike, ime ide uz verziju slike (ID.hash.jpg): male sličice za trake, bazen i galeriju,
 // velike za prikaz preko cijelog ekrana i detalj (originalni PNG ima ~2,6 MB, ovaj ~250 KB).
 export const THUMB_WIDTH = 300;

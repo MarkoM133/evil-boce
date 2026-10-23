@@ -1,5 +1,5 @@
 import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, SIZES, CE_FIELDS, ARCHIVE_DIR, archiveFolder, archivePath,
-  CHANGELOG_PATH, changelogEntry, appendChangelog, changesSince, describeChange } from './importer.js';
+  CHANGELOG_PATH, changelogEntry, appendChangelog, changesSince, describeChange, publishedPngPaths } from './importer.js';
 import { TYPES, COLOR_NAMES, DECK_TYPES } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
@@ -396,7 +396,7 @@ async function publish() {
     for (const f of old) await fs.removeFile(root(), `data/images/${f}`);
   }
   const thumbs = await updateThumbs(db);
-  const archived = await archiveExport(a.files);
+  const archived = await archiveExport(a.files, publishedPngPaths(a));
   state.inbox = await countInbox();
   state.analysis = null;
   state.store.dropImageUrls();
@@ -405,6 +405,7 @@ async function publish() {
   if (thumbs) parts.push(`${thumbs} ${plural(thumbs, 'umanjena slika', 'umanjene slike', 'umanjenih slika')}`);
   if (old.length) parts.push(`obrisano starih slika: ${old.length}`);
   if (archived.moved) parts.push(`${archived.moved} ${plural(archived.moved, 'file', 'filea', 'fileova')} iz export/ premješteno u ${archived.folder}/`);
+  if (archived.removed) parts.push(`${archived.removed} objavljenih PNG-ova maknuto iz export/ (već su u data/)`);
   const msg = changed || thumbs ? `Objavljeno: ${parts.join(', ')}.`
     : parts.length ? `Nema promjena karata; ${parts.join(', ')}.` : 'Nema promjena za objavu.';
   if (archived.left.length) toast(`${msg} U export/ je ostalo ${archived.left.length} fileova promijenjenih nakon Uvoza; ponovi Uvezi.`, 'warn');
@@ -412,10 +413,13 @@ async function publish() {
 }
 
 // Sanduče export/: sve što je Uvoz pročitao ide u arhivu, osim fileova promijenjenih u međuvremenu.
-async function archiveExport(files) {
+// Objavljeni PNG-ovi (slike karata i spriteovi) se brišu jer su već u data/; u arhivu ide popis.json sa svime.
+async function archiveExport(files, published) {
   const folder = archiveFolder();
   const left = [];
+  const list = [];
   let moved = 0;
+  let removed = 0;
   for (const f of files) {
     const now = await fs.getFile(root(), f.path);
     if (!now) continue;
@@ -423,9 +427,17 @@ async function archiveExport(files) {
       left.push(f.path);
       continue;
     }
-    await fs.moveFile(root(), f.path, archivePath(f.path, folder));
-    moved++;
+    const inData = published.has(f.path);
+    if (inData) {
+      await fs.removeFile(root(), f.path);
+      removed++;
+    } else {
+      await fs.moveFile(root(), f.path, archivePath(f.path, folder));
+      moved++;
+    }
+    list.push({ path: f.path, size: f.size, lastModified: new Date(f.lastModified).toISOString(), kept: inData ? 'data' : 'arhiva' });
   }
+  if (list.length) await fs.writeFile(root(), `${folder}/popis.json`, JSON.stringify({ published: new Date().toISOString(), files: list }, null, 2) + '\n');
   // Prazni podfolderi sanduča, od najdubljih prema gore.
   const dirs = new Set();
   for (const f of files) {
@@ -433,7 +445,7 @@ async function archiveExport(files) {
     for (let i = parts.length; i > 0; i--) dirs.add(`export/${parts.slice(0, i).join('/')}`);
   }
   for (const d of [...dirs].sort((x, y) => y.split('/').length - x.split('/').length)) await fs.removeDirIfEmpty(root(), d);
-  return { folder, moved, left };
+  return { folder, moved, removed, left };
 }
 
 async function countMissingSizes(db) {

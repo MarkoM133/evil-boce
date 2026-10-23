@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCardEngineXml, cleanText } from '../js/parse.js';
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, thumbPlan, archiveFolder, archivePath, emptyChangelog, changelogEntry, appendChangelog, changesSince, describeChange } from '../js/importer.js';
+import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, thumbPlan, archiveFolder, archivePath, emptyChangelog, changelogEntry, appendChangelog, changesSince, describeChange, publishedPngPaths } from '../js/importer.js';
 import { deckChanges } from '../js/deck.js';
 
 const RGB = { Cyan: [0, 255, 255], Red: [255, 0, 0], White: [255, 255, 255], Odd: [10, 20, 30] };
@@ -408,4 +408,13 @@ test('kod na početku imena karte se miče (Card Engine ime = ime PNG-a), Evolut
     db: emptyDb(),
   });
   assert.deepEqual(a.errors, []);
+});
+
+test('arhiva: objavljeni PNG-ovi (slika karte, sprite) su u data/, token PNG ostaje u arhivi', async () => {
+  const a = await analyzeExport({
+    xmlFiles: [{ path: 'export/XMLs/x.xml', text: xml(card(HERO), card(TOKEN)), lastModified: 1 }],
+    pngFiles: [png([1], 'export/cards/OP9-001 Hero A.png'), png([11], 'export/sprites/OP9-001 Hero A Sprite.png'), png([5], 'export/cards/+2 Damage.png')],
+    db: emptyDb(),
+  });
+  assert.deepEqual([...publishedPngPaths(a)].sort(), ['export/cards/OP9-001 Hero A.png', 'export/sprites/OP9-001 Hero A Sprite.png']);
 });

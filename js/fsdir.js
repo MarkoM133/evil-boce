@@ -107,12 +107,31 @@ export async function walkFiles(dir, prefix, skip = () => false) {
   return out;
 }
 
-// Premjesti file (kopija + brisanje). Promjena datuma izmjene nije bitna, file ide u arhivu.
+// Premjesti file. Pravo premještanje (handle.move) gdje ga preglednik zna: sinkronizaciji je to preimenovanje,
+// ne novi file. Inače kopija + brisanje (datum izmjene nije bitan, file ide u arhivu).
 export async function moveFile(root, from, to) {
-  const f = await getFile(root, from);
-  if (!f) return;
-  await writeFile(root, to, f);
-  await removeFile(root, from);
+  const a = split(from);
+  const b = split(to);
+  const src = await dirAt(root, a.dirs, false);
+  if (!src) return;
+  let handle;
+  try {
+    handle = await src.getFileHandle(a.name);
+  } catch (e) {
+    if (e.name === 'NotFoundError') return;
+    throw e;
+  }
+  const dst = await dirAt(root, b.dirs, true);
+  if (typeof handle.move === 'function') {
+    try {
+      await handle.move(dst, b.name);
+      return;
+    } catch {
+      // npr. stariji preglednik ili drugi disk: dolje kopija + brisanje
+    }
+  }
+  await writeFile(root, to, await handle.getFile());
+  await src.removeEntry(a.name);
 }
 
 // Obriše folder ako je prazan; inače ga ostavi.
