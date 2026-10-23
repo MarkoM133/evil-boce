@@ -597,3 +597,61 @@ td.now { font-weight: 600; }
   .pool { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px 8px; }
   .deck-name { font-size: 26px; }
 }
+
+/* ---------- slika preko cijelog ekrana ---------- */
+
+body.viewer-open { overflow: hidden; }
+/* Bez Chromeove geste "povuci za Natrag" dok se lista swipeom. */
+html:has(body.viewer-open), body.viewer-open { overscroll-behavior: none; }
+.viewer {
+  position: fixed; inset: 0; z-index: 30;
+  display: grid; place-items: center;
+  padding: 52px 16px 60px;
+  background: rgba(0, 0, 0, .97);
+  backdrop-filter: blur(6px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .viewer { animation: viewer-in .15s ease-out; }
+}
+@keyframes viewer-in { from { opacity: 0; } }
+.viewer-img {
+  width: min(calc(100vw - 32px), calc((100dvh - 112px) * 5 / 7));
+  aspect-ratio: 5 / 7; object-fit: contain;
+  border-radius: 14px; background: var(--surface);
+}
+.viewer-bar {
+  position: absolute; left: 16px; right: 16px; bottom: 16px;
+  display: flex; justify-content: center; gap: 14px; align-items: baseline;
+  font: italic 700 18px var(--display); pointer-events: none;
+}
+.viewer-n { color: var(--muted); }
+.viewer button { clip-path: none; background: rgba(30, 30, 30, .8); }
+.viewer button:hover { background: #333; }
+.viewer-close { position: absolute; top: 10px; right: 10px; width: 44px; height: 44px; padding: 0; border-radius: 50%; font: 700 18px var(--text); }
+.viewer-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 72px; padding: 0; border-radius: 10px; font: 400 44px/1 var(--text); }
+.viewer-nav.prev { left: 10px; }
+.viewer-nav.next { right: 10px; }
+@media (max-width: 760px) {
+  .viewer { padding: 52px 8px 60px; }
+  .viewer-img { width: min(calc(100vw - 16px), calc((100dvh - 112px) * 5 / 7)); }
+  .viewer-nav { display: none; }
+}
+
+/* Ulazi u prikaz: veća slika u detalju, gumb ⤢ na kartama u bazenu, heroji, retci decka, slike u Uvozu. */
+.detail .big { display: block; width: 100%; padding: 0; background: none; clip-path: none; position: relative; cursor: zoom-in; }
+.detail .big:hover { background: none; }
+.detail .big .zoom { position: absolute; right: 8px; bottom: 8px; }
+.zoom {
+  display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
+  clip-path: none; border-radius: 50%;
+  background: rgba(0, 0, 0, .7); color: var(--bone); font: 400 19px/1 var(--text);
+}
+.zoom:hover { background: rgba(0, 0, 0, .9); }
+.pool-art-wrap { position: relative; }
+.pool-art-wrap .zoom { position: absolute; top: 17%; right: 9%; width: 30px; height: 30px; font-size: 17px; opacity: .85; }
+.hero-art { padding: 0; background: none; clip-path: none; flex: none; cursor: zoom-in; }
+.hero-art:hover { background: none; }
+button.deck-row-name { all: unset; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; cursor: zoom-in; }
+button.deck-row-name:hover { color: var(--straw); }
+button.deck-row-name:focus-visible { outline: 2px solid var(--straw); outline-offset: 2px; }
+.thumbs figure.zoomable { cursor: zoom-in; }

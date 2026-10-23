@@ -111,6 +111,94 @@ async function makeThumb(blob) {
 
 const cardById = id => state.db.cards.find(c => c.id === id);
 
+// ---------- slika preko cijelog ekrana ----------
+
+// items: [{ card } | { url, title }]. Strelice, swipe i Esc; Natrag (gesta ili tipka) zatvara.
+const viewer = { items: [], i: 0, el: null, back: null };
+let skipPop = false;
+
+function openViewer(items, i = 0) {
+  if (!items.length) return;
+  if (!viewer.el) {
+    history.pushState(history.state, '', location.hash);
+    viewer.back = document.activeElement;
+    document.body.classList.add('viewer-open');
+  }
+  viewer.items = items;
+  viewer.i = Math.max(0, i);
+  showViewer();
+}
+
+function closeViewer(fromPop = false) {
+  if (!viewer.el) return;
+  viewer.el.remove();
+  viewer.el = null;
+  document.body.classList.remove('viewer-open');
+  viewer.back?.focus?.();
+  if (!fromPop) {
+    skipPop = true;
+    history.back();
+  }
+}
+
+function stepViewer(d) {
+  const n = viewer.items.length;
+  if (n < 2) return;
+  viewer.i = (viewer.i + d + n) % n;
+  showViewer();
+}
+
+const viewerTitle = it => it.title ?? (it.card ? `${it.card.id} · ${it.card.name}` : '');
+
+async function viewerUrl(it) {
+  return it.card ? state.store.imageUrl(it.card) : it.url;
+}
+
+function showViewer() {
+  const it = viewer.items[viewer.i];
+  const n = viewer.items.length;
+  const img = h('img', { class: 'viewer-img', alt: viewerTitle(it) });
+  // Sličica odmah, puna slika čim se učita.
+  if (it.card) imageFor(it.card, true).then(u => { if (u && !img.getAttribute('src')) img.src = u; });
+  viewerUrl(it).then(u => {
+    if (!u) return;
+    loads(u).then(ok => { if (ok && img.isConnected) img.src = u; });
+  });
+  for (const d of [1, -1]) if (n > 1) viewerUrl(viewer.items[(viewer.i + d + n) % n]).then(u => u && loads(u));
+  const el = h('div', { class: 'viewer', role: 'dialog', 'aria-modal': 'true', 'aria-label': viewerTitle(it), onclick: e => { if (e.target === el || e.target === img) closeViewer(); } },
+    img,
+    h('div', { class: 'viewer-bar' }, h('span', { class: 'viewer-title' }, viewerTitle(it)), n > 1 ? h('span', { class: 'viewer-n' }, `${viewer.i + 1}/${n}`) : null),
+    n > 1 ? h('button', { class: 'viewer-nav prev', 'aria-label': 'Prethodna karta', onclick: () => stepViewer(-1) }, '‹') : null,
+    n > 1 ? h('button', { class: 'viewer-nav next', 'aria-label': 'Sljedeća karta', onclick: () => stepViewer(1) }, '›') : null,
+    h('button', { class: 'viewer-close', 'aria-label': 'Zatvori', onclick: () => closeViewer() }, '✕'));
+  let x0 = null;
+  el.addEventListener('touchstart', e => { x0 = e.touches.length === 1 && (window.visualViewport?.scale ?? 1) < 1.05 ? e.touches[0].clientX : null; }, { passive: true });
+  el.addEventListener('touchend', e => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    x0 = null;
+    if (Math.abs(dx) > 50) stepViewer(dx < 0 ? 1 : -1);
+  });
+  if (viewer.el) viewer.el.replaceWith(el);
+  else document.body.append(el);
+  viewer.el = el;
+  el.querySelector('.viewer-close').focus();
+}
+
+document.addEventListener('keydown', e => {
+  if (!viewer.el) return;
+  if (e.key === 'Escape') closeViewer();
+  else if (e.key === 'ArrowLeft') stepViewer(-1);
+  else if (e.key === 'ArrowRight') stepViewer(1);
+  else return;
+  e.preventDefault();
+});
+
+// Gumb koji otvara sliku karte preko cijelog ekrana; list je popis kroz koji se lista strelicama.
+function zoomButton(card, list, label = 'Povećaj') {
+  return h('button', { class: 'zoom', title: `${label}: ${card.name}`, 'aria-label': `${label}: ${card.name}`, onclick: e => { e.stopPropagation(); openViewer(list.map(c => ({ card: c })), list.indexOf(card)); } }, '⤢');
+}
+
 // ---------- podaci ----------
 
 async function useStore(store) {
@@ -320,6 +408,14 @@ async function applyHash() {
 }
 
 window.addEventListener('popstate', () => {
+  if (skipPop) {
+    skipPop = false;
+    return;
+  }
+  if (viewer.el) {
+    closeViewer(true);
+    return;
+  }
   if (!state.store) return;
   cardPushed = false;
   guard(async () => {
@@ -465,19 +561,29 @@ function fmt(v) {
 
 function renderEntry(e) {
   const imgs = h('div', { class: 'thumbs' });
+  // Klik na sliku: preko cijelog ekrana, strelicama prije/poslije.
+  const items = [];
+  const zoomable = (fig, item) => {
+    const i = items.push(item) - 1;
+    fig.classList.add('zoomable');
+    fig.title = 'Preko cijelog ekrana';
+    fig.addEventListener('click', () => openViewer(items, i));
+    return fig;
+  };
   if (e.old && e.imageChanged) {
     const oldImg = h('img', { alt: 'stara slika', loading: 'lazy' });
     state.store.imageUrl(e.old).then(u => { if (u) oldImg.src = u; else oldImg.replaceWith(h('div', { class: 'noimg' }, 'stara slika nije u data/images')); });
-    imgs.append(h('figure', {}, oldImg, h('figcaption', {}, 'prije')));
+    imgs.append(zoomable(h('figure', {}, oldImg, h('figcaption', {}, 'prije')), { card: e.old, title: `${e.id} · prije` }));
   }
   if (e.png) {
     if (!pngUrls.has(e.png.path)) pngUrls.set(e.png.path, URL.createObjectURL(e.png.file));
-    imgs.append(h('figure', {}, h('img', { alt: e.card.name, src: pngUrls.get(e.png.path), loading: 'lazy' }),
-      h('figcaption', { class: e.staleImage ? 'stale' : null }, e.old ? (e.imageChanged ? 'nova slika' : e.staleImage ? 'slika ista: stara?' : 'slika ista') : 'slika')));
+    imgs.append(zoomable(h('figure', {}, h('img', { alt: e.card.name, src: pngUrls.get(e.png.path), loading: 'lazy' }),
+      h('figcaption', { class: e.staleImage ? 'stale' : null }, e.old ? (e.imageChanged ? 'nova slika' : e.staleImage ? 'slika ista: stara?' : 'slika ista') : 'slika')),
+      { url: pngUrls.get(e.png.path), title: `${e.id} · ${e.card.name} · ${e.png.path}` }));
   } else if (e.staleImage) {
     const oldImg = h('img', { alt: 'stara slika', loading: 'lazy' });
     state.store.imageUrl(e.old).then(u => { if (u) oldImg.src = u; else oldImg.replaceWith(h('div', { class: 'noimg' }, 'stara slika nije u data/images')); });
-    imgs.append(h('figure', {}, oldImg, h('figcaption', { class: 'stale' }, 'nema PNG-a: ostaje stara')));
+    imgs.append(zoomable(h('figure', {}, oldImg, h('figcaption', { class: 'stale' }, 'nema PNG-a: ostaje stara')), { card: e.old }));
   }
   const rows = e.old
     ? e.diffs.map(k => h('tr', {}, h('th', {}, k), h('td', { class: 'was' }, fmt(e.old[k])), h('td', { class: 'now' }, fmt(e.card[k]))))
@@ -586,7 +692,10 @@ function renderDetail() {
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
   box.replaceChildren(
     h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: closeCard }, 'Zatvori')),
-    h('div', { class: 'detail-body' }, h('div', { class: 'big' }, cardImg(c, { alt: c.name, full: true })), h('div', {}, h('table', { class: 'fields' }, rows), editor)));
+    h('div', { class: 'detail-body' },
+      h('button', { class: 'big', title: 'Preko cijelog ekrana', onclick: () => { const list = filtered(); openViewer((list.includes(c) ? list : [c]).map(x => ({ card: x })), list.includes(c) ? list.indexOf(c) : 0); } },
+        cardImg(c, { alt: c.name, full: true }), h('span', { class: 'zoom', 'aria-hidden': 'true' }, '⤢')),
+      h('div', {}, h('table', { class: 'fields' }, rows), editor)));
 }
 
 // ---------- Deckovi ----------
@@ -786,8 +895,9 @@ function renderHeroes() {
   const slots = [0, 1, 2].map(i => {
     const hero = cardById(d.heroes[i]);
     if (hero) {
+      const heroes = d.heroes.map(cardById).filter(Boolean);
       return h('div', { class: `hero-slot filled c-border-${hero.color}` },
-        cardImg(hero, { alt: hero.name }),
+        h('button', { class: 'hero-art', title: `Preko cijelog ekrana: ${hero.name}`, onclick: () => openViewer(heroes.map(x => ({ card: x })), heroes.indexOf(hero)) }, cardImg(hero, { alt: hero.name })),
         h('div', { class: 'hero-info' },
           h('span', { class: 'hero-name' }, hero.name),
           h('span', { class: 'muted small' }, hero.color),
@@ -820,15 +930,17 @@ function renderPool() {
   const cards = all
     .filter(c => (!type || c.type === type) && (!color || c.color === color) && (!needle || [c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)))
     .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
-  box.replaceChildren(...(cards.length ? cards.map(poolCard) : [h('p', { class: 'muted' }, 'Nijedna karta ne odgovara filtru.')]));
+  box.replaceChildren(...(cards.length ? cards.map(c => poolCard(c, cards)) : [h('p', { class: 'muted' }, 'Nijedna karta ne odgovara filtru.')]));
 }
 
-function poolCard(c) {
+function poolCard(c, list) {
   const n = state.deck.cards[c.id] ?? 0;
   const max = LIMITS[c.type];
   return h('div', { class: `pool-card${n ? ' in-deck' : ''}${n >= max ? ' maxed' : ''}` },
-    h('button', { class: 'pool-art', title: `Dodaj ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, cardImg(c, { alt: c.name }),
-      n ? h('span', { class: 'pool-count' }, `${n}/${max}`) : null),
+    h('div', { class: 'pool-art-wrap' },
+      h('button', { class: 'pool-art', title: `Dodaj ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, cardImg(c, { alt: c.name }),
+        n ? h('span', { class: 'pool-count' }, `${n}/${max}`) : null),
+      zoomButton(c, list)),
     h('div', { class: 'pool-meta' },
       h('span', { class: 'pool-name' }, c.name),
       h('span', { class: 'stepper' },
@@ -849,6 +961,7 @@ function renderDeckPanel() {
     .sort((a, b) => DECK_TYPES.indexOf(a.c?.type) - DECK_TYPES.indexOf(b.c?.type) || (a.c?.cost ?? 0) - (b.c?.cost ?? 0) || String(a.c?.name).localeCompare(String(b.c?.name)));
   const groups = DECK_TYPES.map(t => [t, rows.filter(x => x.c?.type === t)]).filter(([, list]) => list.length);
   const unknown = rows.filter(x => !x.c);
+  const deckCards = groups.flatMap(([, list]) => list.map(x => x.c));
 
   fill(box,
     h('div', { class: 'deck-count' },
@@ -871,16 +984,17 @@ function renderDeckPanel() {
       ? h('div', { class: 'deck-rows' },
           groups.map(([t, list]) => h('div', { class: 'deck-group' },
             h('h3', {}, t, h('span', { class: 'muted' }, list.reduce((s, x) => s + x.n, 0))),
-            list.map(deckRow))),
-          unknown.length ? h('div', { class: 'deck-group' }, h('h3', {}, 'Nepoznate karte'), unknown.map(deckRow)) : null)
+            list.map(x => deckRow(x, deckCards)))),
+          unknown.length ? h('div', { class: 'deck-group' }, h('h3', {}, 'Nepoznate karte'), unknown.map(x => deckRow(x, deckCards))) : null)
       : h('p', { class: 'muted' }, d.heroes.length ? 'Dodaj karte iz bazena ili klikni Popuni nasumično.' : 'Prvo odaberi heroje.'));
 }
 
-function deckRow({ c, id, n }) {
+function deckRow({ c, id, n }, deckCards) {
   return h('div', { class: 'deck-row' },
     h('span', { class: `dot c-${c?.color ?? 'none'}` }),
     h('span', { class: 'deck-row-cost', title: 'Cost' }, c?.cost ?? '?'),
-    h('span', { class: 'deck-row-name' }, c?.name ?? id),
+    c ? h('button', { class: 'deck-row-name', title: `Preko cijelog ekrana: ${c.name}`, onclick: () => openViewer(deckCards.map(x => ({ card: x })), deckCards.indexOf(c)) }, c.name)
+      : h('span', { class: 'deck-row-name' }, id),
     h('span', { class: 'stepper' },
       h('button', { class: 'step', 'aria-label': `Makni jednu ${c?.name ?? id}`, onclick: () => (c ? addCard(id, -1) : changeDeck(d => { delete d.cards[id]; })) }, '−'),
       h('span', { class: 'deck-row-n' }, n),
