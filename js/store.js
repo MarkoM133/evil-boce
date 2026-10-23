@@ -59,9 +59,9 @@ export function serverStore(info) {
       return r.ok ? r.json() : emptyChangelog();
     },
     // thumb: URL sličice; ako je nema na serveru, pozivatelj padne na punu sliku (onerror).
-    async imageUrl(card, { thumb = false } = {}) {
+    async imageUrl(card, { thumb = false, large = false } = {}) {
       if (!card.image) return null;
-      return thumb ? `data/thumbs/${thumbName(card)}` : `data/${card.image}`;
+      return thumb || large ? `data/${thumb ? 'thumbs' : 'large'}/${thumbName(card)}` : `data/${card.image}`;
     },
     async logoUrl() {
       return info.logo ? 'logo' : null;
@@ -109,9 +109,9 @@ export function folderStore(root) {
       return (await readJson(CHANGELOG_PATH)) ?? emptyChangelog();
     },
     // thumb: sličica ako postoji, inače null (pozivatelj uzme punu sliku).
-    async imageUrl(card, { thumb = false } = {}) {
+    async imageUrl(card, { thumb = false, large = false } = {}) {
       if (!card.image) return null;
-      const path = thumb ? `data/thumbs/${thumbName(card)}` : `data/${card.image}`;
+      const path = thumb || large ? `data/${thumb ? 'thumbs' : 'large'}/${thumbName(card)}` : `data/${card.image}`;
       if (!urls.has(path)) {
         const f = await fs.getFile(root, path);
         urls.set(path, f ? URL.createObjectURL(f) : null);

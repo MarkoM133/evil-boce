@@ -1,4 +1,4 @@
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, THUMB_WIDTH, CE_FIELDS, ARCHIVE_DIR, archiveFolder, archivePath,
+import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, SIZES, CE_FIELDS, ARCHIVE_DIR, archiveFolder, archivePath,
   CHANGELOG_PATH, changelogEntry, appendChangelog, changesSince, describeChange } from './importer.js';
 import { TYPES, COLOR_NAMES, DECK_TYPES } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, LIMITS, DECK_SIZE } from './deck.js';
@@ -87,7 +87,16 @@ function cardImg(card, { full = false, ...props } = {}) {
 function showBest(card, url, show) {
   let full = false;
   if (card) state.store.imageUrl(card, { thumb: true }).then(u => u && loads(u).then(ok => { if (ok && !full) show(u); }));
-  return Promise.resolve(url ?? state.store.imageUrl(card)).then(u => u && loads(u).then(ok => { if (ok) { full = true; show(u); } }));
+  return (card && !url ? bigUrl(card) : loads(url).then(ok => ok && url)).then(u => { if (u) { full = true; show(u); } });
+}
+
+// Velika slika: JPEG od 1000 px (data/large); dok ga Objavi još nije napravio, originalni PNG.
+async function bigUrl(card) {
+  for (const opts of [{ large: true }, {}]) {
+    const u = await state.store.imageUrl(card, opts);
+    if (u && (await loads(u))) return u;
+  }
+  return null;
 }
 
 // Ikone kao SVG: znakovi poput ⤢ i ✕ na mobitelu dolaze iz drugog fonta i ne sjednu u krug.
@@ -126,13 +135,14 @@ async function imageFor(card, thumb) {
   return state.store.imageUrl(card);
 }
 
-async function makeThumb(blob) {
+async function makeThumb(blob, width) {
   const bmp = await createImageBitmap(blob);
-  const height = Math.round((bmp.height / bmp.width) * THUMB_WIDTH);
-  const canvas = new OffscreenCanvas(THUMB_WIDTH, height);
+  width = Math.min(width, bmp.width);
+  const height = Math.round((bmp.height / bmp.width) * width);
+  const canvas = new OffscreenCanvas(width, height);
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(bmp, 0, 0, THUMB_WIDTH, height);
+  ctx.drawImage(bmp, 0, 0, width, height);
   bmp.close();
   return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
 }
@@ -179,9 +189,6 @@ function stepViewer(d) {
 
 const viewerTitle = it => it.title ?? (it.card ? `${it.card.id} · ${it.card.name}` : '');
 
-async function viewerUrl(it) {
-  return it.card ? state.store.imageUrl(it.card) : it.url;
-}
 
 // Okvir se gradi jednom; pri listanju ostaje stara slika dok nova nije učitana, pa nema bljeska.
 function buildViewer() {
@@ -223,7 +230,7 @@ function showViewer() {
   // Sličice susjeda odmah (male su), njihove pune slike tek kad je trenutna gotova, da joj ne uzimaju mrežu.
   for (const next of neighbours) if (next.card) state.store.imageUrl(next.card, { thumb: true }).then(u => u && loads(u));
   showBest(it.card, it.card ? null : it.url, u => { if (viewer.shown === it) img.src = u; })
-    .then(() => { if (viewer.shown === it) for (const next of neighbours) viewerUrl(next).then(u => u && loads(u)); });
+    .then(() => { if (viewer.shown === it) for (const next of neighbours) if (next.card) bigUrl(next.card); else loads(next.url); });
 }
 
 // Prečaci izvan polja za unos: / za tražilicu, Ctrl+Z za Poništi u decku.
@@ -367,7 +374,7 @@ async function runImport() {
   state.analysis = await analyzeExport({ xmlFiles, pngFiles, db: state.db });
   state.analysis.files = files.map(({ path, file }) => ({ path, lastModified: file.lastModified, size: file.size }));
   state.analysis.fileCount = { xml: xmlFiles.length, png: pngFiles.length };
-  state.analysis.missingThumbs = thumbPlan(state.db, await fs.listFileNames(root(), 'data/thumbs')).missing.length;
+  state.analysis.missingThumbs = await countMissingSizes(state.db);
 }
 
 async function publish() {
@@ -391,7 +398,7 @@ async function publish() {
   state.store.dropImageUrls();
   const parts = [];
   if (changed) parts.push(`verzija ${db.version}, ${changed} ${plural(changed, 'karta', 'karte', 'karata')}`);
-  if (thumbs) parts.push(`${thumbs} ${plural(thumbs, 'sličica', 'sličice', 'sličica')}`);
+  if (thumbs) parts.push(`${thumbs} ${plural(thumbs, 'umanjena slika', 'umanjene slike', 'umanjenih slika')}`);
   if (old.length) parts.push(`obrisano starih slika: ${old.length}`);
   if (archived.moved) parts.push(`${archived.moved} ${plural(archived.moved, 'file', 'filea', 'fileova')} iz export/ premješteno u ${archived.folder}/`);
   const msg = changed || thumbs ? `Objavljeno: ${parts.join(', ')}.`
@@ -425,15 +432,25 @@ async function archiveExport(files) {
   return { folder, moved, left };
 }
 
-// Sličice za sve karte kojima nedostaju; stare verzije se brišu.
+async function countMissingSizes(db) {
+  let n = 0;
+  for (const s of SIZES) n += thumbPlan(db, await fs.listFileNames(root(), `data/${s.dir}`)).missing.length;
+  return n;
+}
+
+// Umanjene slike (male i velike) za sve karte kojima nedostaju; stare verzije se brišu.
 async function updateThumbs(db) {
-  const plan = thumbPlan(db, await fs.listFileNames(root(), 'data/thumbs'));
-  for (const c of plan.missing) {
-    const f = await fs.getFile(root(), `data/${c.image}`);
-    if (f) await fs.writeFile(root(), `data/thumbs/${thumbName(c)}`, await makeThumb(f));
+  let made = 0;
+  for (const s of SIZES) {
+    const plan = thumbPlan(db, await fs.listFileNames(root(), `data/${s.dir}`));
+    for (const c of plan.missing) {
+      const f = await fs.getFile(root(), `data/${c.image}`);
+      if (f) await fs.writeFile(root(), `data/${s.dir}/${thumbName(c)}`, await makeThumb(f, s.width));
+    }
+    for (const f of plan.extra) await fs.removeFile(root(), `data/${s.dir}/${f}`);
+    made += plan.missing.length;
   }
-  for (const f of plan.extra) await fs.removeFile(root(), `data/thumbs/${f}`);
-  return plan.missing.length;
+  return made;
 }
 
 async function saveEdits(id, edits) {
@@ -625,7 +642,7 @@ function renderImport() {
       h('button', { class: 'primary', onclick: () => guard(runImport) }, a ? 'Ponovno učitaj export/' : 'Uvezi iz export/'),
       a ? h('button', { class: 'publish', disabled: a.errors.length > 0 || (!a.entries.some(e => e.status !== 'same') && !a.missingThumbs && !a.files.length), onclick: () => guard(publish) }, 'Objavi') : null,
       a?.errors.length ? h('span', { class: 'error-text' }, 'Objava je blokirana dok ima grešaka.') : null,
-      a?.missingThumbs ? h('span', { class: 'muted' }, `Nedostaje ${a.missingThumbs} malih sličica (za brže učitavanje); Objavi ih napravi.`) : null));
+      a?.missingThumbs ? h('span', { class: 'muted' }, `Nedostaje ${a.missingThumbs} ${plural(a.missingThumbs, 'umanjena slika', 'umanjene slike', 'umanjenih slika')} (sličice i velike slike za brže učitavanje); Objavi ih napravi.`) : null));
   if (!a) {
     wrap.append(h('p', { class: `inbox-line${state.inbox ? ' waiting' : ''}` },
       state.inbox ? `U export/ čeka ${state.inbox} ${state.inbox === 1 ? 'file' : 'fileova'}.` : 'export/ je prazan: nema ništa novo za uvoz.'));

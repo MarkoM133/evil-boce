@@ -285,8 +285,10 @@ export function archivePath(path, folder) {
   return `${folder}/${path.replace(/^export\//, '')}`;
 }
 
-// Male sličice (data/thumbs/ID.hash.jpg) za trake, bazen i galeriju; ime ide uz verziju slike.
+// Umanjene slike, ime ide uz verziju slike (ID.hash.jpg): male sličice za trake, bazen i galeriju,
+// velike za prikaz preko cijelog ekrana i detalj (originalni PNG ima ~2,6 MB, ovaj ~250 KB).
 export const THUMB_WIDTH = 300;
+export const SIZES = [{ dir: 'thumbs', width: THUMB_WIDTH }, { dir: 'large', width: 1000 }];
 
 export function thumbName(card) {
   return card.imageHash ? `${card.id}.${card.imageHash}.jpg` : null;

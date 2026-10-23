@@ -213,7 +213,7 @@ async function handle(req, res) {
   // Podaci iz Drive foldera: samo data/ (cards.json, slike) i logo.
   if (parts[0] === 'data') {
     const file = inside(path.join(cfg.drive, 'data'), parts.slice(1).join('/'));
-    const hashed = ['images', 'thumbs'].includes(parts[1]) && /\.[0-9a-f]{8}\.(png|jpg)$/i.test(rel);
+    const hashed = ['images', 'thumbs', 'large'].includes(parts[1]) && /\.[0-9a-f]{8}\.(png|jpg)$/i.test(rel);
     return file ? sendFile(res, file, hashed ? IMMUTABLE : 'no-store') : fail(res, 403, 'zabranjeno');
   }
   if (rel === '/logo') {
