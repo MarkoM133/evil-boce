@@ -16,7 +16,7 @@ const state = {
   logo: null,
   analysis: null,
   tab: 'import',
-  filter: { q: '', type: '', color: '', deleted: false, sort: 'id', since: 0 },
+  filter: { q: '', type: '', color: '', deleted: false, sort: 'id', since: 0, set: '', special: '' },
   changelog: null,
   inbox: 0, // fileova u sanduču export/ (samo folder)
   selected: null,
@@ -800,14 +800,36 @@ const SORTS = {
 };
 const byCode = (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true });
 
+// Brzi filteri (gumbi iznad karata), uz tip i boju: set (prefiks koda) i posebni.
+const setOf = c => c.id.split('-')[0];
+const SPECIAL = {
+  novo: ['Novo', 'Karte nove ili promijenjene u zadnjoj verziji (i izgled pod njom)'],
+  bezBakugana: ['Bez bakugana', 'Heroji kojima još nije izabran bakugan'],
+  bezSpritea: ['Bez spritea', 'Heroji i evolucije bez spritea (figurina u TTS-u)'],
+};
+
+function specialFilter(name) {
+  if (name === 'novo') {
+    const last = state.changelog?.entries.at(-1);
+    const ids = new Set((last?.cards ?? []).map(c => c.id));
+    return c => ids.has(c.id);
+  }
+  if (name === 'bezBakugana') return c => c.type === 'Character' && !c.bakuganShape;
+  if (name === 'bezSpritea') return c => (c.type === 'Character' || c.type === 'Evolution') && !c.sprite;
+  return () => true;
+}
+
 function filtered() {
-  const { q, type, color, deleted, sort, since } = state.filter;
+  const { q, type, color, deleted, sort, since, set, special } = state.filter;
   const needle = q.trim().toLowerCase();
   const changed = since ? changesSince(state.changelog, since - 1) : null;
+  const extra = specialFilter(special);
   return state.db.cards.filter(c =>
     (deleted || !c.deleted) &&
     (!type || c.type === type) &&
     (!color || c.color === color) &&
+    (!set || setOf(c) === set) &&
+    extra(c) &&
     (!changed || changed.has(c.id)) &&
     (!needle || [c.id, c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)))
     .sort((a, b) => SORTS[sort][1](a, b) || byCode(a, b));
@@ -851,12 +873,28 @@ function renderBrowse() {
             [...state.changelog.entries].reverse().map(e => h('option', { value: e.version, selected: f.since === e.version }, `Promijenjene od v${e.version} (${shortDate(e.date)})`)))
         : null,
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.deleted, onchange: e => set('deleted', e.target.checked) }), 'prikaži maknute')),
+    renderQuickFilters(),
     h('p', { id: 'grid-count', class: 'muted small' }),
     renderHistory(),
     h('div', { id: 'grid', class: 'grid' }),
     h('div', { id: 'detail' }));
   queueMicrotask(() => { renderGrid(); renderDetail(); });
   return panel;
+}
+
+// Gumbi: tip, boja, set, posebni. Klik uključi, drugi klik isključi; skupine se kombiniraju.
+function renderQuickFilters() {
+  const f = state.filter;
+  const toggle = (k, v) => { f[k] = f[k] === v ? '' : v; render(); };
+  const chip = (k, v, label, title) => h('button', { type: 'button', class: `qf${f[k] === v ? ' active' : ''}`, title: title ?? '', 'aria-pressed': String(f[k] === v), onclick: () => toggle(k, v) }, label);
+  const sets = [...new Set(state.db.cards.filter(c => c.type !== 'Stage').map(setOf))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return h('div', { class: 'quick' },
+    h('div', { class: 'qf-group' }, TYPES.map(t => chip('type', t, t === 'Character' ? 'Heroji' : t))),
+    h('div', { class: 'qf-group' }, COLOR_NAMES.map(c => h('button', {
+      type: 'button', class: `qf-color c-${c}${f.color === c ? ' active' : ''}`, title: c, 'aria-label': c, 'aria-pressed': String(f.color === c), onclick: () => toggle('color', c),
+    }))),
+    sets.length > 1 ? h('div', { class: 'qf-group' }, sets.map(x => chip('set', x, x, `Set ${x}`))) : null,
+    h('div', { class: 'qf-group' }, Object.entries(SPECIAL).map(([k, [label, title]]) => chip('special', k, label, title))));
 }
 
 function renderGrid() {
