@@ -28,8 +28,9 @@ export const STAT_KEYS = ['hp', 'dmg', 'pwr', 'rng', 'kb'];
 
 const SPRITES = { 0: 'HP', 1: 'DMG', 2: 'Power', 3: 'Range', 4: 'Knockback' };
 
-export const CODE_RE = /^(OP\d+-\d{3}|Stage-\d{3})$/;
-const LOOSE_CODE_RE = /^(OP|Stage)[^\s-]*-\d+$/;
+// Kod karte: SET-001. One Piece ima broj seta (OP1), Stage je Stage, ostali setovi su slova i brojke (DBZ, JJ5).
+export const CODE_RE = /^(?:OP\d+|Stage|(?!OP)[A-Z][A-Z0-9]{1,5})-\d{3}$/;
+const LOOSE_CODE_RE = /^[A-Za-z][A-Za-z0-9]{0,5}-\d+$/;
 const NUM_RE = /^[+-]?\d+$/;
 
 const COST_Y = 461;
@@ -78,7 +79,7 @@ function parseCard(node) {
   if (!code) {
     const loose = texts.find(e => LOOSE_CODE_RE.test(e.t))?.t;
     if (!loose) return { skip: true, name };
-    problems.push({ level: 'error', msg: `kod "${loose}" ne odgovara uzorku OP1-001 / Stage-001` });
+    problems.push({ level: 'error', msg: `kod "${loose}" ne odgovara uzorku SET-001 (OP1-001, DBZ-001, Stage-001)` });
     code = loose;
   }
 

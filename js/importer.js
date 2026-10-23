@@ -1,6 +1,6 @@
 // Uvoz exporta u cards.json: spajanje XML-ova i PNG-ova, usporedba s bazom, provjere i Objavi.
 // Bez I/O: pozivatelj (app ili test) skupi fileove i zapiše rezultat.
-import { parseCardEngineXml } from './parse.js';
+import { parseCardEngineXml, CODE_RE } from './parse.js';
 
 // Polja koja dolaze iz Card Enginea (§5). App ih ne mijenja.
 export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'values', 'traits', 'text'];
@@ -75,13 +75,18 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
   }
   if (tokenCount) add(infos, null, `preskočeno ${tokenCount} karata bez koda (tokeni)`);
 
-  // 2. PNG po imenu karte; isto ime u više podfoldera -> noviji.
-  const pngs = new Map();
+  // 2. PNG: "OP1-012 Sword Slash.png" (ili "OP1-012.png") ide karti po kodu, "Sword Slash.png" po imenu.
+  // Isti PNG u više podfoldera -> noviji.
+  const pngByCode = new Map();
+  const pngByName = new Map();
   for (const p of [...pngFiles].sort((a, b) => a.lastModified - b.lastModified || a.path.localeCompare(b.path))) {
     const name = baseName(p.path).replace(/\.png$/i, '');
-    if (pngs.has(name)) add(infos, null, `PNG "${name}" postoji više puta; vrijedi noviji ${p.path}`);
-    pngs.set(name, p);
+    const code = name.split(/\s+/)[0];
+    const [map, key] = CODE_RE.test(code) ? [pngByCode, code] : [pngByName, name];
+    if (map.has(key)) add(infos, null, `PNG "${name}" postoji više puta; vrijedi noviji ${p.path}`);
+    map.set(key, p);
   }
+  const pngName = card => `"${card.id} ${card.name}.png"`;
 
   // 3. Usporedba s bazom.
   const oldById = new Map(db.cards.map(c => [c.id, c]));
@@ -90,31 +95,44 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
   for (const p of picked.values()) {
     for (const pr of p.problems) add(pr.level === 'error' ? errors : warnings, p.code, pr.msg);
     const old = oldById.get(p.code);
-    const png = pngs.get(p.card.name);
+    const byCode = pngByCode.get(p.code);
+    const png = byCode ?? pngByName.get(p.card.name);
     let imageHash = null;
     if (png) {
-      usedPngs.add(p.card.name);
+      usedPngs.add(png);
       imageHash = await imageHashOf(await png.getBytes());
     } else if (!old?.imageHash) {
-      add(errors, p.code, `nova karta bez PNG-a "${p.card.name}.png"`);
+      add(errors, p.code, `nova karta bez PNG-a ${pngName(p.card)} (ili "${p.card.name}.png")`);
     }
     const diffs = old ? CE_FIELDS.filter(k => !same(old[k], p.card[k])) : [];
     const imageChanged = !!old && !!imageHash && imageHash !== old.imageHash;
     const status = !old ? 'new' : diffs.length || imageChanged ? 'changed' : 'same';
     // PNG je nacrtana karta: promijenjeni podaci, a ista slika znači da je slika vjerojatno stara.
     const staleImage = diffs.length > 0 && !imageChanged;
-    if (staleImage) add(warnings, p.code, `promijenjeno (${diffs.join(', ')}), a ${png ? 'PNG je isti kao prije' : 'nema PNG-a, pa ostaje stara slika'}; slika je možda stara, treba li novi "${p.card.name}.png"?`);
-    entries.push({ id: p.code, status, card: p.card, old, diffs, imageChanged, staleImage, imageHash, png, file: p.file });
+    if (staleImage) add(warnings, p.code, `promijenjeno (${diffs.join(', ')}), a ${png ? 'PNG je isti kao prije' : 'nema PNG-a, pa ostaje stara slika'}; slika je možda stara, treba li novi ${pngName(p.card)}?`);
+    entries.push({ id: p.code, status, card: p.card, old, diffs, imageChanged, staleImage, imageHash, png, pngByName: !!png && !byCode, file: p.file });
   }
 
-  // PNG bez XML-a: nova slika postojeće karte, po imenu karte u bazi.
+  // PNG bez XML-a: nova slika postojeće karte iz baze, po kodu ili po imenu.
   const pickedIds = new Set(picked.keys());
   const dbByName = new Map();
-  for (const c of db.cards) if (!dbByName.has(c.name) || dbByName.get(c.name).deleted) dbByName.set(c.name, c);
-  for (const [name, png] of pngs) {
-    const old = dbByName.get(name);
-    if (usedPngs.has(name) || !old || pickedIds.has(old.id)) continue;
-    usedPngs.add(name);
+  for (const c of db.cards) dbByName.set(c.name, [...(dbByName.get(c.name) ?? []), c]);
+  const pngOnly = [
+    ...[...pngByCode].map(([code, png]) => [png, oldById.get(code) ? [oldById.get(code)] : []]),
+    ...[...pngByName].map(([name, png]) => [png, dbByName.get(name) ?? []]),
+  ];
+  for (const [png, found] of pngOnly) {
+    if (usedPngs.has(png) || !found.length) continue;
+    const live = found.filter(c => !c.deleted);
+    const candidates = live.length ? live : found;
+    if (candidates.length > 1) {
+      usedPngs.add(png);
+      add(errors, null, `${png.path}: isto ime imaju ${candidates.map(c => c.id).join(' i ')}; PNG mora počinjati kodom, npr. ${pngName(candidates[0])}`);
+      continue;
+    }
+    const old = candidates[0];
+    if (pickedIds.has(old.id)) continue;
+    usedPngs.add(png);
     const imageHash = await imageHashOf(await png.getBytes());
     const imageChanged = imageHash !== old.imageHash;
     const card = { id: old.id };
@@ -123,16 +141,24 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
   }
   entries.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-  const skipped = [...pngs.keys()].filter(name => !usedPngs.has(name));
-  if (skipped.length) add(infos, null, `preskočeno ${skipped.length} PNG-ova koji nisu karte s kodom: ${skipped.map(n => `${n}.png`).join(', ')}`);
+  const skipped = [...pngByCode.values(), ...pngByName.values()].filter(png => !usedPngs.has(png)).map(png => baseName(png.path));
+  if (skipped.length) add(infos, null, `preskočeno ${skipped.length} PNG-ova koji nisu karte s kodom: ${skipped.join(', ')}`);
 
   // 4. Provjere na bazi kakva će biti nakon Objave.
+  // Heroj mora imati jedinstveno ime (TTS ga veže uz bakugana po imenu, Evolution ga nalazi po imenu).
+  // Ostale karte smiju dijeliti ime, ali tada PNG mora počinjati kodom.
   const final = mergedCards(db, entries);
   const live = final.filter(c => !c.deleted);
   const byName = new Map();
-  for (const c of live) {
-    if (byName.has(c.name)) add(errors, c.id, `ime "${c.name}" ima i ${byName.get(c.name)}; imena moraju biti jedinstvena`);
-    else byName.set(c.name, c.id);
+  for (const c of live) byName.set(c.name, [...(byName.get(c.name) ?? []), c]);
+  for (const [name, list] of byName) {
+    if (list.length < 2) continue;
+    const ids = list.map(c => c.id).join(', ');
+    if (list.some(c => c.type === 'Character')) add(errors, list[0].id, `ime "${name}" imaju ${ids}; heroj mora imati jedinstveno ime`);
+    else add(warnings, list[0].id, `isto ime "${name}" imaju ${ids}; to je dopušteno, ali PNG-ovi moraju počinjati kodom`);
+  }
+  for (const e of entries) {
+    if (e.pngByName && byName.get(e.card.name)?.length > 1) add(errors, e.id, `PNG "${e.card.name}.png" ne zna se kojoj karti pripada (isto ime ima više karata); preimenuj ga u ${pngName(e.card)}`);
   }
   const heroes = new Set(live.filter(c => c.type === 'Character').map(c => c.name));
   for (const c of live) {

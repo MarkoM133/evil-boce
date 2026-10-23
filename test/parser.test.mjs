@@ -192,7 +192,7 @@ test('provjere: dupla imena, Evolution bez heroja, bez PNG-a', async () => {
   });
   const msgs = a.errors.map(e => `${e.id}: ${e.msg}`).join('\n');
   assert.match(msgs, /OP9-003: nova karta bez PNG-a/);
-  assert.match(msgs, /ime "Punch" ima i OP9-002/);
+  assert.match(msgs, /OP9-002: PNG "Punch.png" ne zna se kojoj karti pripada/);
   assert.match(msgs, /heroj "Hero A" ne postoji/);
 });
 
@@ -299,4 +299,56 @@ test('povijest: zapis po verziji, promjene od verzije, promjene u decku', async 
   const deck = { heroes: ['OP9-001'], cards: { 'OP9-002': 2, 'OP9-003': 0 } };
   assert.deepEqual(deckChanges(deck, since1).map(x => [x.id, x.changes.map(c => c.version)]), [['OP9-002', [2]]]);
   assert.deepEqual(deckChanges(deck, changesSince(log, 0)), [{ id: 'OP9-002', changes: [{ version: 2, kind: 'changed', fields: ['cost'], image: true }] }]);
+});
+
+test('kodovi drugih setova: DBZ-015 i JJ5-001 su ispravni, OP bez broja seta nije', () => {
+  const parsed = parseCardEngineXml(xml(card({ ...ACTION, code: 'DBZ-015' }), card({ ...ACTION, name: 'Kick', code: 'JJ5-001' }), card({ ...ACTION, name: 'Bad', code: 'OP-033' })));
+  assert.deepEqual(parsed.map(p => [p.code, p.problems.filter(x => x.level === 'error').length]), [['DBZ-015', 0], ['JJ5-001', 0], ['OP-033', 1]]);
+});
+
+test('PNG "KOD Ime.png": isto ime u dva seta, svaka karta svoju sliku', async () => {
+  const a = await analyzeExport({
+    xmlFiles: [{ path: 'export/x.xml', text: xml(card(ACTION), card({ ...ACTION, code: 'DBZ-002', color: 'Red' })), lastModified: 1 }],
+    pngFiles: [png([2], 'export/OP9-002 Punch.png'), png([7], 'export/DBZ/DBZ-002 Punch.png')],
+    db: emptyDb(),
+  });
+  assert.deepEqual(a.errors, []);
+  assert.match(a.warnings.map(w => w.msg).join('\n'), /isto ime "Punch" imaju DBZ-002, OP9-002; to je dopušteno/);
+  assert.deepEqual(a.entries.map(e => [e.id, e.png.path]), [['DBZ-002', 'export/DBZ/DBZ-002 Punch.png'], ['OP9-002', 'export/OP9-002 Punch.png']]);
+  assert.notEqual(a.entries[0].imageHash, a.entries[1].imageHash);
+});
+
+test('PNG s kodom ima prednost pred PNG-om s imenom; i sam kod je dovoljan', async () => {
+  const a = await analyzeExport({
+    xmlFiles: [{ path: 'export/x.xml', text: xml(card(ACTION), card(HERO)), lastModified: 1 }],
+    pngFiles: [png([2], 'export/Punch.png'), png([3], 'export/OP9-002 Punch.png'), png([1], 'export/OP9-001.png')],
+    db: emptyDb(),
+  });
+  assert.deepEqual(a.errors, []);
+  assert.deepEqual(a.entries.map(e => [e.id, e.png.path]), [['OP9-001', 'export/OP9-001.png'], ['OP9-002', 'export/OP9-002 Punch.png']]);
+  assert.match(a.infos.map(i => i.msg).join('\n'), /preskočeno 1 PNG-ova.*Punch\.png/);
+});
+
+test('heroj s istim imenom kao druga karta je greška', async () => {
+  const a = await analyzeExport({
+    xmlFiles: [{ path: 'export/x.xml', text: xml(card(HERO), card({ ...ACTION, name: 'Hero A', code: 'DBZ-003' })), lastModified: 1 }],
+    pngFiles: [png([1], 'export/OP9-001 Hero A.png'), png([2], 'export/DBZ-003 Hero A.png')],
+    db: emptyDb(),
+  });
+  assert.match(a.errors.map(e => e.msg).join('\n'), /ime "Hero A" imaju .*heroj mora imati jedinstveno ime/);
+});
+
+test('sam PNG: po kodu radi uvijek, po imenu samo kad je ime jednoznačno', async () => {
+  const first = await analyzeExport({
+    xmlFiles: [{ path: 'export/x.xml', text: xml(card(ACTION), card({ ...ACTION, code: 'DBZ-002', color: 'Red' })), lastModified: 1 }],
+    pngFiles: [png([2], 'export/OP9-002 Punch.png'), png([7], 'export/DBZ-002 Punch.png')],
+    db: emptyDb(),
+  });
+  const db = buildPublish(emptyDb(), first).db;
+  const byCode = await analyzeExport({ xmlFiles: [], pngFiles: [png([8], 'export/DBZ-002 Punch.png')], db });
+  assert.deepEqual(byCode.errors, []);
+  assert.deepEqual(byCode.entries.map(e => [e.id, e.status, e.imageChanged]), [['DBZ-002', 'changed', true]]);
+  const byName = await analyzeExport({ xmlFiles: [], pngFiles: [png([8], 'export/Punch.png')], db });
+  assert.match(byName.errors.map(e => e.msg).join('\n'), /isto ime imaju DBZ-002 i OP9-002; PNG mora počinjati kodom/);
+  assert.deepEqual(byName.entries, []);
 });
