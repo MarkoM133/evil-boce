@@ -42,8 +42,8 @@ local CFG = {
 
   MAP_NAME         = "Custom Mat",
   MAP_HALF_X       = nil,     -- nil = iz velicine mata; inace rucno (npr 22.9)
-  MAP_HALF_Z       = nil,
-  ZONE_DEPTH       = 4,       -- max dubina bacacke zone IZVAN mape (skrati se da ne ulazi u hand zone)
+  MAP_HALF_Z       = 20.76,   -- arena do crvenih crta mata (10 % od ruba: 0.4 x 51.9); izmedu crvene crte i ruba su bacacke zone
+  ZONE_DEPTH       = 5.2,     -- bacacka zona: od crvene crte do ruba mata (25.95 - 20.76); skrati se da ne ulazi u hand zone
   HIDE_ZONES       = false,   -- true = skrivene zone (protivnik ne vidi bakugan u tvojoj zoni)
 
   AIM_KEY          = 1,       -- Numpad 1
