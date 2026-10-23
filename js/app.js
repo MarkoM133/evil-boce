@@ -895,7 +895,7 @@ function renderQuickFilters() {
       type: 'button', class: `qf-color c-${c}${on('colors', c) ? ' active' : ''}`, title: c, 'aria-label': c, 'aria-pressed': String(on('colors', c)), onclick: () => toggle('colors', c),
     }))),
     sets.length > 1 ? h('div', { class: 'qf-group' }, sets.map(x => chip('sets', x, x, `Set ${x}`))) : null,
-    h('div', { class: 'qf-group' },
+    h('div', { class: 'qf-group qf-specials' },
       Object.entries(SPECIAL).map(([k, [label, title]]) => chip('specials', k, label, title)),
       h('button', { type: 'button', class: `qf${f.deleted ? ' active' : ''}`, title: 'Prikaži i maknute karte', 'aria-pressed': String(f.deleted), onclick: () => { f.deleted = !f.deleted; render(); } }, 'Maknute')),
     any ? h('button', { type: 'button', class: 'qf qf-clear', onclick: () => {
