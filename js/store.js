@@ -24,6 +24,7 @@ function summary(slug, d) {
 }
 
 const LOGO_FILES = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'];
+const BAKUGANI_PATH = 'data/bakugani/catalog.json';
 
 // ---------- server ----------
 
@@ -57,6 +58,15 @@ export function serverStore(info) {
     async readChangelog() {
       const r = await fetch(CHANGELOG_PATH, { cache: 'no-store' });
       return r.ok ? r.json() : emptyChangelog();
+    },
+    // Biblioteka bakugana (oblici, sive teksture, sličice); null ako je nema.
+    async readBakugani() {
+      const r = await fetch(BAKUGANI_PATH, { cache: 'no-store' });
+      return r.ok ? r.json() : null;
+    },
+    // Datoteka iz data/ (npr. bakugani/dragonoid.obj).
+    async dataUrl(path) {
+      return `data/${path}`;
     },
     // thumb: URL sličice; ako je nema na serveru, pozivatelj padne na punu sliku (onerror).
     async imageUrl(card, { thumb = false, large = false } = {}) {
@@ -107,6 +117,17 @@ export function folderStore(root) {
     },
     async readChangelog() {
       return (await readJson(CHANGELOG_PATH)) ?? emptyChangelog();
+    },
+    async readBakugani() {
+      return readJson(BAKUGANI_PATH);
+    },
+    async dataUrl(path) {
+      const full = `data/${path}`;
+      if (!urls.has(full)) {
+        const f = await fs.getFile(root, full);
+        urls.set(full, f ? URL.createObjectURL(f) : null);
+      }
+      return urls.get(full);
     },
     // thumb: sličica ako postoji, inače null (pozivatelj uzme punu sliku).
     async imageUrl(card, { thumb = false, large = false } = {}) {

@@ -39,6 +39,7 @@ Evil Boce/
   data/images/       slike, ID.hash.png (original, za TTS)
   data/thumbs/       sličice 300 px, data/large/ velike slike 1000 px (JPEG, radi ih Objavi)
   data/changelog.json povijest promjena po verziji baze (piše je app)
+  data/bakugani/     biblioteka oblika bakugana: catalog.json, 3D model (.obj), siva tekstura (.jpg), sličica (.png)
   decks/             deckovi, ime-decka.json
   logo.jpg           logo (po želji)
 ```

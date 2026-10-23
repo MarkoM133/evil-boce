@@ -3,6 +3,7 @@ import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, 
 import { TYPES, COLOR_NAMES, DECK_TYPES } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
+import { GAME_COLORS, heroDefaultColor, paintThumb, createPreview } from './bakugan.js';
 import * as fs from './fsdir.js';
 
 const DB_PATH = 'data/cards.json';
@@ -24,6 +25,7 @@ const state = {
   deckView: 'pool',
   pool: { q: '', type: '', color: '' },
   focus: { color: '', value: 0.6 },
+  bakugani: [], // biblioteka oblika bakugana (data/bakugani/catalog.json)
 };
 
 const pngUrls = new Map();
@@ -273,6 +275,7 @@ async function useStore(store) {
   state.selected = null;
   state.db = await store.readDb();
   state.changelog = await store.readChangelog();
+  state.bakugani = (await store.readBakugani().catch(() => null))?.bakugani ?? [];
   state.logo = await store.logoUrl();
   state.decks = await store.listDecks();
   state.deck = null;
@@ -851,12 +854,12 @@ function renderDetail() {
         h('h3', {}, 'App polja'),
         c.type === 'Character' ? [
           field('Težina bakugana (wt)', h('input', { type: 'number', min: 1, step: 1, value: c.wt ?? '', oninput: e => { if (e.target.value === '') delete edits.wt; else edits.wt = Number(e.target.value); } })),
-          field('Bakugan u TTS-u', h('input', { type: 'text', value: c.bakugan ?? '', oninput: e => { edits.bakugan = e.target.value.trim(); } })),
+          bakuganPicker(c, edits),
         ] : null,
         h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!c.deleted, onchange: e => { edits.deleted = e.target.checked; } }), 'Maknuta (deleted) – builder je više ne nudi'),
         h('button', { class: 'primary', type: 'submit' }, 'Spremi'))
     : null;
-  const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bakugan', 'bonus', 'values', 'traits', 'text', 'rev', 'imageHash']
+  const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'rev', 'imageHash']
     .filter(k => c[k] !== undefined)
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
   const history = (state.changelog?.entries ?? []).flatMap(e => e.cards.filter(x => x.id === c.id).map(x => `v${e.version}: ${describeChange(x)}`)).reverse();
@@ -871,7 +874,55 @@ function renderDetail() {
     h('div', { class: 'detail-body' },
       h('button', { class: 'big', title: 'Preko cijelog ekrana', onclick: () => { const list = filtered(); openViewer((list.includes(c) ? list : [c]).map(x => ({ card: x })), list.includes(c) ? list.indexOf(c) : 0); } },
         cardImg(c, { alt: c.name, full: true }), h('span', { class: 'zoom', 'aria-hidden': 'true' }, icon('zoom'))),
-      h('div', {}, h('table', { class: 'fields' }, rows), editor)));
+      h('div', {}, h('table', { class: 'fields' }, rows), c.type === 'Character' && !editor ? bakuganPicker(c, null) : null, editor)));
+}
+
+// Bakugan heroja: 3D pregled, boja (boje igre, boja heroja ili bilo koja) i oblik iz biblioteke.
+// edits = null: samo pregled (preko servera se app polja ne mijenjaju).
+function bakuganPicker(c, edits) {
+  const lib = state.bakugani ?? [];
+  if (!lib.length) return edits ? h('p', { class: 'muted small' }, 'Nema biblioteke bakugana (data/bakugani/catalog.json).') : null;
+  let shape = lib.find(b => b.id === c.bakuganShape) ?? null;
+  if (!edits && !shape) return null;
+  let color = c.bakuganColor ?? heroDefaultColor(c);
+  const canvas = h('canvas', { class: 'bk-3d', width: 240, height: 240, 'aria-label': 'Bakugan, 3D pregled (povuci za okretanje)' });
+  const preview = createPreview(canvas);
+  const nameEl = h('span', { class: 'bk-name' });
+  const thumbs = new Map();
+  const show = () => {
+    nameEl.textContent = shape ? shape.name : 'Oblik nije odabran';
+    if (shape) Promise.all([state.store.dataUrl(shape.mesh), state.store.dataUrl(shape.texture)]).then(([m, t]) => m && t && preview.show(m, t, color));
+  };
+  const recolor = () => {
+    preview.setColor(color);
+    for (const [b, cv] of thumbs) state.store.dataUrl(b.thumb).then(u => u && paintThumb(cv, u, color));
+    picker.querySelectorAll('.bk-swatch').forEach(s => s.classList.toggle('active', s.dataset.color === color));
+    if (colorInput) colorInput.value = color;
+  };
+  const setColor = v => { color = v.toLowerCase(); if (edits) edits.bakuganColor = color; recolor(); };
+  const colorInput = edits ? h('input', { type: 'color', value: color, 'aria-label': 'Bilo koja boja', oninput: e => setColor(e.target.value) }) : null;
+  const swatches = edits ? h('div', { class: 'bk-colors' },
+    Object.entries({ ...GAME_COLORS }).map(([name, hex]) => h('button', { type: 'button', class: 'bk-swatch', style: `--sw:${hex}`, 'data-color': hex, title: name, 'aria-label': name, onclick: () => setColor(hex) })),
+    h('button', { type: 'button', class: 'ghost small-btn', onclick: () => setColor(heroDefaultColor(c)) }, 'Boja heroja'),
+    h('label', { class: 'bk-custom', title: 'Bilo koja boja' }, colorInput)) : null;
+  const grid = edits ? h('div', { class: 'bk-grid' }, lib.map(b => {
+    const cv = h('canvas', { width: 96, height: 96 });
+    thumbs.set(b, cv);
+    return h('button', { type: 'button', class: `bk-shape${shape === b ? ' active' : ''}`, title: b.name, onclick: e => {
+      shape = b;
+      edits.bakuganShape = b.id;
+      grid.querySelectorAll('.bk-shape').forEach(x => x.classList.toggle('active', x === e.currentTarget));
+      show();
+    } }, cv, h('span', {}, b.name));
+  })) : null;
+  const picker = h('section', { class: 'bk' },
+    h('h3', {}, 'Bakugan'),
+    h('div', { class: 'bk-main' }, canvas, h('div', { class: 'bk-side' }, nameEl, swatches,
+      edits ? h('p', { class: 'muted small' }, 'Boja se množi sa sivom teksturom, kao u TTS-u. Odaberi oblik i boju, pa Spremi.') : null)),
+    grid);
+  show();
+  recolor();
+  return picker;
 }
 
 // ---------- Deckovi ----------

@@ -5,8 +5,8 @@ import { parseCardEngineXml, CODE_RE } from './parse.js';
 // Polja koja dolaze iz Card Enginea (§5). App ih ne mijenja.
 export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'values', 'traits', 'text'];
 // Polja koja se uređuju samo u appu. Ponovni uvoz ih ne dira.
-export const APP_FIELDS = ['wt', 'bakugan', 'deleted'];
-const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'bakugan', 'image', 'imageHash', 'rev', 'deleted'];
+export const APP_FIELDS = ['wt', 'bakugan', 'bakuganShape', 'bakuganColor', 'deleted'];
+const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'bakugan', 'bakuganShape', 'bakuganColor', 'image', 'imageHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
 
@@ -264,7 +264,7 @@ export function changelogEntry(oldDb, newDb) {
       cards.push({ id: c.id, name: c.name, kind: 'new', fields: [], image: false });
       continue;
     }
-    const fields = [...CE_FIELDS, 'wt', 'bakugan'].filter(k => !same(o[k], c[k]));
+    const fields = [...CE_FIELDS, 'wt', 'bakugan', 'bakuganShape', 'bakuganColor'].filter(k => !same(o[k], c[k]));
     const image = o.imageHash !== c.imageHash;
     const kind = !o.deleted && c.deleted ? 'deleted' : o.deleted && !c.deleted ? 'restored' : 'changed';
     if (fields.length || image || kind !== 'changed') cards.push({ id: c.id, name: c.name, kind, fields, image });
@@ -291,11 +291,13 @@ export function changesSince(log, since) {
 }
 
 // Kratak opis promjene karte: "values, slika", "nova", "maknuta".
+const FIELD_LABELS = { bakuganShape: 'oblik bakugana', bakuganColor: 'boja bakugana' };
+
 export function describeChange(c) {
   if (c.kind === 'new') return 'nova';
   if (c.kind === 'deleted') return 'maknuta';
   if (c.kind === 'restored') return 'vraćena';
-  return [...c.fields, ...(c.image ? ['slika'] : [])].join(', ');
+  return [...c.fields.map(f => FIELD_LABELS[f] ?? f), ...(c.image ? ['slika'] : [])].join(', ');
 }
 
 // export/ je sanduče: nakon Objave pročitani fileovi idu u export/objavljeno/<datum vrijeme>/, a Uvoz arhivu preskače.

@@ -402,7 +402,7 @@ td.now { font-weight: 600; }
 @keyframes drawer { from { transform: translateX(24px); opacity: 0; } }
 .detail-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; margin-bottom: 18px; }
 .detail-head h2 { font-size: 36px; }
-.detail-body { display: grid; grid-template-columns: 260px 1fr; gap: 24px; }
+.detail-body { display: grid; grid-template-columns: 260px 1fr; gap: 24px; align-items: start; }
 .detail .big img { width: 100%; border-radius: 9px; background: var(--surface-2); aspect-ratio: 5 / 7; object-fit: cover; }
 .editor { display: grid; gap: 12px; margin-top: 10px; justify-items: start; }
 .editor h3 { margin-top: 16px; }
@@ -697,3 +697,26 @@ button.link:focus-visible { outline: 2px solid var(--straw); outline-offset: 2px
 .viewer-nav .icon { width: 28px; height: 28px; }
 .pool-art-wrap .zoom .icon { width: 15px; height: 15px; }
 .viewer.single .viewer-nav { display: none; }
+
+/* ---------- bakugan heroja: 3D pregled, boja, oblik ---------- */
+
+.bk { margin: 14px 0 6px; display: grid; gap: 12px; }
+.bk h3 { margin: 0; }
+.bk-main { display: grid; grid-template-columns: 240px 1fr; gap: 16px; align-items: start; }
+.bk-3d { width: 240px; height: 240px; background: radial-gradient(circle at 50% 45%, #262626, #0b0b0b 70%); border-radius: 12px; touch-action: none; cursor: grab; }
+.bk-3d:active { cursor: grabbing; }
+.bk-side { display: grid; gap: 10px; align-content: start; }
+.bk-name { font: italic 800 22px/1.1 var(--display); }
+.bk-colors { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bk-swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; clip-path: none; background: var(--sw); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35); }
+.bk-swatch:hover { background: var(--sw); transform: scale(1.08); }
+.bk-swatch.active { box-shadow: 0 0 0 2px var(--black), 0 0 0 4px var(--bone); }
+.bk-custom input[type=color] { width: 40px; height: 32px; padding: 0; border: 0; background: none; cursor: pointer; }
+.bk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.bk-shape { display: grid; justify-items: center; gap: 2px; padding: 6px 4px; clip-path: none; background: var(--surface); border-radius: 8px; font: 600 12px/1.2 var(--text); }
+.bk-shape canvas { width: 72px; height: 72px; }
+.bk-shape.active { box-shadow: inset 0 0 0 2px var(--straw); background: var(--surface-2); }
+@media (max-width: 760px) {
+  .bk-main { grid-template-columns: 1fr; }
+  .bk-3d { width: 100%; max-width: 280px; height: auto; aspect-ratio: 1; }
+}
