@@ -708,7 +708,7 @@ function wordmark(size) {
     h('span', { class: 'w-evil' }, 'Evil'), h('span', { class: 'w-boce' }, 'Boće'));
 }
 
-// Podaci: folder, verzija (link na povijest), broj karata, Import i odabir foldera. Na računalu stoje u bloku
+// Logo i podaci: folder, verzija (link na povijest), broj karata, Import i odabir foldera. Na računalu stoje u bloku
 // dolje lijevo (side-data), na mobitelu u traci ispod heroja (top-bar); CSS pokaže jedno od dvoje.
 function brand() {
   return h('div', { class: 'brand' },
@@ -773,11 +773,10 @@ function renderMain() {
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
-      brand(),
       h('nav', { class: 'tabs', role: 'tablist' },
         tabs.map(([key, label]) => h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, label))),
       state.tab === 'decks' ? renderDeckList() : null),
-    h('div', { class: 'side-data' }, folderInfo()),
+    h('div', { class: 'side-data' }, brand(), folderInfo()),
     h('main', {}, view));
 }
 
