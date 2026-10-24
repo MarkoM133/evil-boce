@@ -113,6 +113,8 @@ const ICONS = {
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   prev: '<path d="M15 5l-7 7 7 7"/>',
   next: '<path d="M9 5l7 7-7 7"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
 };
 
 function icon(name) {
@@ -657,7 +659,7 @@ function heroStrip() {
       style: `width: ${w}px`,
       'data-id': c.id,
       title: c.name,
-      'aria-label': `${c.name}: open in Browse, or add to the deck on Decks`,
+      'aria-label': `${c.name}: open in Browse, or add to / remove from the deck on Decks`,
       'aria-hidden': copy ? 'true' : null,
       tabindex: copy ? -1 : null,
       // Na Decks heroj ide u deck, inače se otvori u pregledu.
@@ -1575,7 +1577,8 @@ function renderHeroes() {
   box.replaceChildren(...slots);
 }
 
-// Klik na heroja u traci na kartici Decks: heroj ide na prvo slobodno mjesto (bez otvorenog decka počne novi).
+// Klik na heroja u traci na kartici Decks: heroj ide na prvo slobodno mjesto (bez otvorenog decka počne novi),
+// a heroj koji je već u decku se makne.
 function pickHeroFromStrip(c) {
   if (!state.deck) {
     state.deck = newDeck();
@@ -1586,7 +1589,7 @@ function pickHeroFromStrip(c) {
     return;
   }
   const d = state.deck;
-  if (d.heroes.includes(c.id)) { toast(`${c.name} is already in the deck.`); return; }
+  if (d.heroes.includes(c.id)) { changeDeck(x => { x.heroes = x.heroes.filter(id => id !== c.id); }); return; }
   if (d.heroes.length >= 3) { toast('The deck already has 3 heroes. Remove one first.', 'warn'); return; }
   changeDeck(x => { x.heroes = [...x.heroes, c.id]; });
 }
@@ -1641,12 +1644,14 @@ function poolCard(c, list) {
   const max = LIMITS[c.type];
   return h('div', { class: `pool-card${n ? ' in-deck' : ''}${n >= max ? ' maxed' : ''}` },
     h('div', { class: 'pool-art-wrap' },
-      h('button', { class: 'pool-art', title: `Add ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, cardImg(c, { alt: c.name }),
+      // lijevi klik doda kopiju, desni makne jednu
+      h('button', { class: 'pool-art', title: `${c.name}: click adds one, right-click removes one`, onclick: () => { if (n < max) addCard(c.id, 1); },
+        oncontextmenu: e => { e.preventDefault(); if (n) addCard(c.id, -1); } }, cardImg(c, { alt: c.name }),
         n ? h('span', { class: 'pool-count' }, `${n}/${max}`) : null),
       zoomButton(c, list),
       h('span', { class: 'stepper' },
-        h('button', { class: 'step', 'aria-label': `Remove one ${c.name}`, disabled: !n, onclick: () => addCard(c.id, -1) }, '−'),
-        h('button', { class: 'step', 'aria-label': `Add one ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, '+'))),
+        h('button', { class: 'step', title: 'Remove one', 'aria-label': `Remove one ${c.name}`, disabled: !n, onclick: () => addCard(c.id, -1) }, icon('minus')),
+        h('button', { class: 'step', title: 'Add one', 'aria-label': `Add one ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, icon('plus')))),
     h('span', { class: 'pool-name', title: c.name }, c.name));
 }
 
