@@ -258,7 +258,7 @@ main { min-width: 0; }
   background: none;
   font-size: 30px;
   text-align: left;
-  padding: 8px 0 8px 18px;
+  padding: 8px 0 8px 22px;
   color: var(--muted);
   position: relative;
 }
@@ -267,7 +267,7 @@ main { min-width: 0; }
 .tabs button.active::before {
   content: "";
   position: absolute;
-  left: 0;
+  left: 4px; /* nagnuta crta viri lijevo od svog mjesta; .side (overflow) bi joj odrezao donji kut */
   top: 8px;
   bottom: 8px;
   width: 5px;
