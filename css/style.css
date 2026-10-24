@@ -549,12 +549,20 @@ td.now { font-weight: 600; }
 .code-out input { width: 100%; }
 
 .hero-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.hero-slot { background: var(--surface); min-height: 96px; display: flex; gap: 12px; padding: 10px; align-items: center; border-left: 4px solid var(--line); }
-.hero-slot img { width: 64px; aspect-ratio: 5 / 7; object-fit: cover; border-radius: 4px; flex: none; }
-.hero-art { padding: 0; background: none; clip-path: none; flex: none; cursor: zoom-in; }
-.hero-art:hover { background: none; }
-.hero-info { display: grid; gap: 2px; justify-items: start; min-width: 0; }
-.hero-name { font: italic 800 22px/1.05 var(--display); }
+.hero-slot { position: relative; min-height: 112px; }
+/* odabrani heroj: kosa ploča sa sličicom karte lijevo, ime i statsi desno, crta u boji heroja dolje */
+.hero-slot.filled { clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); }
+.hero-panel { position: absolute; inset: 0; padding: 10px 40px 10px 24px; clip-path: none; background: var(--surface); display: flex; align-items: center; gap: 14px; text-align: left; cursor: zoom-in; }
+.hero-panel:hover { background: var(--surface-2); }
+.hero-panel img { height: 100%; width: auto; aspect-ratio: 5 / 7; object-fit: cover; border-radius: 4px; flex: none; }
+.hero-panel::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--edge); }
+.hero-text { display: grid; gap: 6px; min-width: 0; }
+.hero-name { font: italic 800 26px/1 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hero-stats { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 13px; color: var(--muted); }
+.hero-stats b { color: var(--bone); font-weight: 700; }
+.hero-remove { position: absolute; top: 8px; right: 18px; width: 30px; height: 30px; padding: 0; display: grid; place-items: center; clip-path: none; border-radius: 50%; background: var(--black); color: var(--muted); }
+.hero-remove:hover { color: var(--bone); }
+.hero-remove:hover { background: var(--red); }
 /* prazno mjesto: isprekidan kosi okvir */
 .hero-slot.empty { display: grid; gap: 6px; align-content: center; padding: 12px 22px; background: transparent; border: 1px dashed var(--muted); transform: skewX(-6deg); }
 .hero-slot.empty > * { transform: skewX(6deg); }
@@ -665,7 +673,8 @@ td.now { font-weight: 600; }
 
 @media (max-width: 760px) {
   .hero-slots { grid-template-columns: 1fr; }
-  .hero-slot { min-height: 0; }
+  .hero-slot { min-height: 84px; }
+  .hero-name { font-size: 22px; }
   .pool { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px 8px; }
   .deck-name { font-size: 26px; }
 }

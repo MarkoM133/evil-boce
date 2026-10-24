@@ -1531,7 +1531,7 @@ function renderDeckStatus() {
     state.deck.dirty ? h('span', { class: 'unsaved' }, 'unsaved') : null);
 }
 
-// Tri mjesta za heroje: odabrani heroj je sličica karte (klik je prikaže preko cijelog ekrana), ime, boja i Remove;
+// Tri mjesta za heroje: odabrani heroj je ploča sa sličicom karte (klik je prikaže preko cijelog ekrana, × ga makne),
 // prazno mjesto nudi izbornik ili klik na heroja u traci na vrhu.
 function renderHeroes() {
   const box = $('#deck-heroes');
@@ -1542,12 +1542,14 @@ function renderHeroes() {
   const slots = [0, 1, 2].map(i => {
     const hero = cardById(d.heroes[i]);
     if (hero) {
-      return h('div', { class: `hero-slot filled c-border-${hero.color}` },
-        h('button', { class: 'hero-art', title: `Full screen: ${hero.name}`, onclick: () => openViewer(heroes.map(x => ({ card: x })), heroes.indexOf(hero)) }, cardImg(hero, { alt: hero.name })),
-        h('div', { class: 'hero-info' },
-          h('span', { class: 'hero-name' }, hero.name),
-          h('span', { class: 'muted small' }, hero.color),
-          h('button', { class: 'ghost small-btn', onclick: () => changeDeck(x => { x.heroes = x.heroes.filter(id => id !== hero.id); }) }, 'Remove')));
+      const st = hero.stats ?? {};
+      return h('div', { class: `hero-slot filled c-edge-${hero.color}` },
+        h('button', { class: 'hero-panel', title: `Full screen: ${hero.name}`, onclick: () => openViewer(heroes.map(x => ({ card: x })), heroes.indexOf(hero)) },
+          cardImg(hero, { alt: hero.name }),
+          h('span', { class: 'hero-text' },
+            h('span', { class: 'hero-name' }, hero.name),
+            h('span', { class: 'hero-stats' }, [['HP', st.hp], ['DMG', st.dmg], ['PWR', st.pwr], ['RNG', st.rng]].filter(([, v]) => v !== undefined).map(([k, v]) => h('span', {}, h('b', {}, v), ` ${k}`))))),
+        h('button', { class: 'hero-remove', title: `Remove ${hero.name}`, 'aria-label': `Remove ${hero.name}`, onclick: () => changeDeck(x => { x.heroes = x.heroes.filter(id => id !== hero.id); }) }, icon('close')));
     }
     return h('label', { class: 'hero-slot empty' },
       h('span', { class: 'hero-empty-title' }, h('b', { 'aria-hidden': 'true' }, '+'), `Hero ${i + 1}`),
