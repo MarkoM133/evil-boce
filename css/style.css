@@ -170,42 +170,22 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
 
 /* ---------- zaglavlje i kartice ---------- */
 
-.top {
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 24px;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 108px;
-  padding: 16px 0 12px;
-}
-.top > .brand, .top > .folder { position: relative; z-index: 1; }
-.folder { text-shadow: 0 1px 8px var(--black); }
+.top { padding: 16px 0 0; }
+.top-bar { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; }
 
-/* Traka s herojima: preko cijele širine prozora, kose kriške, zatamnjeno; prijelaz u crnu iza loga i desnog teksta. */
+/* Traka s herojima: ispod zaglavlja, od ruba do ruba prozora; kriške klize ulijevo (JS), rubovi se gube u crnu. */
 .hero-strip {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
   width: calc(100vw / var(--z));
-  transform: translateX(-50%);
-  z-index: 0;
-  display: flex;
-  gap: 6px;
-  padding-left: 26%;
+  margin: 14px 0 0 calc(50% - 50vw / var(--z));
+  height: 116px;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(to right, transparent 20%, #000 40%, #000 66%, transparent 92%), linear-gradient(to bottom, #000 55%, transparent);
-  -webkit-mask-composite: source-in;
-  mask-image: linear-gradient(to right, transparent 20%, #000 40%, #000 66%, transparent 92%), linear-gradient(to bottom, #000 55%, transparent);
-  mask-composite: intersect;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
 }
+.strip-track { display: flex; gap: 6px; height: 100%; width: max-content; padding-left: 24px; will-change: transform; }
 .slice {
-  flex: 1 1 0;
-  min-width: 72px;
-  max-width: 200px;
+  flex: none;
+  height: 100%;
   position: relative;
   padding: 0;
   clip-path: none;
@@ -249,6 +229,7 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
 .c-edge-Green { --edge: var(--c-Green); }
 @media (prefers-reduced-motion: reduce) {
   .slice-art, .slice-name { transition: none; }
+  .hero-strip { overflow-x: auto; scrollbar-width: none; } /* bez klizanja: traka se pomiče prstom ili kotačićem */
 }
 .brand { display: flex; gap: 14px; align-items: center; }
 .brand .logo { width: 64px; height: 64px; object-fit: contain; }
@@ -423,10 +404,12 @@ td.now { font-weight: 600; }
 .toast.warn { border-left-color: var(--red); }
 
 @media (max-width: 760px) {
-  .top { min-height: 0; }
-  .hero-strip { bottom: auto; height: 96px; padding-left: 30%; gap: 4px; }
-  .slice { min-width: 64px; }
-  .slice-art { background-size: 175% auto; background-position: 50% 21%; }
+  .top-bar { flex-wrap: nowrap; gap: 12px; }
+  .brand .logo { width: 48px; height: 48px; }
+  .folder { justify-content: flex-end; text-align: right; gap: 2px 12px; font-size: 14px; }
+  .hero-strip { height: 84px; margin-top: 12px; }
+  .strip-track { gap: 4px; }
+  .slice-name { font-size: 14px; left: 10px; bottom: 6px; }
   .brand-sub { display: none; }
   .welcome { grid-template-columns: 1fr; gap: 24px; padding: 32px 0; min-height: auto; }
   .emblem { width: min(100%, 360px); margin: 0 auto; }

@@ -601,22 +601,75 @@ window.addEventListener('popstate', () => {
   });
 });
 
-// Traka s herojima iza zaglavlja: svi heroji iz baze, kose kriške s crtežom s karte.
+// Traka s herojima ispod zaglavlja, preko cijele širine: kose kriške s crtežom s karte, polako klize ulijevo.
+// Popis se ponovi koliko treba da traka uvijek bude puna; pomak za jednu duljinu popisa izgleda kao beskonačna vrpca.
+// Zaglavlje se crta iznova na svaki render, pa traka nastavlja s mjesta na kojem je bila (stripTime).
+const STRIP_SPEED = 28; // px u sekundi
+const STRIP_GAP = 6;
+let stripAnim = null;
+let stripTime = 0;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const sliceWidth = () => (matchMedia('(max-width: 760px)').matches ? 96 : 150);
+const zoom = () => Number(getComputedStyle(document.documentElement).getPropertyValue('--z')) || 1;
+
+function stripCopies(n) {
+  if (reducedMotion.matches) return 1;
+  const list = n * (sliceWidth() + STRIP_GAP);
+  return Math.max(2, Math.ceil(innerWidth / zoom() / list) + 1);
+}
+
 function heroStrip() {
   const heroes = heroCards(state.db).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   if (!heroes.length) return null;
-  return h('div', { class: 'hero-strip', id: 'hero-strip' }, heroes.map(c => {
+  const w = sliceWidth();
+  const copies = stripCopies(heroes.length);
+  const slices = Array.from({ length: copies }, (_, copy) => heroes.map(c => {
     const art = h('span', { class: 'slice-art' });
     imageFor(c, true).then(u => { if (u) art.style.backgroundImage = `url("${u}")`; });
+    // Ponovljene kopije su samo ukras: čitač ekrana i Tab vide svakog heroja jednom.
     return h('button', {
       class: `slice c-edge-${c.color}`,
+      style: `width: ${w}px`,
       'data-id': c.id,
       title: c.name,
       'aria-label': `${c.name}: open in Browse`,
+      'aria-hidden': copy ? 'true' : null,
+      tabindex: copy ? -1 : null,
       onclick: () => { state.tab = 'browse'; state.selected = c.id; render(); },
     }, art, h('span', { class: 'slice-name' }, c.name));
   }));
+  const track = h('div', { class: 'strip-track' }, slices.flat());
+  const strip = h('div', { class: 'hero-strip', id: 'hero-strip', 'data-copies': copies }, track);
+  if (stripAnim) stripTime = stripAnim.currentTime ?? stripTime;
+  const wasPaused = stripAnim?.playState === 'paused'; // miš je ostao na traci (npr. klik na heroja)
+  stripAnim?.cancel();
+  stripAnim = null;
+  if (copies > 1) {
+    const list = heroes.length * (w + STRIP_GAP);
+    stripAnim = track.animate([{ transform: 'translateX(0)' }, { transform: `translateX(-${list}px)` }],
+      { duration: (list / STRIP_SPEED) * 1000, iterations: Infinity });
+    stripAnim.currentTime = stripTime;
+    if (wasPaused) stripAnim.pause();
+    // Stane dok je miš na traci, da se heroj može kliknuti.
+    strip.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') stripAnim?.pause(); });
+    strip.addEventListener('pointerleave', () => stripAnim?.play());
+  }
+  return strip;
 }
+
+// Promjena veličine prozora može tražiti više kopija; traka se tada složi iznova.
+let resizeTimer = 0;
+addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const old = $('#hero-strip');
+    if (!old || !state.store) return;
+    const n = heroCards(state.db).length;
+    if (Number(old.dataset.copies) === stripCopies(n) && old.querySelector('.slice')?.style.width === `${sliceWidth()}px`) return;
+    old.replaceWith(heroStrip());
+    updateStrip();
+  }, 200);
+});
 
 // U deck builderu svijetle samo heroji iz decka.
 function updateStrip() {
@@ -624,7 +677,7 @@ function updateStrip() {
   if (!strip) return;
   const picked = new Set(state.tab === 'decks' && state.deck ? state.deck.heroes : []);
   strip.classList.toggle('has-picked', picked.size > 0);
-  for (const s of strip.children) s.classList.toggle('picked', picked.has(s.dataset.id));
+  for (const s of strip.querySelectorAll('.slice')) s.classList.toggle('picked', picked.has(s.dataset.id));
 }
 
 function wordmark(size) {
@@ -636,17 +689,18 @@ function renderHeader() {
   const n = state.db.cards.length;
   const server = state.store.kind === 'server';
   return h('header', { class: 'top' },
-    heroStrip(),
-    h('div', { class: 'brand' },
-      state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
-      h('span', { class: 'brand-sub' }, 'Card database')),
-    h('div', { class: 'folder' },
-      h('span', { class: 'folder-name', title: server ? 'Data from the computer, via server' : 'Chosen Drive folder' }, server ? `${state.store.name} via server` : state.store.name),
-      h('span', { class: 'folder-db' },
-        h('button', { class: `version-link${state.tab === 'history' ? ' active' : ''}`, title: 'Change history', onclick: () => openHistory() }, `Version ${state.db.version}`),
-        h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
-      server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder for Import and editing', onclick: () => guard(() => resume(state.savedRoot)) }, `Continue with "${state.savedRoot.name}"`) : null,
-      !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Other folder' : 'Choose folder') : 'Change folder') : null));
+    h('div', { class: 'top-bar' },
+      h('div', { class: 'brand' },
+        state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
+        h('span', { class: 'brand-sub' }, 'Card database')),
+      h('div', { class: 'folder' },
+        h('span', { class: 'folder-name', title: server ? 'Data from the computer, via server' : 'Chosen Drive folder' }, server ? `${state.store.name} via server` : state.store.name),
+        h('span', { class: 'folder-db' },
+          h('button', { class: `version-link${state.tab === 'history' ? ' active' : ''}`, title: 'Change history', onclick: () => openHistory() }, `Version ${state.db.version}`),
+          h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
+        server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder for Import and editing', onclick: () => guard(() => resume(state.savedRoot)) }, `Continue with "${state.savedRoot.name}"`) : null,
+        !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Other folder' : 'Choose folder') : 'Change folder') : null)),
+    heroStrip());
 }
 
 function renderWelcome() {
