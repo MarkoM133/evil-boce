@@ -923,6 +923,8 @@ function scanHeroes()
       if n ~= "" and bodies[n] then
         heroCards[n] = o
         if not o.hasTag("HeroCard") then o.addTag("HeroCard") end
+        -- zakljucana, da je TTS ne spoji u hrpu s kartom spustenom preko nje (Evolution)
+        if not o.getLock() then o.setLock(true) end
         if stats[n] == nil then
           stats[n] = copy(heroBase[n] or HP_DEFAULT)
           stats[n].hp = stats[n].max
@@ -1982,7 +1984,9 @@ local function snapToSlot(o, color)
   local face = o.getRotation().z
   local sn = slot.getName()
   if sn == "Graveyard" or sn == "Stage" or sn == "Defeated Enemy" then face = 0 elseif sn == "Deck" then face = 180 end
-  local rot = {0, sr.y, face}
+  -- utor za heroja je okrenut za 90° (vodoravan), a polozena (Sideways) karta lezi kao kod 0°/180°
+  local ry = sn == "Hero" and (sr.y - 90) or sr.y
+  local rot = {0, ry, face}
 
   -- hrpa koja vec lezi na placeholderu
   local pile = nil
@@ -1995,6 +1999,13 @@ local function snapToSlot(o, color)
   end
 
   o.setRotation(rot)
+  -- na heroja (npr. Evolution preko njega) karta samo legne, ne spaja se u hrpu: karta heroja nosi HP i statse
+  if sn == "Hero" and pile ~= nil and pile.type == "Card" then
+    local pp = pile.getPosition()
+    o.setRotation({0, pile.getRotation().y, face})
+    o.setPosition({pp.x, pp.y + 0.15, pp.z})
+    return
+  end
   if pile ~= nil and pile.type == "Deck" then
     pile.putObject(o)
   elseif pile ~= nil then
