@@ -21,6 +21,7 @@ const state = {
   changelog: null,
   inbox: 0, // fileova u sanduču export/ (samo folder)
   detailTab: 'general', // kartica u detalju karte: general | bakugan
+  bakuganForm: 'ball', // forma na kartici Bakugan: ball (1/2) | figurine (2/2)
   selected: null,
   busy: false,
   decks: [],
@@ -1077,23 +1078,26 @@ function renderDetail() {
   if (!panes[state.detailTab]) state.detailTab = 'general';
   const showPane = k => { for (const [pk, el] of Object.entries(panes)) el.hidden = pk !== k; };
   showPane(state.detailTab);
-  const tabs = panes.bakugan ? h('div', { class: 'detail-tabs', role: 'tablist' }, [['general', 'General'], ['bakugan', 'Bakugan']].map(([k, label]) =>
+  // Kartice su okomita traka uz lijevi rub panela, cijelom visinom; sadržaj desno se lista sam.
+  const tabs = panes.bakugan ? h('nav', { class: 'detail-rail', role: 'tablist', 'aria-orientation': 'vertical' }, [['general', 'General'], ['bakugan', 'Bakugan']].map(([k, label]) =>
     h('button', { type: 'button', role: 'tab', class: state.detailTab === k ? 'active' : '', 'aria-selected': String(state.detailTab === k), onclick: e => {
       state.detailTab = k;
       showPane(k);
       for (const b of e.currentTarget.parentElement.children) { const on = b === e.currentTarget; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); }
     } }, label))) : null;
-  box.replaceChildren(
+  box.className = tabs ? 'detail has-rail' : 'detail';
+  const content = h('div', { class: 'detail-content' },
     h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: closeCard }, 'Close')),
-    ...[tabs, ...Object.values(panes)].filter(Boolean));
+    ...Object.values(panes));
+  box.replaceChildren(...[tabs, content].filter(Boolean));
 }
 
-// Kartica Bakugan: kugla (stanje 1/2: oblik, dvije boje, težina) samo za heroje, figurina (stanje 2/2, sprite) i za evolucije.
+// Kartica Bakugan: dvije forme bakugana u TTS-u, prekidač među njima. Kugla (1/2: oblik, dvije boje, težina) samo za
+// heroje; figurina (2/2: sprite) i za evolucije. Odabrana forma se pamti dok se ide s karte na kartu.
 function bakuganPane(c, edits, form, save) {
   const hero = c.type === 'Character';
   const field = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
   const ball = hero ? h('section', { class: 'bk-part' },
-    h('h3', {}, 'Ball', h('span', { class: 'muted' }, ' · form 1/2')),
     bakuganPicker(c, edits),
     edits ? field('Bakugan weight (wt)', h('input', { type: 'number', min: 1, step: 1, value: c.wt ?? '', oninput: e => { if (e.target.value === '') delete edits.wt; else edits.wt = Number(e.target.value); } })) : null) : null;
   let figure;
@@ -1105,8 +1109,19 @@ function bakuganPane(c, edits, form, save) {
   } else {
     figure = h('p', { class: 'muted small' }, `No sprite yet. It comes through the export as "${c.name} Sprite.png".`);
   }
-  const sprite = h('section', { class: 'bk-part' }, h('h3', {}, 'Figurine', h('span', { class: 'muted' }, ' · form 2/2')), figure);
-  return edits && hero ? form(ball, sprite, save()) : h('div', { class: 'editor' }, ball, sprite);
+  const sprite = h('section', { class: 'bk-part' }, figure);
+  const forms = { ball, figurine: sprite };
+  if (!forms[state.bakuganForm]) state.bakuganForm = hero ? 'ball' : 'figurine';
+  const show = k => { for (const [fk, el] of Object.entries(forms)) if (el) el.hidden = fk !== k; };
+  show(state.bakuganForm);
+  const switcher = h('div', { class: 'bk-forms', role: 'tablist' }, [['ball', 'Ball', '1/2'], ['figurine', 'Figurine', '2/2']].map(([k, label, n]) =>
+    h('button', { type: 'button', role: 'tab', class: state.bakuganForm === k ? 'active' : '', 'aria-selected': String(state.bakuganForm === k), disabled: !forms[k],
+      title: forms[k] ? '' : 'Evolutions use the hero\'s ball; only the figurine is theirs', onclick: e => {
+        state.bakuganForm = k;
+        show(k);
+        for (const x of e.currentTarget.parentElement.children) { const on = x === e.currentTarget; x.classList.toggle('active', on); x.setAttribute('aria-selected', String(on)); }
+      } }, label, h('span', { class: 'bk-form-n' }, n))));
+  return edits && hero ? form(switcher, ball, sprite, save()) : h('div', { class: 'editor' }, switcher, ball, sprite);
 }
 
 // Bakugan heroja: 3D pregled, dvije boje (oklop i detalji; boje igre, boja heroja ili bilo koja) i oblik iz biblioteke.
@@ -1153,20 +1168,30 @@ function bakuganPicker(c, edits) {
     { label: 'Hero color', value: () => heroDefaultColor(c), active: () => color === heroDefaultColor(c) }) : null;
   const accents = edits && lib.some(b => b.accent) ? colorRow('Accents', () => color2, v => { color2 = v; edits.bakuganColor2 = v ?? undefined; recolor(); },
     { label: 'Same as body', value: () => null, active: () => color2 === null }) : null;
-  const grid = edits ? h('div', { class: 'bk-grid' }, lib.map(b => {
+  // Istaknuti oblici (featured) su uvijek vidljivi, ostali iza "More bakugans"; odabrani oblik se vidi uvijek.
+  // Sličice skrivenih se boje tek kad se pokažu.
+  const shapeButton = b => {
     const cv = h('canvas', { width: 96, height: 96 });
     thumbs.set(b, cv);
     return h('button', { type: 'button', class: `bk-shape${shape === b ? ' active' : ''}`, title: b.name, onclick: e => {
       shape = b;
       edits.bakuganShape = b.id;
-      grid.querySelectorAll('.bk-shape').forEach(x => x.classList.toggle('active', x === e.currentTarget));
+      picker.querySelectorAll('.bk-shape').forEach(x => x.classList.toggle('active', x === e.currentTarget));
       show();
     } }, cv, h('span', {}, b.name));
-  })) : null;
+  };
+  const visible = b => b.featured !== false || b === shape;
+  const rest = lib.filter(b => !visible(b));
+  const grid = edits ? h('div', { class: 'bk-grid' }, lib.filter(visible).map(shapeButton)) : null;
+  const more = edits && rest.length ? h('button', { type: 'button', class: 'ghost small-btn bk-more', onclick: () => {
+    const extra = h('div', { class: 'bk-grid' }, rest.map(shapeButton));
+    more.replaceWith(h('h4', { class: 'bk-more-title' }, `More bakugans (${rest.length})`), extra);
+    recolor();
+  } }, `More bakugans (${rest.length})`) : null;
   const picker = h('div', { class: 'bk' },
     h('div', { class: 'bk-main' }, canvas, h('div', { class: 'bk-side' }, nameEl, body, accents,
       edits ? h('p', { class: 'muted small' }, 'Body colors the armor, Accents the details (gold in the original mod); eyes keep their color. Choose a shape and colors, then Save.') : null)),
-    grid);
+    grid, more);
   show();
   recolor();
   return picker;

@@ -699,17 +699,30 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 
 /* ---------- detalj karte: kartice General / Bakugan ---------- */
 
-.detail-tabs { display: flex; gap: 4px; margin: -6px 0 18px; border-bottom: 1px solid var(--line); }
-.detail-tabs button { clip-path: none; background: none; color: var(--muted); font-size: 20px; padding: 6px 14px 10px; position: relative; }
-.detail-tabs button:hover { background: none; color: var(--bone); }
-.detail-tabs button.active { color: var(--bone); }
-.detail-tabs button.active::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 4px; background: var(--red); transform: skewX(-24deg); }
+.detail.has-rail { display: grid; grid-template-columns: 52px minmax(0, 1fr); padding: 0; overflow: hidden; }
+.detail.has-rail .detail-content { padding: 22px 24px; overflow-y: auto; min-height: 0; }
+.detail-rail { display: flex; flex-direction: column; gap: 4px; padding: 22px 0; background: var(--black); border-right: 1px solid var(--line); }
+.detail-rail button {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  clip-path: none; background: none; color: var(--muted);
+  font-size: 20px; padding: 16px 12px; position: relative;
+}
+.detail-rail button:hover { background: var(--surface); color: var(--bone); }
+.detail-rail button.active { color: var(--bone); background: var(--surface); }
+/* crvena crta uz vanjski rub; gumb je okrenut za 180°, pa je "right" lijevo na ekranu */
+.detail-rail button.active::after { content: ""; position: absolute; top: 10px; bottom: 10px; right: 0; width: 4px; background: var(--red); transform: skewY(-24deg); }
 
 /* ---------- bakugan heroja: kugla (3D pregled, dvije boje, oblik) i figurina ---------- */
 
 .bk-part { display: grid; gap: 12px; }
-.bk-part + .bk-part { border-top: 1px solid var(--line); padding-top: 16px; }
-.bk-part h3 { margin: 0; }
+.bk-forms { display: inline-flex; justify-self: start; gap: 2px; padding: 3px; background: var(--black); border-radius: 999px; }
+.bk-forms button { clip-path: none; background: none; color: var(--muted); border-radius: 999px; padding: 6px 16px; font-size: 17px; display: inline-flex; gap: 8px; align-items: baseline; }
+.bk-forms button:hover:not(:disabled) { background: var(--surface-2); color: var(--bone); }
+.bk-forms button.active { background: var(--red); color: var(--bone); }
+.bk-forms button:disabled { opacity: .35; cursor: not-allowed; }
+.bk-form-n { font: 600 12px var(--text); font-style: normal; opacity: .8; }
+.bk-more { justify-self: start; }
+.bk-more-title { margin: 6px 0 0; font: italic 700 18px var(--display); color: var(--muted); }
 .bk { display: grid; gap: 12px; }
 .bk-row { display: grid; gap: 6px; }
 .bk-label { font-size: 14px; color: var(--muted); }
