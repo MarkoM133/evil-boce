@@ -350,6 +350,12 @@ td.now { font-weight: 600; }
 
 .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .filters input[type=search] { flex: 1 1 260px; }
+/* Pregled na računalu: tražilica i izbornici uvijek u jednom redu (tražilica se suzi, izbornici skrate tekst). */
+@media (min-width: 761px) {
+  .panel > .filters { flex-wrap: nowrap; min-width: 0; }
+  .panel > .filters input[type=search] { flex: 1 1 0; min-width: 120px; }
+  .panel > .filters select { flex: 0 1 auto; min-width: 0; }
+}
 .check { display: inline-flex; gap: 8px; align-items: center; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 22px 16px; margin-top: 12px; }
@@ -780,8 +786,22 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .trait-chip.active span { color: var(--black); }
 
 /* Pregled: brzi filteri (tip, boja, set, posebni). */
-.quick { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-top: 12px; }
-.qf-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.quick { display: flex; flex-wrap: nowrap; gap: 8px 18px; align-items: center; margin-top: 12px; min-width: 0; position: relative; }
+.qf-group { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; flex: none; }
+.qf-group > * { flex: none; }
+.qf-more { flex: none; } /* izbornik se poravna s lijevim rubom reda (.quick), ne s gumbom */
+.qf-more-btn { display: inline-flex; align-items: center; gap: 6px; }
+.qf-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red); color: var(--bone); font: 800 11px/1 var(--text); }
+.qf-panel {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 6;
+  display: grid; gap: 12px; padding: 14px; width: max-content; max-width: 100%;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 30px rgba(0, 0, 0, .6);
+}
+.qf-panel .qf-group { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .quick, .qf-group { flex-wrap: wrap; }
+  .qf-group { flex: 0 1 auto; min-width: 0; }
+}
 .qf { padding: 5px 12px; clip-path: none; border-radius: 14px; background: var(--surface-2); font: 600 13px/1.2 var(--text); }
 .qf:hover { background: #2c2c2c; }
 .qf.active { background: var(--straw); color: var(--black); }

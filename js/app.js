@@ -21,6 +21,7 @@ const state = {
   changelog: null,
   inbox: 0, // fileova u sanduču export/ (samo folder)
   detailTab: 'general', // kartica u detalju karte: general | bakugan
+  qfOpen: false, // izbornik "Filters" (skupine brzih filtera koje ne stanu u red)
   bakuganForm: 'ball', // forma na kartici Bakugan: ball (1/2) | figurine (2/2)
   selected: null,
   busy: false,
@@ -243,8 +244,16 @@ function showViewer() {
 // a prikaz preko cijelog ekrana i poruke ga ne zatvaraju.
 document.addEventListener('click', e => {
   if (state.tab !== 'browse' || !state.selected || viewer.el || state.busy) return;
-  if (!e.target.isConnected || e.target.closest('#detail, .tile, .slice, .viewer, #toasts')) return;
+  if (!e.target.isConnected || e.target.closest('#detail, .tile, .slice, .viewer, #toasts, .quick')) return;
   closeCard();
+});
+
+// Izbornik "Filters" se zatvori klikom izvan njega (klik na filter u njemu ga ostavlja otvorenog).
+document.addEventListener('click', e => {
+  if (!state.qfOpen || !e.target.isConnected || e.target.closest('.qf-more')) return;
+  state.qfOpen = false;
+  const more = $('.qf-more');
+  if (more) { more.querySelector('.qf-panel').hidden = true; more.querySelector('.qf-more-btn').setAttribute('aria-expanded', 'false'); }
 });
 
 // Prečaci izvan polja za unos: / za tražilicu, Ctrl+Z za Poništi u decku.
@@ -975,6 +984,8 @@ function renderBrowse() {
 
 // Gumbi: tip, boja, set, posebni. Klik uključi ili isključi; unutar skupine "ili" (Action + Equipment),
 // između skupina "i" (Heroji i crvena). Maknute su prekidač; Očisti sve vrati.
+// Na računalu je red uvijek jedan: skupine koje ne stanu (npr. dok je otvoren detalj karte) idu, od kraja,
+// u izbornik "Filters"; broj na njemu kaže koliko je filtera uključeno unutra.
 function renderQuickFilters() {
   const f = state.filter;
   const on = (k, v) => f[k].includes(v);
@@ -982,19 +993,43 @@ function renderQuickFilters() {
   const chip = (k, v, label, title) => h('button', { type: 'button', class: `qf${on(k, v) ? ' active' : ''}`, title: title ?? '', 'aria-pressed': String(on(k, v)), onclick: () => toggle(k, v) }, label);
   const sets = [...new Set(state.db.cards.filter(c => c.type !== 'Stage').map(setOf))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const any = f.types.length || f.colors.length || f.sets.length || f.specials.length || f.deleted || f.since || f.q;
-  return h('div', { class: 'quick' },
-    h('div', { class: 'qf-group' }, TYPES.map(t => chip('types', t, t === 'Character' ? 'Heroes' : t))),
-    h('div', { class: 'qf-group' }, COLOR_NAMES.map(c => h('button', {
+  const group = (cls, active, ...kids) => Object.assign(h('div', { class: `qf-group${cls ? ` ${cls}` : ''}` }, ...kids), { activeCount: active });
+  const groups = [
+    group('', f.types.length, TYPES.map(t => chip('types', t, t === 'Character' ? 'Heroes' : t))),
+    group('', f.colors.length, COLOR_NAMES.map(c => h('button', {
       type: 'button', class: `qf-color c-${c}${on('colors', c) ? ' active' : ''}`, title: c, 'aria-label': c, 'aria-pressed': String(on('colors', c)), onclick: () => toggle('colors', c),
     }))),
-    sets.length > 1 ? h('div', { class: 'qf-group' }, sets.map(x => chip('sets', x, x, `Set ${x}`))) : null,
-    h('div', { class: 'qf-group qf-specials' },
+    sets.length > 1 ? group('', f.sets.length, sets.map(x => chip('sets', x, x, `Set ${x}`))) : null,
+    group('qf-specials', f.specials.length + (f.deleted ? 1 : 0),
       Object.entries(SPECIAL).map(([k, [label, title]]) => chip('specials', k, label, title)),
       h('button', { type: 'button', class: `qf${f.deleted ? ' active' : ''}`, title: 'Also show deleted cards', 'aria-pressed': String(f.deleted), onclick: () => { f.deleted = !f.deleted; render(); } }, 'Deleted')),
-    any ? h('button', { type: 'button', class: 'qf qf-clear', onclick: () => {
-      Object.assign(f, { q: '', types: [], colors: [], sets: [], specials: [], deleted: false, since: 0 });
-      render();
-    } }, 'Clear') : null);
+  ].filter(Boolean);
+  const panel = h('div', { class: 'qf-panel', hidden: !state.qfOpen });
+  const moreBtn = h('button', { type: 'button', class: 'qf qf-more-btn', 'aria-expanded': String(!!state.qfOpen), onclick: () => {
+    state.qfOpen = !state.qfOpen;
+    panel.hidden = !state.qfOpen;
+    moreBtn.setAttribute('aria-expanded', String(state.qfOpen));
+  } });
+  const more = h('div', { class: 'qf-more', hidden: true }, moreBtn, panel);
+  const clear = any ? h('button', { type: 'button', class: 'qf qf-clear', onclick: () => {
+    Object.assign(f, { q: '', types: [], colors: [], sets: [], specials: [], deleted: false, since: 0 });
+    render();
+  } }, 'Clear') : null;
+  const row = h('div', { class: 'quick' }, groups, more, clear);
+  const layout = () => {
+    for (const g of groups) row.insertBefore(g, more);
+    more.hidden = true;
+    if (matchMedia('(max-width: 760px)').matches) return; // na mobitelu se red smije prelomiti
+    const fits = () => row.scrollWidth <= row.clientWidth + 1;
+    if (fits()) return;
+    more.hidden = false;
+    const inRow = [...groups];
+    while (!fits() && inRow.length) panel.prepend(inRow.pop());
+    const n = groups.filter(g => !inRow.includes(g)).reduce((s, g) => s + g.activeCount, 0);
+    moreBtn.replaceChildren(...['Filters', n ? h('span', { class: 'qf-count' }, n) : null, h('span', { 'aria-hidden': 'true' }, '▾')].filter(Boolean));
+  };
+  new ResizeObserver(layout).observe(row);
+  return row;
 }
 
 function renderGrid() {
