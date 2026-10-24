@@ -952,6 +952,7 @@ function scanHeroes()
     end
   end
 
+  updateEvolutions() -- i pri ucitavanju i nakon Synca: evolucija koja vec lezi na heroju
   for n, _ in pairs(heroCards) do refreshCard(n, true) end
   updateOverheads()
   redrawLines()
@@ -1006,14 +1007,31 @@ end
 
 -- Evolution preko karte heroja: osnovni statsi heroja postanu statsi evolucije (i vrate se kad se makne).
 -- HP se pomakne za razliku maksimuma (Luffy 8/8 -> Gear Second 10/10, 5/8 -> 7/10), pa se ogranici na novi max.
+-- Podaci evolucije: iz Synca (evoBase), a dok ga nije bilo, iz opisa karte
+-- ("Evolution  ·  Cost 2  ·  Evo 1  ·  OP1-011" / "HP 10  DMG 3  Power 4000  Range 4  Knockback 3").
+local function evoInfo(o)
+  local id = o.getGMNotes()
+  if evoBase[id] ~= nil then return id, evoBase[id] end
+  local desc = o.getDescription() or ""
+  if desc:sub(1, 9) ~= "Evolution" then return nil end
+  local st = {}
+  for label, k in pairs({ HP = "max", DMG = "dmg", Power = "pwr", Range = "rng", Knockback = "kb" }) do
+    local v = tonumber(desc:match("%f[%a]" .. label .. " (%-?%d+)"))
+    if v ~= nil then st[k] = (k == "pwr") and math.floor(v / 1000 + 0.5) or v end
+  end
+  if st.max == nil then return nil end
+  return (id ~= "" and id or o.getName()), { hero = (o.getName():match("^([^,]+)") or ""):gsub("%s+$", ""), stats = st }
+end
+
 local function evolutionOn(name)
   local card = heroCards[name]
   if card == nil then return nil end
   local p = card.getPosition()
   for _, o in ipairs(getObjects()) do
-    if o.type == "Card" and o ~= card and not o.hasTag("Slot") and not o.held_by_color then
-      local e = evoBase[o.getGMNotes()]
-      if e ~= nil and e.hero == name and near(o.getPosition(), p, 0.8) and o.getPosition().y > p.y then return o.getGMNotes() end
+    if o.type == "Card" and o ~= card and not o.hasTag("Slot") and not o.held_by_color
+      and near(o.getPosition(), p, 0.8) and o.getPosition().y > p.y then
+      local id, e = evoInfo(o)
+      if e ~= nil and e.hero == name then return id, e end
     end
   end
   return nil
@@ -1023,9 +1041,9 @@ function updateEvolutions()
   for name, _ in pairs(heroCards) do
     local st = stats[name]
     if st ~= nil then
-      local id = evolutionOn(name)
+      local id, e = evolutionOn(name)
       if id ~= st.evo then
-        local base = id and evoBase[id].stats or heroBase[name]
+        local base = e and e.stats or heroBase[name]
         if base ~= nil then
           local oldMax = st.max or 0
           for _, k in ipairs({"max", "dmg", "pwr", "rng", "kb"}) do if base[k] ~= nil then st[k] = base[k] end end
@@ -1960,7 +1978,7 @@ function onObjectPickUp(color, o)
   if o ~= nil and o.type == "Card" then
     if inAnyHand(o.getPosition()) then handPick[o.getGUID()] = color end
     -- Evolution podignuta s heroja: statsi heroja se vrate
-    if evoBase[o.getGMNotes()] ~= nil then Wait.time(updateEvolutions, 0.2) end
+    if evoInfo(o) ~= nil then Wait.time(updateEvolutions, 0.2) end
   end
   if o ~= nil and isBody(o) and o.use_gravity == false then
     o.use_gravity = true
@@ -2859,6 +2877,7 @@ function applySync(p)
       local full = (st.hp or 0) >= (st.max or 0)
       for k, v in pairs(hero.stats) do st[k] = v end
       if full or st.hp > st.max then st.hp = st.max end
+      st.evo = nil -- statsi su opet herojevi; evolucija koja lezi na njemu primijeni se iznova (scanHeroes)
     end
   end
   local bakuganMsg = syncBakugans(p)
