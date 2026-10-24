@@ -1984,9 +1984,7 @@ local function snapToSlot(o, color)
   local face = o.getRotation().z
   local sn = slot.getName()
   if sn == "Graveyard" or sn == "Stage" or sn == "Defeated Enemy" then face = 0 elseif sn == "Deck" then face = 180 end
-  -- utor za heroja je okrenut za 90° (vodoravan), a polozena (Sideways) karta lezi kao kod 0°/180°
-  local ry = sn == "Hero" and (sr.y - 90) or sr.y
-  local rot = {0, ry, face}
+  local rot = {0, sr.y, face}
 
   -- hrpa koja vec lezi na placeholderu
   local pile = nil
