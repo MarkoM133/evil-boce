@@ -113,8 +113,6 @@ const ICONS = {
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   prev: '<path d="M15 5l-7 7 7 7"/>',
   next: '<path d="M9 5l7 7-7 7"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>',
-  minus: '<path d="M5 12h14"/>',
 };
 
 function icon(name) {
@@ -1650,8 +1648,8 @@ function poolCard(c, list) {
         n ? h('span', { class: 'pool-count' }, `${n}/${max}`) : null),
       zoomButton(c, list),
       h('span', { class: 'stepper' },
-        h('button', { class: 'step', title: 'Remove one', 'aria-label': `Remove one ${c.name}`, disabled: !n, onclick: () => addCard(c.id, -1) }, icon('minus')),
-        h('button', { class: 'step', title: 'Add one', 'aria-label': `Add one ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, icon('plus')))),
+        h('button', { class: 'step', title: 'Remove one', 'aria-label': `Remove one ${c.name}`, disabled: !n, onclick: () => addCard(c.id, -1) }, '−'),
+        h('button', { class: 'step', title: 'Add one', 'aria-label': `Add one ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, '+'))),
     h('span', { class: 'pool-name', title: c.name }, c.name));
 }
 

@@ -602,12 +602,8 @@ td.now { font-weight: 600; }
   -webkit-box-orient: vertical;
 }
 /* − i + stoje na slici karte dolje lijevo (broj u decku je dolje desno), pa ispod slike je samo ime */
-/* Gumbi na slici karte su isti: tamni krugovi 30 px s ikonom (povećaj gore desno, − i + dolje lijevo). */
-.pool-art-wrap .stepper { position: absolute; left: 8px; bottom: 8px; gap: 6px; }
-.pool-art-wrap .step, .pool-art-wrap .zoom { width: 30px; height: 30px; border-radius: 50%; background: rgba(0, 0, 0, .72); color: var(--bone); opacity: 1; }
-.pool-art-wrap .step:hover:not(:disabled), .pool-art-wrap .zoom:hover { background: var(--red); }
-.pool-art-wrap .step:disabled { opacity: .35; }
-.pool-art-wrap .step .icon, .pool-art-wrap .zoom .icon { width: 15px; height: 15px; }
+/* Na slici karte: − i + dolje lijevo, povećaj u gornjem desnom kutu; isti razmak od ruba, isti tamni okvir. */
+.pool-art-wrap .stepper { position: absolute; left: 6px; bottom: 6px; background: rgba(0, 0, 0, .7); border-radius: 4px; padding: 2px; }
 .stepper { display: inline-flex; align-items: center; gap: 2px; flex: none; }
 .step {
   clip-path: none;
@@ -729,7 +725,8 @@ html:has(body.viewer-open), body.viewer-open { overscroll-behavior: none; }
 }
 .zoom:hover { background: rgba(0, 0, 0, .9); }
 .pool-art-wrap { position: relative; }
-.pool-art-wrap .zoom { position: absolute; top: 17%; right: 8px; } /* ispod cijene u gornjem desnom kutu karte */
+.pool-art-wrap .zoom { position: absolute; top: 6px; right: 6px; width: 34px; height: 34px; border-radius: 4px; opacity: 1; }
+.pool-art-wrap .zoom .icon { width: 16px; height: 16px; }
 button.deck-row-name { all: unset; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; cursor: zoom-in; }
 button.deck-row-name:hover { color: var(--straw); }
 button.deck-row-name:focus-visible { outline: 2px solid var(--straw); outline-offset: 2px; }
