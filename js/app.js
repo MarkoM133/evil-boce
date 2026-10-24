@@ -1240,7 +1240,10 @@ function bakuganPane(c, edits, form, save) {
         show(k);
         for (const x of e.currentTarget.parentElement.children) { const on = x === e.currentTarget; x.classList.toggle('active', on); x.setAttribute('aria-selected', String(on)); }
       } }, label, h('span', { class: 'bk-form-n' }, n))));
-  return edits && hero ? form(switcher, ball, sprite, save()) : h('div', { class: 'editor' }, switcher, ball, sprite);
+  // Save je gore desno uz prekidač formi i ostaje vidljiv dok se lista po oblicima.
+  return edits && hero
+    ? form(h('div', { class: 'bk-head' }, switcher, save()), ball, sprite)
+    : h('div', { class: 'editor' }, h('div', { class: 'bk-head' }, switcher), ball, sprite);
 }
 
 // Bakugan heroja: 3D pregled, dvije boje (oklop i detalji; boje igre, boja heroja ili bilo koja) i oblik iz biblioteke.
