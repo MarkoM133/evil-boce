@@ -269,15 +269,9 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
   .side-data-toggle .brand-sub { font: italic 800 24px/1 var(--display); color: var(--bone); }
   .side-data-badge { margin-left: auto; margin-right: 4px; }
   .side-data-badge .tab-badge { background: var(--red); color: var(--bone); margin: 0; }
-  /* ručka ladice: kratka siva kosa crtica na sredini gornjeg ruba (kao kod ladica na mobitelu), svjetlija pri prelasku mišem */
-  .side-data-toggle { position: relative; }
-  .side-data-toggle::before {
-    content: ""; position: absolute; top: -3px; left: calc(50% - 22px); width: 44px; height: 5px;
-    background: var(--line); border-radius: 3px; transform: skewX(-20deg);
-    transition: background .15s ease-out, width .15s ease-out, left .15s ease-out;
-  }
-  .side-data-toggle:hover::before, .side-data-toggle:focus-visible::before { background: var(--muted); width: 60px; left: calc(50% - 30px); }
-  .side-data.open .side-data-toggle::before { background: var(--muted); }
+  /* gornja crta bloka postane crvena dok je miš na logu (znak da se klikom otvara) */
+  .side-data { transition: border-color .15s ease-out; }
+  .side-data:has(.side-data-toggle:hover), .side-data:has(.side-data-toggle:focus-visible) { border-top-color: var(--red); }
   .side-data .folder-name { font: italic 800 22px/1.05 var(--display); overflow-wrap: anywhere; }
   .side-data .folder-db { font-size: 15px; }
   .side-data .folder-actions { display: grid; gap: 8px; margin-top: 4px; }
@@ -285,7 +279,7 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
   .side-data .import-btn { display: inline-flex; align-items: center; gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .side-data-body, .side-data-toggle::before { transition: none; }
+  .side-data-body, .side-data { transition: none; }
 }
 @media (max-width: 980px) {
   .side-data { display: none; }
