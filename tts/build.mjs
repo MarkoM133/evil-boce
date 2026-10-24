@@ -77,8 +77,16 @@ const steps = [
       o.CustomImage = { ImageURL: url, ImageSecondaryURL: url, ImageScalar: 1, WidthScale: 0, CustomTile: { Type: 0, Thickness: 0.2, Stackable: false, Stretch: true } };
     }
   }],
-  // 2026-10-24: Hero i Evolution su landscape (položene); mjesto za heroja je položena karta iste veličine.
-  ['mjesta za heroje položena', s => { for (const o of s.ObjectStates) if (o.Nickname === 'Hero' && (o.Tags ?? []).includes('Slot')) o.SidewaysCard = true; }],
+  // 2026-10-24: Hero i Evolution su landscape (položene); mjesto za heroja je okrenuto za 90° (kao Graveyard),
+  // pa je vodoravno iste veličine kao heroj. SidewaysCard na utoru se u TTS-u nije dobro prikazao.
+  ['mjesta za heroje vodoravna', s => {
+    for (const o of s.ObjectStates) {
+      if (o.Nickname !== 'Hero' || !(o.Tags ?? []).includes('Slot')) continue;
+      o.SidewaysCard = false;
+      const r = ((Math.round(o.Transform.rotY) % 360) + 360) % 360;
+      if (r % 180 === 0) o.Transform.rotY = (r + 90) % 360;
+    }
+  }],
 ];
 for (const [name, step] of steps) {
   const before = JSON.stringify(save.ObjectStates).length;
