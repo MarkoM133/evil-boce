@@ -248,7 +248,8 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
 @media (min-width: 981px) {
   .top-bar { display: none; }
   .shell { padding-top: 24px; }
-  .side { max-height: calc(100vh / var(--z) - 32px - 110px); overflow-x: hidden; }
+  /* stupac se lista, pa reže sve izvan sebe: 6 px mjesta lijevo da žuti okvir fokusa i kosi gumbi ne budu odrezani */
+  .side { max-height: calc(100vh / var(--z) - 32px - 110px); overflow-x: hidden; padding-left: 6px; margin-left: -6px; }
   .shell:has(.side-data.open) .side { max-height: calc(100vh / var(--z) - 32px - 330px); }
   .side-data {
     position: fixed; left: 32px; bottom: 16px; width: 236px; z-index: 2;
