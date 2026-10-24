@@ -370,6 +370,14 @@ local function cardHz(card)
   return size.z / card.getScale().z / 2
 end
 
+local function cardHx(card)
+  local size = card.getBoundsNormalized().size
+  return size.x / card.getScale().x / 2
+end
+
+-- sirina gumba (jedinice createButtona) u lokalnim jedinicama karte, kod scale 1
+local BTN_UNIT = 0.00177
+
 -- osi karte u svijetu (jedinicni vektori lokalnog x i z)
 local function cardAxes(card)
   local o = card.getPosition()
@@ -979,9 +987,11 @@ function decorateCard(card, name)
   btn("hpMinus_" .. k, "-", -0.8, z1, 400, 400, 340, "-1 HP (desni klik: -5)")
   btn("hpLabel_" .. k, "", 0, z1, 1300, 400, 300, "Klik: -1 HP, desni klik: +1 HP")
   btn("hpPlus_" .. k, "+", 0.8, z1, 400, 400, 340, "+1 HP (desni klik: +5)")
-  local xs = {-0.96, -0.48, 0, 0.48, 0.96}
+  -- red statova u sirini karte (i polozena landscape karta), najvise kao prije (razmak 0.48, sirina 440)
+  local step = math.min(0.48, cardHx(card) * 2 * 0.97 / #STATS)
+  local w = math.floor(math.min(440, step * 0.92 / (BTN_UNIT * CFG.BTN_SCALE)))
   for i, s in ipairs(STATS) do
-    btn("st_" .. s[1] .. "_" .. k, "", xs[i], z2, 440, 300, 150, s[2])
+    btn("st_" .. s[1] .. "_" .. k, "", (i - (#STATS + 1) / 2) * step, z2, w, 300, 150, s[2])
   end
   local lp = card.positionToLocal(slotWorldOf(card, (CFG.SLOTS + 1) / 2, CFG.SLOT_SIZE / 2 + 0.3))
   btn("noop", "", lp.x, lp.z, 2200, 260, 150, "", {0, 0, 0, 0})
@@ -2810,7 +2820,13 @@ function applySync(p)
     end
   end
   local bakuganMsg = syncBakugans(p)
-  Wait.frames(scanHeroes, 10)
+  -- gumbi heroja (HP, statsi) se nacrtaju iznova na svim karti heroja, pa i ostali igraci dobiju cist prikaz
+  Wait.frames(function()
+    for _, o in ipairs(getObjects()) do
+      if o.type == "Card" and o.hasTag("HeroCard") then o.clearButtons() end
+    end
+    scanHeroes()
+  end, 10)
 
   local parts = {}
   if lib == nil then
