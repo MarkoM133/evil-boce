@@ -62,3 +62,8 @@ test('payload: landscape Hero je položen (sideways), Evolution u decku ima roti
   const { steam } = mergeSteamUrls({}, { 'OP9-004.rot.eeeeeeee': 'https://steamusercontent-a.akamaihd.net/ugc/7/R/' });
   assert.deepEqual(Object.keys(steam), ['OP9-004.rot.eeeeeeee']);
 });
+
+test('payload: evolucije sa statsima za TTS (kad legnu na heroja)', () => {
+  const p = ttsPayload({ version: 1, cards: [HERO, EVO] }, { drivePath: 'C:/x' });
+  assert.deepEqual(p.evolutions, [{ id: 'OP9-004', hero: 'Hero A', stats: { max: 10, dmg: 3, pwr: 4, rng: 4, kb: 3 } }]);
+});

@@ -129,6 +129,7 @@ setupPhase = false
 coreOwner = {}                     -- [token guid] = boja igraca koji ga je postavio
 coreRealName = {}                  -- [token guid] = ime dok je token face down (skriveno kao "Core")
 heroBase = {}                      -- [ime] = osnovni statsi heroja iz karte (Sync karata)
+evoBase = {}                       -- [kod] = { hero = ime, stats = {...} } Evolution karte (Sync karata)
 handPick = {}                      -- [card guid] = boja: karta uzeta iz ruke (za placanje costa)
 energySig = {}
 
@@ -147,6 +148,7 @@ function onSave()
   t.coreOwner = coreOwner
   t.coreRealName = coreRealName
   t.heroBase = heroBase
+  t.evoBase = evoBase
   return JSON.encode(t)
 end
 
@@ -165,6 +167,7 @@ function onLoad(save)
         elseif k == "coreOwner" then coreOwner = v
         elseif k == "coreRealName" then coreRealName = v
         elseif k == "heroBase" then heroBase = v
+        elseif k == "evoBase" then evoBase = v
         else otherSave[k] = v end
       end
     end
@@ -999,6 +1002,42 @@ function decorateCard(card, name)
   end)
 
   if stats[name].hp == 0 then card.setColorTint({0.4, 0.4, 0.4}) end
+end
+
+-- Evolution preko karte heroja: osnovni statsi heroja postanu statsi evolucije (i vrate se kad se makne).
+-- HP se pomakne za razliku maksimuma (Luffy 8/8 -> Gear Second 10/10, 5/8 -> 7/10), pa se ogranici na novi max.
+local function evolutionOn(name)
+  local card = heroCards[name]
+  if card == nil then return nil end
+  local p = card.getPosition()
+  for _, o in ipairs(getObjects()) do
+    if o.type == "Card" and o ~= card and not o.hasTag("Slot") and not o.held_by_color then
+      local e = evoBase[o.getGMNotes()]
+      if e ~= nil and e.hero == name and near(o.getPosition(), p, 0.8) and o.getPosition().y > p.y then return o.getGMNotes() end
+    end
+  end
+  return nil
+end
+
+function updateEvolutions()
+  for name, _ in pairs(heroCards) do
+    local st = stats[name]
+    if st ~= nil then
+      local id = evolutionOn(name)
+      if id ~= st.evo then
+        local base = id and evoBase[id].stats or heroBase[name]
+        if base ~= nil then
+          local oldMax = st.max or 0
+          for _, k in ipairs({"max", "dmg", "pwr", "rng", "kb"}) do if base[k] ~= nil then st[k] = base[k] end end
+          local hp = (st.hp or 0) + (st.max - oldMax)
+          if (st.hp or 0) > 0 and hp < 1 then hp = 1 end
+          st.hp = math.max(0, math.min(st.max, hp))
+        end
+        st.evo = id
+        refreshCard(name)
+      end
+    end
+  end
 end
 
 function refreshCard(name, quiet)
@@ -1920,6 +1959,8 @@ end
 function onObjectPickUp(color, o)
   if o ~= nil and o.type == "Card" then
     if inAnyHand(o.getPosition()) then handPick[o.getGUID()] = color end
+    -- Evolution podignuta s heroja: statsi heroja se vrate
+    if evoBase[o.getGMNotes()] ~= nil then Wait.time(updateEvolutions, 0.2) end
   end
   if o ~= nil and isBody(o) and o.use_gravity == false then
     o.use_gravity = true
@@ -2024,7 +2065,7 @@ function onObjectDrop(color, o)
     local fromHand = handPick[o.getGUID()]
     handPick[o.getGUID()] = nil
     if fromHand then payIfPlayed(o, color) end
-    Wait.time(function() recomputeBonus(); for n, _ in pairs(heroCards) do refreshCard(n) end end, 0.5)
+    Wait.time(function() updateEvolutions(); recomputeBonus(); for n, _ in pairs(heroCards) do refreshCard(n) end end, 0.5)
   end
   if o ~= nil and (o.type == "Card" or o.type == "Deck") and not o.hasTag("Slot") then
     Wait.frames(function() snapToSlot(o, color) end, 3)
@@ -2809,6 +2850,8 @@ function applySync(p)
   end
 
   -- 3. Heroji: osnovni statsi iz karte. Pun HP ostaje pun; inace se samo ogranici na novi max.
+  evoBase = {}
+  for _, e in ipairs(p.evolutions or {}) do evoBase[e.id] = { hero = e.hero, stats = copy(e.stats) } end
   for _, hero in ipairs(p.heroes or {}) do
     heroBase[hero.name] = copy(hero.stats)
     local st = stats[hero.name]

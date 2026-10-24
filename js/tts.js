@@ -59,7 +59,16 @@ export function bakuganTextureId(card) {
   return `${card.bakuganShape}-${hex(main)}-${hex(card.bakuganColor2 ?? main)}`;
 }
 
-// Sve što TTS treba: karte (master kopije) i heroji (statsi, bakugan, sprite).
+// Statsi heroja ili evolucije kako ih broji TTS (Power u tisućama, max = HP).
+const tableStats = c => ({
+  max: c.stats?.hp ?? 8,
+  dmg: c.stats?.dmg ?? 0,
+  pwr: Math.round((c.stats?.pwr ?? 0) / 1000),
+  rng: c.stats?.rng ?? 0,
+  kb: c.stats?.kb ?? 0,
+});
+
+// Sve što TTS treba: karte (master kopije), heroji (statsi, bakugan, sprite) i evolucije (statsi kad legnu na heroja).
 // opts: { steam: {key: url}, drivePath: 'C:/…/EvilBoce', bakugani: [{id, name, meshUrl}] }
 export function ttsPayload(db, opts) {
   const cards = [...db.cards].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
@@ -91,14 +100,7 @@ export function ttsPayload(db, opts) {
       return {
         id: c.id,
         name: c.name,
-        stats: {
-          max: c.stats?.hp ?? 8,
-          dmg: c.stats?.dmg ?? 0,
-          pwr: Math.round((c.stats?.pwr ?? 0) / 1000),
-          rng: c.stats?.rng ?? 0,
-          kb: c.stats?.kb ?? 0,
-          wt: c.wt ?? 2,
-        },
+        stats: { ...tableStats(c), wt: c.wt ?? 2 },
         bakugan: shape ? {
           shape: shape.id,
           name: shape.name,
@@ -111,6 +113,7 @@ export function ttsPayload(db, opts) {
         spriteKey: c.sprite ? spriteKey(c) : null,
       };
     }),
+    evolutions: cards.filter(c => c.type === 'Evolution' && !c.deleted).map(c => ({ id: c.id, hero: c.hero, stats: tableStats(c) })),
   };
 }
 
