@@ -18,7 +18,7 @@ const state = {
   analysis: null,
   tab: 'browse',
   // Brzi filteri: unutar skupine "ili", između skupina "i".
-  filter: { q: '', types: [], colors: [], sets: [], specials: [], deleted: false, sort: 'id', since: 0 },
+  filter: { q: '', types: [], colors: [], sets: [], specials: [], sort: 'id', since: 0 },
   changelog: null,
   inbox: 0, // fileova u sanduču export/ (samo folder)
   detailTab: 'general', // kartica u detalju karte: general | bakugan
@@ -973,12 +973,12 @@ function specialFilter(name) {
 }
 
 function filtered() {
-  const { q, types, colors, sets, specials, deleted, sort, since } = state.filter;
+  const { q, types, colors, sets, specials, sort, since } = state.filter;
   const matches = searchMatcher(q);
   const changed = since ? changesSince(state.changelog, since - 1) : null;
   const extras = specials.map(specialFilter);
   return state.db.cards.filter(c =>
-    (deleted || !c.deleted) &&
+    !c.deleted &&
     (!types.length || types.includes(c.type)) &&
     (!colors.length || colors.includes(c.color)) &&
     (!sets.length || sets.includes(setOf(c))) &&
@@ -1063,7 +1063,7 @@ function renderBrowse() {
 }
 
 // Gumbi: tip, boja, set, posebni. Klik uključi ili isključi; unutar skupine "ili" (Action + Equipment),
-// između skupina "i" (Heroji i crvena). Maknute su prekidač; Očisti sve vrati.
+// između skupina "i" (Heroji i crvena). Očisti sve vrati. Maknute karte se u pregledu ne prikazuju.
 // Na računalu je red uvijek jedan: skupine koje ne stanu (npr. dok je otvoren detalj karte) idu, od kraja,
 // u izbornik "Filters"; broj na njemu kaže koliko je filtera uključeno unutra.
 function renderQuickFilters() {
@@ -1072,7 +1072,7 @@ function renderQuickFilters() {
   const toggle = (k, v) => { f[k] = on(k, v) ? f[k].filter(x => x !== v) : [...f[k], v]; render(); };
   const chip = (k, v, label, title) => h('button', { type: 'button', class: `qf${on(k, v) ? ' active' : ''}`, title: title ?? '', 'aria-pressed': String(on(k, v)), onclick: () => toggle(k, v) }, label);
   const sets = [...new Set(state.db.cards.filter(c => c.type !== 'Stage').map(setOf))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  const any = f.types.length || f.colors.length || f.sets.length || f.specials.length || f.deleted || f.since || f.q;
+  const any = f.types.length || f.colors.length || f.sets.length || f.specials.length || f.since || f.q;
   const group = (cls, active, ...kids) => Object.assign(h('div', { class: `qf-group${cls ? ` ${cls}` : ''}` }, ...kids), { activeCount: active });
   const groups = [
     group('', f.types.length, TYPES.map(t => chip('types', t, t === 'Hero' ? 'Heroes' : t))),
@@ -1080,9 +1080,8 @@ function renderQuickFilters() {
       type: 'button', class: `qf-color c-${c}${on('colors', c) ? ' active' : ''}`, title: c, 'aria-label': c, 'aria-pressed': String(on('colors', c)), onclick: () => toggle('colors', c),
     }))),
     sets.length > 1 ? group('', f.sets.length, sets.map(x => chip('sets', x, x, `Set ${x}`))) : null,
-    group('qf-specials', f.specials.length + (f.deleted ? 1 : 0),
-      Object.entries(SPECIAL).map(([k, [label, title]]) => chip('specials', k, label, title)),
-      h('button', { type: 'button', class: `qf${f.deleted ? ' active' : ''}`, title: 'Also show deleted cards', 'aria-pressed': String(f.deleted), onclick: () => { f.deleted = !f.deleted; render(); } }, 'Deleted')),
+    group('qf-specials', f.specials.length,
+      Object.entries(SPECIAL).map(([k, [label, title]]) => chip('specials', k, label, title))),
   ].filter(Boolean);
   const panel = h('div', { class: 'qf-panel', hidden: !state.qfOpen });
   const moreBtn = h('button', { type: 'button', class: 'qf qf-more-btn', 'aria-expanded': String(!!state.qfOpen), onclick: () => {
@@ -1092,7 +1091,7 @@ function renderQuickFilters() {
   } });
   const more = h('div', { class: 'qf-more', hidden: true }, moreBtn, panel);
   const clear = any ? h('button', { type: 'button', class: 'qf qf-clear', onclick: () => {
-    Object.assign(f, { q: '', types: [], colors: [], sets: [], specials: [], deleted: false, since: 0 });
+    Object.assign(f, { q: '', types: [], colors: [], sets: [], specials: [], since: 0 });
     render();
   } }, 'Clear') : null;
   const row = h('div', { class: 'quick' }, groups, more, clear);
@@ -1121,7 +1120,7 @@ function renderGrid() {
     return;
   }
   grid.replaceChildren(...(cards.length ? cards.map(tile) : [h('p', { class: 'muted' }, 'No cards match the filter.')]));
-  const all = state.db.cards.filter(c => state.filter.deleted || !c.deleted).length;
+  const all = state.db.cards.filter(c => !c.deleted).length;
   $('#grid-count')?.replaceChildren(cards.length === all ? `${all} ${plural(all, 'card', 'cards')}` : `${cards.length} of ${all} cards`);
 }
 

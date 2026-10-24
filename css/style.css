@@ -889,7 +889,7 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .qf-color.active { box-shadow: 0 0 0 2px var(--black), 0 0 0 4px var(--bone); }
 .qf-clear { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
 .qf-clear:hover { color: var(--bone); background: transparent; box-shadow: inset 0 0 0 1px var(--muted); }
-/* Posebni filteri (Novo, Bez bakugana, Bez spritea, Maknute) nisu vrsta karte nego stanje: isprekidani obrub, kurziv, crveno kad su uključeni. */
+/* Posebni filteri (Novo, Bez bakugana, Bez spritea) nisu vrsta karte nego stanje: isprekidani obrub, kurziv, crveno kad su uključeni. */
 .qf-specials .qf { background: transparent; border: 1px dashed var(--muted); padding: 4px 12px; font: italic 700 14px/1.1 var(--display); letter-spacing: .02em; }
 .qf-specials .qf:hover { background: var(--surface-2); }
 .qf-specials .qf.active { background: var(--red); color: var(--bone); border-color: var(--red); box-shadow: none; }
