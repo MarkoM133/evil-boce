@@ -699,18 +699,25 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 
 /* ---------- detalj karte: kartice General / Bakugan ---------- */
 
-.detail.has-rail { display: grid; grid-template-columns: 52px minmax(0, 1fr); padding: 0; overflow: hidden; }
+.detail.has-rail { display: grid; grid-template-columns: 68px minmax(0, 1fr); padding: 0; overflow: hidden; }
 .detail.has-rail .detail-content { padding: 22px 24px; overflow-y: auto; min-height: 0; }
-.detail-rail { display: flex; flex-direction: column; gap: 4px; padding: 22px 0; background: var(--black); border-right: 1px solid var(--line); }
+/* Okomite kartice: svaka je pola visine panela. */
+.detail-rail { display: flex; flex-direction: column; background: var(--black); border-right: 1px solid var(--line); }
 .detail-rail button {
+  flex: 1;
   writing-mode: vertical-rl; transform: rotate(180deg);
   clip-path: none; background: none; color: var(--muted);
-  font-size: 20px; padding: 16px 12px; position: relative;
+  font-size: 34px; letter-spacing: .04em; padding: 0; position: relative;
 }
+.detail-rail button + button { border-bottom: 1px solid var(--line); } /* okrenuto za 180°: bottom je gornji rub */
 .detail-rail button:hover { background: var(--surface); color: var(--bone); }
 .detail-rail button.active { color: var(--bone); background: var(--surface); }
 /* crvena crta uz vanjski rub; gumb je okrenut za 180°, pa je "right" lijevo na ekranu */
-.detail-rail button.active::after { content: ""; position: absolute; top: 10px; bottom: 10px; right: 0; width: 4px; background: var(--red); transform: skewY(-24deg); }
+.detail-rail button.active::after { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 5px; background: var(--red); }
+@media (max-width: 760px) {
+  .detail.has-rail { grid-template-columns: 48px minmax(0, 1fr); }
+  .detail-rail button { font-size: 24px; }
+}
 
 /* ---------- bakugan heroja: kugla (3D pregled, dvije boje, oblik) i figurina ---------- */
 
