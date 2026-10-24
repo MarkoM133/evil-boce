@@ -20,7 +20,7 @@ function byId(db) {
 }
 
 export function heroCards(db) {
-  return db.cards.filter(c => c.type === 'Character' && !c.deleted);
+  return db.cards.filter(c => c.type === 'Hero' && !c.deleted);
 }
 
 // Karte koje smiju u deck uz ove heroje (bez maknutih).
@@ -62,7 +62,7 @@ export function checkDeck(db, deck) {
   if (new Set(deck.heroes).size !== deck.heroes.length) err('the same hero is picked twice');
   deck.heroes.forEach((id, i) => {
     if (!heroes[i]) err(`hero ${id} is not in the database`);
-    else if (heroes[i].type !== 'Character') err(`${id} is not a hero (Character)`);
+    else if (heroes[i].type !== 'Hero') err(`${id} is not a hero`);
     else if (heroes[i].deleted) warn(`hero ${heroes[i].name} was deleted from the database`);
   });
 

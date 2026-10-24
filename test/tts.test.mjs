@@ -3,14 +3,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ttsDescription, ttsPayload, mergeSteamUrls, CARD_BACK_URL } from '../js/tts.js';
 
-const HERO = { id: 'OP9-001', name: 'Hero A', type: 'Character', color: 'Cyan', stats: { hp: 8, dmg: 3, pwr: 3000, rng: 4, kb: 3 }, traits: ['Crew', 'Fruit'], text: '[Range] Postroll: heal.', wt: 3, image: 'images/OP9-001.aaaaaaaa.png', imageHash: 'aaaaaaaa', rev: 2, bakuganShape: 'dragonoid', bakuganColor: '#ff0000', sprite: 'sprites/OP9-001.cccccccc.png', spriteHash: 'cccccccc' };
+const HERO = { id: 'OP9-001', name: 'Hero A', type: 'Hero', color: 'Cyan', stats: { hp: 8, dmg: 3, pwr: 3000, rng: 4, kb: 3 }, traits: ['Crew', 'Fruit'], text: '[Range] Postroll: heal.', wt: 3, image: 'images/OP9-001.aaaaaaaa.png', imageHash: 'aaaaaaaa', rev: 2, bakuganShape: 'dragonoid', bakuganColor: '#ff0000', sprite: 'sprites/OP9-001.cccccccc.png', spriteHash: 'cccccccc' };
 const ACTION = { id: 'OP9-002', name: 'Punch', type: 'Action', color: 'Cyan', cost: 1, bonus: { pwr: 2000, dmg: -1 }, traits: ['Hero A'], text: 'Battle Phase:', image: 'images/OP9-002.bbbbbbbb.png', imageHash: 'bbbbbbbb', rev: 1 };
 const KICK = { id: 'OP9-003', name: 'Kick', type: 'Action', color: 'Cyan', cost: 2, bonus: {}, values: { rng: 3, kb: 3 }, traits: ['Hero A'], text: 'x', image: 'images/OP9-003.dddddddd.png', imageHash: 'dddddddd', rev: 1 };
 const EVO = { id: 'OP9-004', name: 'Hero A, Big Form', type: 'Evolution', color: 'Cyan', cost: 2, evo: 1, hero: 'Hero A', stats: { hp: 10, dmg: 3, pwr: 4000, rng: 4, kb: 3 }, traits: [], text: 'y', image: 'images/OP9-004.eeeeeeee.png', imageHash: 'eeeeeeee', rev: 1 };
 const STAGE = { id: 'Stage-009', name: 'Island', type: 'Stage', color: null, traits: [], text: 'When revealed.', image: 'images/Stage-009.ffffffff.png', imageHash: 'ffffffff', rev: 1 };
 
 test('opis karte u obliku iz savea (zaglavlje, statsi/bonusi, traitovi, tekst)', () => {
-  assert.equal(ttsDescription(HERO), 'Character  ·  OP9-001\nHP 8  DMG 3  Power 3000  Range 4  Knockback 3\nCrew/Fruit\n\n[Range] Postroll: heal.');
+  assert.equal(ttsDescription(HERO), 'Hero  ·  OP9-001\nHP 8  DMG 3  Power 3000  Range 4  Knockback 3\nCrew/Fruit\n\n[Range] Postroll: heal.');
   assert.equal(ttsDescription(ACTION), 'Action  ·  Cost 1  ·  OP9-002\nDMG -1  Power +2000\nHero A\n\nBattle Phase:');
   assert.equal(ttsDescription(KICK), 'Action  ·  Cost 2  ·  OP9-003\nRange 3  Knockback 3\nHero A\n\nx');
   assert.equal(ttsDescription(EVO), 'Evolution  ·  Cost 2  ·  Evo 1  ·  OP9-004\nHP 10  DMG 3  Power 4000  Range 4  Knockback 3\n\ny');
@@ -47,4 +47,18 @@ test('Steam URL-ovi iz TTS-a: samo poznati ključevi i Steam adrese', () => {
   });
   assert.equal(added, 3);
   assert.deepEqual(Object.keys(steam).sort(), ['OP9-001.aaaaaaaa', 'OP9-002.bbbbbbbb', 'bakugan:dragonoid', 'sprite:OP9-001.cccccccc']);
+});
+
+test('payload: landscape Hero je položen (sideways), Evolution u decku ima rotiranu sliku', () => {
+  const hero = { ...HERO, landscape: true };
+  const evo = { ...EVO, landscape: true, imageRot: 'images/OP9-004.rot.eeeeeeee.png', imageRotHash: 'eeeeeeee' };
+  const evoNoRot = { ...EVO, id: 'OP9-005', landscape: true };
+  const opts = { drivePath: 'C:/x', steam: { 'OP9-004.rot.eeeeeeee': 'https://steamusercontent-a.akamaihd.net/ugc/7/R/' } };
+  const [h, e, n] = ttsPayload({ version: 1, cards: [hero, evo, evoNoRot] }, opts).cards;
+  assert.deepEqual([h.sideways, h.key], [true, 'OP9-001.aaaaaaaa']);
+  assert.deepEqual([e.sideways, e.key, e.face], [false, 'OP9-004.rot.eeeeeeee', 'https://steamusercontent-a.akamaihd.net/ugc/7/R/']);
+  assert.equal(n.sideways, true, 'Evolution bez rotirane slike leži kao landscape');
+  assert.equal(ttsPayload({ version: 1, cards: [ACTION] }, opts).cards[0].sideways, false);
+  const { steam } = mergeSteamUrls({}, { 'OP9-004.rot.eeeeeeee': 'https://steamusercontent-a.akamaihd.net/ugc/7/R/' });
+  assert.deepEqual(Object.keys(steam), ['OP9-004.rot.eeeeeeee']);
 });

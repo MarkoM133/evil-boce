@@ -916,3 +916,20 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .bg-out { max-width: 100%; max-height: calc(100vh / var(--z) - 260px); height: auto; display: block; cursor: crosshair; }
 .bg-key { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
 .bg-swatch { width: 26px; height: 26px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .25); }
+
+/* ---------- landscape karte (Hero, Evolution od 2026-10-24: 1050×750) ---------- */
+
+/* mreža i bazen: dva stupca, otprilike iste visine kao portrait karta */
+.grid .tile.wide, .pool .pool-card.wide { grid-column: span 2; }
+.tile.wide .art { aspect-ratio: 7 / 5; }
+.pool-card.wide .pool-art img { aspect-ratio: 7 / 5; }
+/* detalj: slika preko cijele širine, polja ispod */
+.detail-body.wide { grid-template-columns: 1fr; }
+.detail-body.wide .big { max-width: 560px; }
+.detail .detail-body.wide .big img { aspect-ratio: 7 / 5; }
+/* odabrani heroj u decku */
+.hero-panel img, .hero-slot.wide .hero-panel img { object-fit: cover; }
+.hero-slot.wide .hero-panel img { aspect-ratio: 7 / 5; }
+/* kriške s licem: crtež je lijevih ~44 % slike */
+.slice-art.wide-art { background-size: 230% auto; background-position: 0% 30%; }
+.deck-hero .slice-art.wide-art { background-size: 520% auto; background-position: 6% 28%; }

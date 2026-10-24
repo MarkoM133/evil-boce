@@ -1,24 +1,30 @@
 // Uvoz exporta u cards.json: spajanje XML-ova i PNG-ova, usporedba s bazom, provjere i Objavi.
 // Bez I/O: pozivatelj (app ili test) skupi fileove i zapiše rezultat.
-import { parseCardEngineXml, CODE_RE } from './parse.js';
+import { parseCardEngineXml, CODE_RE, ROT_RE } from './parse.js';
 
 // Polja koja dolaze iz Card Enginea (§5). App ih ne mijenja.
-export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'values', 'traits', 'text'];
+export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'values', 'traits', 'text', 'landscape'];
 // Polja koja se uređuju samo u appu. Ponovni uvoz ih ne dira.
 export const APP_FIELDS = ['wt', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'deleted'];
 // Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
 export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2'];
-const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'image', 'imageHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
+const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
 
 // Sprite = slika figurine (otvoreni bakugan u TTS-u): "OP1-001 Luffy Sprite.png" ili "Luffy Sprite.png".
 const SPRITE_RE = /\s+sprite$/i;
-const SPRITE_TYPES = ['Character', 'Evolution'];
+const SPRITE_TYPES = ['Hero', 'Evolution'];
 const normName = s => s.replace(/\s*,\s*/g, ', ').trim();
 
 export function emptyDb() {
   return { version: 0, updated: null, cards: [] };
+}
+
+// Baza kako je app i TTS čitaju: tip Character (do 2026-10-24) je Hero. Datoteka se ne mijenja dok se ne objavi.
+export function normalizeDb(db) {
+  if (!db?.cards?.some(c => c.type === 'Character')) return db;
+  return { ...db, cards: db.cards.map(c => (c.type === 'Character' ? { ...c, type: 'Hero' } : c)) };
 }
 
 export function ordered(card) {
@@ -55,7 +61,9 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
   const add = (list, id, msg) => list.push({ id, msg });
 
   // 1. Karte iz svih XML-ova; ista karta u više fileova -> vrijedi noviji file.
+  // Rotirana verzija ("… (rot)") je ista karta: podaci se uzmu iz nje samo ako landscape verzije nema.
   const picked = new Map();
+  const rotOnly = new Map();
   const byAge = [...xmlFiles].sort((a, b) => a.lastModified - b.lastModified || a.path.localeCompare(b.path));
   let tokenCount = 0;
   for (const f of byAge) {
@@ -69,6 +77,7 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     const seenHere = new Set();
     for (const p of parsed) {
       if (p.skip) { tokenCount++; continue; }
+      if (p.variant === 'rot') { rotOnly.set(p.code, { ...p, file: f.path }); continue; }
       if (seenHere.has(p.code)) add(errors, p.code, `${f.path}: code appears twice in the same XML`);
       seenHere.add(p.code);
       const prev = picked.get(p.code);
@@ -80,23 +89,32 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
       picked.set(p.code, { ...p, file: f.path });
     }
   }
+  for (const [code, p] of rotOnly) {
+    const main = picked.get(code);
+    if (!main) picked.set(code, p);
+    else if (!same(main.card, p.card)) add(warnings, code, `the rotated version (${p.file}) has different data than ${main.file}; using ${main.file}`);
+  }
   if (tokenCount) add(infos, null, `skipped ${tokenCount} ${tokenCount === 1 ? 'card' : 'cards'} without a code (tokens)`);
 
   // 2. PNG: "OP1-012 Sword Slash.png" (ili "OP1-012.png") ide karti po kodu, "Sword Slash.png" po imenu.
   // Isti PNG u više podfoldera -> noviji.
   // "... Sprite.png" je sprite (figurina u TTS-u), ne slika karte; po imenu se zarez s razmakom ili bez ne razlikuje.
+  // "... (rot).png" je rotirana slika Hero / Evolution karte (portrait, za deck u TTS-u).
   const pngByCode = new Map();
   const pngByName = new Map();
+  const rotByCode = new Map();
+  const rotByName = new Map();
   const spriteByCode = new Map();
   const spriteByName = new Map();
   for (const p of [...pngFiles].sort((a, b) => a.lastModified - b.lastModified || a.path.localeCompare(b.path))) {
     const name = baseName(p.path).replace(/\.png$/i, '');
     const sprite = SPRITE_RE.test(name);
-    const rest = sprite ? name.replace(SPRITE_RE, '') : name;
+    const rot = !sprite && ROT_RE.test(name);
+    const rest = sprite ? name.replace(SPRITE_RE, '') : rot ? name.replace(ROT_RE, '') : name;
     const code = rest.split(/\s+/)[0];
     const [map, key] = CODE_RE.test(code)
-      ? [sprite ? spriteByCode : pngByCode, code]
-      : sprite ? [spriteByName, normName(rest)] : [pngByName, rest];
+      ? [sprite ? spriteByCode : rot ? rotByCode : pngByCode, code]
+      : sprite ? [spriteByName, normName(rest)] : rot ? [rotByName, normName(rest)] : [pngByName, rest];
     if (map.has(key)) add(infos, null, `PNG "${name}" exists more than once; using the newer ${p.path}`);
     map.set(key, p);
   }
@@ -191,9 +209,42 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     e.spriteChanged = !!old && e.spriteHash !== old.spriteHash;
     if (e.status === 'same' && e.spriteChanged) e.status = 'changed';
   }
+
+  // Rotirana slika (portrait, za deck u TTS-u): samo Hero i Evolution, isto kao sprite.
+  for (const [rot, found] of [
+    ...[...rotByCode].map(([code, r]) => [r, pool.has(code) ? [pool.get(code)] : []]),
+    ...[...rotByName].map(([name, r]) => [r, poolByName.get(name) ?? []]),
+  ]) {
+    if (!found.length) continue;
+    usedPngs.add(rot);
+    const live = found.filter(c => !c.deleted);
+    const candidates = live.length ? live : found;
+    if (candidates.length > 1) {
+      add(errors, null, `${rot.path}: ${candidates.map(c => c.id).join(' and ')} share the same name; the rotated PNG must start with the code, e.g. "${candidates[0].id} ${candidates[0].name} (rot).png"`);
+      continue;
+    }
+    const target = candidates[0];
+    if (!SPRITE_TYPES.includes(target.type)) {
+      add(warnings, target.id, `${rot.path}: rotated images are only for Hero and Evolution cards (${target.name} is ${target.type}); skipped`);
+      continue;
+    }
+    const old = oldById.get(target.id);
+    let e = entryById.get(target.id);
+    if (!e) {
+      const card = { id: old.id };
+      for (const k of CE_FIELDS) if (old[k] !== undefined) card[k] = old[k];
+      e = { id: old.id, status: 'same', card, old, diffs: [], imageChanged: false, staleImage: false, imageHash: null, png: null, file: rot.path };
+      entries.push(e);
+      entryById.set(e.id, e);
+    }
+    e.rotPng = rot;
+    e.rotHash = await imageHashOf(await rot.getBytes());
+    e.rotChanged = !!old && e.rotHash !== old.imageRotHash;
+    if (e.status === 'same' && e.rotChanged) e.status = 'changed';
+  }
   entries.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-  const skipped = [...pngByCode.values(), ...pngByName.values(), ...spriteByCode.values(), ...spriteByName.values()]
+  const skipped = [...pngByCode.values(), ...pngByName.values(), ...spriteByCode.values(), ...spriteByName.values(), ...rotByCode.values(), ...rotByName.values()]
     .filter(png => !usedPngs.has(png)).map(png => baseName(png.path));
   if (skipped.length) add(infos, null, `skipped ${skipped.length} ${skipped.length === 1 ? 'PNG that is not a card' : 'PNGs that are not cards'} with a code: ${skipped.join(', ')}`);
 
@@ -207,16 +258,16 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
   for (const [name, list] of byName) {
     if (list.length < 2) continue;
     const ids = list.map(c => c.id).join(', ');
-    if (list.some(c => c.type === 'Character')) add(errors, list[0].id, `the name "${name}" is used by ${ids}; a hero must have a unique name`);
+    if (list.some(c => c.type === 'Hero')) add(errors, list[0].id, `the name "${name}" is used by ${ids}; a hero must have a unique name`);
     else add(warnings, list[0].id, `the same name "${name}" is used by ${ids}; that's allowed, but the PNGs must start with the code`);
   }
   for (const e of entries) {
     if (e.pngByName && byName.get(e.card.name)?.length > 1) add(errors, e.id, `PNG "${e.card.name}.png": unclear which card it belongs to (several cards share that name); rename it to ${pngName(e.card)}`);
   }
-  const heroes = new Set(live.filter(c => c.type === 'Character').map(c => c.name));
+  const heroes = new Set(live.filter(c => c.type === 'Hero').map(c => c.name));
   for (const c of live) {
     if (c.type === 'Evolution' && !heroes.has(c.hero)) add(errors, c.id, `Evolution: hero "${c.hero}" doesn't exist`);
-    if (c.type === 'Character' && !c.bakugan) add(warnings, c.id, 'hero without a bakugan');
+    if (c.type === 'Hero' && !c.bakugan) add(warnings, c.id, 'hero without a bakugan');
   }
 
   return { entries, errors, warnings, infos };
@@ -231,7 +282,7 @@ function mergedCards(db, entries) {
 
 function withAppFields(ce, old) {
   const card = { id: ce.id, ...ce };
-  if (ce.type === 'Character') {
+  if (ce.type === 'Hero') {
     card.wt = old?.wt ?? DEFAULT_WT;
     card.bakugan = old?.bakugan ?? ce.name;
   }
@@ -258,6 +309,14 @@ export function buildPublish(db, analysis, now = new Date()) {
       card.image = e.old?.image ?? null;
       card.imageHash = e.old?.imageHash ?? null;
     }
+    if (e.rotHash && (!e.old || e.rotChanged)) {
+      card.imageRot = `images/${e.id}.rot.${e.rotHash}.png`;
+      card.imageRotHash = e.rotHash;
+      writes.push({ path: `data/${card.imageRot}`, png: e.rotPng });
+    } else if (e.old?.imageRot) {
+      card.imageRot = e.old.imageRot;
+      card.imageRotHash = e.old.imageRotHash;
+    }
     if (e.spriteHash && (!e.old || e.spriteChanged)) {
       card.sprite = `sprites/${e.id}.${e.spriteHash}.png`;
       card.spriteHash = e.spriteHash;
@@ -266,7 +325,8 @@ export function buildPublish(db, analysis, now = new Date()) {
       card.sprite = e.old.sprite;
       card.spriteHash = e.old.spriteHash;
     }
-    const game = !e.old || e.diffs.length > 0 || e.imageChanged;
+    // rotirana slika je karta u decku, pa je i ona promjena igre (kao slika karte)
+    const game = !e.old || e.diffs.length > 0 || e.imageChanged || !!e.rotChanged;
     if (game) gameChanges++;
     card.rev = (e.old?.rev ?? 0) + (game ? 1 : 0);
     touched.set(e.id, ordered(card));
@@ -311,7 +371,7 @@ export function applyAppEdits(db, edits, now = new Date()) {
 // Stare verzije slika (data/images/ID.hash.png) koje se smiju obrisati: samo kad za trenutnu
 // verziju te karte već postoji Steam URL (§3), da master u TTS-u ne ostane bez filea.
 export function obsoleteImages(db, imageFiles, steamUrls) {
-  const current = new Map(db.cards.map(c => [c.id, c.imageHash]));
+  const current = new Map(db.cards.flatMap(c => [[c.id, c.imageHash], [`${c.id}.rot`, c.imageRotHash]]));
   return imageFiles.filter(f => {
     const m = /^(.+)\.([0-9a-f]+)\.png$/i.exec(f);
     if (!m) return false;
@@ -341,7 +401,7 @@ export function changelogEntry(oldDb, newDb) {
       continue;
     }
     const fields = [...CE_FIELDS, 'wt'].filter(k => !same(o[k], c[k]));
-    const image = o.imageHash !== c.imageHash;
+    const image = o.imageHash !== c.imageHash || (o.imageRotHash ?? null) !== (c.imageRotHash ?? null);
     const look = [...LOOK_FIELDS.filter(k => !same(o[k], c[k])), ...(o.spriteHash !== c.spriteHash ? ['sprite'] : [])];
     const kind = !o.deleted && c.deleted ? 'deleted' : o.deleted && !c.deleted ? 'restored' : 'changed';
     if (fields.length || image || look.length || kind !== 'changed') cards.push({ id: c.id, name: c.name, kind, fields, image, ...(look.length ? { look } : {}) });
@@ -425,6 +485,7 @@ export function publishedPngPaths(analysis) {
   for (const e of analysis.entries) {
     if (e.png) out.add(e.png.path);
     if (e.spritePng) out.add(e.spritePng.path);
+    if (e.rotPng) out.add(e.rotPng.path);
   }
   return out;
 }

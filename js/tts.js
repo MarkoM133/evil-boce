@@ -40,8 +40,10 @@ export function assetUrl(key, relPath, { steam = {}, drivePath }) {
   return `file:///${drivePath.replace(/\\/g, '/').replace(/\/$/, '')}/data/${relPath}`;
 }
 
-// Ključevi u steam-urls.json: slika karte "OP1-008.a1b2c3d4", sprite "sprite:OP1-001.hash", tekstura bakugana "bakugan:dragonoid".
+// Ključevi u steam-urls.json: slika karte "OP1-008.a1b2c3d4", rotirana slika "JO1-012.rot.a1b2c3d4",
+// sprite "sprite:OP1-001.hash", tekstura bakugana "bakugan:dragonoid".
 export const imageKey = card => `${card.id}.${card.imageHash}`;
+export const rotKey = card => `${card.id}.rot.${card.imageRotHash}`;
 export const spriteKey = card => `sprite:${card.id}.${card.spriteHash}`;
 export const bakuganKey = shape => `bakugan:${shape}`;
 
@@ -65,20 +67,26 @@ export function ttsPayload(db, opts) {
   return {
     version: db.version,
     back: CARD_BACK_URL,
-    cards: cards.map((c, i) => ({
-      id: c.id,
-      deck: 1000 + i, // broj CustomDecka u TTS-u; jedinstven po karti, svi klonovi ga dijele
-      nickname: ttsNickname(c),
-      description: ttsDescription(c),
-      type: c.type,
-      face: c.image ? assetUrl(imageKey(c), c.image, opts) : null,
-      key: c.image ? imageKey(c) : null,
-      rev: c.rev ?? 0,
-      deleted: !!c.deleted,
-      sprite: c.sprite ? assetUrl(spriteKey(c), c.sprite, opts) : null,
-      spriteKey: c.sprite ? spriteKey(c) : null,
-    })),
-    heroes: cards.filter(c => c.type === 'Character' && !c.deleted).map(c => {
+    cards: cards.map((c, i) => {
+      // Evolution ide u deck: rotirana (portrait) slika, iste veličine kao ostale karte. Landscape karta bez nje
+      // (Hero na stolu, ili Evolution dok rotirane još nema) je položena karta (SidewaysCard).
+      const rot = c.type === 'Evolution' && !!c.imageRot;
+      return {
+        id: c.id,
+        deck: 1000 + i, // broj CustomDecka u TTS-u; jedinstven po karti, svi klonovi ga dijele
+        nickname: ttsNickname(c),
+        description: ttsDescription(c),
+        type: c.type,
+        face: rot ? assetUrl(rotKey(c), c.imageRot, opts) : c.image ? assetUrl(imageKey(c), c.image, opts) : null,
+        key: rot ? rotKey(c) : c.image ? imageKey(c) : null,
+        sideways: !!c.landscape && !rot,
+        rev: c.rev ?? 0,
+        deleted: !!c.deleted,
+        sprite: c.sprite ? assetUrl(spriteKey(c), c.sprite, opts) : null,
+        spriteKey: c.sprite ? spriteKey(c) : null,
+      };
+    }),
+    heroes: cards.filter(c => c.type === 'Hero' && !c.deleted).map(c => {
       const shape = lib.get(c.bakuganShape);
       return {
         id: c.id,
@@ -111,7 +119,7 @@ export function mergeSteamUrls(current, incoming) {
   const out = { ...current };
   let added = 0;
   for (const [k, url] of Object.entries(incoming ?? {})) {
-    if (!/^(?:[A-Za-z0-9]+-\d{3}\.[0-9a-f]{8}|sprite:[A-Za-z0-9]+-\d{3}\.[0-9a-f]{8}|bakugan:[a-z0-9-]+)$/.test(k)) continue;
+    if (!/^(?:[A-Za-z0-9]+-\d{3}\.(?:rot\.)?[0-9a-f]{8}|sprite:[A-Za-z0-9]+-\d{3}\.[0-9a-f]{8}|bakugan:[a-z0-9-]+)$/.test(k)) continue;
     if (typeof url !== 'string' || !/^https:\/\/steamusercontent[-a-z.]*\.(?:akamaihd\.net|com)\//.test(url)) continue;
     if (out[k] !== url) { out[k] = url; added++; }
   }

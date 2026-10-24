@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCardEngineXml, cleanText } from '../js/parse.js';
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, thumbPlan, archiveFolder, archivePath, emptyChangelog, changelogEntry, appendChangelog, changesSince, describeChange, publishedPngPaths } from '../js/importer.js';
+import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, normalizeDb, thumbPlan, archiveFolder, archivePath, emptyChangelog, changelogEntry, appendChangelog, changesSince, describeChange, publishedPngPaths } from '../js/importer.js';
 import { deckChanges } from '../js/deck.js';
 
 const RGB = { Cyan: [0, 255, 255], Red: [255, 0, 0], White: [255, 255, 255], Odd: [10, 20, 30] };
@@ -41,7 +41,7 @@ function card({ name, code, type, color = 'Cyan', cost, evo, icons = {}, traits,
 
 const xml = (...cards) => `<?xml version="1.0" encoding="utf-8"?>\n<ArrayOfCard xmlns:xsd="x">${cards.join('')}</ArrayOfCard>`;
 
-const HERO = { name: 'Hero A', code: 'OP9-001', type: 'Character', icons: { hp: '8', dmg: '3', pwr: '3000', rng: '4', kb: '3' }, traits: 'Crew/Fruit', text: '<sprite=3 color=#00FFFF><b>Postroll:</b> Hero A heals 2<sprite=0 color=#00FF00>.' };
+const HERO = { name: 'Hero A', code: 'OP9-001', type: 'Hero', icons: { hp: '8', dmg: '3', pwr: '3000', rng: '4', kb: '3' }, traits: 'Crew/Fruit', text: '<sprite=3 color=#00FFFF><b>Postroll:</b> Hero A heals 2<sprite=0 color=#00FF00>.' };
 const ACTION = { name: 'Punch', code: 'OP9-002', type: 'Action', cost: '1', icons: { pwr: '+2000' }, traits: 'Hero A', text: '<b>Battle Phase:</b>' };
 const EVO = { name: 'Hero A, Big Form', code: 'OP9-003', type: 'Evolution', cost: '2', evo: '1', icons: { hp: '10', dmg: '3', pwr: '4000', rng: '4', kb: '3' }, traits: 'Crew', text: 'x' };
 const STAGE = { name: 'Island', code: 'Stage-009', color: null, text: 'When revealed.' };
@@ -54,12 +54,12 @@ test('cleanText: sprite, bold i vodeći Range', () => {
   assert.equal(cleanText('Gains +1000<sprite=2 color=#FFFF00> now .'), 'Gains +1000 Power now.');
 });
 
-test('parser: Character, Action, Evolution, Stage, token', () => {
+test('parser: Hero, Action, Evolution, Stage, token', () => {
   const r = parseCardEngineXml(xml(card(HERO), card(ACTION), card(EVO), card(STAGE), card(TOKEN)));
   assert.equal(r.length, 5);
   const [h, a, e, s, t] = r;
   assert.deepEqual(h.card, {
-    id: 'OP9-001', name: 'Hero A', type: 'Character', color: 'Cyan',
+    id: 'OP9-001', name: 'Hero A', type: 'Hero', color: 'Cyan',
     stats: { hp: 8, dmg: 3, pwr: 3000, rng: 4, kb: 3 },
     traits: ['Crew', 'Fruit'], text: '[Range] Postroll: Hero A heals 2 HP.',
   });
@@ -103,6 +103,64 @@ test('parser: greške (kod, boja, cost, statsi)', () => {
 test('parser: neaktivni elementi se ignoriraju', () => {
   const [r] = parseCardEngineXml(xml(card({ ...ACTION, extra: [el('text', 'Equipment', -212.5, -150, undefined, false)] })));
   assert.equal(r.card.type, 'Action');
+});
+
+// Novi landscape Hero / Evolution (2026-10-24): elementi po SiblingIndexu, okvir *_hero_frame_X / *_evo_frame_X.
+function lel(idx, kind, t, x, y, rgb = [255, 255, 255], rotation = 0) {
+  const esc = String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<Element><ID>1</ID><Tag /><Active>true</Active><SizeDelta><x>1</x><y>1</y></SizeDelta>
+    <Position><x>${x}</x><y>${y}</y></Position><Text>${esc}</Text><font /><rotation>${rotation}</rotation>
+    <color><r>${rgb[0]}</r><g>${rgb[1]}</g><b>${rgb[2]}</b><a>255</a></color>
+    <Type>${kind === 'text' ? 0 : 1}</Type><SiblingIndex>${idx}</SiblingIndex></Element>`;
+}
+
+function landCard({ name, code, label, frame, stats, traits, text, cost, rot = false }) {
+  const els = [
+    [0, 'image', `Custom_${code} ${name}`, -286, 0],
+    [1, 'image', frame, 0, 0],
+    [2, 'image', `Custom_${code} ${name} Logo`, 19, 295],
+    [3, 'text', `<b><cspace=6>${label}</cspace></b>`, 256.5, 325],
+    [4, 'text', `<b>${name}</b>`, 256.5, 290],
+    [5, 'image', 'tabletop_icons_28', 26, 200], [6, 'text', stats.hp, 76, 200],
+    [7, 'image', 'tabletop_icons_27', 201, 200], [8, 'text', stats.dmg, 251, 200],
+    [9, 'image', 'tabletop_icons_25', 356, 200], [10, 'text', stats.pwr, 420, 200],
+    [11, 'text', text, 226.5, -1],
+    [12, 'image', 'tabletop_icons_26', -9, -305], [13, 'text', stats.rng, 38, -305],
+    [14, 'image', 'tabletop_icons_24', 88, -305], [15, 'text', stats.kb, 139, -305],
+    [16, 'text', traits, 346, -304],
+    [17, 'text', `<b>${code}</b>`, 483, -367],
+    ...(cost !== undefined ? [[18, 'text', cost, 434, 295]] : []),
+  ].map(([i, k, t, x, y]) => (rot ? lel(i, k, t, -y, x, undefined, 90) : lel(i, k, t, x, y)));
+  const cardName = rot ? `${code} ${name} (rot)` : label === 'HERO' ? `${code} ${name} Hero` : `${code} ${name}`;
+  return `<Card><ID>1</ID><Quantity>1</Quantity><Name>${cardName}</Name><TemplateID>9</TemplateID>
+    <Front><useMask>true</useMask><Elements>${els.join('')}</Elements></Front><Back /></Card>`;
+}
+
+const LHERO = { name: 'Hero B', code: 'OP9-020', label: 'HERO', frame: 'Hero_templates_hero_frame_M', stats: { hp: '10', dmg: '4', pwr: '2000', rng: '3', kb: '3' }, traits: 'Crew/Stand', text: '<sprite=3 color=#00FFFF><b>Postroll:</b> heal 2.' };
+const LEVO = { name: 'Hero B, Requiem', code: 'OP9-021', label: 'EVOLUTION II', frame: 'EvoFrames_evo_frame_M', stats: { hp: '10', dmg: '5', pwr: '3000', rng: '3', kb: '3' }, traits: 'Crew', text: 'Big.', cost: '5' };
+
+test('parser: landscape Hero i Evolution (SiblingIndex, boja iz okvira, rimski stupanj)', () => {
+  const [h, e] = parseCardEngineXml(xml(landCard(LHERO), landCard(LEVO)));
+  assert.deepEqual(h.card, {
+    id: 'OP9-020', name: 'Hero B', type: 'Hero', color: 'Purple',
+    stats: { hp: 10, dmg: 4, pwr: 2000, rng: 3, kb: 3 }, traits: ['Crew', 'Stand'], text: '[Range] Postroll: heal 2.', landscape: true,
+  });
+  assert.deepEqual(h.problems, []);
+  assert.equal(h.variant, null);
+  assert.deepEqual([e.card.type, e.card.cost, e.card.evo, e.card.hero, e.card.color], ['Evolution', 5, 2, 'Hero B', 'Purple']);
+  assert.deepEqual(e.problems, []);
+});
+
+test('parser: rotirana verzija (rot) je ista karta, variant rot', () => {
+  const [land] = parseCardEngineXml(xml(landCard(LEVO)));
+  const [rot] = parseCardEngineXml(xml(landCard({ ...LEVO, rot: true })));
+  assert.equal(rot.variant, 'rot');
+  assert.deepEqual(rot.card, land.card);
+});
+
+test('parser: stari layout s labelom Character daje Hero', () => {
+  const [h] = parseCardEngineXml(xml(card({ ...HERO, type: 'Character' })));
+  assert.equal(h.card.type, 'Hero');
 });
 
 async function firstImport() {
@@ -445,4 +503,34 @@ test('izgled (bakugan, sprite) ne diže verziju, skuplja se pod nju i ne broji s
   const old = { entries: [{ version: 3, cards: [{ id: 'X', name: 'X', kind: 'changed', fields: [], image: false, sprite: true }] }, { version: 4, cards: [{ id: 'X', name: 'X', kind: 'changed', fields: ['bakuganShape'], image: false }] }] };
   assert.equal(changesSince(old, 2).size, 0);
   assert.deepEqual(old.entries.map(e => describeChange(e.cards[0])), ['look: sprite', 'look: bakugan shape']);
+});
+
+test('uvoz: landscape Evolution s rotiranom verzijom (XML i PNG "(rot)")', async () => {
+  const xmlFiles = [{ path: 'export/heroes.xml', text: xml(landCard(LHERO), landCard(LEVO), landCard({ ...LEVO, rot: true })), lastModified: 1 }];
+  const pngFiles = [png([1], 'export/OP9-020 Hero B Hero.png'), png([2], 'export/OP9-021 Hero B, Requiem.png'), png([3], 'export/OP9-021 Hero B, Requiem (rot).png')];
+  const a = await analyzeExport({ xmlFiles, pngFiles, db: emptyDb() });
+  assert.deepEqual(a.errors, []);
+  assert.deepEqual(a.entries.map(e => [e.id, e.status, !!e.rotPng]), [['OP9-020', 'new', false], ['OP9-021', 'new', true]]);
+  const pub = buildPublish(emptyDb(), a, new Date('2026-10-24T10:00:00Z'));
+  const evo = pub.db.cards.find(c => c.id === 'OP9-021');
+  assert.match(evo.image, /^images\/OP9-021\.[0-9a-f]{8}\.png$/);
+  assert.match(evo.imageRot, /^images\/OP9-021\.rot\.[0-9a-f]{8}\.png$/);
+  assert.equal(pub.writes.length, 3);
+  assert.equal(publishedPngPaths(a).size, 3);
+  // nova rotirana slika sama: promjena igre (karta u decku), stara rotirana se smije obrisati kad nova ima Steam URL
+  const b = await analyzeExport({ xmlFiles: [], pngFiles: [png([9], 'export/OP9-021 Hero B, Requiem (rot).png')], db: pub.db });
+  assert.deepEqual(b.entries.map(e => [e.id, e.status, e.rotChanged]), [['OP9-021', 'changed', true]]);
+  const pub2 = buildPublish(pub.db, b);
+  assert.equal(pub2.bumped, true);
+  const evo2 = pub2.db.cards.find(c => c.id === 'OP9-021');
+  const oldFile = evo.imageRot.split('/')[1];
+  assert.deepEqual(obsoleteImages(pub2.db, [oldFile], { [`OP9-021.rot.${evo2.imageRotHash}`]: 'https://x' }), [oldFile]);
+  assert.deepEqual(changelogEntry(pub.db, pub2.db).cards.map(c => [c.id, c.image]), [['OP9-021', true]]);
+});
+
+test('normalizeDb: stari tip Character je Hero', () => {
+  const db = { version: 3, updated: null, cards: [{ id: 'X-001', type: 'Character' }, { id: 'X-002', type: 'Action' }] };
+  assert.deepEqual(normalizeDb(db).cards.map(c => c.type), ['Hero', 'Action']);
+  const clean = normalizeDb(db);
+  assert.equal(normalizeDb(clean), clean);
 });

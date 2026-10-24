@@ -7,6 +7,7 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ttsPayload, mergeSteamUrls } from '../js/tts.js';
+import { normalizeDb } from '../js/importer.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = path.join(ROOT, 'server', 'config.local.json');
@@ -136,7 +137,7 @@ async function api(req, res, parts) {
   }
   // TTS (Sync karata): karte, heroji i bakugani u obliku koji global.lua samo primijeni.
   if (what === 'tts' && req.method === 'GET') {
-    const db = await readJson(path.join(cfg.drive, 'data', 'cards.json'));
+    const db = normalizeDb(await readJson(path.join(cfg.drive, 'data', 'cards.json')));
     if (!db) return fail(res, 404, 'no data/cards.json');
     const steam = (await readJson(STEAM_PATH)) ?? {};
     const bakugani = (await readJson(path.join(cfg.drive, 'data', 'bakugani', 'catalog.json')))?.bakugani ?? [];

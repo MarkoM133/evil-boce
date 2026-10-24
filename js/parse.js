@@ -1,5 +1,6 @@
-// Card Engine XML -> zapisi karata. Pravila su opisana u privatnom planu (§6);
-// pozicije (x, y) odgovaraju trenutnom templateu karata.
+// Card Engine XML -> zapisi karata. Pravila su opisana u privatnom planu (§6).
+// Dva layouta: stari portrait template (Action, Equipment, Assist, Stage i stari heroji) čita se po pozicijama (x, y);
+// novi landscape Hero i Evolution (okvir *_hero_frame_X / *_evo_frame_X, 1050×750) po SiblingIndexu elemenata.
 import { parseXml, child, children, text } from './xml.js';
 
 export const COLORS = {
@@ -12,10 +13,20 @@ export const COLORS = {
 };
 export const COLOR_NAMES = Object.values(COLORS);
 
-export const TYPES = ['Character', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage'];
+// Character je preimenovan u Hero (2026-10-24); stari zapisi s 'Character' čitaju se kao Hero (normalizeDb).
+export const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage'];
 export const DECK_TYPES = ['Evolution', 'Action', 'Equipment', 'Assist'];
-export const HERO_TYPES = ['Character', 'Evolution'];
-const TYPE_TEXTS = ['Character', 'Action', 'Assist', 'Equipment', 'Evolution'];
+export const HERO_TYPES = ['Hero', 'Evolution'];
+const TYPE_TEXTS = { Character: 'Hero', Hero: 'Hero', Action: 'Action', Assist: 'Assist', Equipment: 'Equipment', Evolution: 'Evolution' };
+
+// Novi layout: okvir nosi slovo boje frakcije (ista boja kao stara tinta p_frame_11).
+const FRAME_RE = /_(hero|evo)_frame_([RGBCMY])$/i;
+const FRAME_COLORS = { R: 'Red', G: 'Green', B: 'Blue', C: 'Cyan', M: 'Purple', Y: 'Yellow' };
+const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5 };
+// SiblingIndex elemenata na Hero i Evolution kartama (handoff 2026-10-24).
+const IDX = { type: 3, name: 4, text: 11, traits: 16, code: 17, cost: 18 };
+// Rotirana verzija iste karte (za deck): ime završava s " (rot)", elementi imaju rotation 90.
+export const ROT_RE = /\s*\(rot\)$/i;
 
 const ICONS = {
   tabletop_icons_24: 'kb',
@@ -38,6 +49,9 @@ const COST_Y = 461;
 const TRAITS_X = 158;
 const TRAITS_Y = -456;
 
+// TMP tagovi (<b>, <cspace=6>, <sprite=…>) van; za ime, kod, tip i traitove.
+export const stripTags = t => (t ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+
 export function cleanText(t) {
   return t
     .replace(/^\s*<sprite=3[^>]*>/, '[Range] ')
@@ -58,7 +72,35 @@ function readElements(cardNode) {
       y: parseFloat(text(e, 'Position/y')),
       kind: text(e, 'Type') === '0' ? 'text' : 'image',
       rgb: ['r', 'g', 'b'].map(k => parseInt(text(e, 'color/' + k), 10)).join(','),
+      idx: parseInt(text(e, 'SiblingIndex') ?? '', 10),
+      rotation: parseFloat(text(e, 'rotation') ?? '0') || 0,
     }));
+}
+
+// Statsi: broj desno od ikone u istom redu (najbliži); ICONS daje stat po imenu ikone.
+function readIcons(els, texts) {
+  const icons = {};
+  for (const ic of els) {
+    const key = ICONS[ic.t];
+    if (!key) continue;
+    const cand = texts.filter(t => NUM_RE.test(t.t) && Math.abs(t.y - ic.y) < 10 && t.x > ic.x);
+    if (!cand.length) continue;
+    icons[key] = cand.reduce((a, b) => (b.x - ic.x < a.x - ic.x ? b : a)).t;
+  }
+  return Object.fromEntries(STAT_KEYS.filter(k => k in icons).map(k => [k, icons[k]]));
+}
+
+function heroStats(card, ordered, problems) {
+  card.stats = Object.fromEntries(Object.entries(ordered).map(([k, v]) => [k, parseInt(v, 10)]));
+  const missing = STAT_KEYS.filter(k => !(k in card.stats));
+  if (missing.length) problems.push({ level: 'error', msg: `missing stats: ${missing.join(', ')}` });
+}
+
+function readCode(raw, problems) {
+  if (CODE_RE.test(raw)) return raw;
+  if (!LOOSE_CODE_RE.test(raw)) return null;
+  problems.push({ level: 'error', msg: `code "${raw}" doesn't match the pattern SET-001 (OP1-001, DBZ-001, Stage-001)` });
+  return raw;
 }
 
 // Vraća jedan zapis po <Card>: { skip, code, card, problems }.
@@ -73,6 +115,8 @@ export function parseCardEngineXml(xmlText) {
 function parseCard(node) {
   const rawName = (text(node, 'Name') ?? '').trim();
   const els = readElements(node);
+  const frame = els.find(e => e.kind === 'image' && FRAME_RE.test(e.t));
+  if (frame) return parseLandscape(rawName, els, frame);
   const texts = els.filter(e => e.kind === 'text');
   const problems = [];
 
@@ -80,14 +124,13 @@ function parseCard(node) {
   if (!code) {
     const loose = texts.find(e => LOOSE_CODE_RE.test(e.t))?.t;
     if (!loose) return { skip: true, name: rawName };
-    problems.push({ level: 'error', msg: `code "${loose}" doesn't match the pattern SET-001 (OP1-001, DBZ-001, Stage-001)` });
-    code = loose;
+    code = readCode(loose, problems);
   }
   // Card Engine PNG nazove po imenu karte, pa frend u ime stavi i kod ("JO1-001 Giorno Giovanna").
   // Kod je već id karte, pa se iz imena makne.
   const name = rawName.startsWith(`${code} `) ? rawName.slice(code.length).trim() : rawName;
 
-  let type = texts.find(e => TYPE_TEXTS.includes(e.t))?.t;
+  let type = TYPE_TEXTS[texts.find(e => Object.hasOwn(TYPE_TEXTS, e.t))?.t];
   if (!type && code.startsWith('Stage-')) type = 'Stage';
   if (!type) problems.push({ level: 'error', msg: 'no card type' });
 
@@ -114,19 +157,9 @@ function parseCard(node) {
     card.hero = name.split(',')[0].trim();
   }
 
-  const icons = {};
-  for (const ic of els) {
-    const key = ICONS[ic.t];
-    if (!key) continue;
-    const cand = texts.filter(t => NUM_RE.test(t.t) && Math.abs(t.y - ic.y) < 10 && t.x > ic.x);
-    if (!cand.length) continue;
-    icons[key] = cand.reduce((a, b) => (b.x - ic.x < a.x - ic.x ? b : a)).t;
-  }
-  const ordered = Object.fromEntries(STAT_KEYS.filter(k => k in icons).map(k => [k, icons[k]]));
+  const ordered = readIcons(els, texts);
   if (HERO_TYPES.includes(type)) {
-    card.stats = Object.fromEntries(Object.entries(ordered).map(([k, v]) => [k, parseInt(v, 10)]));
-    const missing = STAT_KEYS.filter(k => !(k in card.stats));
-    if (missing.length) problems.push({ level: 'error', msg: `missing stats: ${missing.join(', ')}` });
+    heroStats(card, ordered, problems);
   } else if (type && type !== 'Stage') {
     const signed = Object.entries(ordered).filter(([, v]) => /^[+-]/.test(v));
     const plain = Object.entries(ordered).filter(([, v]) => !/^[+-]/.test(v));
@@ -144,4 +177,45 @@ function parseCard(node) {
   card.text = effect ? cleanText(effect.t) : '';
 
   return { skip: false, code, card, problems };
+}
+
+// Novi landscape Hero / Evolution: dijelovi po SiblingIndexu, statsi po ikonama (kao stari layout).
+// Rotirana verzija ("… (rot)", za deck) ima zarotirane pozicije (x, y) -> (−y, x); ovdje se vrate, pa je karta ista.
+// variant: 'rot' za rotiranu verziju; app uz kartu sprema obje slike (landscape i rotiranu).
+function parseLandscape(rawName, els, frame) {
+  const problems = [];
+  const rot = ROT_RE.test(rawName) || els.some(e => Math.abs(e.rotation) === 90);
+  if (rot) for (const e of els) [e.x, e.y] = [e.y, -e.x];
+  const byIdx = new Map(els.filter(e => Number.isInteger(e.idx)).map(e => [e.idx, e]));
+  const at = k => stripTags(byIdx.get(IDX[k])?.t);
+
+  const code = readCode(at('code'), problems);
+  if (!code) return { skip: true, name: rawName };
+
+  const [, frameKind, frameColor] = frame.t.match(FRAME_RE);
+  const label = at('type').toUpperCase();
+  const evo = /^EVOLUTION\s+([IVX]+)$/.exec(label);
+  const type = label === 'HERO' ? 'Hero' : evo ? 'Evolution' : null;
+  if (!type) problems.push({ level: 'error', msg: `unknown card type "${at('type')}" (expected HERO or EVOLUTION I–V)` });
+  else if ((frameKind.toLowerCase() === 'hero') !== (type === 'Hero')) {
+    problems.push({ level: 'warn', msg: `${type} on a ${frameKind.toLowerCase()} frame (${frame.t})` });
+  }
+  // Ime iz elementa; <Name> karte ima kod sprijeda i dodatak " Hero" ili " (rot)".
+  const name = at('name') || rawName.replace(ROT_RE, '').replace(code, '').replace(/\s+Hero$/, '').trim();
+  const card = { id: code, name, type: type ?? 'Hero', color: FRAME_COLORS[frameColor.toUpperCase()] };
+
+  if (type === 'Evolution') {
+    const cost = at('cost');
+    if (NUM_RE.test(cost)) card.cost = parseInt(cost, 10);
+    else problems.push({ level: 'error', msg: 'no cost' });
+    card.evo = ROMAN[evo[1]];
+    if (!card.evo) problems.push({ level: 'error', msg: `unknown evolution stage "${evo[1]}"` });
+    card.hero = name.split(',')[0].trim();
+  }
+  heroStats(card, readIcons(els, els.filter(e => e.kind === 'text')), problems);
+  const traits = at('traits');
+  card.traits = traits ? traits.split('/').map(t => t.trim()).filter(Boolean) : [];
+  card.text = cleanText(byIdx.get(IDX.text)?.t ?? '');
+  card.landscape = true;
+  return { skip: false, code, card, problems, variant: rot ? 'rot' : null };
 }

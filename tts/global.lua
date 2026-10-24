@@ -2617,7 +2617,7 @@ local function masterData(c, back)
     CustomDeck = customDeck(c, back),
     HideWhenFaceDown = true,
     Hands = true,
-    SidewaysCard = false,
+    SidewaysCard = c.sideways == true, -- landscape Hero (i Evolution dok nema rotirane slike) lezi polozeno
     ColorDiffuse = { r = 0.713, g = 0.713, b = 0.713 },
     Tags = {},
   }
@@ -2629,7 +2629,7 @@ local function applyCard(d, c, back)
   for _, v in pairs(d.CustomDeck or {}) do cur = v end
   local face = c.face or ""
   if d.Nickname == c.nickname and d.Description == c.description and cur ~= nil and cur.FaceURL == face
-    and d.CardID == c.deck * 100 then
+    and d.CardID == c.deck * 100 and (d.SidewaysCard == true) == (c.sideways == true) then
     return false
   end
   d.Nickname = c.nickname
@@ -2637,6 +2637,7 @@ local function applyCard(d, c, back)
   d.GMNotes = c.id
   d.Memo = JSON.encode({ key = c.key, rev = c.rev })
   d.CardID = c.deck * 100
+  d.SidewaysCard = c.sideways == true
   d.CustomDeck = customDeck(c, (cur and cur.BackURL) or back)
   return true
 end

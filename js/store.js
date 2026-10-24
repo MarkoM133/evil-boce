@@ -1,6 +1,6 @@
 // Izvor podataka za app: Drive folder (File System Access, računalo) ili lokalni server (mobitel preko Tailscalea).
 // Oba imaju isto sučelje za bazu karata, slike i deckove; uvoz i Objava postoje samo u folderu.
-import { emptyDb, emptyChangelog, thumbName, CHANGELOG_PATH } from './importer.js';
+import { emptyDb, emptyChangelog, normalizeDb, thumbName, CHANGELOG_PATH } from './importer.js';
 import * as fs from './fsdir.js';
 
 export class ConflictError extends Error {
@@ -53,7 +53,7 @@ export function serverStore(info) {
     async readDb() {
       const r = await fetch('data/cards.json', { cache: 'no-store' });
       if (r.status === 404) return emptyDb();
-      return json(r);
+      return normalizeDb(await json(r));
     },
     async readChangelog() {
       const r = await fetch(CHANGELOG_PATH, { cache: 'no-store' });
@@ -113,7 +113,7 @@ export function folderStore(root) {
     canImport: true,
     root,
     async readDb() {
-      return (await readJson('data/cards.json')) ?? emptyDb();
+      return normalizeDb((await readJson('data/cards.json')) ?? emptyDb());
     },
     async readChangelog() {
       return (await readJson(CHANGELOG_PATH)) ?? emptyChangelog();

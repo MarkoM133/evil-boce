@@ -1,6 +1,6 @@
 import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, SIZES, CE_FIELDS, ARCHIVE_DIR, archiveFolder, archivePath,
   CHANGELOG_PATH, changelogEntry, appendChangelog, changesSince, describeChange, publishedPngPaths } from './importer.js';
-import { TYPES, COLOR_NAMES, DECK_TYPES } from './parse.js';
+import { TYPES, COLOR_NAMES, DECK_TYPES, HERO_TYPES } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
 import { GAME_COLORS, heroDefaultColor, paintThumb, paintParts, createPreview } from './bakugan.js';
@@ -143,10 +143,12 @@ async function imageFor(card, thumb) {
   return state.store.imageUrl(card);
 }
 
+// width je širina portrait karte; landscape karta (Hero, Evolution) dobije istu visinu, pa je jednako oštra.
 async function makeThumb(blob, width) {
   const bmp = await createImageBitmap(blob);
-  width = Math.min(width, bmp.width);
-  const height = Math.round((bmp.height / bmp.width) * width);
+  const scale = Math.min(1, bmp.width > bmp.height ? (width * 7) / 5 / bmp.height : width / bmp.width);
+  width = Math.round(bmp.width * scale);
+  const height = Math.round(bmp.height * scale);
   const canvas = new OffscreenCanvas(width, height);
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
@@ -511,7 +513,7 @@ async function ensureBakuganTextures(db) {
     return f ? createImageBitmap(f) : null;
   };
   for (const c of db.cards) {
-    const id = c.type === 'Character' && !c.deleted ? bakuganTextureId(c) : null;
+    const id = c.type === 'Hero' && !c.deleted ? bakuganTextureId(c) : null;
     if (!id) continue;
     used.add(`${id}.jpg`);
     if (have.has(`${id}.jpg`)) continue;
@@ -649,7 +651,7 @@ function heroStrip() {
   const w = sliceWidth();
   const copies = stripCopies(heroes.length);
   const slices = Array.from({ length: copies }, (_, copy) => heroes.map(c => {
-    const art = h('span', { class: 'slice-art' });
+    const art = h('span', { class: `slice-art${c.landscape ? ' wide-art' : ''}` });
     imageFor(c, true).then(u => { if (u) art.style.backgroundImage = `url("${u}")`; });
     // Ponovljene kopije su samo ukras: čitač ekrana i Tab vide svakog heroja jednom.
     return h('button', {
@@ -908,7 +910,14 @@ function renderEntry(e) {
       h('figcaption', {}, e.old ? (e.spriteChanged ? 'new sprite' : 'same sprite') : 'sprite')),
       { url: pngUrls.get(p.path), title: `${e.id} · ${e.card.name} · ${p.path}` }));
   }
-  const only = [e.imageChanged && 'image', e.spriteChanged && 'sprite'].filter(Boolean);
+  if (e.rotPng) {
+    const p = e.rotPng;
+    if (!pngUrls.has(p.path)) pngUrls.set(p.path, URL.createObjectURL(p.file));
+    imgs.append(zoomable(h('figure', {}, h('img', { alt: `${e.card.name} rotated`, src: pngUrls.get(p.path), loading: 'lazy' }),
+      h('figcaption', {}, e.old ? (e.rotChanged ? 'new rotated (deck)' : 'same rotated (deck)') : 'rotated (deck)')),
+      { url: pngUrls.get(p.path), title: `${e.id} · ${e.card.name} · ${p.path}` }));
+  }
+  const only = [e.imageChanged && 'image', e.rotChanged && 'rotated image', e.spriteChanged && 'sprite'].filter(Boolean);
   const rows = e.old
     ? e.diffs.map(k => h('tr', {}, h('th', {}, k), h('td', { class: 'was' }, fmt(e.old[k])), h('td', { class: 'now' }, fmt(e.card[k]))))
     : CE_FIELDS.filter(k => e.card[k] !== undefined).map(k => h('tr', {}, h('th', {}, k), h('td', { colspan: 2 }, fmt(e.card[k]))));
@@ -949,8 +958,8 @@ function specialFilter(name) {
     const ids = new Set((last?.cards ?? []).map(c => c.id));
     return c => ids.has(c.id);
   }
-  if (name === 'bezBakugana') return c => c.type === 'Character' && !c.bakuganShape;
-  if (name === 'bezSpritea') return c => (c.type === 'Character' || c.type === 'Evolution') && !c.sprite;
+  if (name === 'bezBakugana') return c => c.type === 'Hero' && !c.bakuganShape;
+  if (name === 'bezSpritea') return c => HERO_TYPES.includes(c.type) && !c.sprite;
   return () => true;
 }
 
@@ -1057,7 +1066,7 @@ function renderQuickFilters() {
   const any = f.types.length || f.colors.length || f.sets.length || f.specials.length || f.deleted || f.since || f.q;
   const group = (cls, active, ...kids) => Object.assign(h('div', { class: `qf-group${cls ? ` ${cls}` : ''}` }, ...kids), { activeCount: active });
   const groups = [
-    group('', f.types.length, TYPES.map(t => chip('types', t, t === 'Character' ? 'Heroes' : t))),
+    group('', f.types.length, TYPES.map(t => chip('types', t, t === 'Hero' ? 'Heroes' : t))),
     group('', f.colors.length, COLOR_NAMES.map(c => h('button', {
       type: 'button', class: `qf-color c-${c}${on('colors', c) ? ' active' : ''}`, title: c, 'aria-label': c, 'aria-pressed': String(on('colors', c)), onclick: () => toggle('colors', c),
     }))),
@@ -1108,7 +1117,7 @@ function renderGrid() {
 }
 
 function tile(c) {
-  return h('button', { class: `tile${c.deleted ? ' deleted' : ''}${state.selected === c.id ? ' selected' : ''}`, onclick: () => openCard(c.id) },
+  return h('button', { class: `tile${c.landscape ? ' wide' : ''}${c.deleted ? ' deleted' : ''}${state.selected === c.id ? ' selected' : ''}`, onclick: () => openCard(c.id) },
     h('div', { class: 'art' }, cardImg(c)),
     h('div', { class: 'meta' },
       h('span', { class: `dot c-${c.color ?? 'none'}` }),
@@ -1166,7 +1175,7 @@ function renderDetail() {
     rows.push(h('tr', {}, h('th', {}, 'in decks'), h('td', {}, inDecks.flatMap((d, i) => [i ? ', ' : null,
       h('button', { class: 'link', onclick: () => { if (confirmDiscard()) { state.tab = 'decks'; guard(() => openDeck(d.slug)); } } }, d.name)]).filter(Boolean))));
   }
-  const general = h('div', { class: 'detail-body' },
+  const general = h('div', { class: `detail-body${c.landscape ? ' wide' : ''}` },
     h('button', { class: 'big', title: 'Full screen', onclick: () => { const list = filtered(); openViewer((list.includes(c) ? list : [c]).map(x => ({ card: x })), list.includes(c) ? list.indexOf(c) : 0); } },
       cardImg(c, { alt: c.name, full: true }), h('span', { class: 'zoom', 'aria-hidden': 'true' }, icon('zoom'))),
     h('div', {}, h('table', { class: 'fields' }, rows),
@@ -1175,7 +1184,7 @@ function renderDetail() {
         h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!c.deleted, onchange: e => { edits.deleted = e.target.checked; } }), 'Deleted – the deck builder no longer offers it'),
         save()) : null));
   const panes = { general };
-  if (c.type === 'Character' || c.type === 'Evolution') panes.bakugan = bakuganPane(c, canEdit ? edits : null, form, save);
+  if (HERO_TYPES.includes(c.type)) panes.bakugan = bakuganPane(c, canEdit ? edits : null, form, save);
   if (!panes[state.detailTab]) state.detailTab = 'general';
   const showPane = k => { for (const [pk, el] of Object.entries(panes)) el.hidden = pk !== k; };
   showPane(state.detailTab);
@@ -1196,7 +1205,7 @@ function renderDetail() {
 // Kartica Bakugan: dvije forme bakugana u TTS-u, prekidač među njima. Kugla (1/2: oblik, dvije boje, težina) samo za
 // heroje; figurina (2/2: sprite) i za evolucije. Odabrana forma se pamti dok se ide s karte na kartu.
 function bakuganPane(c, edits, form, save) {
-  const hero = c.type === 'Character';
+  const hero = c.type === 'Hero';
   const field = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
   const ball = hero ? h('section', { class: 'bk-part' },
     bakuganPicker(c, edits),
@@ -1416,7 +1425,7 @@ function renderDeckList() {
 function deckHeroes(x) {
   return h('span', { class: 'deck-heroes', 'aria-hidden': 'true' }, [0, 1, 2].map(i => {
     const c = cardById(x.heroes?.[i]);
-    const art = h('span', { class: 'slice-art' });
+    const art = h('span', { class: `slice-art${c?.landscape ? ' wide-art' : ''}` });
     if (c) imageFor(c, true).then(u => { if (u) art.style.backgroundImage = `url("${u}")`; });
     return h('span', { class: `deck-hero${c ? ` c-edge-${c.color}` : ' empty'}` }, art);
   }));
@@ -1575,7 +1584,7 @@ function renderHeroes() {
     const hero = cardById(d.heroes[i]);
     if (hero) {
       const st = hero.stats ?? {};
-      return h('div', { class: `hero-slot filled c-edge-${hero.color}` },
+      return h('div', { class: `hero-slot filled c-edge-${hero.color}${hero.landscape ? ' wide' : ''}` },
         h('button', { class: 'hero-panel', title: `Full screen: ${hero.name}`, onclick: () => openViewer(heroes.map(x => ({ card: x })), heroes.indexOf(hero)) },
           cardImg(hero, { alt: hero.name }),
           h('span', { class: 'hero-text' },
@@ -1666,7 +1675,7 @@ function deckTraits(d) {
 function poolCard(c, list) {
   const n = state.deck.cards[c.id] ?? 0;
   const max = LIMITS[c.type];
-  return h('div', { class: `pool-card${n ? ' in-deck' : ''}${n >= max ? ' maxed' : ''}` },
+  return h('div', { class: `pool-card${c.landscape ? ' wide' : ''}${n ? ' in-deck' : ''}${n >= max ? ' maxed' : ''}` },
     h('div', { class: 'pool-art-wrap' },
       // lijevi klik doda kopiju, desni makne jednu
       h('button', { class: 'pool-art', title: `${c.name}: click adds one, right-click removes one`, onclick: () => { if (n < max) addCard(c.id, 1); },

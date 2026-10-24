@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { checkDeck, randomFill, deckPool, poolCapacity, encodeDeck, decodeDeck, slugify, LIMITS } from '../js/deck.js';
 
-const hero = (id, name, color) => ({ id, name, type: 'Character', color, stats: {} });
+const hero = (id, name, color) => ({ id, name, type: 'Hero', color, stats: {} });
 const card = (id, type, color, cost = 1, extra = {}) => ({ id, name: `Card ${id}`, type, color, cost, ...extra });
 
 function db() {
