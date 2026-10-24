@@ -329,7 +329,7 @@ window.addEventListener('focus', async () => {
   const n = await countInbox().catch(() => state.inbox);
   if (n === state.inbox) return;
   state.inbox = n;
-  $('#import-btn')?.replaceWith(importButton());
+  document.querySelectorAll('.import-btn').forEach(b => b.replaceWith(importButton()));
   if (state.tab === 'import' && !state.analysis) render();
 });
 
@@ -708,23 +708,33 @@ function wordmark(size) {
     h('span', { class: 'w-evil' }, 'Evil'), h('span', { class: 'w-boce' }, 'Boće'));
 }
 
-function renderHeader() {
+// Podaci: folder, verzija (link na povijest), broj karata, Import i odabir foldera. Na računalu stoje u bloku
+// dolje lijevo (side-data), na mobitelu u traci ispod heroja (top-bar); CSS pokaže jedno od dvoje.
+function brand() {
+  return h('div', { class: 'brand' },
+    state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
+    h('span', { class: 'brand-sub' }, 'Card database'));
+}
+
+function folderInfo() {
   const n = state.db.cards.length;
   const server = state.store.kind === 'server';
+  return [
+    h('span', { class: 'folder-name', title: server ? 'Data from the computer, via server' : 'Chosen Drive folder' }, server ? `${state.store.name} via server` : state.store.name),
+    h('span', { class: 'folder-db' },
+      h('button', { class: `version-link${state.tab === 'history' ? ' active' : ''}`, title: 'Change history', onclick: () => openHistory() }, `Version ${state.db.version}`),
+      h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
+    h('span', { class: 'folder-actions' },
+      state.store.canImport ? importButton() : null,
+      server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder for Import and editing', onclick: () => guard(() => resume(state.savedRoot)) }, `Continue with "${state.savedRoot.name}"`) : null,
+      !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Other folder' : 'Choose folder') : 'Change folder') : null),
+  ];
+}
+
+function renderHeader() {
   return h('header', { class: 'top' },
     heroStrip(),
-    h('div', { class: 'top-bar' },
-      h('div', { class: 'brand' },
-        state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
-        h('span', { class: 'brand-sub' }, 'Card database')),
-      h('div', { class: 'folder' },
-        h('span', { class: 'folder-name', title: server ? 'Data from the computer, via server' : 'Chosen Drive folder' }, server ? `${state.store.name} via server` : state.store.name),
-        h('span', { class: 'folder-db' },
-          h('button', { class: `version-link${state.tab === 'history' ? ' active' : ''}`, title: 'Change history', onclick: () => openHistory() }, `Version ${state.db.version}`),
-          h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
-        state.store.canImport ? importButton() : null,
-        server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder for Import and editing', onclick: () => guard(() => resume(state.savedRoot)) }, `Continue with "${state.savedRoot.name}"`) : null,
-        !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Other folder' : 'Choose folder') : 'Change folder') : null)));
+    h('div', { class: 'top-bar' }, brand(), h('div', { class: 'folder' }, folderInfo())));
 }
 
 function renderWelcome() {
@@ -748,7 +758,6 @@ function renderWelcome() {
 function importButton() {
   const n = state.inbox;
   return h('button', {
-    id: 'import-btn',
     class: `import-btn${n ? ' waiting' : ''}${state.tab === 'import' ? ' active' : ''}`,
     title: n ? `${n} ${plural(n, 'file', 'files')} waiting in export/` : 'Import from export/ and Publish',
     onclick: () => { state.tab = 'import'; render(); },
@@ -764,9 +773,11 @@ function renderMain() {
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
+      brand(),
       h('nav', { class: 'tabs', role: 'tablist' },
         tabs.map(([key, label]) => h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, label))),
       state.tab === 'decks' ? renderDeckList() : null),
+    h('div', { class: 'side-data' }, folderInfo()),
     h('main', {}, view));
 }
 

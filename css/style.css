@@ -235,12 +235,35 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
 .brand .logo { width: 64px; height: 64px; object-fit: contain; }
 .brand-sub { font: italic 700 20px var(--display); color: var(--muted); }
 .folder { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.folder-actions { display: contents; }
 .folder-name { font-weight: 600; }
 .folder-db { color: var(--muted); display: inline-flex; align-items: center; gap: 10px; }
 .sep { width: 4px; height: 4px; background: var(--red); transform: rotate(45deg); }
 
 /* Desktop: izbornik je stupac lijevo, sadržaj ide do desnog ruba. */
 .shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 40px; align-items: start; padding-top: 12px; }
+
+/* Računalo: logo na vrhu lijevog stupca, podaci (folder, verzija, Import) u bloku dolje lijevo koji stoji na dnu
+   ekrana; gornja traka ispod heroja je samo za mobitel. */
+@media (min-width: 981px) {
+  .top-bar { display: none; }
+  .shell { padding-top: 24px; }
+  .side { max-height: calc(100vh / var(--z) - 32px - 200px); }
+  .side > .brand { margin: -4px 0 -8px; }
+  .side-data {
+    position: fixed; left: 32px; bottom: 20px; width: 236px; z-index: 2;
+    display: grid; gap: 10px; padding-top: 16px;
+    border-top: 1px solid var(--line); background: var(--black);
+  }
+  .side-data .folder-name { font: italic 800 24px/1.05 var(--display); overflow-wrap: anywhere; }
+  .side-data .folder-db { font-size: 15px; }
+  .side-data .folder-actions { display: grid; gap: 8px; margin-top: 4px; }
+  .side-data .folder-actions button { width: 100%; justify-content: center; }
+  .side-data .import-btn { display: inline-flex; align-items: center; gap: 8px; }
+}
+@media (max-width: 980px) {
+  .side > .brand, .side-data { display: none; }
+}
 .side {
   position: sticky;
   top: 16px;
