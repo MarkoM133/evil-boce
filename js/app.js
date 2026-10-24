@@ -29,7 +29,7 @@ const state = {
   decks: [],
   deck: null,
   deckView: 'pool',
-  pool: { q: '', type: '', color: '', trait: '' },
+  pool: { q: '', type: '', color: '', set: '', trait: '' },
   focus: { color: '', value: 0.6 },
   bakugani: [], // biblioteka oblika bakugana (data/bakugani/catalog.json)
 };
@@ -1508,6 +1508,7 @@ function renderDeckEditor() {
           h('input', { type: 'search', placeholder: 'Search the pool…', value: state.pool.q, oninput: e => { state.pool.q = e.target.value; renderPool(); } }),
           h('select', { onchange: e => { state.pool.type = e.target.value; renderPool(); } }, h('option', { value: '' }, 'All types'), DECK_TYPES.map(t => h('option', { value: t, selected: state.pool.type === t }, t))),
           h('select', { id: 'pool-color', onchange: e => { state.pool.color = e.target.value; renderPool(); } }),
+          h('select', { id: 'pool-set', 'aria-label': 'Set', onchange: e => { state.pool.set = e.target.value; renderPool(); } }),
           h('select', { id: 'pool-trait', 'aria-label': 'Trait', onchange: e => { state.pool.trait = e.target.value; renderPool(); } })),
         h('div', { id: 'pool', class: 'pool' })),
       h('section', { id: 'deck-panel', class: 'deck-panel' })),
@@ -1618,6 +1619,14 @@ function renderPool() {
   const colors = [...new Set(all.map(c => c.color))];
   if (state.pool.color && !colors.includes(state.pool.color)) state.pool.color = '';
   colorSel.replaceChildren(h('option', { value: '' }, 'All hero colors'), ...colors.map(c => h('option', { value: c, selected: state.pool.color === c }, c)));
+  // Setovi bazena (OP1, JO1, …); izbornik se vidi tek kad ih je više.
+  const sets = [...new Set(all.map(setOf))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (state.pool.set && !sets.includes(state.pool.set)) state.pool.set = '';
+  const setSel = $('#pool-set');
+  if (setSel) {
+    setSel.hidden = sets.length < 2;
+    setSel.replaceChildren(h('option', { value: '' }, 'All sets'), ...sets.map(x => h('option', { value: x, selected: state.pool.set === x }, `${x} (${all.filter(c => setOf(c) === x).length})`)));
+  }
   // Traitovi bazena, najčešći prvi (npr. {Luffy} karte za heroja ili evoluciju koja ih poziva).
   const traits = traitCounts(all.map(c => [c, 1]));
   if (state.pool.trait && !traits.some(([t]) => t === state.pool.trait)) state.pool.trait = '';
@@ -1626,10 +1635,10 @@ function renderPool() {
     box.replaceChildren(h('p', { class: 'muted' }, 'Pick heroes, and cards of their colors show up here.'));
     return;
   }
-  const { q, type, color, trait } = state.pool;
+  const { q, type, color, set, trait } = state.pool;
   const matches = searchMatcher(q);
   const cards = all
-    .filter(c => (!type || c.type === type) && (!color || c.color === color) && (!trait || (c.traits ?? []).includes(trait)) && matches(c))
+    .filter(c => (!type || c.type === type) && (!color || c.color === color) && (!set || setOf(c) === set) && (!trait || (c.traits ?? []).includes(trait)) && matches(c))
     .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
   box.replaceChildren(...(cards.length ? cards.map(c => poolCard(c, cards)) : [h('p', { class: 'muted' }, 'No cards match the filter.')]));
 }
