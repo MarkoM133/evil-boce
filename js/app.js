@@ -877,6 +877,10 @@ function fmt(v) {
   return String(v);
 }
 
+// Polje 'landscape' se u Uvozu i detalju prikazuje kao layout karte.
+const fieldLabel = k => (k === 'landscape' ? 'layout' : k);
+const fieldValue = (k, v) => (k === 'landscape' ? (v ? 'landscape' : 'portrait') : fmt(v));
+
 function renderEntry(e) {
   const imgs = h('div', { class: 'thumbs' });
   // Klik na sliku: preko cijelog ekrana, strelicama prije/poslije.
@@ -919,8 +923,13 @@ function renderEntry(e) {
   }
   const only = [e.imageChanged && 'image', e.rotChanged && 'rotated image', e.spriteChanged && 'sprite'].filter(Boolean);
   const rows = e.old
-    ? e.diffs.map(k => h('tr', {}, h('th', {}, k), h('td', { class: 'was' }, fmt(e.old[k])), h('td', { class: 'now' }, fmt(e.card[k]))))
-    : CE_FIELDS.filter(k => e.card[k] !== undefined).map(k => h('tr', {}, h('th', {}, k), h('td', { colspan: 2 }, fmt(e.card[k]))));
+    ? e.diffs.map(k => h('tr', {}, h('th', {}, fieldLabel(k)), h('td', { class: 'was' }, fieldValue(k, e.old[k])), h('td', { class: 'now' }, fieldValue(k, e.card[k]))))
+    : CE_FIELDS.filter(k => e.card[k] !== undefined).map(k => h('tr', {}, h('th', {}, fieldLabel(k)), h('td', { colspan: 2 }, fieldValue(k, e.card[k]))));
+  // Slike: vodoravna (landscape Hero / Evolution) dobije širi okvir kad se učita.
+  for (const img of imgs.querySelectorAll('img')) {
+    const mark = () => { if (img.naturalWidth > img.naturalHeight) img.closest('figure')?.classList.add('wide'); };
+    if (img.complete) mark(); else img.addEventListener('load', mark, { once: true });
+  }
   return h('article', { class: `entry ${e.status}` },
     h('header', {},
       h('span', { class: `badge ${e.status}` }, STATUS_LABEL[e.status]),
