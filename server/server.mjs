@@ -3,6 +3,7 @@
 // Postavke: server/config.local.json (nije u gitu) ili env EB_DRIVE, PORT, HOST.
 import http from 'node:http';
 import fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ttsPayload, mergeSteamUrls } from '../js/tts.js';
@@ -237,6 +238,21 @@ async function handle(req, res) {
     const file = inside(path.join(cfg.drive, 'data'), parts.slice(1).join('/'));
     const hashed = ['images', 'thumbs', 'large'].includes(parts[1]) && /\.[0-9a-f]{8}\.(png|jpg)$/i.test(rel);
     return file ? sendFile(res, file, hashed ? IMMUTABLE : 'no-store') : fail(res, 403, 'forbidden');
+  }
+  // Modeli za alate (tools/lama.onnx, 208 MB): šalju se u komadima, preglednik ih smije pamtiti dan.
+  if (parts[0] === 'tools') {
+    const file = inside(path.join(cfg.drive, 'tools'), parts.slice(1).join('/'));
+    if (!file) return fail(res, 403, 'forbidden');
+    try {
+      const st = await fs.stat(file);
+      if (!st.isFile()) return fail(res, 404, 'not found');
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': st.size, 'Cache-Control': 'max-age=86400' });
+      if (req.method === 'HEAD') return res.end();
+      return createReadStream(file).pipe(res);
+    } catch (e) {
+      if (e.code === 'ENOENT') return fail(res, 404, 'not found');
+      throw e;
+    }
   }
   if (rel === '/logo') {
     const name = await findLogo();

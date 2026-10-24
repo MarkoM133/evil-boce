@@ -5,6 +5,7 @@ import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, empty
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
 import { GAME_COLORS, heroDefaultColor, paintThumb, paintParts, createPreview } from './bakugan.js';
 import { bakuganTextureId } from './tts.js';
+import { renderTools } from './tools.js';
 import * as fs from './fsdir.js';
 
 const DB_PATH = 'data/cards.json';
@@ -557,7 +558,7 @@ function render() {
 // ---------- adresa: svaki pogled ima svoj #/…, pa gesta ili tipka Natrag vraća korak unatrag ----------
 
 // history nije u izborniku: otvara se klikom na verziju u zaglavlju ili u detalju karte.
-const TAB_SLUG = { import: 'import', browse: 'browse', decks: 'decks', history: 'history' };
+const TAB_SLUG = { import: 'import', browse: 'browse', decks: 'decks', tools: 'tools', history: 'history' };
 const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]));
 // Stare hrvatske adrese (#/uvoz, #/pregled, #/deckovi/novi) i dalje rade.
 const OLD_SLUG_TAB = { uvoz: 'import', pregled: 'browse', deckovi: 'decks' };
@@ -789,8 +790,9 @@ function renderMain() {
   const tabs = [
     ['browse', 'Browse'],
     ['decks', 'Decks'],
+    ['tools', 'Tools'],
   ];
-  const view = { import: renderImport, browse: renderBrowse, decks: renderDecks, history: renderHistory }[state.tab]();
+  const view = { import: renderImport, browse: renderBrowse, decks: renderDecks, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
@@ -799,6 +801,18 @@ function renderMain() {
       state.tab === 'decks' ? renderDeckList() : null),
     sideData(),
     h('main', {}, view));
+}
+
+// LaMa za alat Erase text: tools/lama.onnx iz zajedničkog foldera (folder) ili sa servera.
+async function lamaModel() {
+  if (state.store.kind === 'folder') {
+    const f = await fs.getFile(root(), 'tools/lama.onnx');
+    if (!f) throw new Error('No tools/lama.onnx in the chosen folder (Syncthing may still be copying it).');
+    return f.arrayBuffer();
+  }
+  const r = await fetch('tools/lama.onnx');
+  if (!r.ok) throw new Error('The server has no tools/lama.onnx.');
+  return r.arrayBuffer();
 }
 
 // ---------- Uvoz ----------

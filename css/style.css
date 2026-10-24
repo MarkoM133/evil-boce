@@ -889,3 +889,29 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .qf-specials .qf { background: transparent; border: 1px dashed var(--muted); padding: 4px 12px; font: italic 700 14px/1.1 var(--display); letter-spacing: .02em; }
 .qf-specials .qf:hover { background: var(--surface-2); }
 .qf-specials .qf.active { background: var(--red); color: var(--bone); border-color: var(--red); box-shadow: none; }
+
+/* ---------- alati (Tools): brisanje teksta, micanje pozadine ---------- */
+
+.tools { gap: 14px; }
+.tool { display: grid; gap: 12px; }
+.tool > p { margin: 0; max-width: 80ch; }
+.tool-tabs { margin-bottom: 4px; }
+.tool-bar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.tool-range { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+.tool-range input { width: 120px; accent-color: var(--red); }
+.tool-status { min-height: 1.3em; }
+.tool-drop {
+  display: grid; place-items: center; gap: 6px; padding: 60px 20px; cursor: pointer;
+  border: 1px dashed var(--muted); background: var(--surface); text-align: center;
+}
+.tool-drop strong { font: italic 800 26px var(--display); }
+.tool-drop:hover, .tool-drop.over { border-color: var(--red); background: var(--surface-2); }
+.tool-stage.busy { opacity: .6; pointer-events: none; }
+.erase-wrap { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+.erase-image { max-width: 100%; max-height: calc(100vh / var(--z) - 260px); height: auto; display: block; }
+.erase-mask { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .5; cursor: crosshair; touch-action: none; }
+/* prozirnost se vidi na šahovnici */
+.bg-wrap { display: inline-block; max-width: 100%; line-height: 0; background: repeating-conic-gradient(#3a3a3a 0 25%, #262626 0 50%) 0 0 / 20px 20px; }
+.bg-out { max-width: 100%; max-height: calc(100vh / var(--z) - 260px); height: auto; display: block; cursor: crosshair; }
+.bg-key { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+.bg-swatch { width: 26px; height: 26px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .25); }
