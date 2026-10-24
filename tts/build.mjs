@@ -59,6 +59,8 @@ const save = JSON.parse(fs.readFileSync(BASE, 'utf8'));
 save.LuaScript = fs.readFileSync(path.join(ROOT, 'tts', 'global.lua'), 'utf8');
 save.XmlUI = fs.readFileSync(path.join(ROOT, 'tts', 'ui.xml'), 'utf8');
 save.SaveName = SAVE_NAME;
+// GameMode je bio "Chimera Table" (mod iz kojeg je stol): TTS po njemu imenuje folder u Cloud Manageru pri Uploadu.
+save.GameMode = 'EvilBoce';
 
 // Promjene objekata, redom; svaka smije ići više puta (baza može već biti promijenjena kroz --adopt).
 const steps = [
