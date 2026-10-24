@@ -601,7 +601,7 @@ window.addEventListener('popstate', () => {
   });
 });
 
-// Traka s herojima ispod zaglavlja, preko cijele širine: kose kriške s crtežom s karte, polako klize ulijevo.
+// Traka s herojima na vrhu stranice, preko cijele širine: kose kriške s crtežom s karte, polako klize ulijevo.
 // Popis se ponovi koliko treba da traka uvijek bude puna; pomak za jednu duljinu popisa izgleda kao beskonačna vrpca.
 // Zaglavlje se crta iznova na svaki render, pa traka nastavlja s mjesta na kojem je bila (stripTime).
 const STRIP_SPEED = 28; // px u sekundi
@@ -689,6 +689,7 @@ function renderHeader() {
   const n = state.db.cards.length;
   const server = state.store.kind === 'server';
   return h('header', { class: 'top' },
+    heroStrip(),
     h('div', { class: 'top-bar' },
       h('div', { class: 'brand' },
         state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
@@ -699,8 +700,7 @@ function renderHeader() {
           h('button', { class: `version-link${state.tab === 'history' ? ' active' : ''}`, title: 'Change history', onclick: () => openHistory() }, `Version ${state.db.version}`),
           h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
         server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder for Import and editing', onclick: () => guard(() => resume(state.savedRoot)) }, `Continue with "${state.savedRoot.name}"`) : null,
-        !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Other folder' : 'Choose folder') : 'Change folder') : null)),
-    heroStrip());
+        !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Other folder' : 'Choose folder') : 'Change folder') : null)));
 }
 
 function renderWelcome() {

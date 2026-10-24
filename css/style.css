@@ -170,13 +170,12 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
 
 /* ---------- zaglavlje i kartice ---------- */
 
-.top { padding: 16px 0 0; }
-.top-bar { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; }
+.top-bar { padding-top: 14px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; }
 
-/* Traka s herojima: ispod zaglavlja, od ruba do ruba prozora; kriške klize ulijevo (JS), rubovi se gube u crnu. */
+/* Traka s herojima: na samom vrhu, od ruba do ruba prozora; kriške klize ulijevo (JS), rubovi se gube u crnu. */
 .hero-strip {
   width: calc(100vw / var(--z));
-  margin: 14px 0 0 calc(50% - 50vw / var(--z));
+  margin-left: calc(50% - 50vw / var(--z));
   height: 116px;
   overflow: hidden;
   -webkit-mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
@@ -407,7 +406,7 @@ td.now { font-weight: 600; }
   .top-bar { flex-wrap: nowrap; gap: 12px; }
   .brand .logo { width: 48px; height: 48px; }
   .folder { justify-content: flex-end; text-align: right; gap: 2px 12px; font-size: 14px; }
-  .hero-strip { height: 84px; margin-top: 12px; }
+  .hero-strip { height: 84px; }
   .strip-track { gap: 4px; }
   .slice-name { font-size: 14px; left: 10px; bottom: 6px; }
   .brand-sub { display: none; }
