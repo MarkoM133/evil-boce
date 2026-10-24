@@ -269,14 +269,14 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
   .side-data-toggle .brand-sub { font: italic 800 24px/1 var(--display); color: var(--bone); }
   .side-data-badge { margin-left: auto; margin-right: 4px; }
   .side-data-badge .tab-badge { background: var(--red); color: var(--bone); margin: 0; }
-  /* jezičak ladice: tanka kosa crvena crta iznad loga, pri prelasku mišem naraste */
+  /* jezičak ladice: tanka crvena crta cijelom širinom iznad loga, kosih krajeva; pri prelasku mišem podeblja */
   .side-data-toggle { position: relative; }
   .side-data-toggle::before {
-    content: ""; position: absolute; top: -1px; left: 8px; width: 48px; height: 4px;
-    background: var(--red); transform: skewX(-24deg); transform-origin: top left;
-    transition: height .15s ease-out, width .15s ease-out;
+    content: ""; position: absolute; top: -1px; left: 0; right: 0; height: 3px;
+    background: var(--red); clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%);
+    transition: height .15s ease-out;
   }
-  .side-data-toggle:hover::before, .side-data-toggle:focus-visible::before { height: 7px; width: 64px; }
+  .side-data-toggle:hover::before, .side-data-toggle:focus-visible::before { height: 7px; clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); }
   .side-data .folder-name { font: italic 800 22px/1.05 var(--display); overflow-wrap: anywhere; }
   .side-data .folder-db { font-size: 15px; }
   .side-data .folder-actions { display: grid; gap: 8px; margin-top: 4px; }
