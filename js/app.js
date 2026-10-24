@@ -956,7 +956,7 @@ function specialFilter(name) {
 
 function filtered() {
   const { q, types, colors, sets, specials, deleted, sort, since } = state.filter;
-  const needle = q.trim().toLowerCase();
+  const matches = searchMatcher(q);
   const changed = since ? changesSince(state.changelog, since - 1) : null;
   const extras = specials.map(specialFilter);
   return state.db.cards.filter(c =>
@@ -966,11 +966,28 @@ function filtered() {
     (!sets.length || sets.includes(setOf(c))) &&
     (!extras.length || extras.some(fn => fn(c))) &&
     (!changed || changed.has(c.id)) &&
-    (!needle || [c.id, c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)))
+    matches(c))
     .sort((a, b) => SORTS[sort][1](a, b) || byCode(a, b));
 }
 
 const plural = (n, one, other) => (n === 1 ? one : other);
+
+// Pretraga karata (pregled i bazen decka): ime, tekst, traitovi i kod. Kod se nađe i bez vodećih nula
+// ili crtice: "op1-22", "OP1 22", "op122" i "22" nađu OP1-022.
+function searchMatcher(q) {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return () => true;
+  const flat = needle.replace(/[\s-]+/g, '');
+  const num = /^0*(\d{1,3})$/.exec(needle);
+  return c => {
+    if ([c.id, c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)) return true;
+    const m = /^(.+)-0*(\d+)$/.exec(c.id.toLowerCase());
+    if (!m) return false;
+    if (flat === m[1] + m[2]) return true;
+    return !!num && m[2] === num[1];
+  };
+}
+
 const shortDate = iso => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'numeric', year: 'numeric' }) : '');
 
 // Povijest promjena baze (#/history), od najnovije verzije; imena karata otvaraju kartu u pregledu.
@@ -1610,9 +1627,9 @@ function renderPool() {
     return;
   }
   const { q, type, color, trait } = state.pool;
-  const needle = q.trim().toLowerCase();
+  const matches = searchMatcher(q);
   const cards = all
-    .filter(c => (!type || c.type === type) && (!color || c.color === color) && (!trait || (c.traits ?? []).includes(trait)) && (!needle || [c.name, c.text, ...(c.traits ?? [])].join(' ').toLowerCase().includes(needle)))
+    .filter(c => (!type || c.type === type) && (!color || c.color === color) && (!trait || (c.traits ?? []).includes(trait)) && matches(c))
     .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
   box.replaceChildren(...(cards.length ? cards.map(c => poolCard(c, cards)) : [h('p', { class: 'muted' }, 'No cards match the filter.')]));
 }
