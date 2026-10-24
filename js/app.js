@@ -112,6 +112,7 @@ const ICONS = {
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   prev: '<path d="M15 5l-7 7 7 7"/>',
   next: '<path d="M9 5l7 7-7 7"/>',
+  up: '<path d="M5 15l7-7 7 7"/>',
 };
 
 function icon(name) {
@@ -730,7 +731,7 @@ function sideData() {
     try { localStorage.setItem(SIDE_OPEN_KEY, open ? '1' : '0'); } catch {}
     box.classList.toggle('open', open);
     toggle.setAttribute('aria-expanded', String(open));
-  } }, brand(), h('span', { class: 'side-data-badge' }, badge()), h('span', { class: 'side-data-chev', 'aria-hidden': 'true' }, '▴'));
+  } }, brand(), h('span', { class: 'side-data-badge' }, badge()), h('span', { class: 'side-data-chev' }, icon('up')));
   box.append(h('div', { class: 'side-data-body' }, h('div', {}, folderInfo())), toggle);
   return box;
 }
