@@ -656,10 +656,11 @@ function heroStrip() {
       style: `width: ${w}px`,
       'data-id': c.id,
       title: c.name,
-      'aria-label': `${c.name}: open in Browse`,
+      'aria-label': `${c.name}: open in Browse, or add to the deck on Decks`,
       'aria-hidden': copy ? 'true' : null,
       tabindex: copy ? -1 : null,
-      onclick: () => { state.tab = 'browse'; state.selected = c.id; render(); },
+      // Na Decks heroj ide u deck, inače se otvori u pregledu.
+      onclick: () => { if (state.tab === 'decks') { pickHeroFromStrip(c); return; } state.tab = 'browse'; state.selected = c.id; render(); },
     }, art, h('span', { class: 'slice-name' }, c.name));
   }));
   const track = h('div', { class: 'strip-track' }, slices.flat());
@@ -1530,29 +1531,52 @@ function renderDeckStatus() {
     state.deck.dirty ? h('span', { class: 'unsaved' }, 'unsaved') : null);
 }
 
+// Tri mjesta za heroje: odabrani heroj je ploča s crtežom (klik je prikaže preko cijelog ekrana, × ga makne),
+// prazno mjesto nudi izbornik ili klik na heroja u traci na vrhu.
 function renderHeroes() {
   const box = $('#deck-heroes');
   const d = state.deck;
   const taken = new Set(d.heroes);
   const free = heroCards(state.db).filter(c => !taken.has(c.id));
+  const heroes = d.heroes.map(cardById).filter(Boolean);
   const slots = [0, 1, 2].map(i => {
     const hero = cardById(d.heroes[i]);
     if (hero) {
-      const heroes = d.heroes.map(cardById).filter(Boolean);
-      return h('div', { class: `hero-slot filled c-border-${hero.color}` },
-        h('button', { class: 'hero-art', title: `Full screen: ${hero.name}`, onclick: () => openViewer(heroes.map(x => ({ card: x })), heroes.indexOf(hero)) }, cardImg(hero, { alt: hero.name })),
-        h('div', { class: 'hero-info' },
-          h('span', { class: 'hero-name' }, hero.name),
-          h('span', { class: 'muted small' }, hero.color),
-          h('button', { class: 'ghost small-btn', onclick: () => changeDeck(x => { x.heroes = x.heroes.filter(id => id !== hero.id); }) }, 'Remove')));
+      const art = h('span', { class: 'slice-art' });
+      imageFor(hero, true).then(u => { if (u) art.style.backgroundImage = `url("${u}")`; });
+      const st = hero.stats ?? {};
+      return h('div', { class: `hero-slot filled c-edge-${hero.color}` },
+        h('button', { class: 'hero-panel', title: `Full screen: ${hero.name}`, onclick: () => openViewer(heroes.map(x => ({ card: x })), heroes.indexOf(hero)) },
+          art,
+          h('span', { class: 'hero-text' },
+            h('span', { class: 'hero-name' }, hero.name),
+            h('span', { class: 'hero-stats' }, [['HP', st.hp], ['DMG', st.dmg], ['PWR', st.pwr], ['RNG', st.rng]].filter(([, v]) => v !== undefined).map(([k, v]) => h('span', {}, h('b', {}, v), ` ${k}`))))),
+        h('button', { class: 'hero-remove', title: `Remove ${hero.name}`, 'aria-label': `Remove ${hero.name}`, onclick: () => changeDeck(x => { x.heroes = x.heroes.filter(id => id !== hero.id); }) }, icon('close')));
     }
     return h('label', { class: 'hero-slot empty' },
-      h('span', { class: 'muted' }, `Hero ${i + 1}`),
+      h('span', { class: 'hero-empty-title' }, h('b', { 'aria-hidden': 'true' }, '+'), `Hero ${i + 1}`),
+      h('span', { class: 'muted small' }, 'Click a hero in the banner, or choose:'),
       h('select', { onchange: e => { if (e.target.value) changeDeck(x => { x.heroes = [...x.heroes, e.target.value]; }); } },
         h('option', { value: '' }, 'Choose a hero'),
         free.map(c => h('option', { value: c.id }, `${c.name} (${c.color})`))));
   });
   box.replaceChildren(...slots);
+}
+
+// Klik na heroja u traci na kartici Decks: heroj ide na prvo slobodno mjesto (bez otvorenog decka počne novi).
+function pickHeroFromStrip(c) {
+  if (!state.deck) {
+    state.deck = newDeck();
+    state.deckView = 'pool';
+    state.deck.heroes = [c.id];
+    state.deck.dirty = true;
+    render();
+    return;
+  }
+  const d = state.deck;
+  if (d.heroes.includes(c.id)) { toast(`${c.name} is already in the deck.`); return; }
+  if (d.heroes.length >= 3) { toast('The deck already has 3 heroes. Remove one first.', 'warn'); return; }
+  changeDeck(x => { x.heroes = [...x.heroes, c.id]; });
 }
 
 function renderPool() {
@@ -1607,12 +1631,11 @@ function poolCard(c, list) {
     h('div', { class: 'pool-art-wrap' },
       h('button', { class: 'pool-art', title: `Add ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, cardImg(c, { alt: c.name }),
         n ? h('span', { class: 'pool-count' }, `${n}/${max}`) : null),
-      zoomButton(c, list)),
-    h('div', { class: 'pool-meta' },
-      h('span', { class: 'pool-name' }, c.name),
+      zoomButton(c, list),
       h('span', { class: 'stepper' },
         h('button', { class: 'step', 'aria-label': `Remove one ${c.name}`, disabled: !n, onclick: () => addCard(c.id, -1) }, '−'),
-        h('button', { class: 'step', 'aria-label': `Add one ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, '+'))));
+        h('button', { class: 'step', 'aria-label': `Add one ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, '+'))),
+    h('span', { class: 'pool-name', title: c.name }, c.name));
 }
 
 function renderDeckPanel() {
