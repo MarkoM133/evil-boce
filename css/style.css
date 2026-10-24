@@ -33,6 +33,7 @@
 #app, #toasts { zoom: var(--z); }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; } /* i kad element ima svoj display (npr. grid) */
 
 body {
   margin: 0;
@@ -696,14 +697,28 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .pool-art-wrap .zoom .icon { width: 15px; height: 15px; }
 .viewer.single .viewer-nav { display: none; }
 
-/* ---------- bakugan heroja: 3D pregled, boja, oblik ---------- */
+/* ---------- detalj karte: kartice General / Bakugan ---------- */
 
-.bk { margin: 14px 0 6px; display: grid; gap: 12px; }
-.bk h3 { margin: 0; }
+.detail-tabs { display: flex; gap: 4px; margin: -6px 0 18px; border-bottom: 1px solid var(--line); }
+.detail-tabs button { clip-path: none; background: none; color: var(--muted); font-size: 20px; padding: 6px 14px 10px; position: relative; }
+.detail-tabs button:hover { background: none; color: var(--bone); }
+.detail-tabs button.active { color: var(--bone); }
+.detail-tabs button.active::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 4px; background: var(--red); transform: skewX(-24deg); }
+
+/* ---------- bakugan heroja: kugla (3D pregled, dvije boje, oblik) i figurina ---------- */
+
+.bk-part { display: grid; gap: 12px; }
+.bk-part + .bk-part { border-top: 1px solid var(--line); padding-top: 16px; }
+.bk-part h3 { margin: 0; }
+.bk { display: grid; gap: 12px; }
+.bk-row { display: grid; gap: 6px; }
+.bk-label { font-size: 14px; color: var(--muted); }
+.bk-colors .small-btn { margin-top: 0; }
+.bk-colors .small-btn.active { box-shadow: inset 0 0 0 2px var(--bone); }
 .bk-main { display: grid; grid-template-columns: 240px 1fr; gap: 16px; align-items: start; }
 .bk-3d { width: 240px; height: 240px; background: radial-gradient(circle at 50% 45%, #262626, #0b0b0b 70%); border-radius: 12px; touch-action: none; cursor: grab; }
 .bk-3d:active { cursor: grabbing; }
-.bk-side { display: grid; gap: 10px; align-content: start; }
+.bk-side { display: grid; gap: 14px; align-content: start; }
 .bk-name { font: italic 800 22px/1.1 var(--display); }
 .bk-colors { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .bk-swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; clip-path: none; background: var(--sw); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35); }

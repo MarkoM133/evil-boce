@@ -47,12 +47,14 @@ export const bakuganKey = shape => `bakugan:${shape}`;
 
 const GAME_COLORS = { Cyan: '#00ffff', Yellow: '#ffff00', Purple: '#ff00ff', Red: '#ff0000', Blue: '#0000ff', Green: '#00ff00' };
 
-// Obojana tekstura bakugana: siva tekstura oblika puta boja, upečena u file (TTS ne boji dijelove modela s
-// teksturom, pa ColorDiffuse ne pomaže). Isti oblik iste boje dijeli file: data/bakugani/boje/<oblik>-<rrggbb>.jpg.
+// Obojana tekstura bakugana: siva tekstura oblika puta glavna boja, detalji drugom bojom, oči originalne;
+// upečena u file (TTS ne boji dijelove modela s teksturom, pa ColorDiffuse ne pomaže).
+// Isti oblik istih boja dijeli file: data/bakugani/boje/<oblik>-<glavna>-<druga>.jpg (bez druge boje su iste).
 export function bakuganTextureId(card) {
   if (!card.bakuganShape) return null;
-  const hex = (card.bakuganColor ?? GAME_COLORS[card.color] ?? '#ffffff').replace('#', '').toLowerCase();
-  return `${card.bakuganShape}-${hex}`;
+  const hex = c => c.replace('#', '').toLowerCase();
+  const main = card.bakuganColor ?? GAME_COLORS[card.color] ?? '#ffffff';
+  return `${card.bakuganShape}-${hex(main)}-${hex(card.bakuganColor2 ?? main)}`;
 }
 
 // Sve što TTS treba: karte (master kopije) i heroji (statsi, bakugan, sprite).

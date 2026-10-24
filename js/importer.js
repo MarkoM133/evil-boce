@@ -5,10 +5,10 @@ import { parseCardEngineXml, CODE_RE } from './parse.js';
 // Polja koja dolaze iz Card Enginea (§5). App ih ne mijenja.
 export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'values', 'traits', 'text'];
 // Polja koja se uređuju samo u appu. Ponovni uvoz ih ne dira.
-export const APP_FIELDS = ['wt', 'bakugan', 'bakuganShape', 'bakuganColor', 'deleted'];
+export const APP_FIELDS = ['wt', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'deleted'];
 // Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
-export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor'];
-const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'bakugan', 'bakuganShape', 'bakuganColor', 'image', 'imageHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
+export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2'];
+const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'image', 'imageHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
 
@@ -293,7 +293,8 @@ export function applyAppEdits(db, edits, now = new Date()) {
     const e = edits[c.id];
     if (!e) return c;
     const next = { ...c };
-    for (const k of APP_FIELDS) if (k in e) next[k] = e[k];
+    // undefined makne polje (npr. druga boja bakugana opet ista kao glavna)
+    for (const k of APP_FIELDS) if (k in e) { if (e[k] === undefined) delete next[k]; else next[k] = e[k]; }
     if (same(next, c)) return c;
     changed++;
     const isGame = APP_FIELDS.some(k => !LOOK_FIELDS.includes(k) && !same(next[k], c[k]));
@@ -395,7 +396,7 @@ export function changesSince(log, since) {
 }
 
 // Kratak opis promjene karte: "values, slika", "nova", "maknuta", "izgled: oblik bakugana, sprite".
-const FIELD_LABELS = { bakuganShape: 'bakugan shape', bakuganColor: 'bakugan color', bakugan: 'bakugan', sprite: 'sprite' };
+const FIELD_LABELS = { bakuganShape: 'bakugan shape', bakuganColor: 'bakugan color', bakuganColor2: 'bakugan accent color', bakugan: 'bakugan', sprite: 'sprite' };
 
 export function describeChange(c) {
   const kind = { new: 'new', deleted: 'deleted', restored: 'restored' }[c.kind];

@@ -3,7 +3,7 @@ import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, 
 import { TYPES, COLOR_NAMES, DECK_TYPES } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
-import { GAME_COLORS, heroDefaultColor, paintThumb, createPreview } from './bakugan.js';
+import { GAME_COLORS, heroDefaultColor, paintThumb, paintParts, createPreview } from './bakugan.js';
 import { bakuganTextureId } from './tts.js';
 import * as fs from './fsdir.js';
 
@@ -20,6 +20,7 @@ const state = {
   filter: { q: '', types: [], colors: [], sets: [], specials: [], deleted: false, sort: 'id', since: 0 },
   changelog: null,
   inbox: 0, // fileova u sanduču export/ (samo folder)
+  detailTab: 'general', // kartica u detalju karte: general | bakugan
   selected: null,
   busy: false,
   decks: [],
@@ -485,28 +486,35 @@ async function updateThumbs(db) {
   return made;
 }
 
-// Obojane teksture bakugana (data/bakugani/boje/<oblik>-<rrggbb>.jpg) koje fale: siva tekstura oblika puta boja,
-// isto množenje kao sličice u appu. TTS ne boji dijelove modela s teksturom, pa boja mora biti u teksturi.
+// Obojane teksture bakugana (data/bakugani/boje/<oblik>-<glavna>-<druga>.jpg) koje fale: ista slagalica kao
+// sličice u appu (siva tekstura × glavna boja, detalji drugom bojom, oči originalne). TTS ne boji dijelove modela
+// s teksturom, pa boja mora biti u teksturi. Teksture koje više nijedan heroj ne koristi se brišu.
 async function ensureBakuganTextures(db) {
   let made = 0;
+  const lib = new Map((state.bakugani ?? []).map(b => [b.id, b]));
   const have = new Set(await fs.listFileNames(root(), 'data/bakugani/boje'));
+  const used = new Set();
+  const bitmap = async path => {
+    const f = path ? await fs.getFile(root(), `data/${path}`) : null;
+    return f ? createImageBitmap(f) : null;
+  };
   for (const c of db.cards) {
     const id = c.type === 'Character' && !c.deleted ? bakuganTextureId(c) : null;
-    if (!id || have.has(`${id}.jpg`)) continue;
-    const gray = await fs.getFile(root(), `data/bakugani/${c.bakuganShape}.jpg`);
-    if (!gray) continue;
-    const bmp = await createImageBitmap(gray);
-    const canvas = new OffscreenCanvas(bmp.width, bmp.height);
-    const g = canvas.getContext('2d');
-    g.drawImage(bmp, 0, 0);
-    bmp.close();
-    g.globalCompositeOperation = 'multiply';
-    g.fillStyle = `#${id.slice(-6)}`;
-    g.fillRect(0, 0, canvas.width, canvas.height);
+    if (!id) continue;
+    used.add(`${id}.jpg`);
+    if (have.has(`${id}.jpg`)) continue;
+    const b = lib.get(c.bakuganShape);
+    const parts = { gray: await bitmap(b?.texture ?? `bakugani/${c.bakuganShape}.jpg`), accent: await bitmap(b?.accent), eyes: await bitmap(b?.eyes) };
+    if (!parts.gray) continue;
+    const canvas = new OffscreenCanvas(parts.gray.width, parts.gray.height);
+    const [main, accent] = id.split('-').slice(-2).map(hex => `#${hex}`);
+    paintParts(canvas, parts, main, accent);
+    Object.values(parts).forEach(x => x?.close());
     await fs.writeFile(root(), `data/bakugani/boje/${id}.jpg`, await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.9 }));
     have.add(`${id}.jpg`);
     made++;
   }
+  for (const f of have) if (f.endsWith('.jpg') && !used.has(f)) await fs.removeFile(root(), `data/bakugani/boje/${f}`);
   return made;
 }
 
@@ -518,7 +526,7 @@ async function saveEdits(id, edits) {
     return;
   }
   await writeDb(db);
-  if ('bakuganShape' in edits || 'bakuganColor' in edits) await ensureBakuganTextures(db);
+  if (['bakuganShape', 'bakuganColor', 'bakuganColor2'].some(k => k in edits)) await ensureBakuganTextures(db);
   toast(bumped ? `Saved: version ${db.version}.` : `Saved (look only; version stays v${db.version}).`);
 }
 
@@ -1030,6 +1038,8 @@ function closeCard() {
   syncHash();
 }
 
+// Detalj karte: General (slika, polja, povijest) i, za heroje i evolucije, Bakugan (kugla 1/2, figurina 2/2).
+// Obje kartice dijele izmjene i Save; prebacivanje ih ne crta iznova, pa nespremljeni odabir ostaje.
 function renderDetail() {
   const box = $('#detail');
   if (!box) return;
@@ -1037,26 +1047,12 @@ function renderDetail() {
   if (!c) { box.replaceChildren(); box.className = ''; return; }
   box.className = 'detail';
   const edits = {};
-  const field = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
-  const editor = state.store.canImport
-    ? h('form', { class: 'editor', onsubmit: e => { e.preventDefault(); guard(() => saveEdits(c.id, edits)); } },
-        h('h3', {}, 'App fields'),
-        c.type === 'Character' ? [
-          field('Bakugan weight (wt)', h('input', { type: 'number', min: 1, step: 1, value: c.wt ?? '', oninput: e => { if (e.target.value === '') delete edits.wt; else edits.wt = Number(e.target.value); } })),
-          bakuganPicker(c, edits),
-        ] : null,
-        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!c.deleted, onchange: e => { edits.deleted = e.target.checked; } }), 'Deleted – the deck builder no longer offers it'),
-        h('button', { class: 'primary', type: 'submit' }, 'Save'))
-    : null;
+  const canEdit = state.store.canImport;
+  const save = () => h('button', { class: 'primary', type: 'submit' }, 'Save');
+  const form = (...kids) => h('form', { class: 'editor', onsubmit: e => { e.preventDefault(); guard(() => saveEdits(c.id, edits)); } }, ...kids);
   const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'rev', 'imageHash']
     .filter(k => c[k] !== undefined)
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
-  if (c.sprite) {
-    const img = h('img', { class: 'sprite-img', alt: `${c.name} sprite` });
-    state.store.dataUrl(c.sprite).then(u => { if (u) img.src = u; });
-    rows.push(h('tr', {}, h('th', {}, 'sprite'), h('td', {}, h('button', { class: 'sprite-btn', title: 'Full screen',
-      onclick: () => state.store.dataUrl(c.sprite).then(u => u && openViewer([{ url: u, title: `${c.id} · ${c.name} · sprite` }])) }, img))));
-  }
   // Povijest ove karte; verzija otvara cijelu povijest na toj verziji.
   const changes = (state.changelog?.entries ?? []).flatMap(e => e.cards.filter(x => x.id === c.id).map(x => ({ v: e.version, x }))).reverse();
   if (changes.length) {
@@ -1068,42 +1064,95 @@ function renderDetail() {
     rows.push(h('tr', {}, h('th', {}, 'in decks'), h('td', {}, inDecks.flatMap((d, i) => [i ? ', ' : null,
       h('button', { class: 'link', onclick: () => { if (confirmDiscard()) { state.tab = 'decks'; guard(() => openDeck(d.slug)); } } }, d.name)]).filter(Boolean))));
   }
+  const general = h('div', { class: 'detail-body' },
+    h('button', { class: 'big', title: 'Full screen', onclick: () => { const list = filtered(); openViewer((list.includes(c) ? list : [c]).map(x => ({ card: x })), list.includes(c) ? list.indexOf(c) : 0); } },
+      cardImg(c, { alt: c.name, full: true }), h('span', { class: 'zoom', 'aria-hidden': 'true' }, icon('zoom'))),
+    h('div', {}, h('table', { class: 'fields' }, rows),
+      canEdit ? form(
+        h('h3', {}, 'App fields'),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!c.deleted, onchange: e => { edits.deleted = e.target.checked; } }), 'Deleted – the deck builder no longer offers it'),
+        save()) : null));
+  const panes = { general };
+  if (c.type === 'Character' || c.type === 'Evolution') panes.bakugan = bakuganPane(c, canEdit ? edits : null, form, save);
+  if (!panes[state.detailTab]) state.detailTab = 'general';
+  const showPane = k => { for (const [pk, el] of Object.entries(panes)) el.hidden = pk !== k; };
+  showPane(state.detailTab);
+  const tabs = panes.bakugan ? h('div', { class: 'detail-tabs', role: 'tablist' }, [['general', 'General'], ['bakugan', 'Bakugan']].map(([k, label]) =>
+    h('button', { type: 'button', role: 'tab', class: state.detailTab === k ? 'active' : '', 'aria-selected': String(state.detailTab === k), onclick: e => {
+      state.detailTab = k;
+      showPane(k);
+      for (const b of e.currentTarget.parentElement.children) { const on = b === e.currentTarget; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); }
+    } }, label))) : null;
   box.replaceChildren(
     h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: closeCard }, 'Close')),
-    h('div', { class: 'detail-body' },
-      h('button', { class: 'big', title: 'Full screen', onclick: () => { const list = filtered(); openViewer((list.includes(c) ? list : [c]).map(x => ({ card: x })), list.includes(c) ? list.indexOf(c) : 0); } },
-        cardImg(c, { alt: c.name, full: true }), h('span', { class: 'zoom', 'aria-hidden': 'true' }, icon('zoom'))),
-      h('div', {}, h('table', { class: 'fields' }, rows), c.type === 'Character' && !editor ? bakuganPicker(c, null) : null, editor)));
+    ...[tabs, ...Object.values(panes)].filter(Boolean));
 }
 
-// Bakugan heroja: 3D pregled, boja (boje igre, boja heroja ili bilo koja) i oblik iz biblioteke.
+// Kartica Bakugan: kugla (stanje 1/2: oblik, dvije boje, težina) samo za heroje, figurina (stanje 2/2, sprite) i za evolucije.
+function bakuganPane(c, edits, form, save) {
+  const hero = c.type === 'Character';
+  const field = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
+  const ball = hero ? h('section', { class: 'bk-part' },
+    h('h3', {}, 'Ball', h('span', { class: 'muted' }, ' · form 1/2')),
+    bakuganPicker(c, edits),
+    edits ? field('Bakugan weight (wt)', h('input', { type: 'number', min: 1, step: 1, value: c.wt ?? '', oninput: e => { if (e.target.value === '') delete edits.wt; else edits.wt = Number(e.target.value); } })) : null) : null;
+  let figure;
+  if (c.sprite) {
+    const img = h('img', { class: 'sprite-img', alt: `${c.name} sprite` });
+    state.store.dataUrl(c.sprite).then(u => { if (u) img.src = u; });
+    figure = h('button', { type: 'button', class: 'sprite-btn', title: 'Full screen',
+      onclick: () => state.store.dataUrl(c.sprite).then(u => u && openViewer([{ url: u, title: `${c.id} · ${c.name} · sprite` }])) }, img);
+  } else {
+    figure = h('p', { class: 'muted small' }, `No sprite yet. It comes through the export as "${c.name} Sprite.png".`);
+  }
+  const sprite = h('section', { class: 'bk-part' }, h('h3', {}, 'Figurine', h('span', { class: 'muted' }, ' · form 2/2')), figure);
+  return edits && hero ? form(ball, sprite, save()) : h('div', { class: 'editor' }, ball, sprite);
+}
+
+// Bakugan heroja: 3D pregled, dvije boje (oklop i detalji; boje igre, boja heroja ili bilo koja) i oblik iz biblioteke.
 // edits = null: samo pregled (preko servera se app polja ne mijenjaju).
 function bakuganPicker(c, edits) {
   const lib = state.bakugani ?? [];
   if (!lib.length) return edits ? h('p', { class: 'muted small' }, 'No bakugan library (data/bakugani/catalog.json).') : null;
   let shape = lib.find(b => b.id === c.bakuganShape) ?? null;
-  if (!edits && !shape) return null;
+  if (!edits && !shape) return h('p', { class: 'muted small' }, 'No bakugan chosen yet.');
   let color = c.bakuganColor ?? heroDefaultColor(c);
+  let color2 = c.bakuganColor2 ?? null; // null: ista kao glavna
+  const urls = (b, thumb) => Promise.all((thumb ? [b.thumb, b.accentThumb, b.eyesThumb] : [b.texture, b.accent, b.eyes])
+    .map(p => (p ? state.store.dataUrl(p) : null))).then(([gray, accent, eyes]) => ({ gray, accent, eyes }));
   const canvas = h('canvas', { class: 'bk-3d', width: 240, height: 240, 'aria-label': 'Bakugan, 3D preview (drag to rotate)' });
   const preview = createPreview(canvas);
   const nameEl = h('span', { class: 'bk-name' });
   const thumbs = new Map();
   const show = () => {
     nameEl.textContent = shape ? shape.name : 'No shape chosen';
-    if (shape) Promise.all([state.store.dataUrl(shape.mesh), state.store.dataUrl(shape.texture)]).then(([m, t]) => m && t && preview.show(m, t, color));
+    if (shape) Promise.all([state.store.dataUrl(shape.mesh), urls(shape)]).then(([m, t]) => m && t.gray && preview.show(m, t, color, color2 ?? color));
   };
+  const rows = [];
   const recolor = () => {
-    preview.setColor(color);
-    for (const [b, cv] of thumbs) state.store.dataUrl(b.thumb).then(u => u && paintThumb(cv, u, color));
-    picker.querySelectorAll('.bk-swatch').forEach(s => s.classList.toggle('active', s.dataset.color === color));
-    if (colorInput) colorInput.value = color;
+    preview.setColors(color, color2 ?? color);
+    for (const [b, cv] of thumbs) urls(b, true).then(u => u.gray && paintThumb(cv, u, color, color2 ?? color));
+    for (const r of rows) r.sync();
   };
-  const setColor = v => { color = v.toLowerCase(); if (edits) edits.bakuganColor = color; recolor(); };
-  const colorInput = edits ? h('input', { type: 'color', value: color, 'aria-label': 'Any color', oninput: e => setColor(e.target.value) }) : null;
-  const swatches = edits ? h('div', { class: 'bk-colors' },
-    Object.entries({ ...GAME_COLORS }).map(([name, hex]) => h('button', { type: 'button', class: 'bk-swatch', style: `--sw:${hex}`, 'data-color': hex, title: name, 'aria-label': name, onclick: () => setColor(hex) })),
-    h('button', { type: 'button', class: 'ghost small-btn', onclick: () => setColor(heroDefaultColor(c)) }, 'Hero color'),
-    h('label', { class: 'bk-custom', title: 'Any color' }, colorInput)) : null;
+  // Red boja: boje igre, posebni gumb (boja heroja / ista kao oklop) i bilo koja boja.
+  const colorRow = (label, get, set, special) => {
+    const input = h('input', { type: 'color', 'aria-label': `${label}: any color`, oninput: e => set(e.target.value.toLowerCase()) });
+    const extra = h('button', { type: 'button', class: 'ghost small-btn', onclick: () => set(special.value()) }, special.label);
+    const el = h('div', { class: 'bk-row' }, h('span', { class: 'bk-label' }, label), h('div', { class: 'bk-colors' },
+      Object.entries(GAME_COLORS).map(([name, hex]) => h('button', { type: 'button', class: 'bk-swatch', style: `--sw:${hex}`, 'data-color': hex, title: name, 'aria-label': `${label}: ${name}`, onclick: () => set(hex) })),
+      extra, h('label', { class: 'bk-custom', title: 'Any color' }, input)));
+    rows.push({ sync: () => {
+      const v = get();
+      el.querySelectorAll('.bk-swatch').forEach(s => s.classList.toggle('active', s.dataset.color === v));
+      extra.classList.toggle('active', special.active());
+      input.value = v ?? color;
+    } });
+    return el;
+  };
+  const body = edits ? colorRow('Body', () => color, v => { color = v; edits.bakuganColor = v; recolor(); },
+    { label: 'Hero color', value: () => heroDefaultColor(c), active: () => color === heroDefaultColor(c) }) : null;
+  const accents = edits && lib.some(b => b.accent) ? colorRow('Accents', () => color2, v => { color2 = v; edits.bakuganColor2 = v ?? undefined; recolor(); },
+    { label: 'Same as body', value: () => null, active: () => color2 === null }) : null;
   const grid = edits ? h('div', { class: 'bk-grid' }, lib.map(b => {
     const cv = h('canvas', { width: 96, height: 96 });
     thumbs.set(b, cv);
@@ -1114,10 +1163,9 @@ function bakuganPicker(c, edits) {
       show();
     } }, cv, h('span', {}, b.name));
   })) : null;
-  const picker = h('section', { class: 'bk' },
-    h('h3', {}, 'Bakugan'),
-    h('div', { class: 'bk-main' }, canvas, h('div', { class: 'bk-side' }, nameEl, swatches,
-      edits ? h('p', { class: 'muted small' }, 'The color is multiplied with the gray texture, as in TTS. Choose a shape and a color, then Save.') : null)),
+  const picker = h('div', { class: 'bk' },
+    h('div', { class: 'bk-main' }, canvas, h('div', { class: 'bk-side' }, nameEl, body, accents,
+      edits ? h('p', { class: 'muted small' }, 'Body colors the armor, Accents the details (gold in the original mod); eyes keep their color. Choose a shape and colors, then Save.') : null)),
     grid);
   show();
   recolor();
