@@ -1531,7 +1531,7 @@ function renderDeckStatus() {
     state.deck.dirty ? h('span', { class: 'unsaved' }, 'unsaved') : null);
 }
 
-// Tri mjesta za heroje: odabrani heroj je ploča s crtežom (klik je prikaže preko cijelog ekrana, × ga makne),
+// Tri mjesta za heroje: odabrani heroj je ploča sa sličicom karte (klik je prikaže preko cijelog ekrana, × ga makne),
 // prazno mjesto nudi izbornik ili klik na heroja u traci na vrhu.
 function renderHeroes() {
   const box = $('#deck-heroes');
@@ -1542,12 +1542,10 @@ function renderHeroes() {
   const slots = [0, 1, 2].map(i => {
     const hero = cardById(d.heroes[i]);
     if (hero) {
-      const art = h('span', { class: 'slice-art' });
-      imageFor(hero, true).then(u => { if (u) art.style.backgroundImage = `url("${u}")`; });
       const st = hero.stats ?? {};
       return h('div', { class: `hero-slot filled c-edge-${hero.color}` },
         h('button', { class: 'hero-panel', title: `Full screen: ${hero.name}`, onclick: () => openViewer(heroes.map(x => ({ card: x })), heroes.indexOf(hero)) },
-          art,
+          cardImg(hero, { alt: hero.name }),
           h('span', { class: 'hero-text' },
             h('span', { class: 'hero-name' }, hero.name),
             h('span', { class: 'hero-stats' }, [['HP', st.hp], ['DMG', st.dmg], ['PWR', st.pwr], ['RNG', st.rng]].filter(([, v]) => v !== undefined).map(([k, v]) => h('span', {}, h('b', {}, v), ` ${k}`))))),
