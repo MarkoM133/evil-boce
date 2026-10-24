@@ -388,6 +388,11 @@ td.now { font-weight: 600; }
   .detail { animation: drawer .22s ease-out; }
 }
 @keyframes drawer { from { transform: translateX(24px); opacity: 0; } }
+/* Na širokom ekranu sadržaj stane lijevo od otvorenog detalja (širina detalja minus desni rub appa), karte se slože u manje stupaca.
+   Ispod ~1900 px lijevo ne bi stala ni dva stupca, pa detalj ostaje preko karata. */
+@media (min-width: 1900px) {
+  body.detail-open main { padding-right: calc(min(760px, 100vw / var(--z)) - 32px + 24px); }
+}
 .detail-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; margin-bottom: 18px; }
 .detail-head h2 { font-size: 36px; }
 .detail-body { display: grid; grid-template-columns: 260px 1fr; gap: 24px; align-items: start; }

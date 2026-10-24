@@ -536,6 +536,7 @@ async function saveEdits(id, edits) {
 function render() {
   const app = $('#app');
   if (state.store) {
+    document.body.classList.remove('detail-open'); // pregled ga vrati kad nacrta detalj
     app.replaceChildren(renderHeader(), renderMain());
     updateStrip();
     cardPushed = false;
@@ -1045,8 +1046,11 @@ function renderDetail() {
   const box = $('#detail');
   if (!box) return;
   const c = state.db.cards.find(x => x.id === state.selected);
+  // Dok je detalj otvoren, mreža karata se suzi lijevo od njega (CSS), pa se odabrana karta i dalje vidi.
+  document.body.classList.toggle('detail-open', !!c);
   if (!c) { box.replaceChildren(); box.className = ''; return; }
   box.className = 'detail';
+  requestAnimationFrame(() => $('.tile.selected')?.scrollIntoView({ block: 'nearest' }));
   const edits = {};
   const canEdit = state.store.canImport;
   const save = () => h('button', { class: 'primary', type: 'submit' }, 'Save');
