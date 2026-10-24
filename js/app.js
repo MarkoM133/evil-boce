@@ -1351,27 +1351,42 @@ function renderDecks() {
     h('p', { class: 'muted' }, 'Open a saved deck or make a new one: pick 3 heroes, then add cards of their colors up to 40.'));
 }
 
+// Lijevi stupac na kartici Decks: novi deck, spremljeni deckovi (kriške heroja, ime, stanje, broj karata) i deck kod.
 function renderDeckList() {
+  const n = state.decks.length;
+  const newDeckBtn = h('button', { class: 'primary deck-new', onclick: () => { if (confirmDiscard()) { state.deck = newDeck(); state.deckView = 'pool'; render(); } } },
+    h('span', { 'aria-hidden': 'true' }, '+'), 'New deck');
   return h('section', { class: 'deck-list' },
-    h('div', { class: 'deck-list-head' },
-      h('h2', {}, 'My decks'),
-      h('button', { class: 'primary', onclick: () => { if (confirmDiscard()) { state.deck = newDeck(); state.deckView = 'pool'; render(); } } }, 'New deck')),
-    state.decks.length
+    h('div', { class: 'deck-list-head' }, h('h2', {}, 'My decks'), n ? h('span', { class: 'deck-list-n' }, n) : null),
+    newDeckBtn,
+    n
       ? h('ul', {}, state.decks.map(x => h('li', {},
           h('button', {
             class: `deck-item${state.deck?.slug === x.slug ? ' active' : ''}`,
             onclick: () => { if (confirmDiscard()) guard(() => openDeck(x.slug)); },
           },
-            h('span', { class: 'deck-item-name' }, x.name),
-            h('span', { class: 'deck-item-sub' }, x.broken ? 'broken file' : `${x.heroes.map(id => cardById(id)?.name ?? id).join(', ') || 'no heroes'}`),
-            x.broken ? null : deckFlags(x),
-            h('span', { class: 'deck-item-count' }, x.broken ? '' : `${x.count}/${DECK_SIZE}`)))))
-      : h('p', { class: 'muted' }, 'No saved decks yet.'),
+            deckHeroes(x),
+            h('span', { class: 'deck-item-text' },
+              h('span', { class: 'deck-item-name' }, x.name),
+              h('span', { class: 'deck-item-sub' }, x.broken ? 'broken file' : `${x.heroes.map(id => cardById(id)?.name ?? id).join(', ') || 'no heroes'}`),
+              x.broken ? null : deckFlags(x)),
+            h('span', { class: `deck-item-count${!x.broken && x.count === DECK_SIZE ? ' full' : ''}` }, x.broken ? '' : `${x.count}/${DECK_SIZE}`)))))
+      : h('p', { class: 'deck-list-empty' }, 'No saved decks yet. Start a new one or load a deck code.'),
     h('details', { class: 'code-import' },
       h('summary', {}, 'Load deck code'),
       h('form', { onsubmit: e => { e.preventDefault(); importCode(e.target.elements.code.value); } },
-        h('input', { name: 'code', placeholder: 'EB1|v1|…', autocomplete: 'off', spellcheck: false }),
-        h('button', { type: 'submit' }, 'Load'))));
+        h('input', { name: 'code', placeholder: 'EB1|v1|…', autocomplete: 'off', spellcheck: false, 'aria-label': 'Deck code' }),
+        h('button', { type: 'submit', class: 'ghost' }, 'Load'))));
+}
+
+// Tri kose kriške s crtežom heroja iz decka (prazne dok heroj nije odabran), rub u boji heroja.
+function deckHeroes(x) {
+  return h('span', { class: 'deck-heroes', 'aria-hidden': 'true' }, [0, 1, 2].map(i => {
+    const c = cardById(x.heroes?.[i]);
+    const art = h('span', { class: 'slice-art' });
+    if (c) imageFor(c, true).then(u => { if (u) art.style.backgroundImage = `url("${u}")`; });
+    return h('span', { class: `deck-hero${c ? ` c-edge-${c.color}` : ' empty'}` }, art);
+  }));
 }
 
 // Karte iz decka promijenjene od kad je spremljen (prema povijesti promjena).

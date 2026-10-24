@@ -248,7 +248,7 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
 @media (min-width: 981px) {
   .top-bar { display: none; }
   .shell { padding-top: 24px; }
-  .side { max-height: calc(100vh / var(--z) - 32px - 110px); }
+  .side { max-height: calc(100vh / var(--z) - 32px - 110px); overflow-x: hidden; }
   .shell:has(.side-data.open) .side { max-height: calc(100vh / var(--z) - 32px - 330px); }
   .side-data {
     position: fixed; left: 32px; bottom: 16px; width: 236px; z-index: 2;
@@ -476,30 +476,47 @@ td.now { font-weight: 600; }
 
 /* ---------- deckovi ---------- */
 
-.deck-list { display: grid; gap: 12px; }
-.deck-list-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.deck-list { display: grid; gap: 14px; min-width: 0; }
+.deck-list-head { display: flex; align-items: baseline; gap: 10px; }
 .deck-list-head h2 { font-size: 24px; }
-.deck-list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.deck-list-n { font: italic 800 18px var(--display); color: var(--muted); }
+.deck-new { width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; }
+.deck-new span { font: 800 22px/1 var(--text); font-style: normal; }
+.deck-list-empty { margin: 0; color: var(--muted); font-size: 14px; }
+.deck-list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .deck-item {
   clip-path: none;
   width: 100%;
   text-align: left;
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2px 10px;
-  padding: 10px 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px 8px 8px;
   background: none;
   border-left: 3px solid transparent;
   font: 15px var(--text);
 }
 .deck-item:hover { background: var(--surface); }
 .deck-item.active { background: var(--surface); border-left-color: var(--red); }
-.deck-item-name { font: italic 700 19px/1.15 var(--display); }
-.deck-item-sub { grid-column: 1; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.deck-item-count { grid-column: 2; grid-row: 1 / span 3; align-self: center; font: italic 800 18px var(--display); color: var(--muted); }
-.code-import summary { cursor: pointer; color: var(--muted); padding: 4px 0; }
-.code-import form { display: flex; gap: 8px; margin-top: 8px; }
-.code-import input { flex: 1; min-width: 0; }
+.deck-item-text { display: grid; gap: 2px; min-width: 0; }
+.deck-item-name { font: italic 700 19px/1.15 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-item-sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-item-count { font: italic 800 16px var(--display); color: var(--muted); }
+.deck-item-count.full { color: var(--bone); }
+/* tri kose kriške heroja, kao traka na vrhu */
+.deck-heroes { display: flex; gap: 2px; padding-left: 4px; }
+.deck-hero { position: relative; width: 18px; height: 46px; overflow: hidden; transform: skewX(-12deg); background: var(--surface-2); --edge: var(--c-none); }
+.deck-hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--edge); }
+.deck-hero .slice-art { inset: 0 -60%; transform: skewX(12deg); background-size: 260% auto; background-position: 50% 17%; filter: brightness(.85); }
+.deck-hero.empty { background: repeating-linear-gradient(45deg, var(--surface), var(--surface) 3px, var(--black) 3px, var(--black) 6px); }
+.deck-item:hover .deck-hero .slice-art, .deck-item.active .deck-hero .slice-art { filter: none; }
+.code-import { border-top: 1px solid var(--line); padding-top: 10px; }
+.code-import summary { cursor: pointer; color: var(--muted); padding: 4px 0; font-size: 14px; }
+.code-import summary:hover { color: var(--bone); }
+.code-import form { display: grid; gap: 8px; margin-top: 8px; }
+.code-import input { min-width: 0; width: 100%; }
+.code-import button { width: 100%; }
 
 .deck-empty { padding: 40px 0; display: grid; gap: 10px; max-width: 44ch; }
 .deck-empty h2 { font-size: 34px; }
