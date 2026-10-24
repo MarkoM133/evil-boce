@@ -1186,16 +1186,16 @@ function bakuganPicker(c, edits) {
   };
   const visible = b => b.featured !== false || b === shape;
   const rest = lib.filter(b => !visible(b));
-  const grid = edits ? h('div', { class: 'bk-grid' }, lib.filter(visible).map(shapeButton)) : null;
-  const more = edits && rest.length ? h('button', { type: 'button', class: 'ghost small-btn bk-more', onclick: () => {
-    const extra = h('div', { class: 'bk-grid' }, rest.map(shapeButton));
-    more.replaceWith(h('h4', { class: 'bk-more-title' }, `More bakugans (${rest.length})`), extra);
+  // "More bakugans" je zadnja pločica u mreži; klik je zamijeni ostalim oblicima.
+  const more = edits && rest.length ? h('button', { type: 'button', class: 'bk-shape bk-more', title: 'Show all bakugans', onclick: () => {
+    more.replaceWith(...rest.map(shapeButton));
     recolor();
-  } }, `More bakugans (${rest.length})`) : null;
+  } }, h('span', { class: 'bk-more-n' }, `+${rest.length}`), h('span', {}, 'More bakugans')) : null;
+  const grid = edits ? h('div', { class: 'bk-grid' }, lib.filter(visible).map(shapeButton), more) : null;
   const picker = h('div', { class: 'bk' },
     h('div', { class: 'bk-main' }, canvas, h('div', { class: 'bk-side' }, nameEl, body, accents,
       edits ? h('p', { class: 'muted small' }, 'Body colors the armor, Accents the details (gold in the original mod); eyes keep their color. Choose a shape and colors, then Save.') : null)),
-    grid, more);
+    grid);
   show();
   recolor();
   return picker;
