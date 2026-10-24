@@ -248,20 +248,38 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
 @media (min-width: 981px) {
   .top-bar { display: none; }
   .shell { padding-top: 24px; }
-  .side { max-height: calc(100vh / var(--z) - 32px - 290px); }
-  .side-data .brand { gap: 12px; margin-bottom: 6px; }
-  .side-data .brand .logo { width: 56px; height: 56px; }
-  .side-data .brand-sub { font-size: 18px; }
+  .side { max-height: calc(100vh / var(--z) - 32px - 110px); }
+  .shell:has(.side-data.open) .side { max-height: calc(100vh / var(--z) - 32px - 330px); }
   .side-data {
-    position: fixed; left: 32px; bottom: 20px; width: 236px; z-index: 2;
-    display: grid; gap: 10px; padding-top: 16px;
-    border-top: 1px solid var(--line); background: var(--black);
+    position: fixed; left: 32px; bottom: 16px; width: 236px; z-index: 2;
+    display: grid; border-top: 1px solid var(--line); background: var(--black);
   }
-  .side-data .folder-name { font: italic 800 24px/1.05 var(--display); overflow-wrap: anywhere; }
+  /* Sklopljeno: samo logo i ime. Otvoreno: podaci se dignu iznad njih. */
+  .side-data-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .2s ease-out; }
+  .side-data.open .side-data-body { grid-template-rows: 1fr; }
+  .side-data-body > div { overflow: hidden; display: grid; gap: 10px; }
+  .side-data.open .side-data-body > div { padding: 16px 0 12px; }
+  .side-data-toggle {
+    display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 0 0;
+    clip-path: none; background: none; text-align: left;
+  }
+  .side-data-toggle:hover { background: none; }
+  .side-data-toggle .brand { gap: 12px; }
+  .side-data-toggle .logo { width: 56px; height: 56px; }
+  .side-data-toggle .brand-sub { font: italic 800 24px/1 var(--display); color: var(--bone); }
+  .side-data-badge { margin-left: auto; }
+  .side-data-badge .tab-badge { background: var(--red); color: var(--bone); margin: 0; }
+  .side-data-chev { color: var(--muted); font-size: 14px; transition: transform .2s ease-out; }
+  .side-data-toggle:hover .side-data-chev { color: var(--bone); }
+  .side-data.open .side-data-chev { transform: rotate(180deg); }
+  .side-data .folder-name { font: italic 800 22px/1.05 var(--display); overflow-wrap: anywhere; }
   .side-data .folder-db { font-size: 15px; }
   .side-data .folder-actions { display: grid; gap: 8px; margin-top: 4px; }
   .side-data .folder-actions button { width: 100%; justify-content: center; }
   .side-data .import-btn { display: inline-flex; align-items: center; gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .side-data-body, .side-data-chev { transition: none; }
 }
 @media (max-width: 980px) {
   .side-data { display: none; }

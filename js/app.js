@@ -330,6 +330,7 @@ window.addEventListener('focus', async () => {
   if (n === state.inbox) return;
   state.inbox = n;
   document.querySelectorAll('.import-btn').forEach(b => b.replaceWith(importButton()));
+  document.querySelectorAll('.side-data-badge').forEach(b => b.replaceChildren(...(n ? [h('span', { class: 'tab-badge' }, n)] : [])));
   if (state.tab === 'import' && !state.analysis) render();
 });
 
@@ -713,7 +714,25 @@ function wordmark(size) {
 function brand() {
   return h('div', { class: 'brand' },
     state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
-    h('span', { class: 'brand-sub' }, 'Card database'));
+    h('span', { class: 'brand-sub' }, 'Evil Boće'));
+}
+
+// Blok dolje lijevo (računalo): sklopljen je samo logo i ime, klik ga digne s podacima, Importom i folderom.
+// Stanje se pamti na uređaju; dok je sklopljen, broj fileova u export/ stoji uz ime.
+const SIDE_OPEN_KEY = 'evil-boce-side-open';
+function sideData() {
+  let open = false;
+  try { open = localStorage.getItem(SIDE_OPEN_KEY) === '1'; } catch {}
+  const badge = () => (state.inbox && state.store.canImport ? h('span', { class: 'tab-badge', title: `${state.inbox} ${plural(state.inbox, 'file', 'files')} waiting in export/` }, state.inbox) : null);
+  const box = h('div', { class: `side-data${open ? ' open' : ''}` });
+  const toggle = h('button', { type: 'button', class: 'side-data-toggle', 'aria-expanded': String(open), title: 'Data, Import and folder', onclick: () => {
+    open = !open;
+    try { localStorage.setItem(SIDE_OPEN_KEY, open ? '1' : '0'); } catch {}
+    box.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+  } }, brand(), h('span', { class: 'side-data-badge' }, badge()), h('span', { class: 'side-data-chev', 'aria-hidden': 'true' }, '▴'));
+  box.append(h('div', { class: 'side-data-body' }, h('div', {}, folderInfo())), toggle);
+  return box;
 }
 
 function folderInfo() {
@@ -776,7 +795,7 @@ function renderMain() {
       h('nav', { class: 'tabs', role: 'tablist' },
         tabs.map(([key, label]) => h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, label))),
       state.tab === 'decks' ? renderDeckList() : null),
-    h('div', { class: 'side-data' }, brand(), folderInfo()),
+    sideData(),
     h('main', {}, view));
 }
 
