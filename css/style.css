@@ -269,10 +269,10 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
   .side-data-toggle .brand-sub { font: italic 800 24px/1 var(--display); color: var(--bone); }
   .side-data-badge { margin-left: auto; margin-right: 4px; }
   .side-data-badge .tab-badge { background: var(--red); color: var(--bone); margin: 0; }
-  /* gornja crta bloka postane crvena i deblja dok je miš na logu (znak da se klikom otvara) */
+  /* gornja crta bloka je crvena i deblja dok je blok otvoren ili je miš na logu (znak da se klikom otvara) */
   .side-data { transition: border-color .15s ease-out, box-shadow .15s ease-out; }
   /* deblja crta raste prema gore (sjena), pa se ništa ispod ne pomakne */
-  .side-data:has(.side-data-toggle:hover), .side-data:has(.side-data-toggle:focus-visible) { border-top-color: var(--red); box-shadow: 0 -3px 0 var(--red); }
+  .side-data.open, .side-data:has(.side-data-toggle:hover), .side-data:has(.side-data-toggle:focus-visible) { border-top-color: var(--red); box-shadow: 0 -3px 0 var(--red); }
   .side-data .folder-name { font: italic 800 22px/1.05 var(--display); overflow-wrap: anywhere; }
   .side-data .folder-db { font-size: 15px; }
   .side-data .folder-actions { display: grid; gap: 8px; margin-top: 4px; }
