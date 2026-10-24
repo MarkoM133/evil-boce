@@ -112,7 +112,6 @@ const ICONS = {
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   prev: '<path d="M15 5l-7 7 7 7"/>',
   next: '<path d="M9 5l7 7-7 7"/>',
-  up: '<path d="M5 15l7-7 7 7"/>',
 };
 
 function icon(name) {
@@ -718,7 +717,8 @@ function brand() {
     h('span', { class: 'brand-sub' }, 'Evil Boće'));
 }
 
-// Blok dolje lijevo (računalo): sklopljen je samo logo i ime, klik ga digne s podacima, Importom i folderom.
+// Blok dolje lijevo (računalo): sklopljen je samo logo i ime (s crvenim jezičcem iznad, kao ladica), klik ga digne
+// s podacima, Importom i folderom.
 // Stanje se pamti na uređaju; dok je sklopljen, broj fileova u export/ stoji uz ime.
 const SIDE_OPEN_KEY = 'evil-boce-side-open';
 function sideData() {
@@ -731,7 +731,7 @@ function sideData() {
     try { localStorage.setItem(SIDE_OPEN_KEY, open ? '1' : '0'); } catch {}
     box.classList.toggle('open', open);
     toggle.setAttribute('aria-expanded', String(open));
-  } }, brand(), h('span', { class: 'side-data-badge' }, badge()), h('span', { class: 'side-data-chev' }, icon('up')));
+  } }, brand(), h('span', { class: 'side-data-badge' }, badge()));
   box.append(h('div', { class: 'side-data-body' }, h('div', {}, folderInfo())), toggle);
   return box;
 }
