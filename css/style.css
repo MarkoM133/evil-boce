@@ -274,7 +274,6 @@ main { min-width: 0; }
   background: var(--red);
   transform: skewX(-12deg);
 }
-.side .soon { margin: 0; color: var(--muted); font-size: 13px; }
 
 .panel { display: grid; gap: 10px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
@@ -567,7 +566,6 @@ td.now { font-weight: 600; }
   #app { padding: 0 16px 64px; }
   .shell { grid-template-columns: 1fr; gap: 20px; padding-top: 0; }
   .side { position: static; max-height: none; overflow: visible; padding-right: 0; border-right: 0; gap: 20px; }
-  .side .soon { display: none; }
   .tabs { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-end; border-bottom: 1px solid var(--line); }
   .tabs button { font-size: 22px; padding: 10px 16px 12px; }
   .tabs button.active::before { top: auto; bottom: -1px; left: 10px; right: 10px; width: auto; height: 4px; transform: skewX(-24deg); }
@@ -653,6 +651,11 @@ button.deck-row-name:focus-visible { outline: 2px solid var(--straw); outline-of
   border-radius: 11px; background: var(--straw); color: var(--black);
   font: 800 13px/1 var(--text); font-style: normal; vertical-align: middle;
 }
+button.import-btn { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+button.import-btn:hover, button.import-btn.active { box-shadow: inset 0 0 0 1px var(--bone); }
+button.import-btn.waiting { background: var(--red); color: var(--bone); box-shadow: none; }
+button.import-btn .tab-badge { background: var(--bone); }
+.toast-action { margin-left: 6px; padding: 4px 12px; font-size: 15px; vertical-align: baseline; }
 .inbox-line { margin: 0 0 6px; font-weight: 600; color: var(--muted); }
 .inbox-line.waiting { color: var(--straw); }
 

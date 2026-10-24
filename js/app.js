@@ -15,7 +15,7 @@ const state = {
   db: null,
   logo: null,
   analysis: null,
-  tab: 'import',
+  tab: 'browse',
   // Brzi filteri: unutar skupine "ili", između skupina "i".
   filter: { q: '', types: [], colors: [], sets: [], specials: [], deleted: false, sort: 'id', since: 0 },
   changelog: null,
@@ -54,10 +54,10 @@ function fill(el, ...kids) {
   el.replaceChildren(...kids.flat().filter(k => k !== null && k !== undefined && k !== false));
 }
 
-function toast(msg, kind = 'ok') {
+function toast(msg, kind = 'ok', ms = kind === 'error' ? 9000 : 4500) {
   const t = h('div', { class: `toast ${kind}`, role: 'status' }, msg);
   $('#toasts').append(t);
-  setTimeout(() => t.remove(), kind === 'error' ? 9000 : 4500);
+  setTimeout(() => t.remove(), ms);
 }
 
 async function guard(fn) {
@@ -290,6 +290,10 @@ async function useStore(store) {
   state.decks = await store.listDecks();
   state.deck = null;
   state.inbox = await countInbox();
+  if (state.inbox) {
+    const go = h('button', { class: 'toast-action', onclick: () => { go.closest('.toast')?.remove(); state.tab = 'import'; render(); } }, 'Import');
+    toast([`${state.inbox} ${plural(state.inbox, 'file', 'files')} waiting in export/. `, go], 'ok', 10000);
+  }
   if (store.canImport) await ensureBakuganTextures(state.db).catch(e => console.warn("bakugan textures", e));
   replaceNext = true;
   whatsNew();
@@ -314,7 +318,7 @@ window.addEventListener('focus', async () => {
   const n = await countInbox().catch(() => state.inbox);
   if (n === state.inbox) return;
   state.inbox = n;
-  $('#tab-import')?.replaceChildren(...tabLabel('import', 'Import'));
+  $('#import-btn')?.replaceWith(importButton());
   if (state.tab === 'import' && !state.analysis) render();
 });
 
@@ -363,7 +367,7 @@ async function pickFolder() {
   const handle = await fs.pickRoot();
   state.savedRoot = handle;
   await useStore(folderStore(handle));
-  state.tab = 'import';
+  state.tab = 'browse';
   if (!(await fs.getDir(handle, 'export')) && !(await fs.getDir(handle, 'data'))) {
     toast(`The folder "${handle.name}" has neither export/ nor data/. Is it the "Evil Boce" folder?`, 'warn');
   }
@@ -699,6 +703,7 @@ function renderHeader() {
         h('span', { class: 'folder-db' },
           h('button', { class: `version-link${state.tab === 'history' ? ' active' : ''}`, title: 'Change history', onclick: () => openHistory() }, `Version ${state.db.version}`),
           h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
+        state.store.canImport ? importButton() : null,
         server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder for Import and editing', onclick: () => guard(() => resume(state.savedRoot)) }, `Continue with "${state.savedRoot.name}"`) : null,
         !server || window.showDirectoryPicker ? h('button', { class: 'ghost', onclick: () => guard(pickFolder) }, server ? (state.savedRoot ? 'Other folder' : 'Choose folder') : 'Change folder') : null)));
 }
@@ -720,15 +725,19 @@ function renderWelcome() {
   return box;
 }
 
-// Uvoz nosi broj fileova koji čekaju u sanduču export/.
-function tabLabel(key, label) {
-  const n = key === 'import' ? state.inbox : 0;
-  return [label, n ? h('span', { class: 'tab-badge', title: `${n} ${plural(n, 'file', 'files')} waiting in export/` }, n) : null].filter(Boolean);
+// Import je uz podatke gore (samo s odabranim folderom); kad u sanduču export/ nešto čeka, gumb je crven s brojem.
+function importButton() {
+  const n = state.inbox;
+  return h('button', {
+    id: 'import-btn',
+    class: `import-btn${n ? ' waiting' : ''}${state.tab === 'import' ? ' active' : ''}`,
+    title: n ? `${n} ${plural(n, 'file', 'files')} waiting in export/` : 'Import from export/ and Publish',
+    onclick: () => { state.tab = 'import'; render(); },
+  }, 'Import', n ? h('span', { class: 'tab-badge' }, n) : null);
 }
 
 function renderMain() {
   const tabs = [
-    ['import', 'Import'],
     ['browse', 'Browse'],
     ['decks', 'Decks'],
   ];
@@ -737,9 +746,8 @@ function renderMain() {
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
       h('nav', { class: 'tabs', role: 'tablist' },
-        tabs.map(([key, label]) => h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, tabLabel(key, label)))),
-      state.tab === 'decks' ? renderDeckList() : null,
-      h('p', { class: 'soon' }, 'Catalog and TTS come in later phases.')),
+        tabs.map(([key, label]) => h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, label))),
+      state.tab === 'decks' ? renderDeckList() : null),
     h('main', {}, view));
 }
 
