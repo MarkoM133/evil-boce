@@ -701,21 +701,23 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 
 .detail.has-rail { display: grid; grid-template-columns: 68px minmax(0, 1fr); padding: 0; overflow: hidden; }
 .detail.has-rail .detail-content { padding: 22px 24px; overflow-y: auto; min-height: 0; }
-/* Okomite kartice: svaka je pola visine panela. */
-.detail-rail { display: flex; flex-direction: column; background: var(--black); border-right: 1px solid var(--line); }
+/* Okomite kartice: svaka je pola visine panela, a između njih je kosi rez (kroz procjep se vidi pozadina trake). */
+.detail-rail { --cut: 40px; display: flex; flex-direction: column; background: var(--line); border-right: 1px solid var(--line); }
 .detail-rail button {
   flex: 1;
-  writing-mode: vertical-rl; transform: rotate(180deg);
-  clip-path: none; background: none; color: var(--muted);
+  display: grid; place-items: center;
+  clip-path: none; background: var(--black); color: var(--muted);
   font-size: 34px; letter-spacing: .04em; padding: 0; position: relative;
 }
-.detail-rail button + button { border-bottom: 1px solid var(--line); } /* okrenuto za 180°: bottom je gornji rub */
+.detail-rail button span { writing-mode: vertical-rl; transform: rotate(180deg); }
+.detail-rail button:first-child { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - var(--cut))); }
+.detail-rail button + button { margin-top: calc(4px - var(--cut)); clip-path: polygon(0 0, 100% var(--cut), 100% 100%, 0 100%); }
 .detail-rail button:hover { background: var(--surface); color: var(--bone); }
 .detail-rail button.active { color: var(--bone); background: var(--surface); }
-/* crvena crta uz vanjski rub; gumb je okrenut za 180°, pa je "right" lijevo na ekranu */
-.detail-rail button.active::after { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 5px; background: var(--red); }
+.detail-rail button.active::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 5px; background: var(--red); }
 @media (max-width: 760px) {
   .detail.has-rail { grid-template-columns: 48px minmax(0, 1fr); }
+  .detail-rail { --cut: 28px; }
   .detail-rail button { font-size: 24px; }
 }
 

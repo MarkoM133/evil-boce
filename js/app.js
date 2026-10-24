@@ -1084,7 +1084,7 @@ function renderDetail() {
       state.detailTab = k;
       showPane(k);
       for (const b of e.currentTarget.parentElement.children) { const on = b === e.currentTarget; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); }
-    } }, label))) : null;
+    } }, h('span', {}, label)))) : null;
   box.className = tabs ? 'detail has-rail' : 'detail';
   const content = h('div', { class: 'detail-content' },
     h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: closeCard }, 'Close')),
