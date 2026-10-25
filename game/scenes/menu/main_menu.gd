@@ -441,26 +441,25 @@ func _build_tiles(logo: Texture2D) -> void:
 	var strip := HeroStrip.new()
 	strip.setup(db)
 	strip.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	strip.custom_minimum_size = Vector2(0, 56)
+	strip.custom_minimum_size = Vector2(0, 70)
 	add_child(strip)
-	# Logo and news along the top, out by the edges; the tiles below in the middle of the
-	# screen at a share of it ("zoomed out"), with room between them.
+	# Places and proportions from the mockup (1600 × 900), as shares of the screen: the logo and
+	# the news in a row under the strip, the tiles below, both 80 px in from the sides.
 	var head := HBoxContainer.new()
-	head.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	head.offset_left = 230
-	head.offset_right = -230
-	head.offset_top = 80
-	head.offset_bottom = 168
-	head.add_theme_constant_override("separation", 16)
+	head.anchor_left = 0.05
+	head.anchor_right = 0.95
+	head.anchor_top = 96.0 / 900.0
+	head.anchor_bottom = 206.0 / 900.0
+	head.add_theme_constant_override("separation", 20)
 	add_child(head)
 	var margin := MarginContainer.new()
-	margin.anchor_left = 0.2
-	margin.anchor_right = 0.8
-	margin.anchor_top = 0.25
-	margin.anchor_bottom = 0.9
+	margin.anchor_left = 0.05
+	margin.anchor_right = 0.95
+	margin.anchor_top = 240.0 / 900.0
+	margin.anchor_bottom = 760.0 / 900.0
 	add_child(margin)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 12)
+	col.add_theme_constant_override("separation", 20)
 	margin.add_child(col)
 
 	if logo != null:
@@ -468,7 +467,7 @@ func _build_tiles(logo: Texture2D) -> void:
 		img.texture = logo
 		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		img.custom_minimum_size = Vector2(110, 88)
+		img.custom_minimum_size = Vector2(110, 110)
 		head.add_child(img)
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -482,25 +481,27 @@ func _build_tiles(logo: Texture2D) -> void:
 	for h: HeroDef in _heroes:
 		if db.sprite(h) != null:
 			with_sprite.append(h)
+	# Big tiles 380 high, small ones 120; Play 1.6 times as wide as Online.
 	var big := HBoxContainer.new()
-	big.add_theme_constant_override("separation", 12)
+	big.add_theme_constant_override("separation", 14)
 	big.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	big.size_flags_stretch_ratio = 380.0
 	col.add_child(big)
 	var left := VBoxContainer.new()
-	left.add_theme_constant_override("separation", 12)
+	left.add_theme_constant_override("separation", 14)
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.size_flags_stretch_ratio = 1.5
+	left.size_flags_stretch_ratio = 1.6
 	big.add_child(left)
 	var current: MatchRecord = ReplayStore.load_current() if ReplayStore.has_current() else null
 	if current != null and current.frame_count() > 0:
 		var cont: MenuTile = _tile(left, "CONTINUE", "%s  ·  turn %d" % [current.title(), current.state_at(current.frame_count() - 1).turn],
-			Palette.GOLD.darkened(0.15), 42, "continue", _sprites_of(current))
+			Palette.GOLD.darkened(0.15), 48, "continue", _sprites_of(current))
 		cont.title_color = Color.BLACK
 		cont.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var pair: Array[HeroDef] = _face_off(with_sprite)
 	# Play: the two heroes' real card art, cut apart on a slant.
 	var play: MenuTile = _tile(left, "PLAY", "Against the bot, or two players on this computer", Palette.ACCENT,
-		54 if current == null else 42, "play")
+		64 if current == null else 48, "play")
 	for h: HeroDef in pair:
 		var tex: Texture2D = db.large(h.id)
 		play.split_art.append(tex if tex != null else db.thumb(h.id))
@@ -518,7 +519,7 @@ func _build_tiles(logo: Texture2D) -> void:
 	for h: HeroDef in with_sprite:
 		if crew.size() < 3 and not pair.has(h):
 			crew.append(db.sprite(h))
-	var online: MenuTile = _tile(big, "ONLINE", "Host or join over Tailscale", Color("1d4fd1").darkened(0.25), 46, "online", crew)
+	var online: MenuTile = _tile(big, "ONLINE", "Host or join over Tailscale", Color("1d4fd1").darkened(0.25), 64, "online", crew)
 	# Behind the crew: a random stage's art, as if they stood there.
 	var stages: Array[CardDef] = db.catalog.of_type("Stage") if db.is_ok() else []
 	if not stages.is_empty():
@@ -528,28 +529,28 @@ func _build_tiles(logo: Texture2D) -> void:
 		online.tooltip_text = "Host or join over Tailscale  ·  on %s" % st.name
 
 	var small := HBoxContainer.new()
-	small.add_theme_constant_override("separation", 12)
-	small.custom_minimum_size = Vector2(0, 68)
+	small.add_theme_constant_override("separation", 14)
+	small.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	small.size_flags_stretch_ratio = 120.0
 	col.add_child(small)
 	var replays: int = ReplayStore.list_replays().size()
 	var decks: int = DeckStore.load_all(db.root_dir).size() if db.is_ok() else 0
-	_tile(small, "SANDBOX", "Throw balls around, try terrain", Palette.PANEL_SOLID, 22, "sandbox")
-	_tile(small, "REPLAYS", "%d saved" % replays if replays > 0 else "None yet", Palette.PANEL_SOLID, 22, "replays")
-	_tile(small, "DECKS", "%d deck%s" % [decks, "" if decks == 1 else "s"] if decks > 0 else "Deck codes", Palette.PANEL_SOLID, 22, "decks")
-	_tile(small, "SETTINGS", "Display, sound, keys", Palette.PANEL_SOLID, 22, "settings")
+	_tile(small, "SANDBOX", "Throw balls around, try terrain", Palette.PANEL_SOLID, 30, "sandbox")
+	_tile(small, "REPLAYS", "%d saved" % replays if replays > 0 else "None yet", Palette.PANEL_SOLID, 30, "replays")
+	_tile(small, "DECKS", "%d deck%s" % [decks, "" if decks == 1 else "s"] if decks > 0 else "Deck codes", Palette.PANEL_SOLID, 30, "decks")
+	_tile(small, "SETTINGS", "Display, sound, keys", Palette.PANEL_SOLID, 30, "settings")
 
+	# Exit in the corner, 80 px in and 40 up.
 	var exit := Button.new()
 	exit.text = "EXIT"
 	exit.theme_type_variation = &"Ghost"
 	exit.add_theme_font_size_override("font_size", 22)
-	exit.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	exit.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	exit.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	exit.anchor_left = 0.8
-	exit.anchor_right = 0.8
-	exit.anchor_top = 0.9
-	exit.anchor_bottom = 0.9
-	exit.position = Vector2(-90, 10)
+	exit.anchor_left = 0.95
+	exit.anchor_right = 0.95
+	exit.anchor_top = 860.0 / 900.0
+	exit.anchor_bottom = 860.0 / 900.0
 	exit.pressed.connect(_on_pressed.bind("exit"))
 	add_child(exit)
 	# Tiles come in one after another.
@@ -626,7 +627,7 @@ func _news() -> Control:
 	sb.border_color = Palette.GOLD
 	sb.border_width_left = 4
 	panel.add_theme_stylebox_override("panel", sb)
-	panel.custom_minimum_size = Vector2(400, 0)
+	panel.custom_minimum_size = Vector2(420, 0)
 	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 2)
