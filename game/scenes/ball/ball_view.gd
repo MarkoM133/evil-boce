@@ -53,6 +53,8 @@ var _flash_mat := StandardMaterial3D.new()
 var _burst_mat := StandardMaterial3D.new()
 
 var _hero_color: Color = Color.WHITE
+## Card colour name ("Red", "Cyan", ...): which ColorFx burst plays when the ball opens.
+var _style: String = ""
 var _team_color: Color = Color.WHITE
 var _glow: bool = false
 var _glow_t: float = 0.0
@@ -69,8 +71,9 @@ func _init() -> void:
 
 
 func configure(hero_color: Color, accent: Color, team_color: Color,
-		emblem: Texture2D, figure: Texture2D) -> void:
+		emblem: Texture2D, figure: Texture2D, style: String = "") -> void:
 	_hero_color = hero_color
+	_style = style
 	_team_color = team_color
 	_top_mat.albedo_color = hero_color
 	_bottom_mat.albedo_color = accent
@@ -287,8 +290,7 @@ func _set_state(s: State) -> void:
 func _start_open_fx() -> void:
 	_figure_pivot.visible = true
 	_figure_pivot.scale = Vector3.ONE * 0.001
-	_burst.restart()
-	_burst.emitting = true
+	ColorFx.burst(self, _style, _hero_color, radius)
 
 
 func _on_opened() -> void:

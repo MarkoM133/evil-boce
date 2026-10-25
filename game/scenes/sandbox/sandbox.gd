@@ -245,7 +245,7 @@ func spawn(hero: HeroDef, team: int, pos: Vector3) -> SandboxPiece:
 	p.body.setup("%s#%d" % [hero.id, _next_id], hero.wt, world)
 	_next_id += 1
 	p.view = BallView.new()
-	p.view.configure(hero.ball_color, hero.ball_accent, Palette.team(team), db.emblem(hero.set_code), db.sprite(hero))
+	p.view.configure(hero.ball_color, hero.ball_accent, Palette.team(team), db.emblem(hero.set_code), db.sprite(hero), hero.color_name)
 	p.view.set_radius(p.body.radius())
 	p.body.add_child(p.view)
 	_balls.add_child(p.body)
