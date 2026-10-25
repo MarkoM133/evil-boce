@@ -80,109 +80,203 @@ func _ready() -> void:
 
 # --- tiles (mockup M7) ----------------------------------------------------------------------
 
-## A hub like a mobile game's: a thin hero strip, the logo and Continue on top, two big tiles
-## (Play, Online) with hero art, a row of small ones, Exit in the corner.
+## A hub like a mobile game's: a thin hero strip, the logo and what is new in the cards on top,
+## two big tiles with the heroes' pixel figures (Play: two face off; Online: a crew; Continue
+## takes half of Play when a match waits), a row of small tiles, Exit in the corner.
 func _build_tiles(logo: Texture2D) -> void:
 	var strip := HeroStrip.new()
 	strip.setup(db)
 	strip.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	strip.custom_minimum_size = Vector2(0, 70)
+	strip.custom_minimum_size = Vector2(0, 64)
 	add_child(strip)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 80)
-	margin.add_theme_constant_override("margin_right", 80)
-	margin.add_theme_constant_override("margin_top", 88)
-	margin.add_theme_constant_override("margin_bottom", 60)
+	margin.add_theme_constant_override("margin_left", 140)
+	margin.add_theme_constant_override("margin_right", 140)
+	margin.add_theme_constant_override("margin_top", 84)
+	margin.add_theme_constant_override("margin_bottom", 74)
 	add_child(margin)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 14)
+	col.add_theme_constant_override("separation", 12)
 	margin.add_child(col)
 
 	var head := HBoxContainer.new()
-	head.custom_minimum_size = Vector2(0, 120)
+	head.custom_minimum_size = Vector2(0, 104)
+	head.add_theme_constant_override("separation", 16)
 	col.add_child(head)
 	if logo != null:
 		var img := TextureRect.new()
 		img.texture = logo
 		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		img.custom_minimum_size = Vector2(150, 120)
+		img.custom_minimum_size = Vector2(130, 104)
 		head.add_child(img)
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(gap)
-	if ReplayStore.has_current():
-		var rec: MatchRecord = ReplayStore.load_current()
-		var cont := MenuTile.new()
-		cont.title = "CONTINUE"
-		cont.subtitle = ("%s  ·  turn %d" % [rec.title(), rec.state_at(rec.frame_count() - 1).turn]) if rec != null and rec.frame_count() > 0 else "Back to the match you left"
-		cont.color = Palette.GOLD
-		cont.title_color = Color.BLACK
-		cont.title_size = 40
-		cont.custom_minimum_size = Vector2(460, 100)
-		cont.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		cont.pressed.connect(_on_pressed.bind("continue"))
-		head.add_child(cont)
+	var news: Control = _news()
+	if news != null:
+		head.add_child(news)
 
+	# Heroes for the figures: Play shows two of different sets facing off, Online a crew.
+	var with_sprite: Array[HeroDef] = []
+	for h: HeroDef in _heroes:
+		if db.sprite(h) != null:
+			with_sprite.append(h)
 	var big := HBoxContainer.new()
-	big.add_theme_constant_override("separation", 14)
+	big.add_theme_constant_override("separation", 12)
 	big.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(big)
-	var art_ids: Array[String] = []
-	for h: HeroDef in _heroes:
-		art_ids.append(h.id)
-	var play: MenuTile = _tile(big, "PLAY", "Against the bot, or two players on this computer", Palette.ACCENT.darkened(0.35), 96, "play",
-		art_ids[0] if art_ids.size() > 0 else "")
-	play.size_flags_stretch_ratio = 1.6
-	_tile(big, "ONLINE", "Host or join over Tailscale", Color("1a3d99"), 80, "online", art_ids[1] if art_ids.size() > 1 else "")
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 12)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.size_flags_stretch_ratio = 1.5
+	big.add_child(left)
+	var current: MatchRecord = ReplayStore.load_current() if ReplayStore.has_current() else null
+	if current != null and current.frame_count() > 0:
+		var cont: MenuTile = _tile(left, "CONTINUE", "%s  ·  turn %d" % [current.title(), current.state_at(current.frame_count() - 1).turn],
+			Palette.GOLD.darkened(0.15), 60, "continue", _sprites_of(current))
+		cont.title_color = Color.BLACK
+		cont.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var pair: Array[HeroDef] = _face_off(with_sprite)
+	var pair_art: Array[Texture2D] = []
+	for h: HeroDef in pair:
+		pair_art.append(db.sprite(h))
+	var play: MenuTile = _tile(left, "PLAY", "Against the bot, or two players on this computer", Palette.ACCENT.darkened(0.2),
+		84 if current == null else 60, "play", pair_art)
+	play.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# Online: three others.
+	var crew: Array[Texture2D] = []
+	for h: HeroDef in with_sprite:
+		if crew.size() < 3 and not pair.has(h):
+			crew.append(db.sprite(h))
+	_tile(big, "ONLINE", "Host or join over Tailscale", Color("1d4fd1").darkened(0.25), 70, "online", crew)
 
 	var small := HBoxContainer.new()
-	small.add_theme_constant_override("separation", 14)
-	small.custom_minimum_size = Vector2(0, 120)
+	small.add_theme_constant_override("separation", 12)
+	small.custom_minimum_size = Vector2(0, 96)
 	col.add_child(small)
 	var replays: int = ReplayStore.list_replays().size()
 	var decks: int = DeckStore.load_all(db.root_dir).size() if db.is_ok() else 0
-	_tile(small, "SANDBOX", "Throw balls around, try terrain", Palette.PANEL_SOLID, 36, "sandbox")
-	_tile(small, "REPLAYS", "%d saved" % replays if replays > 0 else "None yet", Palette.PANEL_SOLID, 36, "replays")
-	_tile(small, "DECKS", "%d deck%s" % [decks, "" if decks == 1 else "s"] if decks > 0 else "Deck codes", Palette.PANEL_SOLID, 36, "decks")
-	_tile(small, "SETTINGS", "Display, sound, keys", Palette.PANEL_SOLID, 36, "settings")
+	_tile(small, "SANDBOX", "Throw balls around, try terrain", Palette.PANEL_SOLID, 32, "sandbox")
+	_tile(small, "REPLAYS", "%d saved" % replays if replays > 0 else "None yet", Palette.PANEL_SOLID, 32, "replays")
+	_tile(small, "DECKS", "%d deck%s" % [decks, "" if decks == 1 else "s"] if decks > 0 else "Deck codes", Palette.PANEL_SOLID, 32, "decks")
+	_tile(small, "SETTINGS", "Display, sound, keys", Palette.PANEL_SOLID, 32, "settings")
 
 	var exit := Button.new()
 	exit.text = "EXIT"
 	exit.theme_type_variation = &"Ghost"
-	exit.add_theme_font_size_override("font_size", 24)
+	exit.add_theme_font_size_override("font_size", 22)
 	exit.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	exit.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	exit.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	exit.position = Vector2(-80, -56)
+	exit.position = Vector2(-140, -60)
 	exit.pressed.connect(_on_pressed.bind("exit"))
 	add_child(exit)
 	# Tiles come in one after another.
 	var i: int = 0
-	for row: HBoxContainer in [big, small]:
+	for row: Container in [left, big, small]:
 		for c: Node in row.get_children():
+			if not c is MenuTile:
+				continue
 			var t := c as Control
 			t.modulate.a = 0.0
 			t.create_tween().tween_property(t, "modulate:a", 1.0, 0.25).set_delay(0.06 * i + 0.1)
 			i += 1
 
 
-func _tile(parent: Control, title: String, subtitle: String, color: Color, size: int, action: String, art_id: String = "") -> MenuTile:
+func _tile(parent: Control, title: String, subtitle: String, color: Color, size: int, action: String,
+		figures: Array[Texture2D] = []) -> MenuTile:
 	var t := MenuTile.new()
 	t.title = title
 	t.subtitle = subtitle
 	t.color = color
 	t.title_size = size
+	t.figures = figures
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	if not art_id.is_empty():
-		t.art = db.large(art_id)
-		if t.art == null:
-			t.art = db.thumb(art_id)
-		t.region = _art_region(t.art)
 	t.pressed.connect(_on_pressed.bind(action))
 	parent.add_child(t)
 	return t
+
+
+## Two heroes from different sets (One Piece against JoJo, when there are both).
+func _face_off(heroes: Array[HeroDef]) -> Array[HeroDef]:
+	var out: Array[HeroDef] = []
+	if heroes.is_empty():
+		return out
+	out.append(heroes[0])
+	for h: HeroDef in heroes.slice(1):
+		if h.set_code != heroes[0].set_code:
+			out.append(h)
+			return out
+	if heroes.size() > 1:
+		out.append(heroes[1])
+	return out
+
+
+## The active heroes of the match waiting to be continued: player 1's first, the other's first.
+func _sprites_of(rec: MatchRecord) -> Array[Texture2D]:
+	var out: Array[Texture2D] = []
+	for p: Dictionary in rec.players:
+		var ids: Array = JsonUtil.as_array(p.get("heroes", []))
+		if ids.is_empty():
+			continue
+		for h: HeroDef in db.heroes:
+			if h.id == str(ids[0]) and db.sprite(h) != null:
+				out.append(db.sprite(h))
+	return out
+
+
+## What is new in the cards (data/changelog.json, written by the web app on Publish): the
+## latest version, how many cards came and changed, a few names. Null without a changelog.
+func _news() -> Control:
+	if not db.is_ok():
+		return null
+	var path: String = db.data_dir().path_join("changelog.json")
+	if not FileAccess.file_exists(path):
+		return null
+	var entries: Array = JsonUtil.as_array(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(path))).get("entries", []))
+	if entries.is_empty():
+		return null
+	var last: Dictionary = {}
+	for e: Variant in entries:
+		var d: Dictionary = JsonUtil.as_dict(e)
+		if last.is_empty() or JsonUtil.as_int(d.get("version", 0)) > JsonUtil.as_int(last.get("version", 0)):
+			last = d
+	var counts: Dictionary = {}
+	var names := PackedStringArray()
+	for c: Variant in JsonUtil.as_array(last.get("cards", [])):
+		var cd: Dictionary = JsonUtil.as_dict(c)
+		var kind: String = str(cd.get("kind", "changed"))
+		counts[kind] = JsonUtil.as_int(counts.get(kind, 0)) + 1
+		if names.size() < 4 and kind != "deleted":
+			names.append(str(cd.get("name", "")))
+	var panel := PanelContainer.new()
+	var sb: StyleBoxFlat = UiTheme.box(Palette.PANEL_SOLID, 0, Color(0, 0, 0, 0), 22, 12)
+	sb.skew = Vector2(UiTheme.SKEW * 0.5, 0)
+	sb.border_color = Palette.GOLD
+	sb.border_width_left = 4
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.custom_minimum_size = Vector2(480, 0)
+	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 2)
+	panel.add_child(v)
+	var date: String = str(last.get("date", "")).substr(0, 10)
+	v.add_child(UiTheme.label("WHAT'S NEW  ·  CARDS v%d  ·  %s" % [JsonUtil.as_int(last.get("version", 0)), date], 14, Palette.GOLD))
+	var parts := PackedStringArray()
+	for kind: String in ["new", "changed", "deleted"]:
+		if counts.has(kind):
+			parts.append("%d %s" % [JsonUtil.as_int(counts[kind]), kind])
+	v.add_child(UiTheme.label(", ".join(parts).to_upper(), 26))
+	var list := Label.new()
+	list.text = ", ".join(names) + ("…" if JsonUtil.as_array(last.get("cards", [])).size() > names.size() else "")
+	list.add_theme_color_override("font_color", Palette.MUTED)
+	list.add_theme_font_size_override("font_size", 13)
+	list.clip_text = true
+	list.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	v.add_child(list)
+	return panel
 
 
 # --- featured hero (mockup M5) --------------------------------------------------------------

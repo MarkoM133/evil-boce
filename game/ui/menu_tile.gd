@@ -1,42 +1,107 @@
 class_name MenuTile
 extends Control
-## A big slanted tile for the tile-hub main menu (mockup M7): optional hero art under a colour
-## wash, a title in the heavy italic and a line under it. Hover lifts and brightens it; a click
-## says `pressed`.
+## A big slanted tile for the tile-hub main menu (mockup M7): a colour ground with diagonal
+## speed lines (or card art under a colour wash), the heroes' pixel figures standing in it, a
+## title in the heavy italic and a line under it. Hover lifts and outlines it; a click says
+## `pressed`.
 
 signal pressed
 
 var title: String = ""
 var subtitle: String = ""
+## Card art under the wash; leave empty for the plain ground with speed lines.
 var art: Texture2D
 var region: Rect2 = Rect2(0, 0, 1, 1)
-## The wash over the art (strong at the bottom left, light at the top right).
 var color: Color = Palette.PANEL_SOLID
 var title_size: int = 64
 var title_color: Color = Palette.FG
 var cut: float = 18.0
+## Pixel figures (sprite standees) standing on the tile's floor, left to right; every second
+## one faces the other way, so two of them face off.
+var figures: Array[Texture2D] = []
+## Figure height as a share of the tile's height.
+var figure_size: float = 0.86
 var _hover: bool = false
+var _title_l: Label
+var _sub_l: Label
+var _figure_nodes: Array[TextureRect] = []
 
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	focus_mode = Control.FOCUS_ALL
+	clip_contents = true
 
 
 func _ready() -> void:
 	pivot_offset = size * 0.5
-	resized.connect(func() -> void: pivot_offset = size * 0.5)
+	for tex: Texture2D in figures:
+		var f := TextureRect.new()
+		f.texture = tex
+		f.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		f.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+		f.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		f.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		f.flip_h = _figure_nodes.size() % 2 == 1
+		add_child(f)
+		_figure_nodes.append(f)
+	var text := VBoxContainer.new()
+	text.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	text.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text.add_theme_constant_override("separation", 0)
+	add_child(text)
+	_title_l = UiTheme.label(title, title_size, title_color)
+	_title_l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+	_title_l.add_theme_constant_override("outline_size", 8 if title_color == Palette.FG else 0)
+	text.add_child(_title_l)
+	if not subtitle.is_empty():
+		_sub_l = Label.new()
+		_sub_l.text = subtitle
+		_sub_l.add_theme_font_size_override("font_size", 14 if title_size > 40 else 12)
+		var sub_color: Color = Color(title_color, 0.85) if title_color != Palette.FG or art != null or not figures.is_empty() else Palette.MUTED
+		_sub_l.add_theme_color_override("font_color", sub_color)
+		text.add_child(_sub_l)
+	_layout(text)
+	resized.connect(func() -> void:
+		pivot_offset = size * 0.5
+		_layout(text))
 	mouse_entered.connect(func() -> void: _set_hover(true))
 	mouse_exited.connect(func() -> void: _set_hover(false))
 	focus_entered.connect(func() -> void: _set_hover(true))
 	focus_exited.connect(func() -> void: _set_hover(false))
 
 
+func _layout(text: VBoxContainer) -> void:
+	text.position = Vector2(cut + 20.0, size.y - text.get_combined_minimum_size().y - 14.0)
+	var n: int = _figure_nodes.size()
+	if n == 0:
+		return
+	# A tall tile has the crew stand above its title; a wide one on the floor, right of it.
+	var tall: bool = size.y > size.x * 0.75
+	var floor_y: float = size.y - text.get_combined_minimum_size().y - 24.0 if tall else size.y + 6.0
+	# As tall as the tile allows, but a crew must fit across the tile.
+	var w: float = minf(floor_y * figure_size * 175.0 / 206.0, size.x * (0.92 if tall else 0.8) / (n * 0.78 + 0.22))
+	var h: float = w * 206.0 / 175.0
+	var span: float = w * (n * 0.78 + 0.22)
+	var x0: float = (size.x - span) * 0.5 if tall else size.x - span - cut - 10.0
+	for i: int in n:
+		var f: TextureRect = _figure_nodes[i]
+		f.size = Vector2(w, h)
+		f.position = Vector2(x0 + i * (span - w) / maxf(float(n - 1), 1.0), floor_y - h)
+		f.set_meta("rest_y", f.position.y)
+
+
 func _set_hover(on: bool) -> void:
 	_hover = on
 	var t: Tween = create_tween()
-	t.tween_property(self, "scale", Vector2.ONE * (1.03 if on else 1.0), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(self, "scale", Vector2.ONE * (1.025 if on else 1.0), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	for i: int in _figure_nodes.size():
+		var f: TextureRect = _figure_nodes[i]
+		var ft: Tween = f.create_tween()
+		var rest: float = JsonUtil.as_float(f.get_meta("rest_y", f.position.y))
+		ft.tween_property(f, "position:y", rest - (10.0 if on else 0.0), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	queue_redraw()
 
 
@@ -59,25 +124,29 @@ func _draw() -> void:
 			uvs.append(Vector2(region.position.x + region.size.x * p.x / w, region.position.y + region.size.y * p.y / h))
 		var tint := Color(1, 1, 1) if _hover else Color(0.8, 0.8, 0.8)
 		draw_polygon(pts, PackedColorArray([tint, tint, tint, tint]), uvs, art)
-		# Colour wash: strong at the bottom left where the title is, light at the top right.
-		var strong := Color(color, 0.92)
-		var light := Color(color, 0.25)
-		draw_polygon(pts, PackedColorArray([Color(color, 0.6), light, Color(color, 0.6), strong]))
-	else:
+		draw_polygon(pts, PackedColorArray([Color(color, 0.6), Color(color, 0.25), Color(color, 0.6), Color(color, 0.92)]))
+	elif figures.is_empty():
 		draw_colored_polygon(pts, color.lightened(0.06) if _hover else color)
+	else:
+		# A lit ground: lighter top right, darker bottom left, with diagonal speed lines.
+		var top: Color = color.lightened(0.25 if _hover else 0.15)
+		var low: Color = color.darkened(0.45)
+		draw_polygon(pts, PackedColorArray([color, top, color, low]))
+		var lines := Color(1, 1, 1, 0.07)
+		var step: float = 46.0
+		var x: float = -h
+		while x < w:
+			draw_line(Vector2(x, h), Vector2(x + h * 0.7, 0), lines, 10.0)
+			x += step
+		# A soft floor under the figures.
+		draw_rect(Rect2(0, h - 26, w, 26), Color(0, 0, 0, 0.25))
+		# The lines and the floor ran past the slanted ends: cut them back to the background.
+		draw_colored_polygon(PackedVector2Array([Vector2(0, 0), Vector2(cut, 0), Vector2(0, h)]), Palette.BG)
+		draw_colored_polygon(PackedVector2Array([Vector2(w, 0), Vector2(w, h), Vector2(w - cut, h)]), Palette.BG)
 	if _hover:
 		var loop: PackedVector2Array = pts.duplicate()
 		loop.append(pts[0])
 		draw_polyline(loop, Palette.GOLD, 3.0, true)
-	var font: Font = UiTheme.display_heavy()
-	var x: float = cut + 22.0
-	var sub_size: int = 15 if title_size > 40 else 13
-	var base: float = h - 18.0 - (sub_size + 8.0 if not subtitle.is_empty() else 0.0)
-	draw_string_outline(font, Vector2(x, base), title, HORIZONTAL_ALIGNMENT_LEFT, w - x, title_size, 8, Color(0, 0, 0, 0.45))
-	draw_string(font, Vector2(x, base), title, HORIZONTAL_ALIGNMENT_LEFT, w - x, title_size, title_color)
-	if not subtitle.is_empty():
-		var sub_color: Color = Color(title_color, 0.8) if art != null or title_color != Palette.FG else Palette.MUTED
-		draw_string(UiTheme.body_font(), Vector2(x - 4.0, h - 18.0), subtitle, HORIZONTAL_ALIGNMENT_LEFT, w - x, sub_size, sub_color)
 
 
 func _notification(what: int) -> void:

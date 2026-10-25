@@ -111,6 +111,15 @@ static func max_fps() -> int:
 	return JsonUtil.as_int(_config().get_value("display", "max_fps", 0))
 
 
+## Size of the whole interface (menus and HUD) against the 1600 × 900 design: 0.8 … 1.1.
+const UI_SCALES: Array[float] = [0.8, 0.9, 1.0, 1.1]
+
+
+static func ui_scale() -> float:
+	var v: float = JsonUtil.as_float(_config().get_value("display", "ui_scale", 1.0), 1.0)
+	return clampf(v, 0.7, 1.3)
+
+
 static func quality() -> String:
 	var q: String = str(_config().get_value("display", "quality", "medium"))
 	return q if QUALITIES.has(q) else "medium"
@@ -181,6 +190,7 @@ static func apply(tree: SceneTree, force: bool = false) -> void:
 			size = Vector2i(mini(size.x, screen.size.x), mini(size.y, screen.size.y))
 			DisplayServer.window_set_size(size)
 			DisplayServer.window_set_position(screen.position + (screen.size - size) / 2)
+	tree.root.content_scale_factor = ui_scale()
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync() else DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = max_fps()
 	match quality():

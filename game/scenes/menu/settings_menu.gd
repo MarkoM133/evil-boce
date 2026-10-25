@@ -47,6 +47,15 @@ func _ready() -> void:
 	row.add_child(name_edit)
 
 	_header(col, "DISPLAY")
+	var scales: Array[String] = []
+	for s: float in GameSettings.UI_SCALES:
+		scales.append("%d %%" % roundi(s * 100.0))
+	var near: int = 0
+	for i: int in GameSettings.UI_SCALES.size():
+		if absf(GameSettings.UI_SCALES[i] - GameSettings.ui_scale()) < absf(GameSettings.UI_SCALES[near] - GameSettings.ui_scale()):
+			near = i
+	var ui := _option(col, "Interface size", scales, near)
+	ui.item_selected.connect(func(i: int) -> void: _store("display", "ui_scale", GameSettings.UI_SCALES[i]))
 	var layout := _option(col, "Main menu", ["Featured hero", "Tiles"], 1 if GameSettings.menu_layout() == "tiles" else 0)
 	layout.item_selected.connect(func(i: int) -> void: _store("display", "menu_layout", "tiles" if i == 1 else "featured"))
 	var mode := _option(col, "Window", ["Windowed", "Fullscreen"], 1 if GameSettings.fullscreen() else 0)
