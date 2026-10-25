@@ -12,6 +12,7 @@ const BUTTON := Color("2d2620")
 const BUTTON_HOVER := Color("3a3029")
 const ACCENT := Color("d8322a")
 const GOLD := Color("ffd23f")
+const HEAL := Color("7ee08a")
 
 const TEAM_COLORS: Array[Color] = [Color("2f7bff"), Color("d8322a")]
 const TEAM_NAMES: Array[String] = ["Blue", "Red"]

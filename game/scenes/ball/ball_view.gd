@@ -6,6 +6,8 @@ extends Node3D
 ## Built at unit radius; set_radius() scales it.
 
 signal state_changed(state: State)
+## The KO animation is over; the owner hides the ball.
+signal ko_finished
 
 enum State { CLOSED, OPENING, OPEN, CLOSING }
 
@@ -18,6 +20,11 @@ const CLOSE_TIME_FAST: float = 0.2
 ## Standee height and maximum width, in ball radii.
 const FIGURE_HEIGHT: float = 3.0
 const FIGURE_MAX_WIDTH: float = 3.6
+const HIT_TINT := Color(1.0, 0.32, 0.28)
+const KO_TIME: float = 0.55
+## Idle sway of an open standee: bob height (radii) and speed.
+const IDLE_BOB: float = 0.05
+const IDLE_SPEED: float = 2.2
 
 static var _fallback_emblem: Texture2D
 static var _flash_texture: Texture2D
@@ -50,6 +57,11 @@ var _team_color: Color = Color.WHITE
 var _glow: bool = false
 var _glow_t: float = 0.0
 var _tween: Tween
+## One-off effects (hit, landing, KO) run on their own tweens, so they never cut the open /
+## close animation short.
+var _fx_tween: Tween
+var _shake_tween: Tween
+var _idle_t: float = randf() * TAU
 
 
 func _init() -> void:
@@ -173,6 +185,98 @@ func _process(delta: float) -> void:
 	if _glow:
 		_glow_t += delta
 		_seam_mat.emission_energy_multiplier = 1.1 + 0.7 * sin(_glow_t * 4.0)
+	if state == State.OPEN:
+		# Idle: the standee breathes a little, each ball on its own beat.
+		_idle_t += delta
+		var k: float = 0.5 + 0.5 * sin(_idle_t * IDLE_SPEED)
+		_figure.position.y = k * IDLE_BOB * radius
+		_figure.scale = Vector3(1.0 - 0.012 * k, 1.0 + 0.02 * k, 1.0)
+
+
+## Damage taken: red flash on the standee, a short shake and the number rising above.
+func hit(amount: int) -> void:
+	if _shake_tween != null and _shake_tween.is_valid():
+		_shake_tween.kill()
+	_figure.modulate = HIT_TINT
+	_top_mat.emission_enabled = true
+	_top_mat.emission = HIT_TINT
+	_top_mat.emission_energy_multiplier = 1.4
+	_shake_tween = create_tween()
+	_shake_tween.tween_property(_figure, "modulate", Color.WHITE, 0.4)
+	_shake_tween.parallel().tween_property(_top_mat, "emission_energy_multiplier", 0.0, 0.4)
+	var shake: Tween = create_tween()
+	for i: int in 6:
+		var side: float = 1.0 if i % 2 == 0 else -1.0
+		shake.tween_property(_body, "position:x", side * 0.12 * radius * (1.0 - i / 6.0), 0.035)
+	shake.tween_property(_body, "position:x", 0.0, 0.035)
+	if amount > 0:
+		float_text("-%d" % amount, HIT_TINT)
+
+
+## A number or word that rises from the ball and fades (damage, "RING-OUT", heals).
+func float_text(text: String, color: Color) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.font = UiTheme.display_bold()
+	l.font_size = 96
+	l.outline_size = 18
+	l.modulate = color
+	l.outline_modulate = Color(0, 0, 0, 0.85)
+	l.pixel_size = 0.0045 * maxf(radius / 0.6, 0.8)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.render_priority = 10
+	l.position = Vector3(0, radius * (FIGURE_HEIGHT + 0.6 if is_open() else 1.8), 0)
+	add_child(l)
+	var t: Tween = l.create_tween()
+	t.tween_property(l, "position:y", l.position.y + radius * 1.6, 0.9).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(l, "modulate:a", 0.0, 0.5).set_delay(0.45)
+	t.parallel().tween_property(l, "outline_modulate:a", 0.0, 0.5).set_delay(0.45)
+	t.tween_callback(l.queue_free)
+
+
+## Knockback landing: a quick squash and spring back.
+func land() -> void:
+	if state == State.CLOSING:
+		return
+	_fx_kill()
+	_fx_tween = create_tween()
+	_body.scale = Vector3(1.18, 0.78, 1.18) * radius
+	_fx_tween.tween_property(_body, "scale", Vector3.ONE * radius, 0.32) 		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+
+## KO: the standee tips over and sinks, the ball shrinks into a grey puff; then ko_finished.
+func ko() -> void:
+	_fx_kill()
+	_glow = false
+	_seam_mat.emission_energy_multiplier = 0.0
+	_burst_mat.albedo_color = Color(0.62, 0.6, 0.58)
+	_burst.restart()
+	_burst.emitting = true
+	_fx_tween = create_tween()
+	if _figure_pivot.visible:
+		_fx_tween.tween_property(_figure_pivot, "rotation:z", -PI * 0.5, KO_TIME * 0.5) 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		_fx_tween.parallel().tween_property(_figure, "modulate", Color(0.4, 0.4, 0.4, 0.0), KO_TIME * 0.6)
+	_fx_tween.parallel().tween_property(_body, "scale", Vector3.ONE * radius * 0.001, KO_TIME) 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	_fx_tween.parallel().tween_property(_ground_ring, "scale", Vector3.ONE * radius * 0.001, KO_TIME)
+	_fx_tween.tween_callback(func() -> void: ko_finished.emit())
+
+
+## Undoes ko() (a replay stepping back over a KO).
+func revive() -> void:
+	_fx_kill()
+	_body.scale = Vector3.ONE * radius
+	_ground_ring.scale = Vector3.ONE * radius
+	_figure_pivot.rotation = Vector3.ZERO
+	_figure.modulate = Color.WHITE
+	_burst_mat.albedo_color = _hero_color
+	close_now()
+
+
+func _fx_kill() -> void:
+	if _fx_tween != null and _fx_tween.is_valid():
+		_fx_tween.kill()
+	_fx_tween = null
 
 
 func _set_state(s: State) -> void:

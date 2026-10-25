@@ -26,6 +26,13 @@ var net_role: String = ""
 var net_host: NetHost
 var net_client: NetClient
 var _ball_tick: float = 0.0
+## Last HP drawn per hero, and the heroes shown as KO, so _sync can animate what changed.
+var _hp: Dictionary[String, int] = {}
+var _ko_shown: Dictionary[String, bool] = {}
+## True while a redraw must not animate (a replay jumping frames).
+var _quiet: bool = false
+## Slow motion already ran in this roll.
+var _slowed: bool = false
 ## A guest's copy of the finished match, sent by the host when it ends.
 var _net_record: MatchRecord
 var arena: Arena
@@ -492,18 +499,41 @@ func _sync() -> void:
 func _sync_hero(h: HeroState) -> void:
 	var b: BallBody = _bodies[h.id]
 	var v: BallView = _views[h.id]
+	var first: bool = not _hp.has(h.id)
+	var was: int = _hp.get(h.id, h.hp)
+	_hp[h.id] = h.hp
+	var animate: bool = not first and not _quiet
 	if h.is_ko():
-		if b.visible:
-			b.visible = false
+		if not _ko_shown.has(h.id):
+			_ko_shown[h.id] = true
 			b.collision_layer = 0
 			b.freeze = true
 			world.bodies.erase(b)
+			if animate:
+				if h.hp < was:
+					v.hit(was - h.hp)
+				v.ko()
+				v.ko_finished.connect(func() -> void: b.visible = not _ko_shown.has(h.id), CONNECT_ONE_SHOT)
+			else:
+				b.visible = false
 		return
+	if _ko_shown.has(h.id):
+		# Back from a KO: a replay stepped back over it.
+		_ko_shown.erase(h.id)
+		b.visible = true
+		b.collision_layer = BallBody.LAYER_BALLS
+		world.bodies.append(b)
+		v.revive()
+	if animate and h.hp < was:
+		v.hit(was - h.hp)
+		_hit_stop()
+	elif animate and h.hp > was:
+		v.float_text("+%d" % (h.hp - was), Palette.HEAL)
 	var target: Vector3 = arena.hex_center(h.hex) if h.is_on_map() else _strip_spot(h)
 	var here := Vector3(b.global_position.x, 0, b.global_position.z)
 	if here.distance_to(target) > 0.05:
 		if h.is_on_map() and arena.area_at(b.global_position) == BallWorld.Area.MAP:
-			_slide(b, target)
+			_slide(b, target, v)
 		else:
 			v.close_now()
 			b.place(target)
@@ -514,13 +544,50 @@ func _sync_hero(h: HeroState) -> void:
 		v.close()
 
 
-## Knockback and other rule moves: slide the ball over to its new hex.
-func _slide(b: BallBody, target: Vector3) -> void:
+## Knockback and other rule moves: the ball hops over to its new hex in an arc (higher and
+## longer the farther it goes) and squashes on landing.
+func _slide(b: BallBody, target: Vector3, v: BallView) -> void:
 	b.freeze = true
-	var to := Vector3(target.x, b.global_position.y, target.z)
+	var from: Vector3 = b.global_position
+	var to := Vector3(target.x, from.y, target.z)
+	var dist: float = Vector2(to.x - from.x, to.z - from.z).length()
+	var steps: float = dist / maxf(tuning.hex_size * 1.7, 0.01)
+	var height: float = clampf(0.35 + 0.25 * steps, 0.35, 1.6)
+	var time: float = clampf(0.26 + 0.06 * steps, 0.26, 0.6)
 	var t: Tween = create_tween()
-	t.tween_property(b, "global_position", to, 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	t.tween_callback(func() -> void: b.place(target))
+	t.tween_method(func(k: float) -> void:
+		var p: Vector3 = from.lerp(to, k)
+		p.y += sin(k * PI) * height
+		if v != null:
+			v.roll(p - b.global_position)
+		b.global_position = p, 0.0, 1.0, time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.tween_callback(func() -> void:
+		b.place(target)
+		if v != null:
+			v.land())
+
+
+## Hit-stop: the world freezes for a blink when damage lands (Settings → Effects).
+func _hit_stop() -> void:
+	if not GameSettings.effect("hit_stop") or _runner.is_running():
+		return
+	Engine.time_scale = 0.05
+	await get_tree().create_timer(0.09, true, false, true).timeout
+	Engine.time_scale = 1.0
+
+
+## Slow motion while the first ball of a roll goes over the edge.
+func _slow_mo() -> void:
+	if _slowed or not GameSettings.effect("slow_mo"):
+		return
+	_slowed = true
+	Engine.time_scale = 0.3
+	await get_tree().create_timer(0.75, true, false, true).timeout
+	Engine.time_scale = 1.0
+
+
+func _exit_tree() -> void:
+	Engine.time_scale = 1.0
 
 
 # --- tokens and marks ----------------------------------------------------------
@@ -737,6 +804,7 @@ func _local_decision() -> Dictionary:
 ## Every aim is in: close the balls and throw them all at once.
 func _launch_roll() -> void:
 	_launching = true
+	_slowed = false
 	hud.rolling = true
 	hud.refresh()
 	for slot: int in state.aims:
@@ -785,6 +853,11 @@ func _physics_process(delta: float) -> void:
 				var p: Vector3 = _bodies[id].global_position
 				positions[id] = [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01)]
 			net_host.send_balls(positions)
+	if not _slowed:
+		for b: BallBody in _bodies.values():
+			if b.visible and b.motion == BallBody.Motion.OUT:
+				_slow_mo()
+				break
 	for c: CoreState in state.cores:
 		if c.place != CoreState.ON_FIELD or _picked.has(c.id):
 			continue
@@ -850,7 +923,9 @@ func _show_frame(i: int, animate: bool) -> void:
 	state = _replay.state_at(_frame)
 	hud.state = state
 	_range_key = ""
+	_quiet = not animate or to != from + 1
 	_sync()
+	_quiet = false
 	_replay_bar.show_frame(_frame, _replay.frame_count(), state.turn, state.phase)
 	if _frame >= _replay.frame_count() - 1:
 		_set_playing(false)
@@ -1138,3 +1213,31 @@ func debug_dump() -> void:
 		print("  %-14s zone=%-5s hex=%s hp=%d cores=%d" % [h.id, h.zone, h.hex, h.hp, h.cores.size()])
 	for i: int in range(maxi(0, state.log.size() - 12), state.log.size()):
 		print("  log: ", JSON.stringify(state.log[i]))
+
+
+## Screenshot helpers for the hit / knockback / KO animations. They change the drawn state
+## directly (not through the engine), so use them only in a throwaway match.
+func demo_fx_place() -> void:
+	var mid: Vector2i = arena.hex_at(Vector3.ZERO)
+	var spots: Array[Vector2i] = [mid, mid + Vector2i(2, 0), mid + Vector2i(-1, 2), mid + Vector2i(1, -2)]
+	for i: int in mini(spots.size(), state.heroes.size()):
+		state.heroes[i].zone = HeroState.ZONE_MAP
+		state.heroes[i].hex = spots[i]
+	_sync()
+	cam.focus(arena.hex_center(mid), 11.0)
+
+
+## Hits hero 0, knocks hero 1 three hexes away and knocks out hero 2.
+func demo_fx_hit() -> void:
+	state.heroes[0].hp -= 3
+	state.heroes[1].hex += Vector2i(3, 0)
+	state.heroes[2].hp = 0
+	state.heroes[2].zone = HeroState.ZONE_KO
+	_sync()
+
+
+## Both of the above, 1.2 s apart (screenshot: --call=demo_fx --wait=82 --frames=0).
+func demo_fx() -> void:
+	demo_fx_place()
+	await get_tree().create_timer(1.2).timeout
+	demo_fx_hit()

@@ -126,6 +126,14 @@ static func set_value(section: String, key_: String, value: Variant) -> void:
 	save()
 
 
+## Hit-stop and slow motion (GDD 11 juice); both on unless switched off in Settings.
+const EFFECTS: Array[String] = ["hit_stop", "slow_mo"]
+
+
+static func effect(name: String) -> bool:
+	return JsonUtil.as_bool(_config().get_value("effects", name, true))
+
+
 static func key(action: String) -> Key:
 	var fallback: Key = DEFAULT_KEYS.get(action, KEY_NONE)
 	var k: int = JsonUtil.as_int(_config().get_value("keys", action, int(fallback)), int(fallback))
