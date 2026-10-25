@@ -19,6 +19,8 @@ var cut: float = 18.0
 ## Pixel figures (sprite standees) standing on the tile's floor, left to right; every second
 ## one faces the other way, so two of them face off.
 var figures: Array[Texture2D] = []
+## Two card images side by side, cut apart on a slant (a face-off); overrides `art`.
+var split_art: Array[Texture2D] = []
 ## Figure height as a share of the tile's height.
 var figure_size: float = 0.86
 var _hover: bool = false
@@ -118,7 +120,9 @@ func _draw() -> void:
 	var w: float = size.x
 	var h: float = size.y
 	var pts := PackedVector2Array([Vector2(cut, 0), Vector2(w, 0), Vector2(w - cut, h), Vector2(0, h)])
-	if art != null:
+	if split_art.size() == 2:
+		_draw_split(w, h, pts)
+	elif art != null:
 		var uvs := PackedVector2Array()
 		for p: Vector2 in pts:
 			uvs.append(Vector2(region.position.x + region.size.x * p.x / w, region.position.y + region.size.y * p.y / h))
@@ -147,6 +151,55 @@ func _draw() -> void:
 		var loop: PackedVector2Array = pts.duplicate()
 		loop.append(pts[0])
 		draw_polyline(loop, Palette.GOLD, 3.0, true)
+
+
+## Two card arts meeting on a slanted line, darker at the bottom for the title.
+func _draw_split(w: float, h: float, pts: PackedVector2Array) -> void:
+	var lean: float = 60.0
+	var mid: float = w * 0.5
+	var halves: Array[PackedVector2Array] = [
+		PackedVector2Array([Vector2(cut, 0), Vector2(mid + lean, 0), Vector2(mid - lean, h), Vector2(0, h)]),
+		PackedVector2Array([Vector2(mid + lean, 0), Vector2(w, 0), Vector2(w - cut, h), Vector2(mid - lean, h)]),
+	]
+	var spans: Array[Vector2] = [Vector2(0, mid + lean), Vector2(mid - lean, w)]
+	var tint := Color(1, 1, 1) if _hover else Color(0.82, 0.82, 0.82)
+	for i: int in 2:
+		var tex: Texture2D = split_art[i]
+		var poly: PackedVector2Array = halves[i]
+		var x0: float = spans[i].x
+		var span: float = spans[i].y - spans[i].x
+		if tex == null:
+			draw_colored_polygon(poly, color)
+			continue
+		var r: Rect2 = card_art_region(tex, span / h)
+		var uvs := PackedVector2Array()
+		for p: Vector2 in poly:
+			uvs.append(Vector2(r.position.x + r.size.x * (p.x - x0) / span, r.position.y + r.size.y * p.y / h))
+		draw_polygon(poly, PackedColorArray([tint, tint, tint, tint]), uvs, tex)
+	# Dark at the bottom (the title), a touch of the tile's colour over all.
+	var clear := Color(0, 0, 0, 0)
+	var dark := Color(0, 0, 0, 0.8)
+	draw_polygon(PackedVector2Array([Vector2(cut * 0.4, h * 0.45), Vector2(w - cut * 0.4, h * 0.45), Vector2(w - cut, h), Vector2(0, h)]),
+		PackedColorArray([clear, clear, dark, dark]))
+	draw_polygon(pts, PackedColorArray([Color(color, 0.18), Color(color, 0.05), Color(color, 0.18), Color(color, 0.35)]))
+	# The cut between them.
+	draw_colored_polygon(PackedVector2Array([Vector2(mid + lean - 4, 0), Vector2(mid + lean + 4, 0), Vector2(mid - lean + 4, h),
+		Vector2(mid - lean - 4, h)]), Palette.GOLD)
+
+
+## The art part of a card image cropped to `aspect` (width / height). Landscape hero cards
+## carry the art in a box on their left; portrait cards in their top half.
+static func card_art_region(tex: Texture2D, aspect: float) -> Rect2:
+	var box: Rect2 = Rect2(0.025, 0.07, 0.405, 0.72) if tex.get_width() > tex.get_height() else Rect2(0.06, 0.06, 0.88, 0.48)
+	var px := Vector2(tex.get_width(), tex.get_height())
+	var bw: float = box.size.x * px.x
+	var bh: float = box.size.y * px.y
+	if bw / bh < aspect:
+		# The box is taller than the slot: keep its width, take a band near the top (faces).
+		var nh: float = bw / aspect
+		return Rect2(box.position.x, box.position.y + (bh - nh) * 0.15 / px.y, box.size.x, nh / px.y)
+	var nw: float = bh * aspect
+	return Rect2(box.position.x + (bw - nw) * 0.5 / px.x, box.position.y, nw / px.x, box.size.y)
 
 
 func _notification(what: int) -> void:
