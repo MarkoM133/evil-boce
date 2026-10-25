@@ -18,7 +18,7 @@ const READY: String = "ready"          # {ready: bool}            (lobby)
 # host -> client
 const WELCOME: String = "welcome"      # {slot, name, players: [...], settings}
 const REJECT: String = "reject"        # {reason}
-const LOBBY: String = "lobby"          # {players: [{slot, name, ready, bot, connected}], settings}
+const LOBBY: String = "lobby"          # {players: [{slot, name, ready, bot, connected}], settings, again}
 const START: String = "start"          # {settings, players, seed, cards_version}
 const STATE: String = "state"          # {state: redacted GameState dict}
 const REFUSED: String = "refused"      # {move: Move dict, reason}
@@ -27,17 +27,27 @@ const ROLL: String = "roll"            # {outcome: RollOutcome dict}  (after a r
 const PAUSED: String = "paused"        # {by: slot, name}
 const RESUMED: String = "resumed"      # {}
 const PLAYER: String = "player"        # {slot, name, connected}  (someone came or went)
-const OVER: String = "over"            # {summary}
+const OVER: String = "over"            # {summary, record: the full MatchRecord, nothing is hidden now}
 const PING: String = "ping"            # {} every few seconds, so a dead link shows up
 
 const PLACEHOLDER_CARD: String = "?"
+## Packets longer than this go out gzipped, behind a 0x01 byte (JSON always starts with "{").
+const COMPRESS_OVER: int = 8192
+const COMPRESSED: int = 1
 
 
 static func encode(msg: Dictionary) -> PackedByteArray:
-	return JSON.stringify(msg).to_utf8_buffer()
+	var raw: PackedByteArray = JSON.stringify(msg).to_utf8_buffer()
+	if raw.size() <= COMPRESS_OVER:
+		return raw
+	var out := PackedByteArray([COMPRESSED])
+	out.append_array(raw.compress(FileAccess.COMPRESSION_GZIP))
+	return out
 
 
 static func decode(bytes: PackedByteArray) -> Dictionary:
+	if not bytes.is_empty() and bytes[0] == COMPRESSED:
+		bytes = bytes.slice(1).decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
 	return JsonUtil.as_dict(JSON.parse_string(bytes.get_string_from_utf8()))
 
 

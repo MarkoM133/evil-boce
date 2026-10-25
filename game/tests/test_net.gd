@@ -152,3 +152,84 @@ func test_reconnect_keeps_the_seat_and_pauses_meanwhile() -> void:
 	assert_eq(host.set_paused(false, 0), "")
 	await _settle(0.4)
 	assert_false(client.paused)
+
+
+func test_big_packets_are_gzipped_and_come_back_the_same() -> void:
+	var list: Array = []
+	for i: int in 2000:
+		list.append({"id": "p0:OP1-%03d" % (i % 999), "n": i})
+	var big: Dictionary = {"t": "x", "list": list}
+	var bytes: PackedByteArray = NetProtocol.encode(big)
+	assert_eq(bytes[0], NetProtocol.COMPRESSED)
+	assert_lt(bytes.size(), JSON.stringify(big).length() / 4)
+	assert_eq(JSON.stringify(NetProtocol.decode(bytes)), JSON.stringify(JsonUtil.as_dict(JSON.parse_string(JSON.stringify(big)))))
+	var small: PackedByteArray = NetProtocol.encode({"t": "ping"})
+	assert_eq(small.get_string_from_utf8(), "{\"t\":\"ping\"}")
+
+
+func test_a_guest_cannot_take_the_hosts_name() -> void:
+	_start_host()
+	_start_client("Host")
+	await _settle()
+	assert_true(rejected.begins_with("the host is called Host too"), rejected)
+
+
+func test_settings_unready_the_guest_and_the_end_brings_the_record_and_the_lobby() -> void:
+	_start_host()
+	host.set_my_deck(_deck(true))
+	_start_client("Guest")
+	var over: Array = []
+	var back: Array = []
+	client.match_over.connect(func(_s: Dictionary, r: MatchRecord) -> void: over.append(r))
+	client.back_in_lobby.connect(func() -> void: back.append(true))
+	await _settle()
+	client.send_deck(_deck(false))
+	client.send_ready(true)
+	await _settle(0.4)
+	assert_eq(host.can_start(), "")
+	var s: MatchSettings = MatchSettings.standard()
+	s.map_size = 17
+	s.manual_setup = false
+	host.set_settings(s)
+	await _settle(0.4)
+	assert_eq(host.can_start(), "Guest is not ready", "new settings: ready again")
+	assert_eq(JsonUtil.as_int(client.settings.get("map_size", 0)), 17)
+	client.send_ready(true)
+	await _settle(0.4)
+	assert_eq(host.start(3), "")
+	await _settle()
+	client.send_move(Move.make(Move.SURRENDER, 1))
+	await _settle()
+	assert_true(host.state().is_over())
+	assert_eq(over.size(), 1)
+	var rec: MatchRecord = over[0]
+	assert_not_null(rec, "the guest gets the whole record")
+	assert_eq(rec.frame_count(), host.recorder.record.frame_count())
+	# Nothing is hidden in it any more: the host's hand is real.
+	assert_false(rec.state_at(0).player(0).hand.has(NetProtocol.PLACEHOLDER_CARD))
+	host.back_to_lobby()
+	await _settle(0.4)
+	assert_eq(back.size(), 1)
+	assert_false(client.started)
+	assert_false(host.started)
+	assert_eq(host.can_start(), "Guest is not ready")
+	assert_eq(client.slot, 1)
+
+
+func test_a_bot_seat_can_be_freed_for_a_player() -> void:
+	_start_host()
+	host.set_my_deck(_deck(true))
+	assert_eq(host.add_bot("easy", _deck(false)), "")
+	assert_eq(host.add_bot("easy", _deck(false)), "the table is full")
+	_start_client("Guest")
+	await _settle()
+	assert_true(rejected.begins_with("the table is full"), rejected)
+	client.queue_free()
+	client = null
+	rejected = ""
+	host.remove_bots()
+	assert_false(host.has_bot())
+	_start_client("Guest")
+	await _settle()
+	assert_eq(rejected, "")
+	assert_eq(welcomed_slot, 1)

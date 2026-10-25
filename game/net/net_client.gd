@@ -14,7 +14,9 @@ signal balls_received(positions: Dictionary)
 signal roll_received(outcome: RollOutcome)
 signal paused_changed(paused: bool, by: int, name: String)
 signal player_changed(slot: int, name: String, connected: bool)
-signal match_over(summary: Dictionary)
+signal match_over(summary: Dictionary, record: MatchRecord)
+## The host took everyone back to the lobby after a match.
+signal back_in_lobby
 signal disconnected(reason: String)
 
 var link: NetLink
@@ -71,6 +73,7 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 	match str(msg.get("t", "")):
 		NetProtocol.WELCOME:
 			slot = JsonUtil.as_int(msg.get("slot", -1), -1)
+			my_name = str(msg.get("name", my_name))
 			players = JsonUtil.as_array(msg.get("players", []))
 			settings = JsonUtil.as_dict(msg.get("settings", {}))
 			welcomed.emit(slot)
@@ -79,6 +82,14 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 		NetProtocol.LOBBY:
 			players = JsonUtil.as_array(msg.get("players", []))
 			settings = JsonUtil.as_dict(msg.get("settings", {}))
+			var slot_now: int = _my_slot()
+			if slot_now >= 0:
+				slot = slot_now
+			if started and JsonUtil.as_bool(msg.get("again", false)):
+				started = false
+				paused = false
+				state = null
+				back_in_lobby.emit()
 			lobby_changed.emit(players, settings)
 		NetProtocol.START:
 			started = true
@@ -102,4 +113,14 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 		NetProtocol.PLAYER:
 			player_changed.emit(JsonUtil.as_int(msg.get("slot", -1), -1), str(msg.get("name", "")), JsonUtil.as_bool(msg.get("connected", false)))
 		NetProtocol.OVER:
-			match_over.emit(JsonUtil.as_dict(msg.get("summary", {})))
+			var rec: Dictionary = JsonUtil.as_dict(msg.get("record", {}))
+			match_over.emit(JsonUtil.as_dict(msg.get("summary", {})), MatchRecord.from_dict(rec) if not rec.is_empty() else null)
+
+
+## Seats may be renumbered when the host goes back to the lobby; find mine by name.
+func _my_slot() -> int:
+	for p: Variant in players:
+		var d: Dictionary = JsonUtil.as_dict(p)
+		if str(d.get("name", "")) == my_name and not JsonUtil.as_bool(d.get("bot", false)):
+			return JsonUtil.as_int(d.get("slot", -1), -1)
+	return -1

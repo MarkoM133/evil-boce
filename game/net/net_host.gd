@@ -80,6 +80,54 @@ func add_bot(level: String, deck: Dictionary) -> String:
 	return ""
 
 
+## The host changes the match settings in the lobby; the guests have to press Ready again.
+func set_settings(s: MatchSettings) -> void:
+	if started:
+		return
+	settings = s
+	for x: Dictionary in seats:
+		if not JsonUtil.as_bool(x.get("bot", false)) and JsonUtil.as_int(x.get("slot", -1)) != host_slot:
+			x["ready"] = false
+	_lobby()
+
+
+## After a match: everyone back to the lobby with the same seats and decks, not ready yet.
+## Guests who left during the match lose their seat.
+func back_to_lobby() -> void:
+	recorder = null
+	started = false
+	paused = false
+	paused_by = -1
+	var kept: Array[Dictionary] = []
+	for x: Dictionary in seats:
+		if JsonUtil.as_bool(x.get("connected", false)) or JsonUtil.as_bool(x.get("bot", false)):
+			x["ready"] = JsonUtil.as_bool(x.get("bot", false))
+			x["slot"] = kept.size()
+			kept.append(x)
+	seats = kept
+	_lobby(true)
+
+
+## Frees the bots' seats (lobby only), so a player can join.
+func remove_bots() -> void:
+	if started:
+		return
+	var kept: Array[Dictionary] = []
+	for x: Dictionary in seats:
+		if not JsonUtil.as_bool(x.get("bot", false)):
+			x["slot"] = kept.size()
+			kept.append(x)
+	seats = kept
+	_lobby()
+
+
+func has_bot() -> bool:
+	for x: Dictionary in seats:
+		if JsonUtil.as_bool(x.get("bot", false)):
+			return true
+	return false
+
+
 func can_start() -> String:
 	if seats.size() < 2:
 		return "nobody to play against"
@@ -110,8 +158,8 @@ func start(seed: int) -> String:
 	return ""
 
 
-func _lobby() -> void:
-	var msg: Dictionary = {"t": NetProtocol.LOBBY, "players": public_seats(), "settings": settings.to_dict()}
+func _lobby(again: bool = false) -> void:
+	var msg: Dictionary = {"t": NetProtocol.LOBBY, "players": public_seats(), "settings": settings.to_dict(), "again": again}
 	link.broadcast(msg)
 	lobby_changed.emit()
 
@@ -175,7 +223,7 @@ func _send_states() -> void:
 		if p > 0 and JsonUtil.as_bool(s.get("connected", false)):
 			link.send(p, {"t": NetProtocol.STATE, "state": NetProtocol.redact(full, JsonUtil.as_int(s["slot"]))})
 	if recorder.state.is_over():
-		link.broadcast({"t": NetProtocol.OVER, "summary": recorder.record.summary()})
+		link.broadcast({"t": NetProtocol.OVER, "summary": recorder.record.summary(), "record": recorder.record.to_dict()})
 	state_changed.emit()
 
 
@@ -238,6 +286,9 @@ func _on_hello(peer: int, msg: Dictionary) -> void:
 	var name: String = str(msg.get("name", "")).strip_edges()
 	if name.is_empty():
 		name = "Player %d" % (seats.size() + 1)
+	if name == str(seat(host_slot).get("name", "")):
+		link.send(peer, {"t": NetProtocol.REJECT, "reason": "the host is called %s too; pick another name" % name})
+		return
 	var s: Dictionary = {}
 	for x: Dictionary in seats:
 		if str(x.get("name", "")) == name and not JsonUtil.as_bool(x.get("bot", false)) and JsonUtil.as_int(x.get("slot", -1)) != host_slot:

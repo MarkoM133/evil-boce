@@ -75,7 +75,7 @@ func _ready() -> void:
 	_header(col, "HERO RANGE")
 	_range = OptionButton.new()
 	for d: int in RANGE_DELTAS:
-		_range.add_item(_range_label(d), d + 10)
+		_range.add_item(range_label(d), d + 10)
 	_range.select(RANGE_DELTAS.find(MatchSettings.standard().range_delta))
 	col.add_child(_range)
 
@@ -157,7 +157,7 @@ func _start() -> void:
 	get_tree().change_scene_to_file(MATCH_SCENE)
 
 
-static func _range_label(d: int) -> String:
+static func range_label(d: int) -> String:
 	var label: String = "As printed on the cards" if d == 0 else "%+d to every hero (never below 2)" % d if d < 0 else "%+d to every hero" % d
 	if d == MatchSettings.standard().range_delta:
 		label += "  ·  Standard"

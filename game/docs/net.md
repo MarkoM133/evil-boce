@@ -13,6 +13,8 @@ without a scene; nothing else changes.
 - Host listens on port **7777** on all interfaces; guests connect to the host's Tailscale
   address (`100.x.y.z`). The lobby shows the host's `100.*` addresses.
 - Every 3 s the host sends `ping`; ENet notices a dead link on its own and `peer_left` fires.
+- A packet over 8 KB goes out gzipped behind a `0x01` byte (plain JSON always starts with `{`);
+  in practice that is the states mid-match and the record at the end.
 
 ## Messages (`NetProtocol`)
 
@@ -21,7 +23,7 @@ without a scene; nothing else changes.
 | guest | `hello` | name, game_version, cards_version, net_version | right after the link is up; also on reconnect |
 | host | `welcome` / `reject` | slot, players, settings / reason | answer to hello |
 | guest | `deck`, `ready` | engine deck dict / bool | lobby |
-| host | `lobby` | players [{slot, name, ready, bot, connected, has_deck}], settings | any lobby change |
+| host | `lobby` | players [{slot, name, ready, bot, connected, has_deck}], settings, again | any lobby change; `again` = the host took everyone back after a match |
 | host | `start` | settings, players (record header), seed, cards_version | the host pressed Start, or a reconnect into a running match |
 | guest | `move` | Move dict | the player did something |
 | host | `state` | redacted GameState dict | after every accepted move or roll, to each guest separately |
@@ -31,7 +33,7 @@ without a scene; nothing else changes.
 | guest | `pause` / `resume` | – | anyone may pause; the pauser or the host resumes |
 | host | `paused` / `resumed` | by, name | |
 | host | `player` | slot, name, connected | a guest dropped or came back |
-| host | `over` | summary | the match ended |
+| host | `over` | summary, record | the match ended; `record` is the full MatchRecord (nothing is hidden any more) |
 
 ### What a guest may see (`NetProtocol.redact`)
 
@@ -55,6 +57,15 @@ join again" (the host never sends cards or images; Syncthing is required, GDD 2)
 - Pause: anyone; resume: the one who paused, or the host. While paused the host refuses moves
   with "paused".
 
+## Lobby
+
+- The host picks the map, the range change and how stages and cores are placed (the same
+  choices as the local Play setup). Changing them un-readies the guests.
+- Each player picks a saved deck or a random one; a saved deck that breaks the deck rules is
+  not sent and Ready stays off.
+- "Add a bot" fills the other seat (Easy / Hard); "Remove the bot" frees it for a player.
+- A guest may not use the host's name (seats are found by name on reconnect).
+
 ## In the match scene
 
 - **Host role**: `_apply` → `NetHost.apply` (the recorder behind it records the match as
@@ -63,10 +74,18 @@ join again" (the host never sends cards or images; Syncthing is required, GDD 2)
 - **Client role**: `_apply` → `send_move`; `state_received` → redraw; `balls` move the frozen
   bodies; no recorder, no bots, no save (the host keeps them).
 - Hot seat is unchanged; the network is a seat type, as GDD 2 wants.
+- Only local matches write `saves/current.json` (Continue); an online one needs everyone.
 
-## Not done yet (step 3 continues)
+## End of a match
 
-- Shared replay viewing: the host streams `MatchRecord` frames (`frame {index, state, rolls}`)
-  and the guests watch; same data as `docs/replay.md`.
-- Guests keeping their own replay: they can store the states they receive as frames.
-- Timer per phase, 2v2 seats (step 4), a dedicated server build.
+- The host saves the replay and writes the stats to the shared folder (once per match).
+- The guest gets the full record in `over` and saves it to its own Replays; it can watch it
+  from the end screen. Watching closes the online session.
+- The host's end screen says "Back to the lobby": seats and decks stay, guests press Ready
+  again, guests who left during the match lose their seat.
+
+## Not done yet
+
+- Watching a replay together (the host steps through frames, the guests follow).
+- Spectator seats, timer per phase, 2v2 seats (step 4), a dedicated server build.
+- A real test over Tailscale between two computers.

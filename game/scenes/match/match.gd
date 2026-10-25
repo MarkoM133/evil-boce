@@ -6,6 +6,7 @@ extends Node3D
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
+const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
 ## Seconds between two bot moves, so a human can follow.
 const BOT_DELAY: float = 0.5
 ## Core token radius; a rolling ball picks a core up when it touches it.
@@ -25,6 +26,8 @@ var net_role: String = ""
 var net_host: NetHost
 var net_client: NetClient
 var _ball_tick: float = 0.0
+## A guest's copy of the finished match, sent by the host when it ends.
+var _net_record: MatchRecord
 var arena: Arena
 var world: ArenaWorld
 var cam: OrbitCamera
@@ -107,10 +110,17 @@ func _ready() -> void:
 		net_client.paused_changed.connect(_on_net_pause)
 		net_client.player_changed.connect(func(_slot: int, name: String, on: bool) -> void:
 			hud.toast("%s %s" % [name, "is back" if on else "dropped; waiting…"]))
-		net_client.disconnected.connect(func(why: String) -> void: hud.toast("Lost the host: " + why, Palette.ACCENT))
-		net_client.match_over.connect(func(summary: Dictionary) -> void:
-			hud.end_summary = summary
+		net_client.disconnected.connect(func(why: String) -> void:
+			hud.net_paused = "Lost the host (%s). Esc → Main menu" % why
 			hud.refresh())
+		net_client.match_over.connect(func(summary: Dictionary, record: MatchRecord) -> void:
+			# The host keeps the stats; the guest keeps its own replay (GDD 2).
+			hud.end_summary = summary
+			if record != null:
+				_net_record = record
+				ReplayStore.save_replay(record)
+			hud.refresh())
+		net_client.back_in_lobby.connect(func() -> void: get_tree().change_scene_to_file(LOBBY_SCENE))
 		net_client.roll_received.connect(func(o: RollOutcome) -> void:
 			for r: RollResult in o.results:
 				var h: HeroState = state.hero(r.ball_id)
@@ -262,13 +272,23 @@ func _build_hud() -> void:
 	hud.menu_pressed.connect(_toggle_menu)
 	hud.rematch_pressed.connect(_rematch)
 	hud.watch_replay_pressed.connect(func() -> void:
-		MatchLaunch.config = MatchLaunch.from_record(recorder.record, 0, true)
+		var rec: MatchRecord = recorder.record if recorder != null else _net_record
+		if rec == null:
+			hud.toast("The replay has not come in yet", Palette.FG)
+			return
+		# Watching ends the online session; the replay stays in Replays.
+		_close_net()
+		MatchLaunch.config = MatchLaunch.from_record(rec, 0, true)
 		get_tree().change_scene_to_file(MATCH_SCENE))
 	hud.setup_item_pressed.connect(func(id: String) -> void:
 		_setup_pick = id
 		_range_key = ""
 		hud.setup_pick = _setup_item()
 		hud.refresh())
+	if net_role == "host":
+		hud.rematch_text = "Back to the lobby"
+	elif net_role == "client":
+		hud.rematch_text = ""
 	_menu = _build_menu_overlay()
 	layer.add_child(_menu)
 
@@ -335,16 +355,27 @@ func _toggle_menu() -> void:
 
 ## Back to the main menu; an online match closes its link first.
 func _leave() -> void:
-	if net_host != null:
-		net_host.link.close()
-		net_host.queue_free()
-	if net_client != null:
-		net_client.link.close()
-		net_client.queue_free()
+	_close_net()
 	get_tree().change_scene_to_file(MENU_SCENE)
 
 
+func _close_net() -> void:
+	if net_host != null:
+		net_host.link.close()
+		net_host.queue_free()
+		net_host = null
+	if net_client != null:
+		net_client.link.close()
+		net_client.queue_free()
+		net_client = null
+
+
 func _rematch() -> void:
+	if net_role == "host":
+		# Online: everyone goes back to the lobby, keeps the seat and the deck, presses Ready.
+		net_host.back_to_lobby()
+		get_tree().change_scene_to_file(LOBBY_SCENE)
+		return
 	var settings: MatchSettings = _config["settings"]
 	var c: Dictionary = _config.duplicate()
 	c["settings"] = MatchSettings.from_dict(settings.to_dict())
@@ -420,11 +451,13 @@ func _after_change() -> void:
 		if _filed:
 			return
 		_filed = true
-		ReplayStore.clear_current()
+		if net_role == "":
+			ReplayStore.clear_current()
 		ReplayStore.save_replay(recorder.record)
 		ReplayStore.write_stats(recorder.record, db.root_dir)
 		hud.end_summary = recorder.record.summary()
-	elif recorder.record.frame_count() != _saved_frames:
+	elif net_role == "" and recorder.record.frame_count() != _saved_frames:
+		# Only local matches can be continued; an online one needs everyone at the table.
 		_saved_frames = recorder.record.frame_count()
 		ReplayStore.save_current(recorder.record)
 

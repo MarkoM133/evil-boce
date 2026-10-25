@@ -39,6 +39,9 @@ var rolling: bool = false
 var replay: bool = false
 ## Online: who paused the match ("" when it runs); shown instead of the prompt.
 var net_paused: String = ""
+## Text of the end screen's first button; "" hides it (an online guest waits for the host).
+var rematch_text: String = "Rematch"
+var _rematch_btn: Button
 ## Setup: the stage or core the local player places next (set by the match scene).
 var setup_pick: String = ""
 ## How far the hand is lowered (0 = up); it drops when the mouse is over the table (GDD 11).
@@ -268,10 +271,9 @@ func _build() -> void:
 	_over_stats.add_theme_constant_override("h_separation", 24)
 	_over_stats.add_theme_constant_override("v_separation", 4)
 	over_col.add_child(_over_stats)
-	var rematch := Button.new()
-	rematch.text = "Rematch"
-	rematch.pressed.connect(func() -> void: rematch_pressed.emit())
-	over_col.add_child(rematch)
+	_rematch_btn = Button.new()
+	_rematch_btn.pressed.connect(func() -> void: rematch_pressed.emit())
+	over_col.add_child(_rematch_btn)
 	var watch := Button.new()
 	watch.text = "Watch the replay"
 	watch.pressed.connect(func() -> void: watch_replay_pressed.emit())
@@ -889,6 +891,8 @@ func _refresh_over() -> void:
 	_over.visible = state.is_over() and not replay
 	if not _over.visible:
 		return
+	_rematch_btn.text = rematch_text
+	_rematch_btn.visible = not rematch_text.is_empty()
 	var reasons: Dictionary = {"ko": "all heroes KO", "stages": "stages claimed", "deckout": "deck-out",
 		"surrender": "surrender", "draw": "draw"}
 	if state.winner < 0:
@@ -897,6 +901,9 @@ func _refresh_over() -> void:
 		_over_title.text = "%s WINS" % player_name(state.winner).to_upper()
 		_over_title.add_theme_color_override("font_color", Palette.team(state.team_of(state.winner)))
 	_over_info.text = "%s  ·  turn %d" % [str(reasons.get(state.result, state.result)), state.turn]
+	if rematch_text.is_empty():
+		_over_info.text += "
+The host can take everyone back to the lobby."
 	# Per player, from the match summary that also goes to stats/ (GDD 11: end of match shows stats).
 	_clear(_over_stats)
 	if end_summary.is_empty():
