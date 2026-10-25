@@ -77,6 +77,13 @@ func emblem(set_code: String) -> Texture2D:
 	return texture(data_dir().path_join("branding/emblem-%s.png" % set_code))
 
 
+## The card's large image (data/large/, about 2000 px wide), or null.
+func large(card_id: String) -> Texture2D:
+	if not thumbs.has(card_id):
+		return null
+	return texture(thumbs[card_id].replace("/thumbs/", "/large/"))
+
+
 ## The card's small image, or null.
 func thumb(card_id: String) -> Texture2D:
 	return texture(thumbs[card_id]) if thumbs.has(card_id) else null
