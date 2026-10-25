@@ -233,10 +233,23 @@ static func set_last_deck(who: String, name: String) -> void:
 	set_value("last_deck", who, name)
 
 
-## Main menu layouts: a big hero (mockup M5), tiles (M7), cinema (M8), a strip down the left (M3), cinema over the table (M8 + 3).
-const MENU_LAYOUTS: Array[String] = ["featured", "tiles", "cinema", "strip", "table"]
+## Main menu layouts: a big hero (mockup M5), tiles (M7), cinema (M8), a strip down the left (M3).
+const MENU_LAYOUTS: Array[String] = ["featured", "tiles", "cinema", "strip"]
+## What fills the cinema layout's middle: nothing but the logo, cards with the last match and
+## what is new (M8 + 5), or the match table with heroes' balls (M8 + 3).
+const CINEMA_FILLS: Array[String] = ["empty", "info", "table"]
 
 
 static func menu_layout() -> String:
 	var v: String = str(_config().get_value("display", "menu_layout", "featured"))
+	# "table" was a layout of its own before it became a cinema fill.
+	if v == "table":
+		return "cinema"
 	return v if MENU_LAYOUTS.has(v) else "featured"
+
+
+static func cinema_fill() -> String:
+	var v: String = str(_config().get_value("display", "cinema_fill", ""))
+	if v == "" and str(_config().get_value("display", "menu_layout", "")) == "table":
+		return "table"
+	return v if CINEMA_FILLS.has(v) else "info"

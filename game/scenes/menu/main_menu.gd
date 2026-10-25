@@ -61,8 +61,8 @@ func _ready() -> void:
 	_tiles = layout != "featured"
 	if layout == "tiles":
 		_build_tiles(logo)
-	elif layout == "cinema" or layout == "table":
-		_build_cinema(logo, layout == "table")
+	elif layout == "cinema":
+		_build_cinema(logo, GameSettings.cinema_fill())
 	elif layout == "strip":
 		_build_strip(logo)
 	else:
@@ -83,7 +83,7 @@ func _ready() -> void:
 	else:
 		foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 		foot.grow_vertical = Control.GROW_DIRECTION_BEGIN
-		foot.position = Vector2(18, -150 if layout == "cinema" or layout == "table" else -34)
+		foot.position = Vector2(18, -150 if layout == "cinema" else -34)
 	var version: String = str(ProjectSettings.get_setting("application/config/version", ""))
 	if db.is_ok():
 		foot.text = "v%s  ·  cards v%d, %d cards" % [version, db.version, db.card_count]
@@ -96,9 +96,11 @@ func _ready() -> void:
 # --- cinema (mockup M8) ---------------------------------------------------------------------
 
 ## Letterbox: hero strips along the top and the bottom drifting opposite ways, the logo big in
-## the middle, the entries in one row under it and a line about the one in focus. Beside the
-## logo two cards (M8 + 5), or with `table` the match table behind it all (M8 + 3).
-func _build_cinema(logo: Texture2D, table: bool = false) -> void:
+## the middle, the entries in one row under it and a line about the one in focus. `fill`
+## (Settings): "empty" for the logo alone, "info" for two cards beside it (M8 + 5), "table" for
+## the match table behind it all (M8 + 3).
+func _build_cinema(logo: Texture2D, fill: String = "info") -> void:
+	var table: bool = fill == "table"
 	if table:
 		var t := MenuTable.new()
 		t.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -136,14 +138,14 @@ func _build_cinema(logo: Texture2D, table: bool = false) -> void:
 	add_child(col)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# The logo between two cards (mockup M8 + 5): the last match on the left, what is new on
-	# the right. Over the table, the logo alone and a bit smaller.
+	# the right. Alone it is bigger; over the table, smaller.
 	var stage := HBoxContainer.new()
 	stage.alignment = BoxContainer.ALIGNMENT_CENTER
 	stage.add_theme_constant_override("separation", 56)
 	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(stage)
 	var cards: Array[Control] = []
-	if not table:
+	if fill == "info":
 		cards.append_array([_last_match_card(), _whats_new_card()])
 		stage.add_child(cards[0])
 	if logo != null:
@@ -152,7 +154,7 @@ func _build_cinema(logo: Texture2D, table: bool = false) -> void:
 		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		img.custom_minimum_size = Vector2(340, 320) if table else Vector2(400, 380)
+		img.custom_minimum_size = {"table": Vector2(340, 320), "empty": Vector2(480, 460)}.get(fill, Vector2(400, 380))
 		stage.add_child(img)
 		img.modulate.a = 0.0
 		var lt: Tween = img.create_tween()
@@ -161,7 +163,7 @@ func _build_cinema(logo: Texture2D, table: bool = false) -> void:
 		var title: Label = UiTheme.label("EVIL BOĆE", 110)
 		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		stage.add_child(title)
-	if not table:
+	if not cards.is_empty():
 		stage.add_child(cards[1])
 	for c: Control in cards:
 		c.modulate.a = 0.0

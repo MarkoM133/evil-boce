@@ -56,8 +56,10 @@ func _ready() -> void:
 			near = i
 	var ui := _option(col, "Interface size", scales, near)
 	ui.item_selected.connect(func(i: int) -> void: _store("display", "ui_scale", GameSettings.UI_SCALES[i]))
-	var layout := _option(col, "Main menu", ["Featured hero", "Tiles", "Cinema", "Side strip", "Cinema + table"], GameSettings.MENU_LAYOUTS.find(GameSettings.menu_layout()))
+	var layout := _option(col, "Main menu", ["Featured hero", "Tiles", "Cinema", "Side strip"], GameSettings.MENU_LAYOUTS.find(GameSettings.menu_layout()))
 	layout.item_selected.connect(func(i: int) -> void: _store("display", "menu_layout", GameSettings.MENU_LAYOUTS[i]))
+	var fill := _option(col, "Cinema middle", ["Logo only", "Last match, what's new", "Table with balls"], GameSettings.CINEMA_FILLS.find(GameSettings.cinema_fill()))
+	fill.item_selected.connect(func(i: int) -> void: _store("display", "cinema_fill", GameSettings.CINEMA_FILLS[i]))
 	var mode := _option(col, "Window", ["Windowed", "Fullscreen"], 1 if GameSettings.fullscreen() else 0)
 	mode.item_selected.connect(func(i: int) -> void: _store("display", "fullscreen", i == 1))
 	var sizes: Array[String] = []
