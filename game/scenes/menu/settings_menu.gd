@@ -14,29 +14,11 @@ var _browse: FileDialog
 
 
 func _ready() -> void:
-	theme = UiTheme.get_theme()
-	var bg := ColorRect.new()
-	bg.color = Palette.BG
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
-	var scroll := ScrollContainer.new()
-	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	add_child(scroll)
-	var center := CenterContainer.new()
-	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.add_child(center)
-	var panel := PanelContainer.new()
-	center.add_child(panel)
-	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(600, 0)
+	var frame: Dictionary = MenuScreen.build(self, CardDb.load_from(GameSettings.data_path()), "Settings",
+		"Saved at once; display changes apply straight away.", _back, 760.0)
+	var content: VBoxContainer = frame["content"]
+	var col: VBoxContainer = MenuScreen.card(content, 26)
 	col.add_theme_constant_override("separation", 8)
-	panel.add_child(col)
-	var title := Label.new()
-	title.text = "SETTINGS"
-	title.theme_type_variation = &"Big"
-	col.add_child(title)
 
 	_header(col, "GAME")
 	var row := _row(col, "Shared folder")
@@ -115,19 +97,15 @@ func _ready() -> void:
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(note)
 
-	var back := Button.new()
-	back.text = "Back"
-	back.pressed.connect(_back)
-	col.add_child(back)
 	_show_keys()
 	_check_data()
 
 
 func _header(parent: Control, text: String) -> void:
-	var l := Label.new()
-	l.text = text
-	l.theme_type_variation = &"Header"
-	parent.add_child(l)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 6)
+	parent.add_child(gap)
+	MenuScreen.heading(parent, text)
 
 
 func _row(parent: Control, label: String) -> HBoxContainer:

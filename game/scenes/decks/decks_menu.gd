@@ -24,10 +24,16 @@ func _ready() -> void:
 	bg.color = Palette.BG
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
+	var strip := HeroStrip.new()
+	strip.setup(db)
+	strip.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	strip.custom_minimum_size = Vector2(0, 84)
+	add_child(strip)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for side: String in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 24)
+	margin.add_theme_constant_override("margin_top", 100)
 	add_child(margin)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
@@ -40,10 +46,13 @@ func _ready() -> void:
 	var left := VBoxContainer.new()
 	left.add_theme_constant_override("separation", 8)
 	left_panel.add_child(left)
-	var title := Label.new()
-	title.text = "DECKS"
-	title.theme_type_variation = &"Big"
-	left.add_child(title)
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation", 12)
+	left.add_child(title_row)
+	var slash: UiShape = UiShape.make(UiShape.Kind.SLANT, Palette.ACCENT, Vector2(14, 44))
+	slash.cut = 8.0
+	title_row.add_child(slash)
+	title_row.add_child(UiTheme.label("DECKS", 44))
 	_list = ItemList.new()
 	_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_list.item_selected.connect(_show)
@@ -62,7 +71,8 @@ func _ready() -> void:
 	_name_in.text_submitted.connect(func(_t: String) -> void: _import())
 	import_row.add_child(_name_in)
 	var import_btn := Button.new()
-	import_btn.text = "Import"
+	import_btn.text = "IMPORT"
+	import_btn.theme_type_variation = &"Gold"
 	import_btn.pressed.connect(_import)
 	import_row.add_child(import_btn)
 	_status = Label.new()
@@ -70,7 +80,7 @@ func _ready() -> void:
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	left.add_child(_status)
 	var back := Button.new()
-	back.text = "Back"
+	back.text = "‹  BACK"
 	back.pressed.connect(func() -> void: get_tree().change_scene_to_file(MENU_SCENE))
 	left.add_child(back)
 

@@ -80,9 +80,12 @@ static func heading(parent: Control, text: String) -> Label:
 	return l
 
 
-## A flat dark card (the app's surface) holding a VBox; returns the VBox.
-static func card(parent: Control, pad: int = 18) -> VBoxContainer:
+## A flat dark card (the app's surface) holding a VBox; returns the VBox. `expand` makes the
+## card take the free width of a row.
+static func card(parent: Control, pad: int = 18, expand: bool = false) -> VBoxContainer:
 	var panel := PanelContainer.new()
+	if expand:
+		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", UiTheme.box(Palette.PANEL_SOLID, 0, Color(0, 0, 0, 0), pad, pad))
 	parent.add_child(panel)
 	var v := VBoxContainer.new()

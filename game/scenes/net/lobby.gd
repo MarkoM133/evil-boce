@@ -1,13 +1,14 @@
 extends Control
-## Online lobby (GDD 7, step 3): host a match on this computer or join one over Tailscale.
-## The host picks the match settings and a deck, waits for the other player (or adds a bot) and
-## starts; a guest picks a deck and presses Ready. The NetHost / NetClient node lives under the
-## root so the match scene keeps it, and after a match the host brings everyone back here.
+## Online lobby (GDD 7, step 3) in the menus' look: host a match on this computer or join one
+## over Tailscale. In the room, your player card (deck, stages, cores) sits on the left and the
+## table on the right: who is in, a bot for the empty seat, the match settings (the host
+## changes them, guests see them) and the big button: START MATCH for the host, READY for a
+## guest. The NetHost / NetClient node lives under the root so the match scene keeps it, and
+## after a match the host brings everyone back here.
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const MatchSetup = preload("res://scenes/match/match_setup.gd")
-const RANDOM: String = "Random deck"
 
 var db: CardDb
 var decks: Array[Dictionary] = []
@@ -18,30 +19,29 @@ var _rng := RandomNumberGenerator.new()
 var _name: LineEdit
 var _address: LineEdit
 var _status: Label
-var _players: VBoxContainer
-var _deck_pick: OptionButton
-var _deck_problems: Label
-var _loadout: LoadoutPicker
 var _front: Control
 var _room: Control
-var _host_bits: Control
+var _card: PlayerCard
+var _players: VBoxContainer
 var _address_row: Control
 var _address_label: Label
-var _map: OptionButton
-var _range: OptionButton
-var _setup_mode: OptionButton
+var _host_bits: Control
+var _settings_row: HBoxContainer
 var _settings_text: Label
+var _bot_row: HBoxContainer
 var _start_btn: Button
 var _ready_btn: Button
-var _bot_level: OptionButton
-var _bot_btn: Button
+var _map_i: int = 0
+var _range_i: int = 1
+var _manual: bool = true
 
 
 func _ready() -> void:
-	theme = UiTheme.get_theme()
 	_rng.randomize()
 	db = CardDb.load_from(GameSettings.data_path())
 	decks = DeckStore.load_all(db.root_dir)
+	_map_i = maxi(0, GameSettings.MAP_SIZES.find(MatchSettings.standard().map_size))
+	_range_i = maxi(0, MatchSetup.RANGE_DELTAS.find(MatchSettings.standard().range_delta))
 	_build()
 	if not db.is_ok():
 		_status.text = db.error
@@ -60,183 +60,170 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var bg := ColorRect.new()
-	bg.color = Palette.BG
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
-	var panel := PanelContainer.new()
-	center.add_child(panel)
-	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(540, 0)
-	col.add_theme_constant_override("separation", 10)
-	panel.add_child(col)
-	var title := Label.new()
-	title.text = "ONLINE"
-	title.theme_type_variation = &"Big"
-	col.add_child(title)
+	var frame: Dictionary = MenuScreen.build(self, db, "Online", "Play over Tailscale: one hosts, the other joins.", _back, 1300.0)
+	var content: VBoxContainer = frame["content"]
 	_status = Label.new()
-	_status.theme_type_variation = &"Muted"
+	_status.add_theme_color_override("font_color", Palette.GOLD)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(_status)
+	content.add_child(_status)
 
-	# Before connecting: name, host or join.
+	# Before connecting: your name, then host or join.
 	_front = VBoxContainer.new()
-	_front.add_theme_constant_override("separation", 10)
-	col.add_child(_front)
-	_header(_front, "YOUR NAME")
+	_front.add_theme_constant_override("separation", 14)
+	content.add_child(_front)
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", 12)
+	_front.add_child(name_row)
+	name_row.add_child(UiTheme.label("YOUR NAME", 18, Palette.GOLD))
 	_name = LineEdit.new()
 	_name.text = GameSettings.player_name()
 	_name.max_length = 24
-	_front.add_child(_name)
-	_header(_front, "HOST")
+	_name.custom_minimum_size = Vector2(360, 0)
+	_name.add_theme_font_size_override("font_size", 22)
+	name_row.add_child(_name)
+	var pair := HBoxContainer.new()
+	pair.add_theme_constant_override("separation", 18)
+	_front.add_child(pair)
+	var host_card: VBoxContainer = MenuScreen.card(pair, 26, true)
+	host_card.add_child(UiTheme.label("HOST", 40))
+	var host_info := Label.new()
+	host_info.text = "Open a table on this computer (port %d). Send the other player your Tailscale address." % NetProtocol.DEFAULT_PORT
+	host_info.add_theme_color_override("font_color", Palette.MUTED)
+	host_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	host_card.add_child(host_info)
 	var host_btn := Button.new()
-	host_btn.text = "Host a match on this computer (port %d)" % NetProtocol.DEFAULT_PORT
+	host_btn.text = "HOST A MATCH"
+	host_btn.theme_type_variation = &"Primary"
+	host_btn.add_theme_font_size_override("font_size", 30)
+	host_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	host_btn.pressed.connect(_host)
-	_front.add_child(host_btn)
-	_header(_front, "JOIN")
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	_front.add_child(row)
+	host_card.add_child(host_btn)
+	var join_card: VBoxContainer = MenuScreen.card(pair, 26, true)
+	join_card.add_child(UiTheme.label("JOIN", 40))
+	var join_row := HBoxContainer.new()
+	join_row.add_theme_constant_override("separation", 10)
+	join_card.add_child(join_row)
 	_address = LineEdit.new()
 	_address.placeholder_text = "host's Tailscale address, e.g. 100.64.1.2"
 	_address.text = GameSettings.last_host()
 	_address.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_address.add_theme_font_size_override("font_size", 22)
 	_address.text_submitted.connect(func(_t: String) -> void: _join())
-	row.add_child(_address)
+	join_row.add_child(_address)
 	var join_btn := Button.new()
-	join_btn.text = "Join"
+	join_btn.text = "JOIN"
+	join_btn.theme_type_variation = &"Gold"
+	join_btn.add_theme_font_size_override("font_size", 26)
 	join_btn.pressed.connect(_join)
-	row.add_child(join_btn)
+	join_row.add_child(join_btn)
+	var join_info := Label.new()
+	join_info.text = "Both need the same game version and the shared folder synced."
+	join_info.add_theme_color_override("font_color", Palette.MUTED)
+	join_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	join_card.add_child(join_info)
 
-	# Connected: address, seats, match settings, deck, bots, start / ready.
-	_room = VBoxContainer.new()
-	_room.add_theme_constant_override("separation", 10)
+	# Connected: your card left, the table right.
+	_room = HBoxContainer.new()
+	_room.add_theme_constant_override("separation", 18)
 	_room.visible = false
-	col.add_child(_room)
+	content.add_child(_room)
+	_card = PlayerCard.new()
+	_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_room.add_child(_card)
+	_card.setup(db, decks, "You", 0, GameSettings.last_deck("online"), Loadout.remembered("online"))
+	_card.changed.connect(_send_deck)
+
+	var table := VBoxContainer.new()
+	table.add_theme_constant_override("separation", 12)
+	table.custom_minimum_size = Vector2(520, 0)
+	_room.add_child(table)
+	var seats_card: VBoxContainer = MenuScreen.card(table)
+	seats_card.add_child(UiTheme.label("TABLE", 15, Palette.GOLD))
 	_address_row = HBoxContainer.new()
 	_address_row.add_theme_constant_override("separation", 8)
-	_room.add_child(_address_row)
+	seats_card.add_child(_address_row)
 	_address_label = Label.new()
 	_address_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_address_label.add_theme_font_override("font", UiTheme.display_italic())
+	_address_label.add_theme_font_size_override("font_size", 20)
 	_address_row.add_child(_address_label)
 	var copy := Button.new()
-	copy.text = "Copy"
+	copy.text = "COPY"
 	copy.tooltip_text = "Copy the address to send it to the other player"
 	copy.pressed.connect(func() -> void:
 		DisplayServer.clipboard_set(_my_addresses()[0])
 		_status.text = "Address copied.")
 	_address_row.add_child(copy)
-
-	_header(_room, "PLAYERS")
 	_players = VBoxContainer.new()
-	_room.add_child(_players)
+	_players.add_theme_constant_override("separation", 6)
+	seats_card.add_child(_players)
+	_bot_row = HBoxContainer.new()
+	_bot_row.add_theme_constant_override("separation", 6)
+	seats_card.add_child(_bot_row)
 
-	_header(_room, "MATCH")
+	var match_card: VBoxContainer = MenuScreen.card(table)
+	match_card.add_child(UiTheme.label("MATCH", 15, Palette.GOLD))
 	_settings_text = Label.new()
 	_settings_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_room.add_child(_settings_text)
+	match_card.add_child(_settings_text)
 	_host_bits = VBoxContainer.new()
 	_host_bits.add_theme_constant_override("separation", 8)
-	_room.add_child(_host_bits)
-	_map = OptionButton.new()
-	for n: int in GameSettings.MAP_SIZES:
-		_map.add_item("%d × %d" % [n, n], n)
-	_map.select(GameSettings.MAP_SIZES.find(MatchSettings.standard().map_size))
-	_map.item_selected.connect(func(_i: int) -> void: _push_settings())
-	_host_bits.add_child(_map)
-	_range = OptionButton.new()
-	for d: int in MatchSetup.RANGE_DELTAS:
-		_range.add_item(MatchSetup.range_label(d), d + 10)
-	_range.select(MatchSetup.RANGE_DELTAS.find(MatchSettings.standard().range_delta))
-	_range.item_selected.connect(func(_i: int) -> void: _push_settings())
-	_host_bits.add_child(_range)
-	_setup_mode = OptionButton.new()
-	_setup_mode.add_item("Stages and cores placed by the players in turn  ·  Standard")
-	_setup_mode.add_item("Stages and cores placed at random")
-	_setup_mode.item_selected.connect(func(_i: int) -> void: _push_settings())
-	_host_bits.add_child(_setup_mode)
-	var bots := HBoxContainer.new()
-	bots.add_theme_constant_override("separation", 8)
-	_host_bits.add_child(bots)
-	_bot_level = OptionButton.new()
-	_bot_level.add_item("Bot · Easy")
-	_bot_level.add_item("Bot · Hard")
-	bots.add_child(_bot_level)
-	_bot_btn = Button.new()
-	_bot_btn.text = "Add a bot"
-	_bot_btn.tooltip_text = "Fill the other seat with a bot instead of waiting for a player"
-	_bot_btn.pressed.connect(func() -> void:
-		if host == null:
-			return
-		if host.has_bot():
-			host.remove_bots()
-			return
-		var level: Bot.Level = Bot.Level.HARD if _bot_level.selected == 1 else Bot.Level.EASY
-		var why: String = host.add_bot(Bot.level_name(level), _engine_deck(RANDOM, "Bot"))
-		if not why.is_empty():
-			_status.text = why)
-	bots.add_child(_bot_btn)
+	match_card.add_child(_host_bits)
+	_settings_row = HBoxContainer.new()
+	_host_bits.add_child(_settings_row)
+	_build_settings()
 
-	_header(_room, "YOUR DECK")
-	_deck_pick = OptionButton.new()
-	_deck_pick.add_item(RANDOM)
-	for d: Dictionary in decks:
-		_deck_pick.add_item(str(d["name"]))
-	_deck_pick.item_selected.connect(func(_i: int) -> void: _send_deck())
-	_room.add_child(_deck_pick)
-	_loadout = LoadoutPicker.new()
-	_loadout.setup(db.catalog, Loadout.remembered("online"), "Your stages and cores")
-	_loadout.changed.connect(_send_deck)
-	_room.add_child(_loadout)
-	_deck_problems = Label.new()
-	_deck_problems.theme_type_variation = &"Muted"
-	_deck_problems.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_room.add_child(_deck_problems)
 	_ready_btn = Button.new()
-	_ready_btn.text = "Ready"
+	_ready_btn.text = "READY"
 	_ready_btn.toggle_mode = true
+	_ready_btn.theme_type_variation = &"Primary"
+	_ready_btn.add_theme_font_size_override("font_size", 40)
 	_ready_btn.toggled.connect(func(on: bool) -> void:
-		_ready_btn.text = "Ready ✓" if on else "Ready"
+		_ready_btn.text = "READY ✓" if on else "READY"
+		_ready_btn.theme_type_variation = &"Gold" if on else &"Primary"
 		if client != null:
 			client.send_ready(on))
-	_room.add_child(_ready_btn)
+	table.add_child(_ready_btn)
 	_start_btn = Button.new()
-	_start_btn.text = "Start match"
+	_start_btn.text = "START MATCH"
 	_start_btn.theme_type_variation = &"Primary"
+	_start_btn.add_theme_font_size_override("font_size", 40)
 	_start_btn.pressed.connect(_start)
-	_room.add_child(_start_btn)
-
-	var back := Button.new()
-	back.text = "Leave"
-	back.pressed.connect(_back)
-	col.add_child(back)
+	table.add_child(_start_btn)
 
 
-func _header(parent: Control, text: String) -> void:
-	var l := Label.new()
-	l.text = text
-	l.theme_type_variation = &"Header"
-	parent.add_child(l)
+## The host's settings as chips that cycle (the same as Play setup).
+func _build_settings() -> void:
+	for c: Node in _settings_row.get_children():
+		c.queue_free()
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	_settings_row.add_child(col)
+	var chip := func(text: String, step: Callable) -> void:
+		var b := Button.new()
+		b.text = text
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.add_theme_font_size_override("font_size", 18)
+		b.tooltip_text = "Click to change"
+		b.pressed.connect(func() -> void:
+			step.call()
+			_push_settings()
+			_build_settings())
+		col.add_child(b)
+	chip.call("MAP   %d × %d" % [GameSettings.MAP_SIZES[_map_i], GameSettings.MAP_SIZES[_map_i]],
+		func() -> void: _map_i = (_map_i + 1) % GameSettings.MAP_SIZES.size())
+	chip.call("HERO RANGE   " + MatchSetup.range_label(MatchSetup.RANGE_DELTAS[_range_i]).to_upper(),
+		func() -> void: _range_i = (_range_i + 1) % MatchSetup.RANGE_DELTAS.size())
+	chip.call("STAGES & CORES   " + ("PLACED BY THE PLAYERS" if _manual else "PLACED AT RANDOM"),
+		func() -> void: _manual = not _manual)
 
 
 func _version() -> String:
 	return str(ProjectSettings.get_setting("application/config/version", ""))
 
 
-func _picked_deck(pick: String) -> Dictionary:
-	for d: Dictionary in decks:
-		if str(d["name"]) == pick:
-			return d
-	return {}
-
-
-func _engine_deck(pick: String, who: String, loadout: Loadout = null) -> Dictionary:
-	var deck: Dictionary = _picked_deck(pick)
-	if deck.is_empty():
-		deck = DeckCode.random_deck(db.catalog, _rng)
+func _engine_deck(saved: Dictionary, who: String, loadout: Loadout = null) -> Dictionary:
+	var deck: Dictionary = saved if not saved.is_empty() else DeckCode.random_deck(db.catalog, _rng)
 	return MatchLaunch.engine_deck(db.catalog, deck, who, _rng, loadout)
 
 
@@ -245,11 +232,13 @@ func _enter_room(as_host: bool) -> void:
 	_front.visible = false
 	_room.visible = true
 	_host_bits.visible = as_host
+	_bot_row.visible = as_host
 	_address_row.visible = as_host
 	_start_btn.visible = as_host
 	_ready_btn.visible = not as_host
 	_ready_btn.set_pressed_no_signal(false)
-	_ready_btn.text = "Ready"
+	_ready_btn.text = "READY"
+	_ready_btn.theme_type_variation = &"Primary"
 	_send_deck()
 	_refresh()
 
@@ -275,10 +264,11 @@ func _host() -> void:
 func _wire_host() -> void:
 	host.lobby_changed.connect(_refresh)
 	var s: MatchSettings = host.settings
-	_map.select(maxi(0, GameSettings.MAP_SIZES.find(s.map_size)))
-	_range.select(maxi(0, MatchSetup.RANGE_DELTAS.find(s.range_delta)))
-	_setup_mode.select(0 if s.manual_setup else 1)
-	_address_label.text = "Your address:  %s  ·  port %d" % [", ".join(_my_addresses()), NetProtocol.DEFAULT_PORT]
+	_map_i = maxi(0, GameSettings.MAP_SIZES.find(s.map_size))
+	_range_i = maxi(0, MatchSetup.RANGE_DELTAS.find(s.range_delta))
+	_manual = s.manual_setup
+	_build_settings()
+	_address_label.text = "%s  ·  PORT %d" % [", ".join(_my_addresses()), NetProtocol.DEFAULT_PORT]
 	_enter_room(true)
 
 
@@ -286,9 +276,9 @@ func _push_settings() -> void:
 	if host == null:
 		return
 	var s: MatchSettings = MatchSettings.standard()
-	s.map_size = _map.get_selected_id()
-	s.range_delta = _range.get_selected_id() - 10
-	s.manual_setup = _setup_mode.selected == 0
+	s.map_size = GameSettings.MAP_SIZES[_map_i]
+	s.range_delta = MatchSetup.RANGE_DELTAS[_range_i]
+	s.manual_setup = _manual
 	GameSettings.set_map_size(s.map_size)
 	host.set_settings(s)
 
@@ -350,7 +340,8 @@ func _wire_client() -> void:
 		# The host changed the settings: it un-readied us, so the button follows.
 		if not _me_ready():
 			_ready_btn.set_pressed_no_signal(false)
-			_ready_btn.text = "Ready"
+			_ready_btn.text = "READY"
+			_ready_btn.theme_type_variation = &"Primary"
 		_refresh())
 	# The match scene needs a state to draw: go when the first one after START is in.
 	client.state_received.connect(func(_s: GameState) -> void:
@@ -379,20 +370,13 @@ func _drop_client() -> void:
 # --- both -------------------------------------------------------------------------------
 
 func _send_deck() -> void:
-	var pick: String = _deck_pick.get_item_text(_deck_pick.selected)
-	var saved: Dictionary = _picked_deck(pick)
-	var problems := PackedStringArray()
-	if not saved.is_empty():
-		problems = DeckCode.check(db.catalog, JsonUtil.as_strings(saved["heroes"]), JsonUtil.as_dict(saved["cards"]))
-	var text: String = ("This deck breaks the deck rules: " + "; ".join(problems)) if not problems.is_empty() else ""
-	# Stages and cores: the picker shows its own problems; they also hold the deck back.
-	problems.append_array(_loadout.problems())
-	_deck_problems.text = text
-	_deck_problems.visible = not text.is_empty()
+	var problems: PackedStringArray = _card.problems()
 	_ready_btn.disabled = not problems.is_empty()
+	var saved: Dictionary = _card.saved_deck()
 	if problems.is_empty():
-		_loadout.loadout.remember("online")
-	var deck: Dictionary = _engine_deck(pick, GameSettings.player_name(), _loadout.loadout) if problems.is_empty() else {}
+		_card.loadout.remember("online")
+		GameSettings.set_last_deck("online", "" if saved.is_empty() else str(saved["name"]))
+	var deck: Dictionary = _engine_deck(saved, GameSettings.player_name(), _card.loadout) if problems.is_empty() else {}
 	if host != null:
 		host.set_my_deck(deck)
 	elif client != null:
@@ -409,34 +393,69 @@ func _refresh() -> void:
 	for s: Variant in seats:
 		var d: Dictionary = JsonUtil.as_dict(s)
 		var slot: int = JsonUtil.as_int(d.get("slot", 0))
-		var bits := PackedStringArray()
-		bits.append("deck" if JsonUtil.as_bool(d.get("has_deck", false)) else "no deck yet")
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		_players.add_child(row)
+		var who: String = str(d.get("name", "")).to_upper() + ("  (YOU)" if slot == my_slot else "")
+		row.add_child(UiShape.chip(who, Palette.team(slot), Palette.FG, 20, 34.0, 16.0))
+		var gap := Control.new()
+		gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(gap)
+		var tag: String = ""
+		var tag_bg: Color = Palette.SURFACE_2
+		var tag_fg: Color = Palette.MUTED
 		if JsonUtil.as_bool(d.get("bot", false)):
-			bits.append("bot")
+			tag = "BOT"
 		elif slot == 0:
-			bits.append("host")
+			tag = "HOST"
+		elif JsonUtil.as_bool(d.get("ready", false)):
+			tag = "READY"
+			tag_bg = Palette.GOLD
+			tag_fg = Color.BLACK
 		else:
-			bits.append("ready" if JsonUtil.as_bool(d.get("ready", false)) else "not ready")
+			tag = "NOT READY"
 		if not JsonUtil.as_bool(d.get("connected", true)):
-			bits.append("away")
-		var l := Label.new()
-		l.text = "%d. %s%s  ·  %s" % [slot + 1, str(d.get("name", "")), "  (you)" if slot == my_slot else "", ", ".join(bits)]
-		l.add_theme_color_override("font_color", Palette.team(slot))
-		_players.add_child(l)
+			tag = "AWAY"
+		if not JsonUtil.as_bool(d.get("has_deck", false)):
+			row.add_child(UiShape.chip("NO DECK", Palette.ACCENT_DEEP, Palette.FG, 14, 26.0, 10.0))
+		row.add_child(UiShape.chip(tag, tag_bg, tag_fg, 14, 26.0, 10.0))
 	if seats.size() < NetHost.MAX_SEATS:
-		var wait := Label.new()
-		wait.text = "Waiting for a player…"
-		wait.theme_type_variation = &"Muted"
+		var wait := UiTheme.label("WAITING FOR A PLAYER…", 20, Palette.DIM)
 		_players.add_child(wait)
 	var settings: MatchSettings = host.settings if host != null else MatchSettings.from_dict(client.settings if client != null else {})
 	_settings_text.text = _describe(settings)
 	_settings_text.visible = host == null
 	if host != null:
-		_bot_btn.text = "Remove the bot" if host.has_bot() else "Add a bot"
-		_bot_level.disabled = host.has_bot()
+		_refresh_bot_row()
 		var why: String = host.can_start()
 		_start_btn.disabled = not why.is_empty()
-		_start_btn.text = "Start match" if why.is_empty() else "Start match  ·  %s" % why
+		_start_btn.tooltip_text = why
+		_start_btn.text = "START MATCH" if why.is_empty() else why.to_upper()
+		_start_btn.add_theme_font_size_override("font_size", 40 if why.is_empty() else 22)
+
+
+## Host: fill the empty seat with a bot (Easy / Hard), or free it again.
+func _refresh_bot_row() -> void:
+	for c: Node in _bot_row.get_children():
+		c.queue_free()
+	if host.has_bot():
+		var rm := Button.new()
+		rm.text = "REMOVE THE BOT"
+		rm.pressed.connect(func() -> void: host.remove_bots())
+		_bot_row.add_child(rm)
+		return
+	if host.seats.size() >= NetHost.MAX_SEATS:
+		return
+	_bot_row.add_child(UiTheme.label("OR PLAY A BOT", 16, Palette.MUTED))
+	for hard: bool in [false, true]:
+		var b := Button.new()
+		b.text = "BOT · HARD" if hard else "BOT · EASY"
+		b.tooltip_text = "Fill the other seat with a bot instead of waiting for a player"
+		b.pressed.connect(func() -> void:
+			var why: String = host.add_bot(Bot.level_name(Bot.Level.HARD if hard else Bot.Level.EASY), _engine_deck({}, "Bot"))
+			if not why.is_empty():
+				_status.text = why)
+		_bot_row.add_child(b)
 
 
 static func _describe(s: MatchSettings) -> String:
@@ -462,4 +481,4 @@ func _back() -> void:
 func demo_room() -> void:
 	_host()
 	if host != null:
-		host.add_bot("hard", _engine_deck(RANDOM, "Bot"))
+		host.add_bot("hard", _engine_deck({}, "Bot"))
