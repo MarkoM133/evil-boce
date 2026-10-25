@@ -89,19 +89,20 @@ func _build_tiles(logo: Texture2D) -> void:
 	strip.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	strip.custom_minimum_size = Vector2(0, 56)
 	add_child(strip)
+	# The whole block sits in the middle at a share of the screen ("zoomed out"), whatever
+	# the window size.
 	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 230)
-	margin.add_theme_constant_override("margin_right", 230)
-	margin.add_theme_constant_override("margin_top", 80)
-	margin.add_theme_constant_override("margin_bottom", 96)
+	margin.anchor_left = 0.2
+	margin.anchor_right = 0.8
+	margin.anchor_top = 0.115
+	margin.anchor_bottom = 0.86
 	add_child(margin)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 12)
 	margin.add_child(col)
 
 	var head := HBoxContainer.new()
-	head.custom_minimum_size = Vector2(0, 88)
+	head.custom_minimum_size = Vector2(0, 76)
 	head.add_theme_constant_override("separation", 16)
 	col.add_child(head)
 	if logo != null:
@@ -109,7 +110,7 @@ func _build_tiles(logo: Texture2D) -> void:
 		img.texture = logo
 		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		img.custom_minimum_size = Vector2(110, 88)
+		img.custom_minimum_size = Vector2(96, 76)
 		head.add_child(img)
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -135,13 +136,13 @@ func _build_tiles(logo: Texture2D) -> void:
 	var current: MatchRecord = ReplayStore.load_current() if ReplayStore.has_current() else null
 	if current != null and current.frame_count() > 0:
 		var cont: MenuTile = _tile(left, "CONTINUE", "%s  ·  turn %d" % [current.title(), current.state_at(current.frame_count() - 1).turn],
-			Palette.GOLD.darkened(0.15), 50, "continue", _sprites_of(current))
+			Palette.GOLD.darkened(0.15), 42, "continue", _sprites_of(current))
 		cont.title_color = Color.BLACK
 		cont.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var pair: Array[HeroDef] = _face_off(with_sprite)
 	# Play: the two heroes' real card art, cut apart on a slant.
 	var play: MenuTile = _tile(left, "PLAY", "Against the bot, or two players on this computer", Palette.ACCENT,
-		64 if current == null else 50, "play")
+		54 if current == null else 42, "play")
 	for h: HeroDef in pair:
 		var tex: Texture2D = db.large(h.id)
 		play.split_art.append(tex if tex != null else db.thumb(h.id))
@@ -159,7 +160,7 @@ func _build_tiles(logo: Texture2D) -> void:
 	for h: HeroDef in with_sprite:
 		if crew.size() < 3 and not pair.has(h):
 			crew.append(db.sprite(h))
-	var online: MenuTile = _tile(big, "ONLINE", "Host or join over Tailscale", Color("1d4fd1").darkened(0.25), 56, "online", crew)
+	var online: MenuTile = _tile(big, "ONLINE", "Host or join over Tailscale", Color("1d4fd1").darkened(0.25), 46, "online", crew)
 	# Behind the crew: a random stage's art, as if they stood there.
 	var stages: Array[CardDef] = db.catalog.of_type("Stage") if db.is_ok() else []
 	if not stages.is_empty():
@@ -170,14 +171,14 @@ func _build_tiles(logo: Texture2D) -> void:
 
 	var small := HBoxContainer.new()
 	small.add_theme_constant_override("separation", 12)
-	small.custom_minimum_size = Vector2(0, 78)
+	small.custom_minimum_size = Vector2(0, 68)
 	col.add_child(small)
 	var replays: int = ReplayStore.list_replays().size()
 	var decks: int = DeckStore.load_all(db.root_dir).size() if db.is_ok() else 0
-	_tile(small, "SANDBOX", "Throw balls around, try terrain", Palette.PANEL_SOLID, 26, "sandbox")
-	_tile(small, "REPLAYS", "%d saved" % replays if replays > 0 else "None yet", Palette.PANEL_SOLID, 26, "replays")
-	_tile(small, "DECKS", "%d deck%s" % [decks, "" if decks == 1 else "s"] if decks > 0 else "Deck codes", Palette.PANEL_SOLID, 26, "decks")
-	_tile(small, "SETTINGS", "Display, sound, keys", Palette.PANEL_SOLID, 26, "settings")
+	_tile(small, "SANDBOX", "Throw balls around, try terrain", Palette.PANEL_SOLID, 22, "sandbox")
+	_tile(small, "REPLAYS", "%d saved" % replays if replays > 0 else "None yet", Palette.PANEL_SOLID, 22, "replays")
+	_tile(small, "DECKS", "%d deck%s" % [decks, "" if decks == 1 else "s"] if decks > 0 else "Deck codes", Palette.PANEL_SOLID, 22, "decks")
+	_tile(small, "SETTINGS", "Display, sound, keys", Palette.PANEL_SOLID, 22, "settings")
 
 	var exit := Button.new()
 	exit.text = "EXIT"
@@ -186,7 +187,11 @@ func _build_tiles(logo: Texture2D) -> void:
 	exit.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	exit.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	exit.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	exit.position = Vector2(-230, -76)
+	exit.anchor_left = 0.8
+	exit.anchor_right = 0.8
+	exit.anchor_top = 0.86
+	exit.anchor_bottom = 0.86
+	exit.position = Vector2(-90, 10)
 	exit.pressed.connect(_on_pressed.bind("exit"))
 	add_child(exit)
 	# Tiles come in one after another.
@@ -273,7 +278,7 @@ func _news() -> Control:
 	sb.border_color = Palette.GOLD
 	sb.border_width_left = 4
 	panel.add_theme_stylebox_override("panel", sb)
-	panel.custom_minimum_size = Vector2(400, 0)
+	panel.custom_minimum_size = Vector2(340, 0)
 	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 2)
@@ -284,7 +289,7 @@ func _news() -> Control:
 	for kind: String in ["new", "changed", "deleted"]:
 		if counts.has(kind):
 			parts.append("%d %s" % [JsonUtil.as_int(counts[kind]), kind])
-	v.add_child(UiTheme.label(", ".join(parts).to_upper(), 22))
+	v.add_child(UiTheme.label(", ".join(parts).to_upper(), 19))
 	var list := Label.new()
 	list.text = ", ".join(names) + ("…" if JsonUtil.as_array(last.get("cards", [])).size() > names.size() else "")
 	list.add_theme_color_override("font_color", Palette.MUTED)
