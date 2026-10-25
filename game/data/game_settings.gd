@@ -203,3 +203,12 @@ static func apply(tree: SceneTree, force: bool = false) -> void:
 		var v: float = volume(bus)
 		AudioServer.set_bus_mute(i, v <= 0.001)
 		AudioServer.set_bus_volume_db(i, linear_to_db(maxf(v, 0.001)))
+
+
+## Last stages / cores picked (Loadout.to_dict()), per "p1", "p2" or "online".
+static func loadout(who: String) -> Dictionary:
+	return JsonUtil.as_dict(_config().get_value("loadout", who, {}))
+
+
+static func set_loadout(who: String, d: Dictionary) -> void:
+	set_value("loadout", who, d)

@@ -21,6 +21,7 @@ var _status: Label
 var _players: VBoxContainer
 var _deck_pick: OptionButton
 var _deck_problems: Label
+var _loadout: LoadoutPicker
 var _front: Control
 var _room: Control
 var _host_bits: Control
@@ -186,6 +187,10 @@ func _build() -> void:
 		_deck_pick.add_item(str(d["name"]))
 	_deck_pick.item_selected.connect(func(_i: int) -> void: _send_deck())
 	_room.add_child(_deck_pick)
+	_loadout = LoadoutPicker.new()
+	_loadout.setup(db.catalog, Loadout.remembered("online"), "Your stages and cores")
+	_loadout.changed.connect(_send_deck)
+	_room.add_child(_loadout)
 	_deck_problems = Label.new()
 	_deck_problems.theme_type_variation = &"Muted"
 	_deck_problems.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -227,11 +232,11 @@ func _picked_deck(pick: String) -> Dictionary:
 	return {}
 
 
-func _engine_deck(pick: String, who: String) -> Dictionary:
+func _engine_deck(pick: String, who: String, loadout: Loadout = null) -> Dictionary:
 	var deck: Dictionary = _picked_deck(pick)
 	if deck.is_empty():
 		deck = DeckCode.random_deck(db.catalog, _rng)
-	return MatchLaunch.engine_deck(db.catalog, deck, who, _rng)
+	return MatchLaunch.engine_deck(db.catalog, deck, who, _rng, loadout)
 
 
 ## Room view: the host sees the settings and the bot row, a guest the Ready button.
@@ -378,10 +383,15 @@ func _send_deck() -> void:
 	var problems := PackedStringArray()
 	if not saved.is_empty():
 		problems = DeckCode.check(db.catalog, JsonUtil.as_strings(saved["heroes"]), JsonUtil.as_dict(saved["cards"]))
-	_deck_problems.text = ("This deck breaks the deck rules: " + "; ".join(problems)) if not problems.is_empty() else ""
-	_deck_problems.visible = not problems.is_empty()
+	var text: String = ("This deck breaks the deck rules: " + "; ".join(problems)) if not problems.is_empty() else ""
+	# Stages and cores: the picker shows its own problems; they also hold the deck back.
+	problems.append_array(_loadout.problems())
+	_deck_problems.text = text
+	_deck_problems.visible = not text.is_empty()
 	_ready_btn.disabled = not problems.is_empty()
-	var deck: Dictionary = _engine_deck(pick, GameSettings.player_name()) if problems.is_empty() else {}
+	if problems.is_empty():
+		_loadout.loadout.remember("online")
+	var deck: Dictionary = _engine_deck(pick, GameSettings.player_name(), _loadout.loadout) if problems.is_empty() else {}
 	if host != null:
 		host.set_my_deck(deck)
 	elif client != null:
