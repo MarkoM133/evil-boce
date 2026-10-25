@@ -26,39 +26,15 @@ func strip_at(pos: Vector3) -> int:
 
 
 func friction_factor_at(pos: Vector3) -> float:
-	return tuning.terrain_factor(terrain.at(arena.hex_at(pos)))
+	return TerrainPhysics.friction(terrain, tuning, arena.hex_at(pos))
 
 
 func push_at(pos: Vector3) -> Vector2:
-	var a: Vector2i = arena.hex_at(pos)
-	match terrain.at(a):
-		Terrain.Type.WIND:
-			return wind_vector(terrain.dir_of(a)) * tuning.wind_accel
-		Terrain.Type.RAMP:
-			var off: Vector2 = _from_top(pos, a)
-			var r: float = hill_radius()
-			if off.length() >= r:
-				return Vector2.ZERO
-			return off / r * tuning.hill_accel
-	return Vector2.ZERO
+	return TerrainPhysics.push(terrain, arena.map, tuning, Vector2(pos.x, pos.z))
 
 
 func height_at(pos: Vector3) -> float:
 	return arena.height_at(pos)
-
-
-func hill_radius() -> float:
-	return arena.hill_radius()
-
-
-## Unit (x, z) vector of a hex direction.
-func wind_vector(dir: int) -> Vector2:
-	return Hex.to_world(Hex.DIRECTIONS[posmod(dir, 6)], 1.0).normalized()
-
-
-func _from_top(pos: Vector3, a: Vector2i) -> Vector2:
-	var top: Vector3 = arena.hex_center(terrain.center_of(a))
-	return Vector2(pos.x - top.x, pos.z - top.z)
 
 
 func hex_at(pos: Vector3) -> Vector2i:

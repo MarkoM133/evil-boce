@@ -138,17 +138,11 @@ func refresh_terrain() -> void:
 
 ## Ground height at `pos` (a Ramp hill), so pieces standing there can be drawn on top.
 func height_at(pos: Vector3) -> float:
-	var a: Vector2i = hex_at(pos)
-	if terrain.at(a) != Terrain.Type.RAMP:
-		return 0.0
-	var top: Vector3 = hex_center(terrain.center_of(a))
-	var k: float = Vector2(pos.x - top.x, pos.z - top.z).length() / hill_radius()
-	return tuning.hill_height * maxf(0.0, 1.0 - k * k)
+	return TerrainPhysics.height(terrain, map, tuning, Vector2(pos.x, pos.z))
 
 
-## A hill covers the 7-hex patch: its radius reaches the outer edge of the ring.
 func hill_radius() -> float:
-	return map.spacing() * 1.5
+	return TerrainPhysics.hill_radius(map)
 
 
 func _refresh_props() -> void:
@@ -178,7 +172,7 @@ func _refresh_props() -> void:
 
 
 func _add_arrow(a: Vector2i, dir: int) -> void:
-	var d: Vector2 = Hex.to_world(Hex.DIRECTIONS[posmod(dir, 6)], 1.0).normalized()
+	var d: Vector2 = TerrainPhysics.wind_vector(dir)
 	var mi := MeshInstance3D.new()
 	mi.mesh = _chevron_mesh()
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

@@ -1,8 +1,9 @@
 class_name Bot
 extends RefCounted
 ## The computer opponent (GDD 12). Both levels pick heroes by simple rules and choose a throw by
-## trying many on an analytic model (a straight roll that stops after power x full range, no
-## bounces) and scoring where it ends. Easy tries fewer throws, aims sloppily and plays the
+## trying many on a light model (TerrainPhysics.roll_path: the sim's slow-down and terrain, no
+## bounces) and scoring where it ends; Hard also corrects the power for Mud, Ice, hills and
+## wind on the way to its target. Easy tries fewer throws, aims sloppily and plays the
 ## first card that helps; Hard tries more, aims tightly and tries every card, ability and choice
 ## on a copy of the state (the rules engine without graphics) to keep the best one.
 
@@ -293,13 +294,18 @@ func _aim(engine: RulesEngine, s: GameState, h: HeroState, positions: Dictionary
 	var full: float = tuning.full_power_hexes(card.wt if card != null else 2) * tuning.hex_spacing()
 	var targets: Array[Vector2] = _targets(s, h)
 	var tries: int = 50 if hard() else 20
+	var wt: int = card.wt if card != null else 2
+	# The ground in force (Ice, Mud, hills, wind): throws are previewed over it.
+	var tm: TerrainMap = engine.terrain(s)
+	var m: HexMap = s.map()
 	var best_dir := Vector2(0, -1 if s.team_of(h.owner) == 0 else 1)
 	var best_power: float = 0.5
 	var best_v: float = -INF
 	for _i: int in tries:
 		var dir: Vector2
 		var dist: float
-		if not targets.is_empty() and rng.randf() < 0.75:
+		var aimed: bool = not targets.is_empty() and rng.randf() < 0.75
+		if aimed:
 			var t: Vector2 = targets[rng.randi_range(0, targets.size() - 1)]
 			dir = (t - from).normalized()
 			dist = from.distance_to(t) * rng.randf_range(0.8, 1.1)
@@ -307,7 +313,17 @@ func _aim(engine: RulesEngine, s: GameState, h: HeroState, positions: Dictionary
 			dir = Vector2.from_angle(rng.randf_range(0.0, TAU))
 			dist = full * rng.randf_range(0.15, 1.0)
 		var power: float = clampf(dist / full, 0.05, 1.0)
-		var v: float = _score_throw(engine, s, h, from, dir, power * full, tuning)
+		var path: PackedVector2Array = TerrainPhysics.roll_path(tm, m, tuning, wt, from, dir, power)
+		if aimed and hard() and not tm.is_empty():
+			# Mud stops short, Ice and a tailwind carry on: Hard corrects the power to the target
+			# (on plain ground the distance grows with the power, so a ratio is close enough).
+			for _k: int in 2:
+				var went: float = from.distance_to(path[path.size() - 1])
+				if went < 0.05 or absf(went - dist) < 0.3:
+					break
+				power = clampf(power * dist / went, 0.05, 1.0)
+				path = TerrainPhysics.roll_path(tm, m, tuning, wt, from, dir, power)
+		var v: float = _score_path(engine, s, h, path)
 		if v > best_v:
 			best_v = v
 			best_dir = dir
@@ -334,18 +350,15 @@ func _targets(s: GameState, h: HeroState) -> Array[Vector2]:
 	return out
 
 
-## Where a straight throw of length `dist` ends and how good that is (no bounces, no terrain).
-func _score_throw(engine: RulesEngine, s: GameState, h: HeroState, from: Vector2, dir: Vector2, dist: float,
-		tuning: PhysicsTuning) -> float:
+## How good a throw is that rolls along `path` (TerrainPhysics.roll_path: terrain counted,
+## other balls not): ring-out, cores picked on the way, where it stops.
+func _score_path(engine: RulesEngine, s: GameState, h: HeroState, path: PackedVector2Array) -> float:
 	var m: HexMap = s.map()
-	var entered: bool = m.contains(m.from_world(from))
-	var step: float = tuning.hex_spacing() * 0.5
+	var entered: bool = m.contains(m.from_world(path[0]))
 	var picked: int = 0
 	var free_slots: int = s.settings.core_slots - h.cores.size()
 	var seen := {}
-	var d: float = 0.0
-	while d <= dist:
-		var p: Vector2 = from + dir * d
+	for p: Vector2 in path:
 		var a: Vector2i = m.from_world(p)
 		if m.contains(a):
 			entered = true
@@ -355,8 +368,7 @@ func _score_throw(engine: RulesEngine, s: GameState, h: HeroState, from: Vector2
 				picked += 1
 		elif entered:
 			return RING_OUT
-		d += step
-	var end: Vector2i = m.from_world(from + dir * dist)
+	var end: Vector2i = m.from_world(path[path.size() - 1])
 	if not m.contains(end):
 		# Still on its strip: a wasted throw, but not a ring-out.
 		return -30.0
