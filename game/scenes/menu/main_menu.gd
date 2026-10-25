@@ -1,5 +1,5 @@
 extends Control
-## Main menu (GDD 7) in one of two layouts (Settings → Main menu). "Featured hero" (mockup M5):
+## Main menu (GDD 7) in one of three layouts (Settings → Main menu). "Featured hero" (mockup M5):
 ## one hero's card art fills the right side behind a slanted cut and changes every few seconds;
 ## the logo sits small top left and the entries run down the left in big italics. "Tiles"
 ## (mockup M7): a hub of big tiles like a mobile game's. Every entry works: Continue (an unfinished
@@ -113,21 +113,32 @@ func _build_cinema(logo: Texture2D) -> void:
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_theme_constant_override("separation", 18)
 	add_child(col)
+	# The logo between two cards (mockup M8 + 5): the last match on the left, what is new on
+	# the right.
+	var stage := HBoxContainer.new()
+	stage.alignment = BoxContainer.ALIGNMENT_CENTER
+	stage.add_theme_constant_override("separation", 56)
+	col.add_child(stage)
+	var cards: Array[Control] = [_last_match_card(), _whats_new_card()]
+	stage.add_child(cards[0])
 	if logo != null:
 		var img := TextureRect.new()
 		img.texture = logo
 		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		img.custom_minimum_size = Vector2(0, 380)
-		img.pivot_offset = Vector2(0, 190)
-		col.add_child(img)
+		img.custom_minimum_size = Vector2(400, 380)
+		stage.add_child(img)
 		img.modulate.a = 0.0
 		var lt: Tween = img.create_tween()
 		lt.tween_property(img, "modulate:a", 1.0, 0.4)
 	else:
 		var title: Label = UiTheme.label("EVIL BOĆE", 110)
 		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(title)
+		stage.add_child(title)
+	stage.add_child(cards[1])
+	for c: Control in cards:
+		c.modulate.a = 0.0
+		c.create_tween().tween_property(c, "modulate:a", 1.0, 0.3).set_delay(0.35)
 
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -164,7 +175,163 @@ func _build_cinema(logo: Texture2D) -> void:
 		first.grab_focus.call_deferred()
 
 
-# --- tiles (mockup M7) ----------------------------------------------------------------------
+const SIDE_CARD := Vector2(330, 380)
+## Card fields as the web app's changelog names them, for the What's new card.
+const FIELD_NAMES: Dictionary = {"wt": "weight", "stats": "stats", "text": "text", "cost": "cost",
+	"bonus": "bonus", "values": "values", "traits": "traits", "terrain": "terrain", "fx": "effect",
+	"evo": "evolution", "type": "type", "color": "colour", "image": "art"}
+
+
+## A side card of the cinema menu: a slanted panel with a coloured edge and a header.
+func _side_card(header: String, color: Color) -> VBoxContainer:
+	var panel := PanelContainer.new()
+	var sb: StyleBoxFlat = UiTheme.box(Palette.PANEL_SOLID, 0, Color(0, 0, 0, 0), 26, 18)
+	sb.skew = Vector2(UiTheme.SKEW * 0.25, 0)
+	sb.anti_aliasing = true
+	sb.border_color = color
+	sb.border_width_left = 4
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.custom_minimum_size = SIDE_CARD
+	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	panel.add_child(v)
+	v.add_child(UiTheme.label(header, 16, color))
+	return v
+
+
+func _card_link(v: VBoxContainer, text: String, action: String) -> void:
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(spacer)
+	var b := Button.new()
+	b.text = text
+	b.flat = true
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_font_override("font", UiTheme.display_heavy())
+	b.add_theme_font_size_override("font_size", 18)
+	for state: String in ["font_color", "font_hover_color", "font_pressed_color"]:
+		b.add_theme_color_override(state, Palette.GOLD if state == "font_color" else Color("ffd36a"))
+	for state: String in ["normal", "hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.pressed.connect(_on_pressed.bind(action))
+	v.add_child(b)
+
+
+## Left: the table at the end of the last match (its snapshot) and how it went. Without one,
+## a stage's art and a way to play.
+func _last_match_card() -> Control:
+	var v: VBoxContainer = _side_card("LAST MATCH", Palette.team(0))
+	var pic := TextureRect.new()
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	pic.clip_contents = true
+	pic.custom_minimum_size = Vector2(0, 160)
+	v.add_child(pic)
+	var shot: Texture2D = ReplayStore.last_shot()
+	if shot == null:
+		var stages: Array[CardDef] = db.catalog.of_type("Stage") if db.is_ok() else []
+		var st: CardDef = stages.pick_random() if not stages.is_empty() else null
+		var tex: Texture2D = null
+		if st != null:
+			tex = db.large(st.id) if db.large(st.id) != null else db.thumb(st.id)
+		if tex != null:
+			var at := AtlasTexture.new()
+			at.atlas = tex
+			var r: Rect2 = MenuTile.card_art_region(tex, 2.0)
+			at.region = Rect2(r.position * tex.get_size(), r.size * tex.get_size())
+			pic.texture = at
+		v.add_child(UiTheme.label("NO MATCH YET", 30))
+		v.add_child(_muted("Pick decks, stages and cores" + ("  ·  %s" % st.name if st != null else ""), 13))
+		_card_link(v, "PLAY  ›", "play")
+		return v.get_parent() as Control
+	pic.texture = shot
+	# "Last match: A vs B  ·  turn 6  ·  A won" (match.gd _snapshot).
+	var parts: PackedStringArray = ReplayStore.last_caption().trim_prefix("Last match: ").split("  ·  ")
+	var result: String = parts[2] if parts.size() > 2 else "unfinished"
+	v.add_child(UiTheme.label(result.to_upper(), 30, Palette.GOLD if result == "unfinished" else Palette.FG))
+	v.add_child(_muted("  ·  ".join(parts.slice(0, 2)), 13))
+	if result == "unfinished" and ReplayStore.has_current():
+		_card_link(v, "CONTINUE  ›", "continue")
+	else:
+		_card_link(v, "WATCH REPLAY  ›", "replays")
+	return v.get_parent() as Control
+
+
+## Right: the cards in the latest Publish and what changed on each.
+func _whats_new_card() -> Control:
+	var entries: Array[Dictionary] = _changelog()
+	var v: VBoxContainer = _side_card("WHAT'S NEW" if entries.is_empty()
+		else "WHAT'S NEW  ·  CARDS v%d" % JsonUtil.as_int(entries[0].get("version", 0)), Palette.GOLD)
+	if entries.is_empty():
+		v.add_child(_muted("Nothing published yet. New and changed cards show up here after a Publish in the web app.", 13))
+		return v.get_parent() as Control
+	v.add_child(_muted(str(entries[0].get("date", "")).substr(0, 10), 12))
+	# The latest Publish first, then older ones until the card is full; each card once.
+	const ROWS: int = 7
+	var rows: Array[Dictionary] = []
+	var seen: Dictionary = {}
+	var left_out: int = 0
+	for e: Dictionary in entries:
+		for c: Variant in JsonUtil.as_array(e.get("cards", [])):
+			var cd: Dictionary = JsonUtil.as_dict(c)
+			var id: String = str(cd.get("id", ""))
+			if seen.has(id):
+				continue
+			seen[id] = true
+			if rows.size() < ROWS:
+				cd["version"] = e.get("version", 0)
+				rows.append(cd)
+			elif e == entries[0]:
+				left_out += 1
+		if rows.size() >= ROWS:
+			break
+	for cd: Dictionary in rows:
+		var row := HBoxContainer.new()
+		var name_l: Label = UiTheme.label(str(cd.get("name", "")), 19, Palette.FG, false)
+		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_l.clip_text = true
+		name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		row.add_child(name_l)
+		row.add_child(_muted("v%d  ·  %s" % [JsonUtil.as_int(cd.get("version", 0)), _change_text(cd)], 13, false))
+		v.add_child(row)
+		var line := ColorRect.new()
+		line.color = Palette.LINE
+		line.custom_minimum_size = Vector2(0, 1)
+		v.add_child(line)
+	if left_out > 0:
+		v.add_child(_muted("and %d more" % left_out, 13))
+	v.add_child(_muted("%d cards in all" % db.card_count, 12))
+	return v.get_parent() as Control
+
+
+## "new", "deleted", or the fields that changed ("weight, art").
+static func _change_text(cd: Dictionary) -> String:
+	var kind: String = str(cd.get("kind", "changed"))
+	if kind != "changed":
+		return kind
+	var out := PackedStringArray()
+	for f: Variant in JsonUtil.as_array(cd.get("fields", [])):
+		if FIELD_NAMES.has(str(f)):
+			out.append(str(FIELD_NAMES[str(f)]))
+	if cd.get("image", false) == true:
+		out.append("art")
+	return ", ".join(out) if not out.is_empty() else "look"
+
+
+func _muted(text: String, size: int, wrap: bool = true) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_color_override("font_color", Palette.MUTED)
+	l.add_theme_font_size_override("font_size", size)
+	if wrap:
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return l
+
+
+# --- tiles (mockup M7)----------------------------------------------------------------------
 
 ## A hub like a mobile game's: a thin hero strip, the logo and what is new in the cards on top,
 ## two big tiles with the heroes' pixel figures (Play: two face off; Online: a crew; Continue
@@ -341,19 +508,9 @@ func _sprites_of(rec: MatchRecord) -> Array[Texture2D]:
 ## What is new in the cards (data/changelog.json, written by the web app on Publish): the
 ## latest version, how many cards came and changed, a few names. Null without a changelog.
 func _news() -> Control:
-	if not db.is_ok():
+	var last: Dictionary = _last_changelog()
+	if last.is_empty():
 		return null
-	var path: String = db.data_dir().path_join("changelog.json")
-	if not FileAccess.file_exists(path):
-		return null
-	var entries: Array = JsonUtil.as_array(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(path))).get("entries", []))
-	if entries.is_empty():
-		return null
-	var last: Dictionary = {}
-	for e: Variant in entries:
-		var d: Dictionary = JsonUtil.as_dict(e)
-		if last.is_empty() or JsonUtil.as_int(d.get("version", 0)) > JsonUtil.as_int(last.get("version", 0)):
-			last = d
 	var counts: Dictionary = {}
 	var names := PackedStringArray()
 	for c: Variant in JsonUtil.as_array(last.get("cards", [])):
@@ -388,6 +545,27 @@ func _news() -> Control:
 	list.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	v.add_child(list)
 	return panel
+
+
+## The newest entry of data/changelog.json, or {} without one.
+func _last_changelog() -> Dictionary:
+	var entries: Array[Dictionary] = _changelog()
+	return entries[0] if not entries.is_empty() else {}
+
+
+## The entries of data/changelog.json, newest version first.
+func _changelog() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if not db.is_ok():
+		return out
+	var path: String = db.data_dir().path_join("changelog.json")
+	if not FileAccess.file_exists(path):
+		return out
+	for e: Variant in JsonUtil.as_array(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(path))).get("entries", [])):
+		out.append(JsonUtil.as_dict(e))
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return JsonUtil.as_int(a.get("version", 0)) > JsonUtil.as_int(b.get("version", 0)))
+	return out
 
 
 # --- featured hero (mockup M5) --------------------------------------------------------------
