@@ -41,10 +41,11 @@ Evil Boce/
   data/thumbs/       sličice 300 px, data/large/ velike slike 1000 px (JPEG, radi ih Objavi)
   data/changelog.json povijest promjena po verziji baze (piše je app)
   data/fx-proposals.json kako igra čita tekst karata (piše ga game/tools/fx_proposals.gd), za karticu Effect
-  data/figures/      3D figure heroja (.glb), za igru
+  data/figures/      3D figure heroja (.glb), možda kasnije; zasad su heroji 2D pixel art (spriteovi)
   data/audio/        zvukovi, za igru
   data/branding/     logo i ikona igre
   decks/             deckovi, ime-decka.json
+  library/           izvorni art za spriteove (npr. one-piece-treasure-cruise/: spritesheetovi likova i efekata); igra ga ne čita izravno
   stats/             statistika partija (igra)
   game/              buildovi igre po verziji
   replays-shared/    replayevi koje host podijeli
