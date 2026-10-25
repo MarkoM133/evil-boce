@@ -7,9 +7,9 @@ extends Control
 ## Shown already in this run (going back to the menu skips it).
 static var done: bool = false
 
-const BLINK: float = 1.6
+const BLINK: float = 2.8
 const TICKER_H: float = 42.0
-const TICKER_SPEED: float = 70.0
+const TICKER_SPEED: float = 40.0
 const TICKER_GAP: float = 64.0
 
 var _prompt: Label
