@@ -10,7 +10,8 @@ The game reads cards, sprites and branding straight from the shared Syncthing fo
 `%USERPROFILE%\Documents\Other\TTS_Custom\EvilBoce`.
 
 - Override for one run: `godot -- --data=D:/path/to/EvilBoce`
-- Override for good: `[data] path="D:/path/to/EvilBoce"` in
+- Override for good: main menu → Settings → Shared folder, stored as `[data] path` (next to
+  the display, sound and key settings) in
   `%APPDATA%\EvilBoce\settings.cfg`.
 
 The main menu footer shows which folder and `cards.json` version it found.
