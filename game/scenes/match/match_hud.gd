@@ -11,7 +11,10 @@ signal pass_pressed(slot: int)
 signal choice_pressed(slot: int, roll: bool)
 signal keep_pressed(slot: int, keep: bool)
 signal no_hero_pressed(slot: int)
-signal card_pressed(slot: int, card_id: String)
+## A card from the hand goes on `hero_id` ("" lets the engine pick, when it can only go one way).
+signal card_pressed(slot: int, card_id: String, hero_id: String)
+## Choosing a hero for a card started, changed or ended (target_heroes empty).
+signal targeting_changed
 signal damage_pressed(slot: int, target: String)
 ## Answer to a "choose" decision (hero, core, card id or branch index; hexes go by click).
 signal choose_pressed(slot: int, value: Variant)
@@ -83,6 +86,13 @@ var _banner_busy: bool = false
 var _log_seen: int = -1
 ## The phase last called out by a banner.
 var _called_phase: String = ""
+## Choosing a hero for a card: whose card, which, the heroes it can go on, why not the others.
+var target_slot: int = -1
+var target_cid: String = ""
+var target_heroes: PackedStringArray = PackedStringArray()
+var _target_why: Dictionary = {}
+var _last_why_by: Dictionary = {}
+var _aim_line: Control
 ## The big card above the hand (GDD 11): the card under the mouse ("" = none) and the one shown.
 var _hover_cid: String = ""
 var _big: TextureRect
@@ -111,6 +121,13 @@ func setup(engine_: RulesEngine, state_: GameState, db_: CardDb, local: PackedIn
 func refresh() -> void:
 	if state == null:
 		return
+	# Choosing a hero for a card ends when the card can no longer be played.
+	if is_targeting() and not (_in_card_round() and state.to_act == target_slot and state.pending.is_empty()
+			and state.player(target_slot).hand.has(target_cid)):
+		target_cid = ""
+		target_slot = -1
+		target_heroes = PackedStringArray()
+		targeting_changed.emit()
 	# A new phase is called out in the middle (not on the first look, e.g. a loaded match).
 	if state.phase != _called_phase:
 		# Not while a replay rewinds (its log gets shorter).
@@ -337,6 +354,12 @@ func _build() -> void:
 	_dialog_box.custom_minimum_size = Vector2(420, 0)
 	_dialog_box.add_theme_constant_override("separation", 10)
 	_dialog.add_child(_dialog_box)
+
+	_aim_line = Control.new()
+	_aim_line.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_aim_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_aim_line.draw.connect(_draw_aim_line)
+	add_child(_aim_line)
 
 	_banner_layer = Control.new()
 	_banner_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -566,6 +589,20 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(name_l)
 	var tag: UiShape = _hero_tag(h, active, pickable, in_battle)
+	# Picking a hero for a card: who can take it (the one under the mouse is chosen), who not.
+	if is_targeting() and h.owner == target_slot and not ko:
+		if target_heroes.has(h.id):
+			var chosen: bool = h.id == hover_hero
+			tag = UiShape.chip("CHOSEN" if chosen else "CAN TAKE IT", Palette.GOLD if chosen else Color(Palette.GOLD, 0.25),
+				Color.BLACK if chosen else Palette.GOLD, 12, 20.0, 8.0)
+			s.outline = Color("ffd36a") if chosen else Color(Palette.GOLD, 0.8)
+			s.outline_width = 3.0
+		else:
+			var why: String = _short_why(str(_target_why.get(h.id, "")))
+			tag = UiShape.chip(why.to_upper(), Palette.SURFACE_2, Palette.MUTED, 11, 20.0, 8.0)
+			s.modulate.a = 0.45
+	elif is_targeting():
+		s.modulate.a = 0.6
 	if tag != null:
 		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		top.add_child(tag)
@@ -1089,8 +1126,12 @@ func _process(delta: float) -> void:
 		_hand_drop = 0.0
 		_hand_box.position.y = size.y * 0.5 - HAND_HEIGHT * 0.5
 		return
-	# Up while the mouse is near the bottom of the screen, else only the tops of the cards show.
-	var up: bool = get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0
+	# Up while the mouse is near the bottom of the screen (or a hero is being picked for a
+	# card), else only the tops of the cards show.
+	var up: bool = get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0 or is_targeting()
+	if _aim_line != null and (is_targeting() or _aim_line.get_meta("drawn", false)):
+		_aim_line.set_meta("drawn", is_targeting())
+		_aim_line.queue_redraw()
 	var target: float = 0.0 if up else HAND_HEIGHT - 110.0
 	_hand_drop = move_toward(_hand_drop, target, delta * 900.0)
 	_hand_box.position.y = size.y - HAND_HEIGHT + 30.0 + _hand_drop
@@ -1119,7 +1160,8 @@ func _refresh_hand() -> void:
 		var cid: String = p.hand[i]
 		var check: Dictionary = _play_check(slot, cid) if my_round else {}
 		var playable: bool = my_round and check.get("ok", false) == true
-		var card: Control = _hand_card(slot, cid, playable, my_round, str(check.get("why", "")))
+		var card: Control = _hand_card(slot, cid, playable, my_round, str(check.get("why", "")),
+			JsonUtil.as_strings(check.get("heroes", [])))
 		var t: float = i - (n - 1) * 0.5
 		card.position = Vector2(_hand.size.x * 0.5 + t * step - CARD_SIZE.x * 0.5, 16.0 + (0.0 if mulligan else t * t * 4.0))
 		card.rotation_degrees = 0.0 if mulligan else t * 5.0
@@ -1127,6 +1169,9 @@ func _refresh_hand() -> void:
 			card.scale = Vector2.ONE * 1.25
 		card.set_meta("rest_y", card.position.y)
 		_hand.add_child(card)
+		# The card a hero is being chosen for stays up.
+		if cid == target_cid and slot == target_slot:
+			_lift(card, true, true)
 
 
 ## Messages from the engine that still mean "you can play it" (it asks for a choice after).
@@ -1135,10 +1180,11 @@ const PLAY_ASKS: Array[String] = ["choose an assist to replace"]
 
 ## Whether `slot` may play `cid` now, asked of the engine itself: the move is tried on a copy of
 ## the state, once for each hero the card could go on. {"ok", "why" (the engine's reason when
-## not), "heroes" (ids it can go on)}.
+## not), "heroes" (ids it can go on), "why_by" (hero id -> why not, for the others)}.
 func _play_check(slot: int, cid: String) -> Dictionary:
 	var heroes := PackedStringArray()
 	var why: String = ""
+	var why_by: Dictionary = {}
 	var targets: Array[String] = []
 	for h: HeroState in engine.card_context_heroes(state, slot):
 		targets.append(h.id)
@@ -1153,10 +1199,87 @@ func _play_check(slot: int, cid: String) -> Dictionary:
 		if err.is_empty():
 			if not hid.is_empty():
 				heroes.append(hid)
-		elif why.is_empty():
-			why = err
+		else:
+			if why.is_empty():
+				why = err
+			if not hid.is_empty():
+				why_by[hid] = err
 	var ok: bool = not heroes.is_empty() or (targets[0].is_empty() and why.is_empty())
-	return {"ok": ok, "why": "" if ok else why, "heroes": heroes}
+	_last_why_by[cid] = why_by
+	return {"ok": ok, "why": "" if ok else why, "heroes": heroes, "why_by": why_by}
+
+
+# --- choosing a hero for a card (mockup HUD 2) -----------------------------------------
+
+## A playable card was clicked: with one hero to go on (or none to name) it is played at once;
+## with more, the player picks one on the table or in the roster.
+func _card_chosen(slot: int, cid: String, heroes: PackedStringArray) -> void:
+	if heroes.size() <= 1:
+		cancel_targeting()
+		card_pressed.emit(slot, cid, heroes[0] if heroes.size() == 1 else "")
+		return
+	if cid == target_cid:
+		cancel_targeting()
+		return
+	target_slot = slot
+	target_cid = cid
+	target_heroes = heroes
+	_target_why = _last_why_by.get(cid, {})
+	targeting_changed.emit()
+	refresh()
+
+
+func is_targeting() -> bool:
+	return not target_cid.is_empty()
+
+
+func cancel_targeting() -> void:
+	if target_cid.is_empty():
+		return
+	target_cid = ""
+	target_slot = -1
+	target_heroes = PackedStringArray()
+	_target_why = {}
+	targeting_changed.emit()
+	refresh()
+
+
+## Plays the card being targeted on `hero_id` if it can go there; true when it did.
+func play_target(hero_id: String) -> bool:
+	if target_cid.is_empty() or not target_heroes.has(hero_id):
+		return false
+	var slot: int = target_slot
+	var cid: String = target_cid
+	cancel_targeting()
+	card_pressed.emit(slot, cid, hero_id)
+	return true
+
+
+## The dashed line from the card being targeted to the mouse.
+func _draw_aim_line() -> void:
+	if target_cid.is_empty():
+		return
+	var from := Vector2.ZERO
+	var found: bool = false
+	for c: Node in _hand.get_children():
+		if c is Control and str(c.get_meta("cid", "")) == target_cid:
+			var card := c as Control
+			from = card.get_global_rect().get_center() - _aim_line.get_global_rect().position
+			from.y = card.get_global_rect().position.y - _aim_line.get_global_rect().position.y
+			found = true
+	if not found:
+		return
+	var to: Vector2 = _aim_line.get_local_mouse_position()
+	var mid := Vector2(from.x, minf(from.y, to.y) - 60.0)
+	var pts := PackedVector2Array()
+	for i: int in 33:
+		var t: float = i / 32.0
+		pts.append(from.lerp(mid, t).lerp(mid.lerp(to, t), t))
+	for i: int in range(0, 32, 2):
+		_aim_line.draw_line(pts[i], pts[i + 1], Palette.GOLD, 5.0, true)
+	var dir: Vector2 = (pts[32] - pts[30]).normalized()
+	var side := Vector2(-dir.y, dir.x)
+	_aim_line.draw_colored_polygon(PackedVector2Array([to + dir * 6.0, to - dir * 14.0 + side * 9.0, to - dir * 14.0 - side * 9.0]), Palette.GOLD)
 
 
 ## Where a card picture of `tex` sits in the card slot (aspect kept, centred).
@@ -1170,12 +1293,14 @@ static func _card_rect(tex: Texture2D) -> Rect2:
 
 ## One card of the hand: its image, the cost on a diamond, and how it can be used now; `why`
 ## (shown on hover) says what keeps it from being played.
-func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: String = "") -> Control:
+func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: String = "",
+		heroes: PackedStringArray = PackedStringArray()) -> Control:
 	var c: CardDef = engine.catalog.get_card(cid)
 	var root := Control.new()
 	root.custom_minimum_size = CARD_SIZE
 	root.size = CARD_SIZE
 	root.pivot_offset = Vector2(CARD_SIZE.x * 0.5, CARD_SIZE.y)
+	root.set_meta("cid", cid)
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
 	var tex: Texture2D = db.thumb(cid) if db != null else null
 	var pic: Rect2 = _card_rect(tex)
@@ -1241,7 +1366,7 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		if playable and e is InputEventMouseButton:
 			var mb := e as InputEventMouseButton
 			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-				card_pressed.emit(slot, cid))
+				_card_chosen(slot, cid, heroes))
 	return root
 
 
@@ -1311,6 +1436,9 @@ func _card_click(e: InputEvent, cid: String) -> bool:
 
 ## Hover: the card rises, straightens and grows; a playable one gets a straw edge.
 func _lift(card: Control, up: bool, playable: bool) -> void:
+	# The card a hero is being chosen for stays up when the mouse leaves it.
+	if not up and str(card.get_meta("cid", "")) == target_cid:
+		return
 	var rest: float = JsonUtil.as_float(card.get_meta("rest_y", card.position.y))
 	card.z_index = 10 if up else 0
 	var t: Tween = card.create_tween().set_parallel(true)
@@ -1323,7 +1451,7 @@ func _lift(card: Control, up: bool, playable: bool) -> void:
 	if cost != null:
 		cost.outline = Palette.GOLD if up and playable else Color.BLACK
 		cost.queue_redraw()
-	if up and playable:
+	if up and playable and not card.has_node("Edge"):
 		var pic: Rect2 = card.get_meta("pic", Rect2(Vector2.ZERO, CARD_SIZE))
 		var edge := ReferenceRect.new()
 		edge.name = "Edge"
@@ -1721,3 +1849,21 @@ static func _clear(node: Node) -> void:
 	for c: Node in node.get_children():
 		node.remove_child(c)
 		c.queue_free()
+
+
+## An engine reason in a few words, for a chip.
+static func _short_why(err: String) -> String:
+	var e: String = err.to_lower()
+	if e.contains("cannot take this card") or e.contains("colour") or e.contains("color"):
+		return "wrong colour"
+	if e.contains("evolution is for") or e.contains("evolution level"):
+		return "wrong hero"
+	if e.contains("already has"):
+		return "already has it"
+	if e.contains("start zone"):
+		return "in the start zone"
+	if e.contains("energy"):
+		return "not enough energy"
+	if e.contains("damage"):
+		return "too little HP"
+	return "can't take it"

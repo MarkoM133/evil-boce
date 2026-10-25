@@ -55,6 +55,8 @@ var _runner: RollRunner
 var _sling: Slingshot
 var _balls: Node3D
 var _tokens: Node3D
+## Beams and rings on the heroes a card can go on (HUD 2).
+var _target_fx: Node3D
 var _marks := ImmediateMesh.new()
 var _line_mat: StandardMaterial3D
 var _bodies: Dictionary[String, BallBody] = {}
@@ -171,6 +173,9 @@ func _ready() -> void:
 	_balls = Node3D.new()
 	_balls.name = "Balls"
 	add_child(_balls)
+	_target_fx = Node3D.new()
+	_target_fx.name = "TargetFx"
+	add_child(_target_fx)
 	_tokens = Node3D.new()
 	_tokens.name = "Tokens"
 	add_child(_tokens)
@@ -275,7 +280,13 @@ func _build_hud() -> void:
 	hud.choice_pressed.connect(func(slot: int, roll: bool) -> void: _apply(Move.make(Move.CHOICE, slot, {"roll": roll})))
 	hud.keep_pressed.connect(func(slot: int, keep: bool) -> void: _apply(Move.make(Move.MULLIGAN, slot, {"keep": keep})))
 	hud.no_hero_pressed.connect(func(slot: int) -> void: _apply(Move.make(Move.SELECT, slot, {"hero": ""})))
-	hud.card_pressed.connect(func(slot: int, cid: String) -> void: _apply(Move.make(Move.PLAY_CARD, slot, {"card": cid})))
+	hud.card_pressed.connect(func(slot: int, cid: String, hero_id: String) -> void:
+		var data: Dictionary = {"card": cid}
+		if not hero_id.is_empty():
+			data["hero"] = hero_id
+			_flash_target(hero_id)
+		_apply(Move.make(Move.PLAY_CARD, slot, data)))
+	hud.targeting_changed.connect(_refresh_target_fx)
 	hud.damage_pressed.connect(func(slot: int, target: String) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target})))
 	hud.choose_pressed.connect(func(slot: int, value: Variant) -> void: _apply(Move.make(Move.CHOOSE, slot, {"value": value})))
 	hud.ability_pressed.connect(func(slot: int, hero_id: String, card_id: String, index: int) -> void:
@@ -1108,6 +1119,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			_on_left(mb.pressed)
 			return
+		if mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed and hud.is_targeting():
+			hud.cancel_targeting()
+			return
 		if mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed and _sling.is_aiming():
 			_sling.cancel()
 			arena.set_grid_emphasis(false)
@@ -1152,7 +1166,9 @@ func _on_key(k: InputEventKey) -> void:
 		return
 	match GameSettings.logical_key(k.keycode):
 		KEY_ESCAPE:
-			if _sling.is_aiming():
+			if hud.is_targeting():
+				hud.cancel_targeting()
+			elif _sling.is_aiming():
 				_sling.cancel()
 				arena.set_grid_emphasis(false)
 			else:
@@ -1186,6 +1202,8 @@ func _on_left(pressed: bool) -> void:
 				_apply(Move.make(Move.CHOOSE, JsonUtil.as_int(d.get("player", 0)), {"value": Hex.to_json(arena.hex_at(gp))}))
 			return
 		var id: String = _hero_under_mouse()
+		if hud.is_targeting() and not id.is_empty() and hud.play_target(id):
+			return
 		if not id.is_empty() and _try_aim(id):
 			return
 		if not id.is_empty():
@@ -1229,6 +1247,10 @@ func _release_aim() -> void:
 
 
 func _on_hero_clicked(id: String) -> void:
+	# A card waits for a hero: clicking one it can go on plays it.
+	if hud.is_targeting():
+		hud.play_target(id)
+		return
 	var h: HeroState = state.hero(id)
 	if h == null:
 		return
@@ -1245,6 +1267,8 @@ func _set_hover(id: String, refresh_hud: bool) -> void:
 	if id == _hovered:
 		return
 	_hovered = id
+	if hud.is_targeting():
+		_refresh_target_fx()
 	for hid: String in _views:
 		_views[hid].set_glow(hid == id)
 	if refresh_hud:
@@ -1435,3 +1459,100 @@ func demo_effects() -> void:
 	h.turn_bonus["kb"] = -1
 	h.statuses["stun"] = 1
 	_sync()
+
+
+# --- choosing a hero for a card (mockup HUD 2) -------------------------------------------
+
+## A beam of light and a ring on every hero the card being targeted can go on; the one under
+## the mouse gets a wider, brighter beam and a second ring.
+func _refresh_target_fx() -> void:
+	for c: Node in _target_fx.get_children():
+		if not c.has_meta("flash"):
+			c.queue_free()
+	for hid: String in hud.target_heroes:
+		if _bodies.has(hid):
+			_target_fx.add_child(_target_mark(_bodies[hid].global_position, hid == _hovered))
+
+
+## Shows briefly on the hero a card just went on.
+func _flash_target(hid: String) -> void:
+	if not _bodies.has(hid):
+		return
+	var mark: Node3D = _target_mark(_bodies[hid].global_position, true)
+	mark.set_meta("flash", true)
+	_target_fx.add_child(mark)
+	var t: Tween = mark.create_tween()
+	t.tween_interval(0.35)
+	t.tween_property(mark, "scale", Vector3(1.4, 0.2, 1.4), 0.25)
+	t.tween_callback(mark.queue_free)
+
+
+func _target_mark(at: Vector3, chosen: bool) -> Node3D:
+	var root := Node3D.new()
+	root.position = Vector3(at.x, 0.0, at.z)
+	var gold: Color = Color("ffd36a") if chosen else Palette.GOLD
+	var beam := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.55 if chosen else 0.38
+	cyl.bottom_radius = cyl.top_radius
+	cyl.height = 6.0 if chosen else 4.5
+	cyl.cap_top = false
+	cyl.cap_bottom = false
+	beam.mesh = cyl
+	beam.position.y = cyl.height * 0.5
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	bm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var grad := GradientTexture2D.new()
+	grad.gradient = Gradient.new()
+	grad.gradient.set_color(0, Color(gold, 0.0))
+	grad.gradient.set_color(1, Color(gold, 0.85 if chosen else 0.55))
+	grad.fill_from = Vector2(0, 0)
+	grad.fill_to = Vector2(0, 1)
+	grad.width = 4
+	grad.height = 64
+	bm.albedo_texture = grad
+	beam.material_override = bm
+	root.add_child(beam)
+	for r: float in ([1.0, 0.7] if chosen else [0.85]):
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = r
+		torus.outer_radius = r + (0.12 if chosen else 0.09)
+		ring.mesh = torus
+		ring.scale = Vector3(1, 0.15, 1)
+		ring.position.y = 0.04
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		ring.material_override = MeshKit.unshaded(gold, false)
+		root.add_child(ring)
+	# The rings breathe.
+	var t: Tween = root.create_tween().set_loops()
+	t.tween_property(root, "scale", Vector3.ONE * 1.08, 0.6).set_trans(Tween.TRANS_SINE)
+	t.tween_property(root, "scale", Vector3.ONE, 0.6).set_trans(Tween.TRANS_SINE)
+	return root
+
+
+## Screenshot helper: starts choosing a hero for the first card that can go on two, or puts
+## two of player 1's heroes in a battle-like spot so one can (a throwaway match).
+func demo_targeting() -> void:
+	_demo = true
+	var p: PlayerState = state.player(0)
+	if p.hand.is_empty() or state.heroes.size() < 2:
+		return
+	var a: HeroState = state.active_hero(0)
+	var mine: Array[String] = []
+	for h: HeroState in state.heroes:
+		if h.owner == 0:
+			mine.append(h.id)
+	hud.target_slot = 0
+	hud.target_cid = p.hand[0]
+	hud.target_heroes = PackedStringArray(mine.slice(0, 2))
+	hud.hover_hero = mine[0]
+	_hovered = mine[0]
+	hud.targeting_changed.emit()
+	hud.refresh()
+	if a != null and _bodies.has(a.id):
+		cam.focus(_bodies[a.id].global_position, 16.0)
