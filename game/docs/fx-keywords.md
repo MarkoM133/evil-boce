@@ -89,7 +89,8 @@ Players: `ME`, `OPP`.
 Extra arguments: `DAMAGE … TRUE` ignores damage modifiers ("cannot be blocked");
 `DEACTIVATE_CORE SELF <n> UPTO` lets the player pick how many (0 … n), and `PER COUNT` in a
 later `BUFF` multiplies by that number. `MOVE` with a group target asks every hero in turn
-(its own hex = stays). A stage's `REVEAL` bonus lasts the turn.
+(its own hex = stays). A stage's `REVEAL` bonus counts while the hero stays on that stage
+and it is unclaimed (`GameState.stage_buffs`); once the hero leaves, it is gone.
 
 Counters for `PER`: `TRAIT_EQUIPPED {Trait}` (equipment with the trait on the target),
 `CORES` (cores on the target), `MISSING_HP <n>` (per n HP missing), `ENERGY` (the owner's

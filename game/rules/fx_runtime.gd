@@ -577,10 +577,13 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			if e.when == "PASSIVE":
 				return ""
 			var amount: int = args[1].to_int()
-			# A stage's reveal bonus lasts the turn, so it still counts in that turn's battle.
-			var turn: bool = args.has("TURN") or e.when == "REVEAL"
+			var turn: bool = args.has("TURN")
 			for h: HeroState in _targets(s, ctx, e, target, answer):
 				var n: int = amount * _per(s, {"hero": me, "stage": null, "player": player, "count": ctx.get("count", 0)}, h, args)
+				if e.when == "REVEAL":
+					# A stage's reveal bonus lasts while the hero stays on the stage.
+					_stage_buff(s, str(ctx.get("stage", "")), h, args[0], n)
+					continue
 				h.add_bonus(h.turn_bonus if turn else h.phase_bonus, args[0].to_lower(), n)
 				engine.clamp_hp(s, h)
 			s.event("fx_buff", {"card": ctx.get("card", ""), "stat": args[0], "amount": amount})
@@ -697,7 +700,7 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			if best >= 0 and not tie:
 				for h: HeroState in s.heroes_on_stage(st):
 					if h.owner == best:
-						h.add_bonus(h.turn_bonus, args[0].to_lower(), args[1].to_int())
+						_stage_buff(s, st.id, h, args[0], args[1].to_int())
 		"KNOCKBACK":
 			if me == null:
 				return "knockback needs a hero"
@@ -796,6 +799,11 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 		_:
 			return "unknown verb %s" % verb
 	return ""
+
+
+func _stage_buff(s: GameState, stage_id: String, h: HeroState, stat: String, amount: int) -> void:
+	s.stage_buffs.append({"stage": stage_id, "hero": h.id, "stat": stat.to_lower(), "amount": amount})
+	s.event("stage_buff", {"stage": stage_id, "hero": h.id, "stat": stat.to_lower(), "amount": amount})
 
 
 ## Cards in hand the player may play for free: cost up to args[0], with the trait if given.

@@ -666,6 +666,8 @@ func _set_phase(s: GameState, phase: String) -> void:
 		if not h.phase_bonus.is_empty():
 			h.phase_bonus.clear()
 			clamp_hp(s, h)
+	# A hero that left its stage (or whose stage got claimed) loses the reveal bonus for good.
+	s.stage_buffs = s.stage_buffs.filter(func(b: Dictionary) -> bool: return _stage_buff_holds(s, b))
 	_queue_core_returns(s)
 	match phase:
 		GameState.PHASE_PREROLL, GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE, GameState.PHASE_END:
@@ -1289,7 +1291,7 @@ func stat(s: GameState, h: HeroState, key: String) -> int:
 
 ## The card's value plus equipment `bonus` fields plus bonuses that last the phase or the
 ## turn; no passive effects (they use this to avoid asking about themselves).
-func stat_flat(_s: GameState, h: HeroState, key: String) -> int:
+func stat_flat(s: GameState, h: HeroState, key: String) -> int:
 	var card: CardDef = stat_card(h)
 	if card == null:
 		return 0
@@ -1310,7 +1312,17 @@ func stat_flat(_s: GameState, h: HeroState, key: String) -> int:
 		if e != null:
 			base += e.bonus.get(key, 0)
 	base += h.phase_bonus.get(key, 0) + h.turn_bonus.get(key, 0)
+	for b: Dictionary in s.stage_buffs:
+		if str(b.get("hero", "")) == h.id and str(b.get("stat", "")) == key and _stage_buff_holds(s, b):
+			base += JsonUtil.as_int(b.get("amount", 0))
 	return base
+
+
+## A stage reveal bonus counts while its hero stands on that stage and the stage is unclaimed.
+func _stage_buff_holds(s: GameState, b: Dictionary) -> bool:
+	var h: HeroState = s.hero(str(b.get("hero", "")))
+	var st: StageState = s.stage(str(b.get("stage", "")))
+	return h != null and st != null and h.is_on_map() and st.covers(h.hex) and not st.is_claimed()
 
 
 ## Current HP never exceeds the current max (GDD 10: losing an HP source lowers HP to the

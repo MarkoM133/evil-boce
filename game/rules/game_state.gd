@@ -58,6 +58,9 @@ var abilities_used: PackedStringArray = PackedStringArray()
 var deferred: Array[Dictionary] = []
 ## Things that last until the end of the turn: {"kind": "cost"|"no_claim"|"dmg_taken", ...}.
 var turn_mods: Array[Dictionary] = []
+## Stage reveal bonuses: {"stage", "hero", "stat", "amount"}; they count while the hero stays
+## on that stage and it is not claimed, and go away once it leaves.
+var stage_buffs: Array[Dictionary] = []
 ## Slot placing the next stage or core during setup.
 var setup_turn: int = 0
 
@@ -296,6 +299,7 @@ func to_dict() -> Dictionary:
 		"abilities_used": Array(abilities_used),
 		"deferred": deferred.duplicate(true),
 		"turn_mods": turn_mods.duplicate(true),
+		"stage_buffs": stage_buffs.duplicate(true),
 		"setup_turn": setup_turn,
 		"winner": winner,
 		"result": result,
@@ -354,6 +358,8 @@ static func from_dict(d: Dictionary) -> GameState:
 		s.deferred.append(JsonUtil.as_dict(x))
 	for x: Variant in JsonUtil.as_array(d.get("turn_mods", [])):
 		s.turn_mods.append(JsonUtil.as_dict(x))
+	for x: Variant in JsonUtil.as_array(d.get("stage_buffs", [])):
+		s.stage_buffs.append(JsonUtil.as_dict(x))
 	s.setup_turn = JsonUtil.as_int(d.get("setup_turn", 0))
 	s.winner = JsonUtil.as_int(d.get("winner", -1), -1)
 	s.result = str(d.get("result", ""))

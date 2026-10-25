@@ -28,7 +28,7 @@
     ]}},
     {"expect": {
       "stages.stage:p0:1.revealed": true,
-      "heroes.p0:TA-003.turn_bonus.pwr": 2000,
+      "stage_buffs": {"$size": 1}, "stage_buffs.0.hero": "p0:TA-003", "stage_buffs.0.amount": 2000,
       "heroes.p1:TB-003.turn_bonus": {}
     }},
     {"pass_round": true},
@@ -40,6 +40,9 @@
     {"move": {"type": "play_card", "player": 0, "card": "TA-053"}},
     {"expect": {"pending.0.kind": "hex", "pending.0.player": 0, "pending.0.options.0": [4, 8]}},
     {"move": {"type": "choose", "player": 0, "value": [3, 8]}},
-    {"expect": {"heroes.p0:TA-002.hex": [3, 8], "pending": {"$size": 0}}}
+    {"expect": {"heroes.p0:TA-002.hex": [3, 8], "pending": {"$size": 0}, "stage_buffs": {"$size": 1}}},
+    {"set": {"heroes.p0:TA-003.hex": [0, 15]}},
+    {"pass_round": true},
+    {"expect": {"phase": "battle", "stage_buffs": {"$size": 0}}}
   ]
 }

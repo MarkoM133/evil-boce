@@ -117,3 +117,8 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    cannot; `select ""` is only legal when nothing can be activated.
 10. Equipment, evolutions, assists and card effects are not playable yet (`play_card`
     is refused with "not ready"); the state already carries them.
+- JO1-011 "3 copies at once": the third copy of the card played by the same player in the
+  same phase also gives +5 DMG (`IF COPIES 3`).
+- Stage reveal bonuses last while the hero stays on that stage and it is unclaimed.
+- Stage-002 (Elbaph): "players in combat" are the players with a hero on the stage when it is
+  revealed; the higher top-card cost gives their heroes there +2000 Power.
