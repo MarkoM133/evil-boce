@@ -267,3 +267,8 @@ static func cinema_fill() -> String:
 ## The camera flies to each battle as it starts (Settings → Display).
 static func battle_cam_auto() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "battle_cam", true))
+
+
+## Card and ability text shows on hover (Settings); the big card (right click / key) always works.
+static func hover_text() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "hover_text", true))

@@ -43,6 +43,8 @@ const HAND_HEIGHT: float = 210.0
 const BANNER_TIME: float = 0.8
 ## Phase call-outs stay a little longer, to be read.
 const PHASE_BANNER_TIME: float = 1.4
+## How far a hovered hand card rises.
+const LIFT: float = 56.0
 ## Log events that get a banner (the rest only go to the log).
 const BANNER_EVENTS: Array[String] = ["battle", "ring_out", "ko", "stage_claimed"]
 
@@ -78,13 +80,10 @@ var _detail: Label
 var _actions: VBoxContainer
 var _key_hint: Label
 var _tray: HBoxContainer
-var _log_btn: Button
 ## Energy, bottom left: yours (big) and the opponent's (small, red) above it.
 var _energy: EnergyDial
 var _energy_them: EnergyDial
 var _energy_them_label: Label
-var _log_full: Label
-var _log_panel: PanelContainer
 var _dialog: PanelContainer
 var _dialog_box: VBoxContainer
 var _over: Control
@@ -163,7 +162,6 @@ func refresh() -> void:
 	_refresh_prompt()
 	_refresh_hand()
 	_refresh_dialog()
-	_refresh_log()
 	_refresh_over()
 
 
@@ -364,25 +362,6 @@ func _build() -> void:
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_detail.custom_minimum_size = Vector2(270, 0)
 	prompt_col.add_child(_detail)
-	# The log: a small button by MENU (the last event on hover); a click opens the whole log
-	# under it.
-	_log_btn = Button.new()
-	_log_btn.text = "LOG"
-	_log_btn.focus_mode = Control.FOCUS_NONE
-	_log_btn.position = Vector2(118, 14)
-	_log_btn.add_theme_font_size_override("font_size", 13)
-	_log_btn.pressed.connect(func() -> void: _log_panel.visible = not _log_panel.visible)
-	add_child(_log_btn)
-
-	_log_panel = PanelContainer.new()
-	_log_panel.position = Vector2(14, 52)
-	_log_panel.custom_minimum_size = Vector2(430, 0)
-	_log_panel.visible = false
-	add_child(_log_panel)
-	_log_full = Label.new()
-	_log_full.theme_type_variation = &"Muted"
-	_log_full.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_log_panel.add_child(_log_full)
 
 	# Bottom right: the buttons; the main one is red and big.
 	var right := VBoxContainer.new()
@@ -596,7 +575,7 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 		assists.theme_type_variation = &"Muted"
 		assists.text = "Assists: " + ", ".join(_card_names(p.assists))
 		assists.horizontal_alignment = align
-		assists.tooltip_text = _card_texts(p.assists)
+		assists.tooltip_text = _card_tip(_card_texts(p.assists))
 		assists.mouse_filter = Control.MOUSE_FILTER_PASS
 		col.add_child(assists)
 	if not p.inventory.is_empty():
@@ -670,7 +649,7 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 			_hover_cid = ""
 		hero_hovered.emit(""))
 	if card != null:
-		s.tooltip_text = "%s\n%s" % [card.name, card.text]
+		s.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
 
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 5)
@@ -860,7 +839,7 @@ func _ability_tabs(h: HeroState, active: bool, right: bool) -> Control:
 		tab.add_theme_stylebox_override("panel", sb)
 		tab.custom_minimum_size = Vector2(176, 0)
 		tab.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		tab.tooltip_text = "%s\n%s" % [_ability_title(a), e.line]
+		tab.tooltip_text = _card_tip("%s\n%s" % [_ability_title(a), e.line])
 		var v := VBoxContainer.new()
 		v.add_theme_constant_override("separation", 0)
 		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1117,7 +1096,7 @@ func _refresh_prompt() -> void:
 				var text: String = "%s: %s" % [hero_name(h) if h != null else (c.name if c != null else "?"), title]
 				var ab: Button = _action(text, func() -> void: ability_pressed.emit(slot, str(a["hero"]), str(a["card"]), JsonUtil.as_int(a["index"])), &"Gold")
 				if c != null:
-					ab.tooltip_text = c.text
+					ab.tooltip_text = _card_tip(c.text)
 			# One red button at a time: while Roll / Stay waits, passing is the quiet option.
 			_action("PASS", func() -> void: pass_pressed.emit(slot), &"" if any_local else &"Primary")
 			_key_hint.text = "SPACE = PASS"
@@ -1402,13 +1381,14 @@ func _draw_aim_line() -> void:
 	_aim_line.draw_colored_polygon(PackedVector2Array([to + dir * 6.0, to - dir * 14.0 + side * 9.0, to - dir * 14.0 - side * 9.0]), Palette.GOLD)
 
 
-## Where a card picture of `tex` sits in the card slot (aspect kept, centred).
+## Where a card picture of `tex` sits in the card slot: aspect kept, centred across and at the
+## top, so a landscape card (an evolution) still shows its top when the hand is lowered.
 static func _card_rect(tex: Texture2D) -> Rect2:
 	if tex == null:
 		return Rect2(Vector2.ZERO, CARD_SIZE)
 	var k: float = minf(CARD_SIZE.x / tex.get_width(), CARD_SIZE.y / tex.get_height())
 	var s := Vector2(tex.get_width(), tex.get_height()) * k
-	return Rect2((CARD_SIZE - s) * 0.5, s)
+	return Rect2(Vector2((CARD_SIZE.x - s.x) * 0.5, 0), s)
 
 
 ## One card of the hand: its image, the cost on a diamond, and how it can be used now; `why`
@@ -1422,6 +1402,14 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 	root.pivot_offset = Vector2(CARD_SIZE.x * 0.5, CARD_SIZE.y)
 	root.set_meta("cid", cid)
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	# The root stays put and takes the mouse; only its face rises and grows on hover, so the
+	# card does not slip out from under the mouse and flicker.
+	var face := Control.new()
+	face.name = "Face"
+	face.size = CARD_SIZE
+	face.pivot_offset = Vector2(CARD_SIZE.x * 0.5, CARD_SIZE.y)
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(face)
 	var tex: Texture2D = db.thumb(cid) if db != null else null
 	var pic: Rect2 = _card_rect(tex)
 	root.set_meta("pic", pic)
@@ -1430,7 +1418,7 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 	back.position = pic.position
 	back.size = pic.size
 	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(back)
+	face.add_child(back)
 	if tex != null:
 		var img := TextureRect.new()
 		img.texture = tex
@@ -1439,14 +1427,14 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		img.position = pic.position
 		img.size = pic.size
 		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		root.add_child(img)
+		face.add_child(img)
 	else:
 		var name_l: Label = UiTheme.label(c.name if c != null else cid, 18)
 		name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		name_l.set_anchors_preset(Control.PRESET_FULL_RECT)
-		root.add_child(name_l)
+		face.add_child(name_l)
 	if c != null:
 		var poor: bool = my_round and c.cost > state.player(slot).energy
 		var cost: UiShape = UiShape.make(UiShape.Kind.DIAMOND, Palette.ACCENT if poor else Palette.GOLD, Vector2(36, 36),
@@ -1455,21 +1443,21 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		cost.outline_width = 3.0
 		cost.name = "Cost"
 		cost.position = pic.position - Vector2(10, 10)
-		root.add_child(cost)
+		face.add_child(cost)
 		if not c.is_ready():
 			var nr: UiShape = UiShape.chip("NOT READY", Palette.SURFACE_2, Palette.MUTED, 12, 20.0, 8.0)
 			nr.position = Vector2(CARD_SIZE.x * 0.5 - nr.custom_minimum_size.x * 0.5, pic.end.y - 28)
-			root.add_child(nr)
+			face.add_child(nr)
 		elif my_round and not playable and not why.is_empty():
 			# Why it is grey, on hover.
 			var w: UiShape = UiShape.chip(why.to_upper(), Color(0, 0, 0, 0.85), Palette.FG, 10, 18.0, 6.0)
 			w.name = "Why"
 			w.visible = false
-			w.position = Vector2(CARD_SIZE.x * 0.5 - w.custom_minimum_size.x * 0.5, pic.end.y + 4.0)
-			root.add_child(w)
-		root.tooltip_text = "%s  ·  %s %s  ·  cost %d\n%s" % [c.name, c.color, c.type, c.cost, c.text]
+			w.position = Vector2(CARD_SIZE.x * 0.5 - w.custom_minimum_size.x * 0.5, pic.position.y - 26.0)
+			face.add_child(w)
+		root.tooltip_text = _card_tip("%s  ·  %s %s  ·  cost %d\n%s" % [c.name, c.color, c.type, c.cost, c.text])
 		if my_round and not playable:
-			root.tooltip_text = why.capitalize() + "\n\n" + root.tooltip_text if not why.is_empty() else root.tooltip_text
+			# Why it is grey shows above the card on hover; the text block keeps the card's text.
 			root.modulate = Color(0.45, 0.45, 0.45)
 		elif not my_round:
 			root.modulate = Color(0.88, 0.88, 0.88)
@@ -1559,19 +1547,41 @@ func _lift(card: Control, up: bool, playable: bool) -> void:
 	# The card a hero is being chosen for stays up when the mouse leaves it.
 	if not up and str(card.get_meta("cid", "")) == target_cid:
 		return
+	var face: Control = card.get_node_or_null("Face") as Control
+	if face == null:
+		return
 	var rest: float = JsonUtil.as_float(card.get_meta("rest_y", card.position.y))
 	card.z_index = 10 if up else 0
+	var old: Tween = card.get_meta("lift") if card.has_meta("lift") else null
+	if old != null and old.is_valid():
+		old.kill()
 	var t: Tween = card.create_tween().set_parallel(true)
-	t.tween_property(card, "position:y", rest - (56.0 if up else 0.0), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	t.tween_property(card, "scale", Vector2.ONE * (1.18 if up else 1.0), 0.12)
-	if card.has_node("Why"):
-		(card.get_node("Why") as Control).visible = up
+	card.set_meta("lift", t)
+	if up:
+		# The mouse area grows up over the raised face at once, so moving onto it keeps it up.
+		var shown: float = face.position.y + (card.position.y - rest)
+		card.position.y = rest - LIFT
+		card.size = CARD_SIZE + Vector2(0, LIFT)
+		card.pivot_offset = Vector2(CARD_SIZE.x * 0.5, CARD_SIZE.y + LIFT)
+		face.position.y = shown + LIFT
+		t.tween_property(face, "position:y", 0.0, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.tween_property(face, "scale", Vector2.ONE * 1.18, 0.12)
+	else:
+		t.tween_property(face, "position:y", LIFT, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.tween_property(face, "scale", Vector2.ONE, 0.12)
+		t.chain().tween_callback(func() -> void:
+			card.position.y = rest
+			card.size = CARD_SIZE
+			card.pivot_offset = Vector2(CARD_SIZE.x * 0.5, CARD_SIZE.y)
+			face.position.y = 0.0)
+	if face.has_node("Why"):
+		(face.get_node("Why") as Control).visible = up
 	# The straw edge runs round the picture and the cost diamond on its corner.
-	var cost: UiShape = card.get_node_or_null("Cost") as UiShape
+	var cost: UiShape = face.get_node_or_null("Cost") as UiShape
 	if cost != null:
 		cost.outline = Palette.GOLD if up and playable else Color.BLACK
 		cost.queue_redraw()
-	if up and playable and not card.has_node("Edge"):
+	if up and playable and not face.has_node("Edge"):
 		var pic: Rect2 = card.get_meta("pic", Rect2(Vector2.ZERO, CARD_SIZE))
 		var edge := ReferenceRect.new()
 		edge.name = "Edge"
@@ -1581,11 +1591,11 @@ func _lift(card: Control, up: bool, playable: bool) -> void:
 		edge.position = pic.position - Vector2(1.5, 1.5)
 		edge.size = pic.size + Vector2(3, 3)
 		edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card.add_child(edge)
+		face.add_child(edge)
 		if cost != null:
-			card.move_child(cost, -1)
-	elif not up and card.has_node("Edge"):
-		card.get_node("Edge").queue_free()
+			face.move_child(cost, -1)
+	elif not up and face.has_node("Edge"):
+		face.get_node("Edge").queue_free()
 
 
 # --- dialogs ------------------------------------------------------------------------
@@ -1671,15 +1681,14 @@ func _option_button(text: String, cb: Callable) -> Button:
 
 # --- log and banners -----------------------------------------------------------------
 
-func _refresh_log() -> void:
+## The match so far in words, oldest first (the pause menu shows it).
+func log_lines() -> PackedStringArray:
 	var lines := PackedStringArray()
 	for e: Dictionary in state.log:
 		var s: String = _describe(e)
 		if not s.is_empty():
 			lines.append(s)
-	_log_btn.tooltip_text = (lines[lines.size() - 1] + "\n\nClick for the whole log") if not lines.is_empty() else "The match log"
-	var start: int = maxi(0, lines.size() - 16)
-	_log_full.text = "\n".join(lines.slice(start))
+	return lines
 
 
 ## New log entries since the last look: banners for the big moments. The first look (and a
@@ -1992,3 +2001,8 @@ static func _short_why(err: String) -> String:
 ## The ribbon's name for a rules phase: Draw and Select are both "start".
 static func _ribbon_phase(phase: String) -> String:
 	return "start" if phase == GameState.PHASE_DRAW or phase == GameState.PHASE_SELECT else phase
+
+
+## A card's text on hover, unless switched off (Settings → Interface: card text on hover).
+static func _card_tip(text: String) -> String:
+	return text if GameSettings.hover_text() else ""

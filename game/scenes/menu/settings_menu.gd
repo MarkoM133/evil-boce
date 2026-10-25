@@ -63,6 +63,8 @@ func _ready() -> void:
 	fill.item_selected.connect(func(i: int) -> void: _store("display", "cinema_fill", GameSettings.CINEMA_FILLS[i]))
 	var bcam := _option(col, "Battle camera", ["Flies to each battle", "Off"], 0 if GameSettings.battle_cam_auto() else 1)
 	bcam.item_selected.connect(func(i: int) -> void: _store("display", "battle_cam", i == 0))
+	var tips := _option(col, "Card text on hover", ["Shown", "Off"], 0 if GameSettings.hover_text() else 1)
+	tips.item_selected.connect(func(i: int) -> void: _store("display", "hover_text", i == 0))
 	var mode := _option(col, "Window", ["Windowed", "Fullscreen"], 1 if GameSettings.fullscreen() else 0)
 	mode.item_selected.connect(func(i: int) -> void: _store("display", "fullscreen", i == 1))
 	var sizes: Array[String] = []

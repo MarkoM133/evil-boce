@@ -76,6 +76,10 @@ var _pick_order: PackedStringArray = PackedStringArray()
 var _bot_wait: float = 0.0
 var _press_on_empty: bool = false
 var _menu: Control
+## The match log beside the pause menu (its Log button).
+var _menu_log: PanelContainer
+var _menu_info: Label
+var _menu_first: Button
 ## Setup: the stage or core the local player places next ("" = the first one left) and the
 ## hex under the mouse, for the preview.
 var _setup_pick: String = ""
@@ -326,38 +330,45 @@ func _build_hud() -> void:
 	layer.add_child(_menu)
 
 
+## The pause menu (Esc / MENU), like the main menu: a dark slanted band on the left with PAUSED,
+## the turn and the entries in big italics; the match log on the right.
 func _build_menu_overlay() -> Control:
 	var root := Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.theme = UiTheme.get_theme()
 	root.visible = false
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.5)
+	dim.color = Color(0, 0, 0, 0.8)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(dim)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.add_child(center)
-	var panel := PanelContainer.new()
-	center.add_child(panel)
+
+	var band := Panel.new()
+	var sb: StyleBoxFlat = UiTheme.box(Color(Palette.PANEL_SOLID, 0.97), 0)
+	sb.skew = Vector2(0.12, 0)
+	sb.expand_margin_left = 120
+	sb.border_color = Palette.ACCENT
+	sb.border_width_right = 4
+	band.add_theme_stylebox_override("panel", sb)
+	band.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	band.offset_right = 520
+	root.add_child(band)
+
 	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(260, 0)
-	col.add_theme_constant_override("separation", 8)
-	panel.add_child(col)
-	var title := Label.new()
-	title.text = "PAUSED"
-	title.theme_type_variation = &"Big"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(title)
-	var resume := Button.new()
-	resume.text = "RESUME"
-	resume.theme_type_variation = &"Primary"
-	resume.pressed.connect(_toggle_menu)
-	col.add_child(resume)
+	col.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	col.offset_left = 70
+	col.offset_right = 470
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 4)
+	root.add_child(col)
+	col.add_child(UiTheme.label("PAUSED", 76))
+	_menu_info = UiTheme.label("", 18, Palette.MUTED, false)
+	col.add_child(_menu_info)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 24)
+	col.add_child(gap)
+	_menu_first = _menu_entry(col, "RESUME", _toggle_menu)
 	if net_role != "":
-		var pause := Button.new()
-		pause.text = "Pause for everyone"
-		pause.pressed.connect(func() -> void:
+		_menu_entry(col, "PAUSE FOR EVERYONE", func() -> void:
 			_toggle_menu()
 			if net_role == "host":
 				var why: String = net_host.set_paused(not net_host.paused, net_host.host_slot)
@@ -365,19 +376,53 @@ func _build_menu_overlay() -> Control:
 					hud.toast(why, Palette.FG)
 			else:
 				net_client.send_pause(not net_client.paused))
-		col.add_child(pause)
 	for slot: int in hud.local_slots:
-		var give_up := Button.new()
-		give_up.text = "Surrender (%s)" % hud.player_name(slot)
-		give_up.pressed.connect(func() -> void:
+		var who: String = (" · " + hud.player_name(slot).to_upper()) if hud.local_slots.size() > 1 else ""
+		_menu_entry(col, "SURRENDER" + who, func() -> void:
 			_toggle_menu()
 			_apply(Move.make(Move.SURRENDER, slot)))
-		col.add_child(give_up)
-	var back := Button.new()
-	back.text = "Main menu"
-	back.pressed.connect(_leave)
-	col.add_child(back)
+	_menu_entry(col, "MAIN MENU", _leave)
+
+	# The match log, right: newest at the bottom.
+	var log_box := VBoxContainer.new()
+	log_box.anchor_left = 0.42
+	log_box.anchor_right = 0.94
+	log_box.anchor_top = 0.12
+	log_box.anchor_bottom = 0.88
+	log_box.add_theme_constant_override("separation", 10)
+	root.add_child(log_box)
+	log_box.add_child(UiTheme.label("MATCH LOG", 26, Palette.GOLD))
+	_menu_log = PanelContainer.new()
+	_menu_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_menu_log.add_theme_stylebox_override("panel", UiTheme.box(Color(Palette.PANEL_SOLID, 0.9), 0, Color(0, 0, 0, 0), 22, 16))
+	log_box.add_child(_menu_log)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_menu_log.add_child(scroll)
+	var log_text := Label.new()
+	log_text.name = "Text"
+	log_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	log_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log_text.add_theme_color_override("font_color", Color("d8d3cb"))
+	log_text.add_theme_font_size_override("font_size", 15)
+	log_text.add_theme_constant_override("line_spacing", 4)
+	scroll.add_child(log_text)
 	return root
+
+
+## One entry of the pause menu: big italic, left; the first one red.
+func _menu_entry(col: VBoxContainer, text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.theme_type_variation = &"MenuItem"
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.add_theme_font_size_override("font_size", 40)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	b.custom_minimum_size = Vector2(260, 0)
+	b.pressed.connect(cb)
+	b.mouse_entered.connect(func() -> void: b.grab_focus())
+	col.add_child(b)
+	return b
 
 
 func _toggle_menu() -> void:
@@ -385,6 +430,22 @@ func _toggle_menu() -> void:
 		_leave()
 		return
 	_menu.visible = not _menu.visible
+	if _menu.visible:
+		var phase: String = MatchHud._ribbon_phase(state.phase).to_upper()
+		_menu_info.text = ("TURN %d  ·  %s PHASE" % [state.turn, phase]) if state.turn > 0 else "SETUP"
+		_fill_menu_log()
+		_menu_first.grab_focus.call_deferred()
+
+
+## The whole log in the pause menu, newest at the bottom, scrolled there.
+func _fill_menu_log() -> void:
+	if _menu_log == null:
+		return
+	var text: Label = _menu_log.find_child("Text", true, false) as Label
+	text.text = "\n".join(hud.log_lines())
+	var scroll: ScrollContainer = text.get_parent() as ScrollContainer
+	await get_tree().process_frame
+	scroll.scroll_vertical = int(scroll.get_v_scroll_bar().max_value)
 
 
 ## Back to the main menu; an online match closes its link first.
@@ -1716,3 +1777,9 @@ func _leave_battle_cam() -> void:
 	hud.battle_cam = false
 	cam.reset_view()
 	hud.refresh()
+
+
+## Screenshot helper: the pause menu open.
+func demo_pause() -> void:
+	_demo = true
+	_toggle_menu()

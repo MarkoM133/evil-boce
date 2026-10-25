@@ -50,3 +50,7 @@ common/max_physics_steps_per_frame=16
 [rendering]
 
 anti_aliasing/quality/msaa_3d=2
+
+[gui]
+
+timers/tooltip_delay_sec=0.8
