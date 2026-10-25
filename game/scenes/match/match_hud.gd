@@ -1413,12 +1413,6 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 	var tex: Texture2D = db.thumb(cid) if db != null else null
 	var pic: Rect2 = _card_rect(tex)
 	root.set_meta("pic", pic)
-	var back := ColorRect.new()
-	back.color = Palette.hero(c.color if c != null else "").darkened(0.45)
-	back.position = pic.position
-	back.size = pic.size
-	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	face.add_child(back)
 	if tex != null:
 		var img := TextureRect.new()
 		img.texture = tex
@@ -1427,8 +1421,15 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		img.position = pic.position
 		img.size = pic.size
 		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		img.material = round_corners(pic.size.x / pic.size.y)
 		face.add_child(img)
 	else:
+		var back := ColorRect.new()
+		back.color = Palette.hero(c.color if c != null else "").darkened(0.45)
+		back.position = pic.position
+		back.size = pic.size
+		back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		face.add_child(back)
 		var name_l: Label = UiTheme.label(c.name if c != null else cid, 18)
 		name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1493,24 +1494,38 @@ func _show_big(cid: String) -> void:
 	if _big == null:
 		_big = TextureRect.new()
 		_big.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		_big.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		_big.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_big.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		_big.stretch_mode = TextureRect.STRETCH_SCALE
+		# It takes the mouse: a right click on it puts it away (any left click does too, _input).
+		_big.mouse_filter = Control.MOUSE_FILTER_STOP
+		_big.z_index = 50
+		_big.material = round_corners()
+		_big.gui_input.connect(func(e: InputEvent) -> void:
+			if e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
+				_show_big("")
+				accept_event())
 		add_child(_big)
 	_big.visible = tex != null
 	if tex == null:
 		return
 	move_child(_big, -1)
 	_big.texture = tex
-	var w: float = minf(BIG_HEIGHT * tex.get_width() / tex.get_height(), 700.0)
-	_big.size = Vector2(w, BIG_HEIGHT)
-	_big.position = Vector2(size.x * 0.5 - w * 0.5, size.y - BIG_HEIGHT - 190.0)
+	var aspect: float = float(tex.get_width()) / tex.get_height()
+	var w: float = minf(BIG_HEIGHT * aspect, 700.0)
+	_big.size = Vector2(w, w / aspect)
+	_big.position = Vector2(size.x * 0.5 - w * 0.5, size.y - _big.size.y - 190.0)
+	(_big.material as ShaderMaterial).set_shader_parameter("aspect", aspect)
 	_big.modulate.a = 0.0
 	_big.create_tween().tween_property(_big, "modulate:a", 1.0, 0.1)
 
 
 ## The card-zoom key (Settings → Keys; held, or pressed on and off) shows the card under the mouse.
 func _input(event: InputEvent) -> void:
+	# An open big card goes away on any left click (the click does nothing else).
+	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \
+			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and not _big_cid.is_empty():
+		_show_big("")
+		get_viewport().set_input_as_handled()
+		return
 	if not event is InputEventKey:
 		return
 	var k := event as InputEventKey
@@ -2006,3 +2021,11 @@ static func _ribbon_phase(phase: String) -> String:
 ## A card's text on hover, unless switched off (Settings → Interface: card text on hover).
 static func _card_tip(text: String) -> String:
 	return text if GameSettings.hover_text() else ""
+
+
+## A material that cuts a card picture's corners round (the JPGs carry black corners).
+static func round_corners(aspect: float = 0.714) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://ui/round_corners.gdshader")
+	m.set_shader_parameter("aspect", aspect)
+	return m
