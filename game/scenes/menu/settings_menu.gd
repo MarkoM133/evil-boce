@@ -47,6 +47,8 @@ func _ready() -> void:
 	row.add_child(name_edit)
 
 	_header(col, "DISPLAY")
+	var layout := _option(col, "Main menu", ["Featured hero", "Tiles"], 1 if GameSettings.menu_layout() == "tiles" else 0)
+	layout.item_selected.connect(func(i: int) -> void: _store("display", "menu_layout", "tiles" if i == 1 else "featured"))
 	var mode := _option(col, "Window", ["Windowed", "Fullscreen"], 1 if GameSettings.fullscreen() else 0)
 	mode.item_selected.connect(func(i: int) -> void: _store("display", "fullscreen", i == 1))
 	var sizes: Array[String] = []

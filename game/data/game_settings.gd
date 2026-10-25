@@ -221,3 +221,9 @@ static func last_deck(who: String) -> String:
 
 static func set_last_deck(who: String, name: String) -> void:
 	set_value("last_deck", who, name)
+
+
+## Main menu layout: "featured" (a big hero, mockup M5) or "tiles" (mockup M7).
+static func menu_layout() -> String:
+	var v: String = str(_config().get_value("display", "menu_layout", "featured"))
+	return v if v == "tiles" else "featured"

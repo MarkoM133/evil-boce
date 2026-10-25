@@ -1,7 +1,8 @@
 extends Control
-## Main menu (GDD 7), "featured hero" layout (mockup M5): one hero's card art fills the right
-## side behind a slanted cut and changes every few seconds; the logo sits small top left and
-## the entries run down the left in big italics. Every entry works: Continue (an unfinished
+## Main menu (GDD 7) in one of two layouts (Settings → Main menu). "Featured hero" (mockup M5):
+## one hero's card art fills the right side behind a slanted cut and changes every few seconds;
+## the logo sits small top left and the entries run down the left in big italics. "Tiles"
+## (mockup M7): a hub of big tiles like a mobile game's. Every entry works: Continue (an unfinished
 ## match), Play, Online, Sandbox, Replays, Decks, Settings and Exit.
 
 const SANDBOX_SCENE: String = "res://scenes/sandbox/sandbox.tscn"
@@ -37,6 +38,8 @@ var _hero_name: Label
 var _hero_info: Label
 var _dots: HBoxContainer
 var _hint: Label
+## Tile hub (M7) instead of the featured hero (M5); Settings → Main menu.
+var _tiles: bool = false
 
 
 func _ready() -> void:
@@ -54,7 +57,137 @@ func _ready() -> void:
 	bg.color = Palette.BG
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
+	_tiles = GameSettings.menu_layout() == "tiles"
+	if _tiles:
+		_build_tiles(logo)
+	else:
+		_build_featured(logo)
 
+	var foot := Label.new()
+	foot.add_theme_color_override("font_color", Palette.DIM)
+	foot.add_theme_font_size_override("font_size", 13)
+	foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	foot.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	foot.position = Vector2(18, -34)
+	var version: String = str(ProjectSettings.get_setting("application/config/version", ""))
+	if db.is_ok():
+		foot.text = "v%s  ·  cards v%d, %d cards" % [version, db.version, db.card_count]
+	else:
+		foot.text = "v%s  ·  %s  ·  set the shared folder in Settings" % [version, db.error]
+		foot.add_theme_color_override("font_color", Palette.GOLD)
+	add_child(foot)
+
+
+# --- tiles (mockup M7) ----------------------------------------------------------------------
+
+## A hub like a mobile game's: a thin hero strip, the logo and Continue on top, two big tiles
+## (Play, Online) with hero art, a row of small ones, Exit in the corner.
+func _build_tiles(logo: Texture2D) -> void:
+	var strip := HeroStrip.new()
+	strip.setup(db)
+	strip.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	strip.custom_minimum_size = Vector2(0, 70)
+	add_child(strip)
+	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 80)
+	margin.add_theme_constant_override("margin_right", 80)
+	margin.add_theme_constant_override("margin_top", 88)
+	margin.add_theme_constant_override("margin_bottom", 60)
+	add_child(margin)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 14)
+	margin.add_child(col)
+
+	var head := HBoxContainer.new()
+	head.custom_minimum_size = Vector2(0, 120)
+	col.add_child(head)
+	if logo != null:
+		var img := TextureRect.new()
+		img.texture = logo
+		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		img.custom_minimum_size = Vector2(150, 120)
+		head.add_child(img)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(gap)
+	if ReplayStore.has_current():
+		var rec: MatchRecord = ReplayStore.load_current()
+		var cont := MenuTile.new()
+		cont.title = "CONTINUE"
+		cont.subtitle = ("%s  ·  turn %d" % [rec.title(), rec.state_at(rec.frame_count() - 1).turn]) if rec != null and rec.frame_count() > 0 else "Back to the match you left"
+		cont.color = Palette.GOLD
+		cont.title_color = Color.BLACK
+		cont.title_size = 40
+		cont.custom_minimum_size = Vector2(460, 100)
+		cont.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		cont.pressed.connect(_on_pressed.bind("continue"))
+		head.add_child(cont)
+
+	var big := HBoxContainer.new()
+	big.add_theme_constant_override("separation", 14)
+	big.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(big)
+	var art_ids: Array[String] = []
+	for h: HeroDef in _heroes:
+		art_ids.append(h.id)
+	var play: MenuTile = _tile(big, "PLAY", "Against the bot, or two players on this computer", Palette.ACCENT.darkened(0.35), 96, "play",
+		art_ids[0] if art_ids.size() > 0 else "")
+	play.size_flags_stretch_ratio = 1.6
+	_tile(big, "ONLINE", "Host or join over Tailscale", Color("1a3d99"), 80, "online", art_ids[1] if art_ids.size() > 1 else "")
+
+	var small := HBoxContainer.new()
+	small.add_theme_constant_override("separation", 14)
+	small.custom_minimum_size = Vector2(0, 120)
+	col.add_child(small)
+	var replays: int = ReplayStore.list_replays().size()
+	var decks: int = DeckStore.load_all(db.root_dir).size() if db.is_ok() else 0
+	_tile(small, "SANDBOX", "Throw balls around, try terrain", Palette.PANEL_SOLID, 36, "sandbox")
+	_tile(small, "REPLAYS", "%d saved" % replays if replays > 0 else "None yet", Palette.PANEL_SOLID, 36, "replays")
+	_tile(small, "DECKS", "%d deck%s" % [decks, "" if decks == 1 else "s"] if decks > 0 else "Deck codes", Palette.PANEL_SOLID, 36, "decks")
+	_tile(small, "SETTINGS", "Display, sound, keys", Palette.PANEL_SOLID, 36, "settings")
+
+	var exit := Button.new()
+	exit.text = "EXIT"
+	exit.theme_type_variation = &"Ghost"
+	exit.add_theme_font_size_override("font_size", 24)
+	exit.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	exit.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	exit.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	exit.position = Vector2(-80, -56)
+	exit.pressed.connect(_on_pressed.bind("exit"))
+	add_child(exit)
+	# Tiles come in one after another.
+	var i: int = 0
+	for row: HBoxContainer in [big, small]:
+		for c: Node in row.get_children():
+			var t := c as Control
+			t.modulate.a = 0.0
+			t.create_tween().tween_property(t, "modulate:a", 1.0, 0.25).set_delay(0.06 * i + 0.1)
+			i += 1
+
+
+func _tile(parent: Control, title: String, subtitle: String, color: Color, size: int, action: String, art_id: String = "") -> MenuTile:
+	var t := MenuTile.new()
+	t.title = title
+	t.subtitle = subtitle
+	t.color = color
+	t.title_size = size
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if not art_id.is_empty():
+		t.art = db.large(art_id)
+		if t.art == null:
+			t.art = db.thumb(art_id)
+		t.region = _art_region(t.art)
+	t.pressed.connect(_on_pressed.bind(action))
+	parent.add_child(t)
+	return t
+
+
+# --- featured hero (mockup M5) --------------------------------------------------------------
+
+func _build_featured(logo: Texture2D) -> void:
 	# The featured hero, right side.
 	for i: int in 2:
 		var p := ArtPanel.new()
@@ -142,25 +275,11 @@ func _ready() -> void:
 	col.add_child(_hint)
 	if first != null:
 		first.grab_focus.call_deferred()
-
-	var foot := Label.new()
-	foot.add_theme_color_override("font_color", Palette.DIM)
-	foot.add_theme_font_size_override("font_size", 13)
-	foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	foot.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	foot.position = Vector2(18, -34)
-	var version: String = str(ProjectSettings.get_setting("application/config/version", ""))
-	if db.is_ok():
-		foot.text = "v%s  ·  cards v%d, %d cards" % [version, db.version, db.card_count]
-	else:
-		foot.text = "v%s  ·  %s  ·  set the shared folder in Settings" % [version, db.error]
-		foot.add_theme_color_override("font_color", Palette.GOLD)
-	add_child(foot)
 	_show_hero(0)
 
 
 func _process(delta: float) -> void:
-	if _heroes.size() < 2:
+	if _tiles or _heroes.size() < 2:
 		return
 	_timer += delta
 	if _timer >= HERO_TIME:
