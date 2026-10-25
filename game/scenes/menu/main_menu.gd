@@ -1,14 +1,16 @@
 extends Control
-## Main menu (GDD 7). Continue (an unfinished match), Play, Sandbox, Replays and Exit work.
+## Main menu (GDD 7). Continue (an unfinished match), Play, Sandbox, Replays, Settings and Exit work.
 
 const SANDBOX_SCENE: String = "res://scenes/sandbox/sandbox.tscn"
 const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
+const SETTINGS_SCENE: String = "res://scenes/menu/settings_menu.tscn"
 
 
 func _ready() -> void:
 	theme = UiTheme.get_theme()
+	GameSettings.apply(get_tree())
 	var db := CardDb.load_from(GameSettings.data_path())
 	var logo: Texture2D = db.logo()
 	if logo != null:
@@ -46,7 +48,7 @@ func _ready() -> void:
 
 	var first: Button = null
 	var entries: Array = [["PLAY", "play"], ["SANDBOX", "sandbox"], ["REPLAYS", "replays"], ["DECKS", ""],
-			["SETTINGS", ""], ["EXIT", "exit"]]
+			["SETTINGS", "settings"], ["EXIT", "exit"]]
 	# A match left unfinished (quit or crash) comes back first.
 	if ReplayStore.has_current():
 		entries.push_front(["CONTINUE", "continue"])
@@ -79,8 +81,7 @@ func _ready() -> void:
 	if db.is_ok():
 		foot.text = "v%s  ·  cards.json v%d, %d cards  ·  %s" % [version, db.version, db.card_count, db.root_dir]
 	else:
-		foot.text = "v%s  ·  %s  ·  set the path in %s" % [version, db.error,
-			ProjectSettings.globalize_path(GameSettings.PATH)]
+		foot.text = "v%s  ·  %s  ·  set the shared folder in Settings" % [version, db.error]
 		foot.add_theme_color_override("font_color", Palette.GOLD)
 	add_child(foot)
 
@@ -101,5 +102,7 @@ func _on_pressed(action: String) -> void:
 			get_tree().change_scene_to_file(REPLAYS_SCENE)
 		"sandbox":
 			get_tree().change_scene_to_file(SANDBOX_SCENE)
+		"settings":
+			get_tree().change_scene_to_file(SETTINGS_SCENE)
 		"exit":
 			get_tree().quit()

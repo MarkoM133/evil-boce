@@ -7,6 +7,8 @@ const PATH: String = "user://settings.cfg"
 const MAP_SIZES: Array[int] = [15, 17, 23]
 
 static var _cfg: ConfigFile
+## Tests set this to work on a fresh, unsaved config instead of the player's file.
+static var in_memory: bool = false
 
 
 static func data_path() -> String:
@@ -40,7 +42,14 @@ static func set_map_size(n: int) -> void:
 
 
 static func save() -> void:
-	_config().save(PATH)
+	if not in_memory:
+		_config().save(PATH)
+
+
+## Tests: start from an empty config that is never written to disk.
+static func use_memory() -> void:
+	in_memory = true
+	_cfg = ConfigFile.new()
 
 
 static func _config() -> ConfigFile:
@@ -69,3 +78,120 @@ static func last_host() -> String:
 static func set_last_host(address: String) -> void:
 	_config().set_value("online", "host", address.strip_edges())
 	save()
+
+
+# --- display, sound and keys (Settings screen) ------------------------------------------------
+
+const QUALITIES: Array[String] = ["low", "medium", "high"]
+const RESOLUTIONS: Array[Vector2i] = [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440)]
+## 0 = no limit.
+const FPS_LIMITS: Array[int] = [0, 60, 120, 144, 240]
+## Sound buses; Music and Effects send to Master and are made on first use.
+const BUSES: Array[String] = ["Master", "Music", "Effects"]
+## Rebindable keys: action -> default key.
+const DEFAULT_KEYS: Dictionary[String, Key] = {"pass": KEY_SPACE, "menu": KEY_ESCAPE}
+
+static var _display_applied: bool = false
+
+
+static func fullscreen() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "fullscreen", false))
+
+
+static func resolution() -> Vector2i:
+	var v: Variant = _config().get_value("display", "resolution", Vector2i(1600, 900))
+	return v if v is Vector2i else Vector2i(1600, 900)
+
+
+static func vsync() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "vsync", true))
+
+
+static func max_fps() -> int:
+	return JsonUtil.as_int(_config().get_value("display", "max_fps", 0))
+
+
+static func quality() -> String:
+	var q: String = str(_config().get_value("display", "quality", "medium"))
+	return q if QUALITIES.has(q) else "medium"
+
+
+## 0..1, linear.
+static func volume(bus: String) -> float:
+	return clampf(JsonUtil.as_float(_config().get_value("sound", bus.to_lower(), 0.8)), 0.0, 1.0)
+
+
+static func set_value(section: String, key_: String, value: Variant) -> void:
+	_config().set_value(section, key_, value)
+	save()
+
+
+static func key(action: String) -> Key:
+	var fallback: Key = DEFAULT_KEYS.get(action, KEY_NONE)
+	var k: int = JsonUtil.as_int(_config().get_value("keys", action, int(fallback)), int(fallback))
+	return k as Key
+
+
+static func set_key(action: String, k: Key) -> void:
+	set_value("keys", action, int(k))
+
+
+static func reset_keys() -> void:
+	for action: String in DEFAULT_KEYS:
+		set_key(action, DEFAULT_KEYS[action])
+
+
+## Turns a pressed key into the key the scenes match on: the key bound to "menu" reads as
+## Escape, the one bound to "pass" as Space, and a default key that was moved elsewhere reads
+## as nothing. Other keys pass through unchanged.
+static func logical_key(code: Key) -> Key:
+	for action: String in DEFAULT_KEYS:
+		if code == key(action):
+			return DEFAULT_KEYS[action]
+	for action: String in DEFAULT_KEYS:
+		if code == DEFAULT_KEYS[action]:
+			return KEY_NONE
+	return code
+
+
+static func key_name(k: Key) -> String:
+	return OS.get_keycode_string(k) if k != KEY_NONE else "—"
+
+
+## Window, frame rate, sound and quality; the window only on the first call (start-up) or when
+## `force` is set (the Settings screen), so going back to the menu does not move it.
+static func apply(tree: SceneTree, force: bool = false) -> void:
+	if force or not _display_applied:
+		_display_applied = true
+		if fullscreen():
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		else:
+			if DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+			var size: Vector2i = resolution()
+			var screen: Rect2i = DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen())
+			size = Vector2i(mini(size.x, screen.size.x), mini(size.y, screen.size.y))
+			DisplayServer.window_set_size(size)
+			DisplayServer.window_set_position(screen.position + (screen.size - size) / 2)
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync() else DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = max_fps()
+	match quality():
+		"low":
+			tree.root.msaa_3d = Viewport.MSAA_DISABLED
+			tree.root.scaling_3d_scale = 0.75
+		"high":
+			tree.root.msaa_3d = Viewport.MSAA_4X
+			tree.root.scaling_3d_scale = 1.0
+		_:
+			tree.root.msaa_3d = Viewport.MSAA_2X
+			tree.root.scaling_3d_scale = 1.0
+	for bus: String in BUSES:
+		var i: int = AudioServer.get_bus_index(bus)
+		if i < 0:
+			AudioServer.add_bus()
+			i = AudioServer.bus_count - 1
+			AudioServer.set_bus_name(i, bus)
+			AudioServer.set_bus_send(i, "Master")
+		var v: float = volume(bus)
+		AudioServer.set_bus_mute(i, v <= 0.001)
+		AudioServer.set_bus_volume_db(i, linear_to_db(maxf(v, 0.001)))

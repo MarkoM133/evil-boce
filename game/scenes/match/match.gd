@@ -917,7 +917,7 @@ func _run_bots(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _menu.visible:
-		if event is InputEventKey and (event as InputEventKey).pressed and (event as InputEventKey).keycode == KEY_ESCAPE:
+		if event is InputEventKey and (event as InputEventKey).pressed and GameSettings.logical_key((event as InputEventKey).keycode) == KEY_ESCAPE:
 			_toggle_menu()
 		return
 	if _replay != null:
@@ -949,7 +949,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## step, Home view, Esc menu.
 func _replay_input(event: InputEvent) -> void:
 	if event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo:
-		match (event as InputEventKey).keycode:
+		match GameSettings.logical_key((event as InputEventKey).keycode):
 			KEY_ESCAPE:
 				_toggle_menu()
 			KEY_SPACE:
@@ -973,7 +973,7 @@ func _replay_input(event: InputEvent) -> void:
 func _on_key(k: InputEventKey) -> void:
 	if not k.pressed or k.echo:
 		return
-	match k.keycode:
+	match GameSettings.logical_key(k.keycode):
 		KEY_ESCAPE:
 			if _sling.is_aiming():
 				_sling.cancel()
