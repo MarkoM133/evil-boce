@@ -13,6 +13,8 @@ const BOT_DELAY: float = 0.5
 const CORE_RADIUS: float = 0.34
 ## The token is drawn this much bigger than its pick-up radius, so its picture reads.
 const CORE_LOOK: float = 1.3
+## How strongly a revealed stage's art shows on its hexes.
+const STAGE_ART_ALPHA: float = 0.6
 const CORE_COLORS: Dictionary[String, Color] = {
 	"Buff": Color("4fb858"), "Major": Color("ffd23f"), "Debuff": Color("9a5bd6"),
 }
@@ -727,6 +729,11 @@ func _rebuild_tokens() -> void:
 	for c: Node in _tokens.get_children():
 		c.queue_free()
 	_core_tokens.clear()
+	for st: StageState in state.stages:
+		if st.placed and st.revealed:
+			var art: Node3D = _stage_art(st)
+			if art != null:
+				_tokens.add_child(art)
 	for c: CoreState in state.cores:
 		if c.place != CoreState.ON_FIELD:
 			continue
@@ -750,6 +757,49 @@ func _rebuild_tokens() -> void:
 			flag.material_override = MeshKit.unshaded(Palette.team(state.team_of(st.claimed_by)), false)
 			flag.position = arena.hex_center(st.center) + Vector3(0, 1.1, 0)
 			_tokens.add_child(flag)
+
+
+## A revealed stage's card art laid on its hexes, faded, cut to their shape: the stage reads as
+## a place on the table, not just an outline. Null without a picture.
+func _stage_art(st: StageState) -> Node3D:
+	var tex: Texture2D = db.large(st.card_id) if db.large(st.card_id) != null else db.thumb(st.card_id)
+	if tex == null:
+		return null
+	var cells: Array[Vector2i] = st.footprint()
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for a: Vector2i in cells:
+		var c2: Vector2 = arena.map.to_world(a)
+		for i: int in 6:
+			var p: Vector2 = c2 + Hex.corner(i, tuning.hex_size)
+			lo = Vector2(minf(lo.x, p.x), minf(lo.y, p.y))
+			hi = Vector2(maxf(hi.x, p.x), maxf(hi.y, p.y))
+	var span: Vector2 = hi - lo
+	var region: Rect2 = HeroSlice.card_art_region(tex, span.x / span.y)
+	var stt := SurfaceTool.new()
+	stt.begin(Mesh.PRIMITIVE_TRIANGLES)
+	stt.set_normal(Vector3.UP)
+	for a: Vector2i in cells:
+		var c2: Vector2 = arena.map.to_world(a)
+		for i: int in 6:
+			var p0: Vector2 = c2 + Hex.corner(i, tuning.hex_size)
+			var p1: Vector2 = c2 + Hex.corner(i + 1, tuning.hex_size)
+			for p: Vector2 in [c2, p1, p0]:
+				stt.set_uv(region.position + region.size * ((p - lo) / span))
+				stt.add_vertex(Vector3(p.x, 0.0, p.y))
+	var mi := MeshInstance3D.new()
+	mi.mesh = stt.commit()
+	mi.position.y = 0.02
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = tex
+	mat.albedo_color = Color(1, 1, 1, STAGE_ART_ALPHA)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.roughness = 0.9
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	mi.material_override = mat
+	return mi
 
 
 ## A core on the table: a dark hex chip with its picture on top, the face once it is face up,
@@ -1816,4 +1866,12 @@ func demo_pick() -> void:
 	state.active.erase(0)
 	var mine: Array[HeroState] = state.heroes_of(0)
 	hud.picks[0] = mine[1].id
+	_sync()
+
+
+## Screenshot helper: every stage turned face up.
+func demo_reveal() -> void:
+	_demo = true
+	for st: StageState in state.stages:
+		st.revealed = true
 	_sync()
