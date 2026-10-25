@@ -19,6 +19,12 @@ var db: CardDb
 var engine: RulesEngine
 var state: GameState
 var recorder: MatchRecorder
+## Online: "host" (this scene drives NetHost, which owns the recorder), "client" (moves go to the
+## host, the state comes back) or "" for a local match.
+var net_role: String = ""
+var net_host: NetHost
+var net_client: NetClient
+var _ball_tick: float = 0.0
 var arena: Arena
 var world: ArenaWorld
 var cam: OrbitCamera
@@ -76,7 +82,43 @@ func _ready() -> void:
 	_replay = _config.get("replay", null)
 	var from_record: MatchRecord = _replay if _replay != null else resume_from
 	engine = RulesEngine.new(from_record.catalog() if from_record != null else db.catalog)
-	if _replay != null:
+	var net: Dictionary = JsonUtil.as_dict(_config.get("net", {}))
+	net_role = str(net.get("role", ""))
+	if net_role == "host":
+		net_host = net["node"]
+		engine = net_host.engine
+		recorder = net_host.recorder
+		settings = net_host.settings
+		for s: Dictionary in net_host.seats:
+			if JsonUtil.as_bool(s.get("bot", false)):
+				bot_slots.append(JsonUtil.as_int(s["slot"]))
+		bot_level = str(net_host.seat(JsonUtil.as_int(bot_slots[0])).get("bot_level", "easy")) if not bot_slots.is_empty() else "easy"
+		net_host.state_changed.connect(_on_net_state)
+		net_host.paused_changed.connect(func(on: bool, by: int) -> void: _on_net_pause(on, by, str(net_host.seat(by).get("name", ""))))
+		net_host.player_changed.connect(func(slot: int, on: bool) -> void:
+			hud.toast("%s %s" % [str(net_host.seat(slot).get("name", "")), "is back" if on else "dropped; waiting…"]))
+	elif net_role == "client":
+		net_client = net["node"]
+		settings = MatchSettings.from_dict(net_client.settings)
+		state = net_client.state
+		net_client.state_received.connect(func(_s: GameState) -> void: _on_net_state())
+		net_client.move_refused.connect(func(_m: Dictionary, why: String) -> void: hud.toast(why, Palette.FG))
+		net_client.balls_received.connect(_on_net_balls)
+		net_client.paused_changed.connect(_on_net_pause)
+		net_client.player_changed.connect(func(_slot: int, name: String, on: bool) -> void:
+			hud.toast("%s %s" % [name, "is back" if on else "dropped; waiting…"]))
+		net_client.disconnected.connect(func(why: String) -> void: hud.toast("Lost the host: " + why, Palette.ACCENT))
+		net_client.match_over.connect(func(summary: Dictionary) -> void:
+			hud.end_summary = summary
+			hud.refresh())
+		net_client.roll_received.connect(func(o: RollOutcome) -> void:
+			for r: RollResult in o.results:
+				var h: HeroState = state.hero(r.ball_id)
+				if h != null and (r.ring_out or r.strip_entered >= 0):
+					hud.toast("RING-OUT  ·  %s" % hud.hero_name(h)))
+	if net_role != "":
+		pass
+	elif _replay != null:
 		_frame = clampi(JsonUtil.as_int(_config.get("frame", 0)), 0, _replay.frame_count() - 1)
 		state = _replay.state_at(_frame)
 		bot_slots = []
@@ -90,6 +132,10 @@ func _ready() -> void:
 		recorder = MatchRecorder.start(engine, settings, decks, seed_, seats, str(ProjectSettings.get_setting("application/config/version", "")))
 	if recorder != null:
 		state = recorder.state
+	if state == null:
+		push_error("no state to show")
+		get_tree().change_scene_to_file(MENU_SCENE)
+		return
 	for slot: Variant in bot_slots:
 		bots[JsonUtil.as_int(slot)] = Bot.new(seed_ + JsonUtil.as_int(slot), Bot.level_from(bot_level))
 
@@ -177,9 +223,14 @@ func _build_hud() -> void:
 	hud = MatchHud.new()
 	layer.add_child(hud)
 	var local := PackedInt32Array()
-	for p: PlayerState in state.players:
-		if not bots.has(p.slot) and _replay == null:
-			local.append(p.slot)
+	if net_role == "host":
+		local.append(net_host.host_slot)
+	elif net_role == "client":
+		local.append(net_client.slot)
+	else:
+		for p: PlayerState in state.players:
+			if not bots.has(p.slot) and _replay == null:
+				local.append(p.slot)
 	hud.replay = _replay != null
 	hud.setup(engine, state, db, local)
 	if _replay != null:
@@ -249,6 +300,18 @@ func _build_menu_overlay() -> Control:
 	resume.text = "Resume"
 	resume.pressed.connect(_toggle_menu)
 	col.add_child(resume)
+	if net_role != "":
+		var pause := Button.new()
+		pause.text = "Pause for everyone"
+		pause.pressed.connect(func() -> void:
+			_toggle_menu()
+			if net_role == "host":
+				var why: String = net_host.set_paused(not net_host.paused, net_host.host_slot)
+				if not why.is_empty():
+					hud.toast(why, Palette.FG)
+			else:
+				net_client.send_pause(not net_client.paused))
+		col.add_child(pause)
 	for slot: int in hud.local_slots:
 		var give_up := Button.new()
 		give_up.text = "Surrender (%s)" % hud.player_name(slot)
@@ -258,16 +321,27 @@ func _build_menu_overlay() -> Control:
 		col.add_child(give_up)
 	var back := Button.new()
 	back.text = "Main menu"
-	back.pressed.connect(func() -> void: get_tree().change_scene_to_file(MENU_SCENE))
+	back.pressed.connect(_leave)
 	col.add_child(back)
 	return root
 
 
 func _toggle_menu() -> void:
 	if state.is_over() and _replay == null:
-		get_tree().change_scene_to_file(MENU_SCENE)
+		_leave()
 		return
 	_menu.visible = not _menu.visible
+
+
+## Back to the main menu; an online match closes its link first.
+func _leave() -> void:
+	if net_host != null:
+		net_host.link.close()
+		net_host.queue_free()
+	if net_client != null:
+		net_client.link.close()
+		net_client.queue_free()
+	get_tree().change_scene_to_file(MENU_SCENE)
 
 
 func _rematch() -> void:
@@ -282,7 +356,18 @@ func _rematch() -> void:
 # --- moves ------------------------------------------------------------------
 
 func _apply(m: Move) -> void:
-	if _runner.is_running() or _launching or recorder == null:
+	if _runner.is_running() or _launching:
+		return
+	if net_role == "client":
+		net_client.send_move(m)
+		return
+	if net_role == "host":
+		# NetHost.apply emits state_changed, which saves and redraws (_on_net_state).
+		var why: String = net_host.apply(m)
+		if not why.is_empty():
+			hud.toast(why, Palette.FG)
+		return
+	if recorder == null:
 		return
 	var err: String = recorder.apply(m)
 	if not err.is_empty():
@@ -292,10 +377,45 @@ func _apply(m: Move) -> void:
 	_sync()
 
 
+## The host sent a new state (host: after any seat's move; client: always).
+func _on_net_state() -> void:
+	if net_role == "client":
+		state = net_client.state
+		hud.state = state
+	else:
+		_after_change()
+	_sync()
+
+
+func _on_net_pause(on: bool, _by: int, name: String) -> void:
+	hud.net_paused = ("Paused by %s" % name) if on else ""
+	hud.refresh()
+
+
+## Ball positions from the host while its physics runs.
+func _on_net_balls(positions: Dictionary) -> void:
+	if not hud.rolling:
+		hud.rolling = true
+		hud.refresh()
+	for id: Variant in positions:
+		if not _bodies.has(str(id)):
+			continue
+		var p: Array = JsonUtil.as_array(positions[id])
+		if p.size() != 3:
+			continue
+		var b: BallBody = _bodies[str(id)]
+		b.freeze = true
+		var to := Vector3(JsonUtil.as_float(p[0]), JsonUtil.as_float(p[1]), JsonUtil.as_float(p[2]))
+		_views[str(id)].roll(to - b.global_position)
+		b.global_position = to
+
+
 ## Saves the match in progress; when it is over, files the replay and the stats summary.
 ## A resumed match starts from the beginning of its last phase, so the save is only written
 ## when a new phase opens, not after every move.
 func _after_change() -> void:
+	if net_role == "client":
+		return
 	if state.is_over():
 		if _filed:
 			return
@@ -325,8 +445,10 @@ func _sync() -> void:
 	hud.rolling = _runner.is_running() or _launching
 	hud.setup_pick = _setup_item()
 	hud.refresh()
-	if _replay != null:
-		# Watching: nothing moves by itself; balls only follow recorded paths.
+	if _replay != null or net_role == "client":
+		# Watching, or a guest: nothing moves by itself; balls follow what the host sends.
+		hud.rolling = net_role == "client" and state.awaiting_roll
+		hud.refresh()
 		for b: BallBody in _bodies.values():
 			b.freeze = true
 		return
@@ -618,9 +740,18 @@ func _throw_all() -> void:
 		_on_roll_finished(RollOutcome.new())
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if not _runner.is_running():
 		return
+	if net_role == "host":
+		_ball_tick += delta
+		if _ball_tick >= 0.05:
+			_ball_tick = 0.0
+			var positions: Dictionary = {}
+			for id: String in _bodies:
+				var p: Vector3 = _bodies[id].global_position
+				positions[id] = [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01)]
+			net_host.send_balls(positions)
 	for c: CoreState in state.cores:
 		if c.place != CoreState.ON_FIELD or _picked.has(c.id):
 			continue
@@ -643,7 +774,7 @@ func _on_roll_finished(o: RollOutcome) -> void:
 		var r: RollResult = o.result_for(_picked[cid])
 		if r != null:
 			r.cores_picked.append(cid)
-	var err: String = recorder.apply_roll(o)
+	var err: String = net_host.apply_roll(o) if net_role == "host" else recorder.apply_roll(o)
 	if not err.is_empty():
 		hud.toast(err, Palette.FG)
 	else:

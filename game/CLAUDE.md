@@ -11,5 +11,6 @@
 - The sim only reports facts (`RollResult`, gathered per Roll into `RollOutcome` by `RollRunner`); it never decides rules. Terrain is data (`TerrainMap`) owned by whoever runs the game; the arena only draws it.
 - Rules engine shape, move list, scenario test format and the assumptions it made: `game/docs/rules.md`. New rule behaviour gets a JSON scenario in `game/tests/scenarios/`.
 - Every match runs through `MatchRecorder` (replay, save, stats): format in `game/docs/replay.md`. The network host (step 3) streams the same frames; do not invent a second format.
+- Online play (`net/`, `scenes/net/`): host-authoritative, redacted states per seat, protocol in `game/docs/net.md`. The match scene is the same for local, host and guest (`net_role`).
 - The match scene (`scenes/match/`) never decides rules: it calls `RulesEngine.apply` / `apply_roll` and redraws from the `GameState` (`_sync`). Shared table pieces: `ArenaWorld`, `TableEnv`, `Slingshot`.
 - After editing scripts run both `gut_cmdln.gd` and `tools/check_scripts.gd` (GUT hides parse errors in scripts it never loads).

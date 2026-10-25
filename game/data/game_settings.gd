@@ -49,3 +49,23 @@ static func _config() -> ConfigFile:
 		if FileAccess.file_exists(PATH):
 			_cfg.load(PATH)
 	return _cfg
+
+
+## Online: the player's nickname and the last host address, kept between sessions.
+static func player_name() -> String:
+	var n: String = str(_config().get_value("online", "name", ""))
+	return n if not n.is_empty() else OS.get_environment("USERNAME")
+
+
+static func set_player_name(n: String) -> void:
+	_config().set_value("online", "name", n.strip_edges())
+	save()
+
+
+static func last_host() -> String:
+	return str(_config().get_value("online", "host", ""))
+
+
+static func set_last_host(address: String) -> void:
+	_config().set_value("online", "host", address.strip_edges())
+	save()

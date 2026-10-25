@@ -4,6 +4,7 @@ extends Control
 
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
+const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
 const RANDOM: String = "Random deck"
 ## Offered changes to every hero's printed range (Standard is -1, see MatchSettings.standard).
 const RANGE_DELTAS: Array[int] = [-2, -1, 0, 1]
@@ -96,6 +97,11 @@ func _ready() -> void:
 	back.text = "Back"
 	back.pressed.connect(func() -> void: get_tree().change_scene_to_file(MENU_SCENE))
 	row.add_child(back)
+	var online := Button.new()
+	online.text = "Online…"
+	online.tooltip_text = "Host a match or join one over Tailscale"
+	online.pressed.connect(func() -> void: get_tree().change_scene_to_file(LOBBY_SCENE))
+	row.add_child(online)
 	var start := Button.new()
 	start.text = "Start match"
 	start.size_flags_horizontal = Control.SIZE_EXPAND_FILL

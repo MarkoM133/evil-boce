@@ -37,6 +37,8 @@ var hover_hero: String = ""
 var rolling: bool = false
 ## Watching a recorded match: no prompts, buttons or end screen, only the table and panels.
 var replay: bool = false
+## Online: who paused the match ("" when it runs); shown instead of the prompt.
+var net_paused: String = ""
 ## Setup: the stage or core the local player places next (set by the match scene).
 var setup_pick: String = ""
 ## How far the hand is lowered (0 = up); it drops when the mouse is over the table (GDD 11).
@@ -524,6 +526,9 @@ func _refresh_prompt() -> void:
 	_clear(_actions)
 	_prompt.text = ""
 	if state.is_over() or replay:
+		return
+	if not net_paused.is_empty():
+		_prompt.text = net_paused
 		return
 	if rolling:
 		_prompt.text = "Rolling…"

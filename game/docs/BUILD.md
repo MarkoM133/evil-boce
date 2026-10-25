@@ -39,6 +39,9 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
 
 ## Tools
 
+- **Online smoke test** (headless; host, guest and the match scene in both roles over
+  127.0.0.1): `godot_console --headless --path game -s res://tools/net_smoke.gd`
+
 - **Throw ranges** (headless, prints a table):
   `godot_console --headless --path game --fixed-fps 120 -s res://tools/measure_throws.gd`
   Physics numbers live in `game/sim/physics_tuning.tres`.
@@ -55,10 +58,11 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
 ## Match
 
 Main menu → Play → pick decks (saved decks from `decks/` in the shared folder, or random),
-player 2 (placeholder bot or a second local player) and the map. The match scene
+player 2 (bot Easy / Hard or a second local player) and the map. The match scene
 (`scenes/match/`) only draws the `GameState`, turns clicks into moves and runs the physics for
-the Roll phase; the rules are in `rules/` (see `rules.md`). `bot/simple_bot.gd` is a stand-in
-that plays legal moves until the real bot (step 2, part 5).
+the Roll phase; the rules are in `rules/` (see `rules.md`). `bot/bot.gd` is the bot.
+"Online…" opens the lobby (`scenes/net/`): host on port 7777 or join a Tailscale address;
+protocol and roles in `net.md`.
 
 ## Windows build
 
