@@ -73,6 +73,10 @@ var _actions: VBoxContainer
 var _key_hint: Label
 var _tray: HBoxContainer
 var _log_line: Label
+## Energy, bottom left: yours (big) and the opponent's (small, red) above it.
+var _energy: EnergyDial
+var _energy_them: EnergyDial
+var _energy_them_label: Label
 var _log_full: Label
 var _log_panel: PanelContainer
 var _dialog: PanelContainer
@@ -144,6 +148,7 @@ func refresh() -> void:
 	_scan_log()
 	_refresh_ribbon()
 	_refresh_battle_bar()
+	_refresh_energy()
 	for slot: int in state.players.size():
 		if slot < _rosters.size():
 			_fill_roster(_rosters[slot], slot)
@@ -152,6 +157,25 @@ func refresh() -> void:
 	_refresh_dialog()
 	_refresh_log()
 	_refresh_over()
+
+
+## Your energy on the big dial (the hand's owner, else the first local seat), the opponent's on
+## the small red one with their name. Hidden before the first turn.
+func _refresh_energy() -> void:
+	var on: bool = state.turn > 0 and not state.players.is_empty()
+	_energy.visible = on
+	_energy_them.visible = on
+	_energy_them_label.visible = on
+	if not on:
+		return
+	var mine: int = hand_slot()
+	if mine < 0:
+		mine = local_slots[0] if not local_slots.is_empty() else 0
+	var them: int = engine.other_slot(state, mine)
+	var cap: int = mini(state.turn, state.settings.max_energy)
+	_energy.set_value(state.player(mine).energy, cap, state.settings.max_energy)
+	_energy_them.set_value(state.player(them).energy, cap, state.settings.max_energy)
+	_energy_them_label.text = "%s  %d/%d" % [player_name(them).to_upper(), state.player(them).energy, cap]
 
 
 ## "BATTLE 1 / 2 · LUFFY 5000 VS GIORNO 4000", each side in its team's colour.
@@ -291,11 +315,30 @@ func _build() -> void:
 		_rosters.append(col)
 
 	# Bottom left: what the game wants now.
+	# Bottom left corner: your energy big, the opponent's small and red just above it.
+	_energy = EnergyDial.new()
+	_energy.custom_minimum_size = Vector2(150, 150)
+	_energy.size = Vector2(150, 150)
+	_energy.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_energy.position = Vector2(14, -164)
+	add_child(_energy)
+	_energy_them = EnergyDial.new()
+	_energy_them.color = Palette.ACCENT
+	_energy_them.number_color = Palette.FG
+	_energy_them.size = Vector2(52, 52)
+	_energy_them.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_energy_them.position = Vector2(20, -226)
+	add_child(_energy_them)
+	_energy_them_label = UiTheme.label("", 15, Palette.ACCENT)
+	_energy_them_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_energy_them_label.position = Vector2(80, -210)
+	add_child(_energy_them_label)
+
 	var prompt_col := VBoxContainer.new()
 	prompt_col.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	prompt_col.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	prompt_col.position = Vector2(16, -18)
-	prompt_col.custom_minimum_size = Vector2(430, 0)
+	prompt_col.position = Vector2(180, -18)
+	prompt_col.custom_minimum_size = Vector2(270, 0)
 	prompt_col.add_theme_constant_override("separation", 4)
 	prompt_col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(prompt_col)
@@ -303,7 +346,7 @@ func _build() -> void:
 	prompt_col.add_child(_kicker)
 	_prompt = UiTheme.label("", 28)
 	_prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_prompt.custom_minimum_size = Vector2(430, 0)
+	_prompt.custom_minimum_size = Vector2(270, 0)
 	_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	_prompt.add_theme_constant_override("outline_size", 6)
 	prompt_col.add_child(_prompt)
@@ -311,30 +354,26 @@ func _build() -> void:
 	_detail.add_theme_color_override("font_color", Color("b9b4ab"))
 	_detail.add_theme_font_size_override("font_size", 14)
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_detail.custom_minimum_size = Vector2(430, 0)
+	_detail.custom_minimum_size = Vector2(270, 0)
 	prompt_col.add_child(_detail)
-	var log_row := HBoxContainer.new()
-	log_row.add_theme_constant_override("separation", 10)
-	prompt_col.add_child(log_row)
-	var log_btn := Button.new()
-	log_btn.text = "LOG"
-	log_btn.focus_mode = Control.FOCUS_NONE
-	log_btn.add_theme_font_size_override("font_size", 15)
-	log_btn.pressed.connect(func() -> void: _log_panel.visible = not _log_panel.visible)
-	log_row.add_child(log_btn)
+	# The log: the last event as a small line under the prompt; a click opens the whole log.
 	_log_line = Label.new()
 	_log_line.add_theme_color_override("font_color", Palette.MUTED)
 	_log_line.add_theme_font_size_override("font_size", 13)
-	_log_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_log_line.clip_text = true
-	_log_line.custom_minimum_size = Vector2(300, 0)
-	_log_line.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	log_row.add_child(_log_line)
+	_log_line.custom_minimum_size = Vector2(270, 0)
+	_log_line.mouse_filter = Control.MOUSE_FILTER_STOP
+	_log_line.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_log_line.tooltip_text = "Click for the whole log"
+	_log_line.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			_log_panel.visible = not _log_panel.visible)
+	prompt_col.add_child(_log_line)
 
 	_log_panel = PanelContainer.new()
 	_log_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_log_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_log_panel.position = Vector2(16, -200)
+	_log_panel.position = Vector2(180, -200)
 	_log_panel.custom_minimum_size = Vector2(430, 0)
 	_log_panel.visible = false
 	add_child(_log_panel)
@@ -533,21 +572,7 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 	col.add_child(head)
 	var name_chip: UiShape = UiShape.chip(player_name(slot).to_upper(), Palette.team(state.team_of(slot)), Palette.FG, 19, 30.0)
 	head.add_child(name_chip)
-	var cap: int = mini(maxi(state.turn, 0), state.settings.max_energy)
-	var pips := HBoxContainer.new()
-	pips.add_theme_constant_override("separation", 3)
-	pips.tooltip_text = "Energy %d of %d" % [p.energy, cap]
-	pips.mouse_filter = Control.MOUSE_FILTER_PASS
-	for i: int in state.settings.max_energy:
-		var lit: bool = i < p.energy
-		var pip: UiShape = UiShape.make(UiShape.Kind.DIAMOND, Palette.GOLD if lit else (Palette.LINE if i < cap else Color(0, 0, 0, 0)), Vector2(12, 12))
-		if not lit and i >= cap:
-			pip.outline = Palette.LINE
-			pip.outline_width = 1.0
-		pip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		pips.add_child(pip)
-	head.add_child(pips)
-	head.add_child(UiTheme.label("%d/%d" % [p.energy, cap], 19, Palette.GOLD))
+	# Energy is in the bottom left corner (_refresh_energy), not here.
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(gap)
@@ -1197,6 +1222,19 @@ func _action(text: String, cb: Callable, kind: StringName = &"") -> Button:
 func _process(delta: float) -> void:
 	if _hand_box == null or state == null:
 		return
+	# A card under the mouse shows on the dial what would be left after paying for it.
+	if _energy != null and _energy.visible:
+		var left: int = -1
+		var slot: int = hand_slot()
+		if not _hover_cid.is_empty() and slot >= 0 and state.player(slot).hand.has(_hover_cid):
+			var c: CardDef = engine.catalog.get_card(_hover_cid)
+			if c != null:
+				var cost: int = engine.card_cost(state, state.player(slot), c)
+				if cost <= _energy.value:
+					left = _energy.value - cost
+		if left != _energy.preview:
+			_energy.preview = left
+			_energy.queue_redraw()
 	if state.phase == GameState.PHASE_MULLIGAN:
 		# The starting hand sits in the middle, big, and stays up.
 		_hand_drop = 0.0
@@ -1633,7 +1671,7 @@ func _refresh_log() -> void:
 		var s: String = _describe(e)
 		if not s.is_empty():
 			lines.append(s)
-	_log_line.text = lines[lines.size() - 1] if not lines.is_empty() else ""
+	_log_line.text = ("▸ %s  ·  log" % lines[lines.size() - 1]) if not lines.is_empty() else "▸ log"
 	var start: int = maxi(0, lines.size() - 16)
 	_log_full.text = "\n".join(lines.slice(start))
 
