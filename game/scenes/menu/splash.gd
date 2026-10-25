@@ -108,8 +108,14 @@ func setup(db: CardDb, logo: Texture2D, news: Array, version: String, target: Co
 		for it: Array in _items:
 			_round += _item_width(it) + TICKER_GAP
 
-	modulate.a = 0.0
-	create_tween().tween_property(self, "modulate:a", 1.0, 0.4)
+	# The black stays solid from the first frame (the menu behind must not show); only what is on
+	# it fades in.
+	var t: Tween = create_tween().set_parallel()
+	for c: Node in get_children():
+		if c != _bg and c is CanvasItem:
+			var ci := c as CanvasItem
+			ci.modulate.a = 0.0
+			t.tween_property(ci, "modulate:a", 1.0, 0.4)
 
 
 func _process(delta: float) -> void:
