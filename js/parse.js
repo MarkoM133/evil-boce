@@ -14,10 +14,17 @@ export const COLORS = {
 export const COLOR_NAMES = Object.values(COLORS);
 
 // Character je preimenovan u Hero (2026-10-24); stari zapisi s 'Character' čitaju se kao Hero (normalizeDb).
-export const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage'];
+// Core (kodovi CR1-001…) je za igru: kuglice na mapi, ne idu u deck.
+export const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core'];
 export const DECK_TYPES = ['Evolution', 'Action', 'Equipment', 'Assist'];
 export const HERO_TYPES = ['Hero', 'Evolution'];
-const TYPE_TEXTS = { Character: 'Hero', Hero: 'Hero', Action: 'Action', Assist: 'Assist', Equipment: 'Equipment', Evolution: 'Evolution' };
+// Tipovi bez boje frakcije.
+const COLORLESS_TYPES = ['Stage', 'Core'];
+const TYPE_TEXTS = { Character: 'Hero', Hero: 'Hero', Action: 'Action', Assist: 'Assist', Equipment: 'Equipment', Evolution: 'Evolution', Core: 'Core' };
+
+// Teren stagea: zaseban redak "Terrain: Ice" u tekstu stage karte (vodič za tekst karata).
+export const TERRAINS = ['Ice', 'Mud', 'Ramp', 'Wind', 'None'];
+const TERRAIN_RE = /\bTerrain:\s*([A-Za-z]+)/;
 
 // Novi layout: okvir nosi slovo boje frakcije (ista boja kao stara tinta p_frame_11).
 const FRAME_RE = /_(hero|evo)_frame_([RGBCMY])$/i;
@@ -39,7 +46,7 @@ export const STAT_KEYS = ['hp', 'dmg', 'pwr', 'rng', 'kb'];
 
 const SPRITES = { 0: 'HP', 1: 'DMG', 2: 'Power', 3: 'Range', 4: 'Knockback' };
 
-// Kod karte: SET-001, SET je veliko slovo pa do 5 slova ili brojki (OP1, DBZ, JJ5, OPM, Stage).
+// Kod karte: SET-001, SET je veliko slovo pa do 5 slova ili brojki (OP1, JO1, CR1, DBZ, JJ5, OPM, Stage).
 // Samo "OP" bez broja nije set: One Piece uvijek ima broj seta.
 export const CODE_RE = /^(?:Stage|(?!OP-)[A-Z][A-Z0-9]{1,5})-\d{3}$/;
 const LOOSE_CODE_RE = /^[A-Za-z][A-Za-z0-9]{0,5}-\d+$/;
@@ -51,6 +58,13 @@ const TRAITS_Y = -456;
 
 // TMP tagovi (<b>, <cspace=6>, <sprite=…>) van; za ime, kod, tip i traitove.
 export const stripTags = t => (t ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+
+// "Terrain: ice" -> 'Ice'; nepoznat teren ili bez retka -> null.
+export function terrainFromText(t) {
+  const m = TERRAIN_RE.exec(t ?? '');
+  if (!m) return null;
+  return TERRAINS.find(x => x.toLowerCase() === m[1].toLowerCase()) ?? null;
+}
 
 export function cleanText(t) {
   return t
@@ -104,7 +118,8 @@ function readCode(raw, problems) {
 }
 
 // Vraća jedan zapis po <Card>: { skip, code, card, problems }.
-// skip = true za karte bez koda (tokeni). problems = [{ level: 'error'|'warn', msg }].
+// skip = true za karte bez koda (tokeni); Core bez koda nije token, nego greška (skip + coreWithoutCode).
+// problems = [{ level: 'error'|'warn', msg }].
 export function parseCardEngineXml(xmlText) {
   const root = parseXml(xmlText);
   const list = child(root, 'ArrayOfCard');
@@ -123,7 +138,7 @@ function parseCard(node) {
   let code = texts.find(e => CODE_RE.test(e.t))?.t;
   if (!code) {
     const loose = texts.find(e => LOOSE_CODE_RE.test(e.t))?.t;
-    if (!loose) return { skip: true, name: rawName };
+    if (!loose) return { skip: true, name: rawName, coreWithoutCode: texts.some(e => e.t === 'Core') };
     code = readCode(loose, problems);
   }
   // Card Engine PNG nazove po imenu karte, pa frend u ime stavi i kod ("JO1-001 Giorno Giovanna").
@@ -136,7 +151,7 @@ function parseCard(node) {
 
   const card = { id: code, name, type: type ?? null };
 
-  if (type === 'Stage') {
+  if (COLORLESS_TYPES.includes(type)) {
     card.color = null;
   } else {
     const frame = els.find(e => e.kind === 'image' && e.t === 'p_frame_11');
@@ -160,7 +175,7 @@ function parseCard(node) {
   const ordered = readIcons(els, texts);
   if (HERO_TYPES.includes(type)) {
     heroStats(card, ordered, problems);
-  } else if (type && type !== 'Stage') {
+  } else if (type && type !== 'Stage') { // i Core: +2000 Power i sl. su bonus
     const signed = Object.entries(ordered).filter(([, v]) => /^[+-]/.test(v));
     const plain = Object.entries(ordered).filter(([, v]) => !/^[+-]/.test(v));
     card.bonus = Object.fromEntries(signed.map(([k, v]) => [k, parseInt(v, 10)]));
@@ -175,6 +190,11 @@ function parseCard(node) {
 
   const effect = texts.find(e => Math.abs(e.x) < 10 && e.y < -250 && e.y > -400);
   card.text = effect ? cleanText(effect.t) : '';
+
+  if (type === 'Stage') {
+    const m = TERRAIN_RE.exec(card.text);
+    if (m && !terrainFromText(card.text)) problems.push({ level: 'warn', msg: `unknown terrain "${m[1]}" (expected ${TERRAINS.join(', ')})` });
+  }
 
   return { skip: false, code, card, problems };
 }

@@ -1,14 +1,17 @@
 // Uvoz exporta u cards.json: spajanje XML-ova i PNG-ova, usporedba s bazom, provjere i Objavi.
 // Bez I/O: pozivatelj (app ili test) skupi fileove i zapiše rezultat.
-import { parseCardEngineXml, CODE_RE, ROT_RE } from './parse.js';
+import { parseCardEngineXml, CODE_RE, ROT_RE, terrainFromText } from './parse.js';
 
 // Polja koja dolaze iz Card Enginea (§5). App ih ne mijenja.
 export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'values', 'traits', 'text', 'landscape'];
 // Polja koja se uređuju samo u appu. Ponovni uvoz ih ne dira.
-export const APP_FIELDS = ['wt', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'deleted'];
+// Za igru: fx (efekt karte za igru), fxStatus ('ok' | 'check' | ''), terrain (Stage; iz retka "Terrain:" ili ručno),
+// figure (put do .glb, npr. figures/OP1-001.glb), ballColor i ballColor2 (kuglica: tijelo i akcent), heroSfx.
+export const APP_FIELDS = ['wt', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fx', 'fxStatus', 'terrain', 'figure', 'ballColor', 'ballColor2', 'heroSfx', 'deleted'];
 // Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
-export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2'];
-const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
+// fxStatus je samo oznaka za pregled, pa ni on ne diže verziju.
+export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fxStatus', 'figure', 'ballColor', 'ballColor2', 'heroSfx'];
+const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'terrain', 'fx', 'fxStatus', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
 
@@ -76,6 +79,7 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     }
     const seenHere = new Set();
     for (const p of parsed) {
+      if (p.skip && p.coreWithoutCode) { add(errors, null, `${f.path}: Core card "${p.name}" has no code; Core cards need one (CR1-001)`); continue; }
       if (p.skip) { tokenCount++; continue; }
       if (p.variant === 'rot') { rotOnly.set(p.code, { ...p, file: f.path }); continue; }
       if (seenHere.has(p.code)) add(errors, p.code, `${f.path}: code appears twice in the same XML`);
@@ -288,6 +292,13 @@ function withAppFields(ce, old) {
   }
   // Ostala app polja (npr. oblik i boja bakugana) ostaju kakva su bila.
   for (const k of APP_FIELDS) if (card[k] === undefined && old?.[k] !== undefined) card[k] = old[k];
+  // Redak "Terrain:" u tekstu stagea ima prednost pred ručno odabranim terenom.
+  if (ce.type === 'Stage') {
+    const terrain = terrainFromText(ce.text);
+    if (terrain) card.terrain = terrain;
+  }
+  // Promijenjen tekst karte s fx-om: stari fx i dalje vrijedi, ali ga treba provjeriti.
+  if (card.fx && old && old.text !== ce.text) card.fxStatus = 'check';
   card.deleted = old?.deleted ?? false;
   return card;
 }
@@ -400,7 +411,7 @@ export function changelogEntry(oldDb, newDb) {
       cards.push({ id: c.id, name: c.name, kind: 'new', fields: [], image: false });
       continue;
     }
-    const fields = [...CE_FIELDS, 'wt'].filter(k => !same(o[k], c[k]));
+    const fields = [...CE_FIELDS, ...APP_FIELDS.filter(k => !LOOK_FIELDS.includes(k) && k !== 'deleted')].filter(k => !same(o[k], c[k]));
     const image = o.imageHash !== c.imageHash || (o.imageRotHash ?? null) !== (c.imageRotHash ?? null);
     const look = [...LOOK_FIELDS.filter(k => !same(o[k], c[k])), ...(o.spriteHash !== c.spriteHash ? ['sprite'] : [])];
     const kind = !o.deleted && c.deleted ? 'deleted' : o.deleted && !c.deleted ? 'restored' : 'changed';

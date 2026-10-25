@@ -534,3 +534,56 @@ test('normalizeDb: stari tip Character je Hero', () => {
   const clean = normalizeDb(db);
   assert.equal(normalizeDb(clean), clean);
 });
+
+test('kodovi: JO1, CR1 i Stage su ispravni', () => {
+  const parsed = parseCardEngineXml(xml(card({ ...ACTION, code: 'JO1-012' }), card({ ...STAGE, code: 'Stage-001' }), card({ name: '+2000 Power', code: 'CR1-001', type: 'Core', color: null, icons: { pwr: '+2000' } })));
+  assert.deepEqual(parsed.map(p => [p.code, p.problems.length]), [['JO1-012', 0], ['Stage-001', 0], ['CR1-001', 0]]);
+});
+
+test('Core: s kodom je karta bez boje s bonusom, bez koda je greška, token bez koda se i dalje preskače', async () => {
+  const CORE = { name: '+2000 Power', code: 'CR1-001', type: 'Core', color: null, icons: { pwr: '+2000' }, text: '' };
+  const [c] = parseCardEngineXml(xml(card(CORE)));
+  assert.deepEqual(c.card, { id: 'CR1-001', name: '+2000 Power', type: 'Core', color: null, bonus: { pwr: 2000 }, traits: [], text: '' });
+  assert.deepEqual(c.problems, []);
+  const a = await analyzeExport({
+    xmlFiles: [{ path: 'export/cores.xml', text: xml(card({ ...CORE, code: undefined }), card(TOKEN)), lastModified: 1 }],
+    pngFiles: [],
+    db: emptyDb(),
+  });
+  assert.deepEqual(a.errors.map(e => e.msg), ['export/cores.xml: Core card "+2000 Power" has no code; Core cards need one (CR1-001)']);
+  assert.ok(a.infos.some(i => /skipped 1 card without a code/.test(i.msg)));
+});
+
+test('teren stagea: redak "Terrain:" iz teksta, inače ostaje ručno odabran; nepoznat teren je upozorenje', async () => {
+  const { pub } = await firstImport();
+  const manual = applyAppEdits(pub.db, { 'Stage-009': { terrain: 'Mud' } });
+  assert.equal(manual.bumped, true);
+  const reimport = async (db, text) => {
+    const a = await analyzeExport({ xmlFiles: [{ path: 'export/s.xml', text: xml(card({ ...STAGE, text })), lastModified: 9 }], pngFiles: [png([8], 'export/Island.png')], db });
+    return { a, db: buildPublish(db, a).db };
+  };
+  const kept = await reimport(manual.db, 'When revealed, heal 1.');
+  assert.equal(kept.db.cards.find(c => c.id === 'Stage-009').terrain, 'Mud');
+  const fromText = await reimport(manual.db, 'When revealed. Terrain: ice');
+  assert.equal(fromText.db.cards.find(c => c.id === 'Stage-009').terrain, 'Ice');
+  const bad = await reimport(manual.db, 'Terrain: Lava');
+  assert.ok(bad.a.warnings.some(w => /unknown terrain "Lava"/.test(w.msg)));
+  assert.equal(bad.db.cards.find(c => c.id === 'Stage-009').terrain, 'Mud');
+});
+
+test('fx: diže verziju, fxStatus ne; promijenjen tekst karte s fx-om dobije "check"', async () => {
+  const { pub } = await firstImport();
+  const withFx = applyAppEdits(pub.db, { 'OP9-002': { fx: 'BATTLE: +2000 PWR SELF', fxStatus: 'ok' } });
+  assert.equal(withFx.bumped, true);
+  assert.equal(applyAppEdits(withFx.db, { 'OP9-002': { fxStatus: '' } }).bumped, false);
+  const reimport = async text => {
+    const a = await analyzeExport({ xmlFiles: [{ path: 'export/a.xml', text: xml(card({ ...ACTION, text })), lastModified: 9 }], pngFiles: [png([8], 'export/Punch.png')], db: withFx.db });
+    return buildPublish(withFx.db, a).db.cards.find(c => c.id === 'OP9-002');
+  };
+  const changed = await reimport('<b>Battle Phase:</b> More.');
+  assert.equal(changed.fx, 'BATTLE: +2000 PWR SELF');
+  assert.equal(changed.fxStatus, 'check');
+  const sameText = await reimport(ACTION.text);
+  assert.equal(sameText.fxStatus, 'ok');
+  assert.deepEqual(changelogEntry(pub.db, withFx.db).cards.map(c => [c.id, c.fields, c.look]), [['OP9-002', ['fx'], ['fxStatus']]]);
+});

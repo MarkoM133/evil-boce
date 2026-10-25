@@ -1,6 +1,6 @@
 import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, SIZES, CE_FIELDS, ARCHIVE_DIR, archiveFolder, archivePath,
   CHANGELOG_PATH, changelogEntry, appendChangelog, changesSince, describeChange, publishedPngPaths } from './importer.js';
-import { TYPES, COLOR_NAMES, DECK_TYPES, HERO_TYPES } from './parse.js';
+import { TYPES, COLOR_NAMES, DECK_TYPES, HERO_TYPES, TERRAINS } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
 import { GAME_COLORS, heroDefaultColor, paintThumb, paintParts, createPreview } from './bakugan.js';
@@ -958,7 +958,9 @@ const setOf = c => c.id.split('-')[0];
 const SPECIAL = {
   novo: ['New', 'Cards new or changed in the latest version (including look changes under it)'],
   bezBakugana: ['No bakugan', 'Heroes that have no bakugan chosen yet'],
-  bezSpritea: ['No sprite', 'Heroes and evolutions without a sprite (figurine in TTS)'],
+  bezSpritea: ['No sprite', 'Heroes and evolutions without a sprite (figurine)'],
+  bezFx: ['No fx', 'Cards with text but no fx yet (the effect script for the game)'],
+  provjeriFx: ['Check fx', 'Cards whose text changed after the fx was written; the fx needs checking'],
 };
 
 function specialFilter(name) {
@@ -969,6 +971,8 @@ function specialFilter(name) {
   }
   if (name === 'bezBakugana') return c => c.type === 'Hero' && !c.bakuganShape;
   if (name === 'bezSpritea') return c => HERO_TYPES.includes(c.type) && !c.sprite;
+  if (name === 'bezFx') return c => !!c.text && !c.fx;
+  if (name === 'provjeriFx') return c => c.fxStatus === 'check';
   return () => true;
 }
 
@@ -1071,11 +1075,13 @@ function renderQuickFilters() {
   const on = (k, v) => f[k].includes(v);
   const toggle = (k, v) => { f[k] = on(k, v) ? f[k].filter(x => x !== v) : [...f[k], v]; render(); };
   const chip = (k, v, label, title) => h('button', { type: 'button', class: `qf${on(k, v) ? ' active' : ''}`, title: title ?? '', 'aria-pressed': String(on(k, v)), onclick: () => toggle(k, v) }, label);
-  const sets = [...new Set(state.db.cards.filter(c => c.type !== 'Stage').map(setOf))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const sets = [...new Set(state.db.cards.filter(c => c.type !== 'Stage' && c.type !== 'Core').map(setOf))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  // Core se nudi tek kad u bazi ima coreova.
+  const types = TYPES.filter(t => t !== 'Core' || state.db.cards.some(c => c.type === 'Core'));
   const any = f.types.length || f.colors.length || f.sets.length || f.specials.length || f.since || f.q;
   const group = (cls, active, ...kids) => Object.assign(h('div', { class: `qf-group${cls ? ` ${cls}` : ''}` }, ...kids), { activeCount: active });
   const groups = [
-    group('', f.types.length, TYPES.map(t => chip('types', t, t === 'Hero' ? 'Heroes' : t))),
+    group('', f.types.length, types.map(t => chip('types', t, t === 'Hero' ? 'Heroes' : t))),
     group('', f.colors.length, COLOR_NAMES.map(c => h('button', {
       type: 'button', class: `qf-color c-${c}${on('colors', c) ? ' active' : ''}`, title: c, 'aria-label': c, 'aria-pressed': String(on('colors', c)), onclick: () => toggle('colors', c),
     }))),
@@ -1169,7 +1175,7 @@ function renderDetail() {
   const canEdit = state.store.canImport;
   const save = () => h('button', { class: 'primary', type: 'submit' }, 'Save');
   const form = (...kids) => h('form', { class: 'editor', onsubmit: e => { e.preventDefault(); guard(() => saveEdits(c.id, edits)); } }, ...kids);
-  const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'rev', 'imageHash']
+  const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'terrain', 'fx', 'fxStatus', 'figure', 'ballColor', 'ballColor2', 'heroSfx', 'rev', 'imageHash']
     .filter(k => c[k] !== undefined)
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
   // Povijest ove karte; verzija otvara cijelu povijest na toj verziji.
@@ -1189,6 +1195,10 @@ function renderDetail() {
     h('div', {}, h('table', { class: 'fields' }, rows),
       canEdit ? form(
         h('h3', {}, 'App fields'),
+        c.type === 'Stage' ? h('label', { class: 'field' }, h('span', {}, 'Terrain'),
+          h('select', { onchange: e => { edits.terrain = e.target.value || undefined; } },
+            h('option', { value: '' }, '– not set –'),
+            TERRAINS.map(t => h('option', { value: t, selected: c.terrain === t }, t === 'None' ? 'None (no terrain)' : t)))) : null,
         h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!c.deleted, onchange: e => { edits.deleted = e.target.checked; } }), 'Deleted – the deck builder no longer offers it'),
         save()) : null));
   const panes = { general };
