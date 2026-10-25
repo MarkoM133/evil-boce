@@ -78,7 +78,8 @@ Paths use the JSON form of the state: `players.p0.hand`, `heroes.<id>.hp`, `core
 - Knockback: the highest KB on the winning side, from the nearest winner that reaches the
   loser, rounded to one of the six hex directions; off the map is a ring-out. Only losers
   that some winner reaches are hit and knocked back.
-- Stage gap is 1 on maps up to 17 wide and 3 on 23×23 (`MatchSettings.effective_stage_gap`).
+- Stage gap is 1 on maps up to 17 wide and 3 on 23×23 (`MatchSettings.effective_stage_gap`);
+  core gap is 2 on maps up to 17 wide and 3 on 23×23 (`effective_core_gap`).
 - Cores off a ringed-out hero are thrown by the game onto random free hexes (not on a
   stage), keeping their face state. Cores off a KO'd hero go to the core owner's inventory
   and come back anywhere free in the owner's own half.

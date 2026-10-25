@@ -114,14 +114,14 @@ func _auto_place(s: GameState) -> void:
 			st.placed = true
 			break
 	for c: CoreState in s.cores:
-		for gap: int in range(s.settings.core_gap, -1, -1):
+		for gap: int in range(s.settings.effective_core_gap(), -1, -1):
 			var options: Array[Vector2i] = []
 			for a: Vector2i in cells:
 				if core_placement_error(s, c, a, gap).is_empty():
 					options.append(a)
 			if options.is_empty():
 				continue
-			if gap < s.settings.core_gap:
+			if gap < s.settings.effective_core_gap():
 				s.event("setup_gap_relaxed", {"core": c.id, "gap": gap})
 			c.hex = options[s.random_int(options.size())]
 			c.place = CoreState.ON_FIELD
@@ -172,7 +172,7 @@ func core_placement_error(s: GameState, c: CoreState, a: Vector2i, gap: int = -1
 		return "not on the map"
 	if not s.in_half_of_team(a, 1 - s.team_of(c.owner)):
 		return "core goes into the opponent's half"
-	return _core_spot_error(s, c, a, gap if gap >= 0 else s.settings.core_gap)
+	return _core_spot_error(s, c, a, gap if gap >= 0 else s.settings.effective_core_gap())
 
 
 ## `gap` < 0 skips the distance rules (returning a core from the inventory).

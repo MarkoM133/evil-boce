@@ -21,6 +21,8 @@ var stage_gap: int = 3
 var stage_gap_small: int = 1
 var small_map_max: int = 17
 var core_gap: int = 3
+## Core gap on maps up to `small_map_max` wide.
+var core_gap_small: int = 2
 ## Stages, then cores, placed by the players in turn; false places them automatically.
 var manual_setup: bool = true
 var timer_seconds: int = 0
@@ -31,6 +33,11 @@ var max_tie_turns: int = 2
 ## Stage gap for this map size.
 func effective_stage_gap() -> int:
 	return stage_gap_small if map_size <= small_map_max else stage_gap
+
+
+## Core gap for this map size.
+func effective_core_gap() -> int:
+	return core_gap_small if map_size <= small_map_max else core_gap
 
 
 func to_dict() -> Dictionary:
@@ -49,6 +56,7 @@ func to_dict() -> Dictionary:
 		"stage_gap_small": stage_gap_small,
 		"small_map_max": small_map_max,
 		"core_gap": core_gap,
+		"core_gap_small": core_gap_small,
 		"manual_setup": manual_setup,
 		"timer_seconds": timer_seconds,
 		"max_tie_turns": max_tie_turns,
@@ -71,6 +79,7 @@ static func from_dict(d: Dictionary) -> MatchSettings:
 	s.stage_gap_small = JsonUtil.as_int(d.get("stage_gap_small", s.stage_gap_small), s.stage_gap_small)
 	s.small_map_max = JsonUtil.as_int(d.get("small_map_max", s.small_map_max), s.small_map_max)
 	s.core_gap = JsonUtil.as_int(d.get("core_gap", s.core_gap), s.core_gap)
+	s.core_gap_small = JsonUtil.as_int(d.get("core_gap_small", s.core_gap_small), s.core_gap_small)
 	s.manual_setup = JsonUtil.as_bool(d.get("manual_setup", s.manual_setup), s.manual_setup)
 	s.timer_seconds = JsonUtil.as_int(d.get("timer_seconds", s.timer_seconds), s.timer_seconds)
 	s.max_tie_turns = JsonUtil.as_int(d.get("max_tie_turns", s.max_tie_turns), s.max_tie_turns)
