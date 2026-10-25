@@ -7,3 +7,4 @@
 - `rules/` is pure logic with tests; no scene or Node code there.
 - Unclear rule → write it into `game/docs/pitanja.md` and ask Marko; do not invent rules.
 - Code and commits in English; talk to Marko in Croatian, briefly.
+- Build, tests and tools: `game/docs/BUILD.md`. Hex conventions: `game/docs/hex.md`. Physics numbers only in `game/sim/physics_tuning.tres`.
