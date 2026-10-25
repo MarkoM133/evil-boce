@@ -89,28 +89,32 @@ func _build_tiles(logo: Texture2D) -> void:
 	strip.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	strip.custom_minimum_size = Vector2(0, 56)
 	add_child(strip)
-	# The whole block sits in the middle at a share of the screen ("zoomed out"), whatever
-	# the window size.
+	# Logo and news along the top, out by the edges; the tiles below in the middle of the
+	# screen at a share of it ("zoomed out"), with room between them.
+	var head := HBoxContainer.new()
+	head.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	head.offset_left = 230
+	head.offset_right = -230
+	head.offset_top = 80
+	head.offset_bottom = 168
+	head.add_theme_constant_override("separation", 16)
+	add_child(head)
 	var margin := MarginContainer.new()
 	margin.anchor_left = 0.2
 	margin.anchor_right = 0.8
-	margin.anchor_top = 0.115
-	margin.anchor_bottom = 0.86
+	margin.anchor_top = 0.25
+	margin.anchor_bottom = 0.9
 	add_child(margin)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 12)
 	margin.add_child(col)
 
-	var head := HBoxContainer.new()
-	head.custom_minimum_size = Vector2(0, 76)
-	head.add_theme_constant_override("separation", 16)
-	col.add_child(head)
 	if logo != null:
 		var img := TextureRect.new()
 		img.texture = logo
 		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		img.custom_minimum_size = Vector2(96, 76)
+		img.custom_minimum_size = Vector2(110, 88)
 		head.add_child(img)
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -189,8 +193,8 @@ func _build_tiles(logo: Texture2D) -> void:
 	exit.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	exit.anchor_left = 0.8
 	exit.anchor_right = 0.8
-	exit.anchor_top = 0.86
-	exit.anchor_bottom = 0.86
+	exit.anchor_top = 0.9
+	exit.anchor_bottom = 0.9
 	exit.position = Vector2(-90, 10)
 	exit.pressed.connect(_on_pressed.bind("exit"))
 	add_child(exit)
@@ -278,7 +282,7 @@ func _news() -> Control:
 	sb.border_color = Palette.GOLD
 	sb.border_width_left = 4
 	panel.add_theme_stylebox_override("panel", sb)
-	panel.custom_minimum_size = Vector2(340, 0)
+	panel.custom_minimum_size = Vector2(400, 0)
 	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 2)
@@ -289,7 +293,7 @@ func _news() -> Control:
 	for kind: String in ["new", "changed", "deleted"]:
 		if counts.has(kind):
 			parts.append("%d %s" % [JsonUtil.as_int(counts[kind]), kind])
-	v.add_child(UiTheme.label(", ".join(parts).to_upper(), 19))
+	v.add_child(UiTheme.label(", ".join(parts).to_upper(), 22))
 	var list := Label.new()
 	list.text = ", ".join(names) + ("…" if JsonUtil.as_array(last.get("cards", [])).size() > names.size() else "")
 	list.add_theme_color_override("font_color", Palette.MUTED)
