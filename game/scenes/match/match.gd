@@ -299,6 +299,9 @@ func _build_hud() -> void:
 			_flash_target(hero_id)
 		_apply(Move.make(Move.PLAY_CARD, slot, data)))
 	hud.targeting_changed.connect(_refresh_target_fx)
+	hud.pick_confirmed.connect(func(slot: int, hero_id: String) -> void:
+		hud.picks.erase(slot)
+		_apply(Move.make(Move.SELECT, slot, {"hero": hero_id})))
 	hud.battle_cam_pressed.connect(_toggle_battle_cam)
 	hud.damage_pressed.connect(func(slot: int, target: String) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target})))
 	hud.choose_pressed.connect(func(slot: int, value: Variant) -> void: _apply(Move.make(Move.CHOOSE, slot, {"value": value})))
@@ -593,6 +596,7 @@ func _sync() -> void:
 	_range_key = ""
 	_draw_marks()
 	_update_battle_cam()
+	_refresh_target_fx()
 	hud.rolling = _runner.is_running() or _launching
 	hud.setup_pick = _setup_item()
 	hud.refresh()
@@ -1332,6 +1336,7 @@ func _try_aim(id: String) -> bool:
 	if not state.choices.get(h.owner, false) or state.aims.has(h.owner):
 		return false
 	_sling.start(_bodies[id])
+	_refresh_target_fx()
 	arena.set_grid_emphasis(true)
 	return true
 
@@ -1358,7 +1363,14 @@ func _on_hero_clicked(id: String) -> void:
 	if h == null:
 		return
 	if state.phase == GameState.PHASE_SELECT and hud.local_slots.has(h.owner) and not state.active.has(h.owner):
-		_apply(Move.make(Move.SELECT, h.owner, {"hero": id}))
+		# A click only chooses (another click changes it); CONFIRM locks it in.
+		var can: bool = false
+		for x: HeroState in engine.selectable_heroes(state, h.owner):
+			can = can or x.id == id
+		if can:
+			hud.picks[h.owner] = id
+			hud.refresh()
+			_refresh_target_fx()
 		return
 	if h.is_on_map():
 		cam.focus(arena.hex_center(h.hex), 14.0)
@@ -1575,6 +1587,18 @@ func _refresh_target_fx() -> void:
 	for hid: String in hud.target_heroes:
 		if _bodies.has(hid):
 			_target_fx.add_child(_target_mark(_bodies[hid].global_position, hid == _hovered))
+	# The same light on the hero chosen in Select, and on the ball a local player has to throw.
+	var lit := PackedStringArray()
+	for slot: Variant in hud.picks:
+		lit.append(str(hud.picks[slot]))
+	if state.phase == GameState.PHASE_ROLL and not state.awaiting_roll and not _runner.is_running() and not _sling.is_aiming():
+		for slot: int in hud.local_slots:
+			var a: HeroState = state.active_hero(slot)
+			if a != null and state.choices.get(slot, false) and not state.aims.has(slot):
+				lit.append(a.id)
+	for hid: String in lit:
+		if _bodies.has(hid) and not hud.target_heroes.has(hid):
+			_target_fx.add_child(_target_mark(_bodies[hid].global_position, true))
 
 
 ## Shows briefly on the hero a card just went on.
@@ -1783,3 +1807,13 @@ func _leave_battle_cam() -> void:
 func demo_pause() -> void:
 	_demo = true
 	_toggle_menu()
+
+
+## Screenshot helper (a throwaway match): back to Select with player 1's second hero chosen.
+func demo_pick() -> void:
+	_demo = true
+	state.phase = GameState.PHASE_SELECT
+	state.active.erase(0)
+	var mine: Array[HeroState] = state.heroes_of(0)
+	hud.picks[0] = mine[1].id
+	_sync()

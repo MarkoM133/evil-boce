@@ -11,6 +11,8 @@ signal pass_pressed(slot: int)
 signal choice_pressed(slot: int, roll: bool)
 signal keep_pressed(slot: int, keep: bool)
 signal no_hero_pressed(slot: int)
+## Select: the chosen hero is locked in (CONFIRM).
+signal pick_confirmed(slot: int, hero_id: String)
 ## A card from the hand goes on `hero_id` ("" lets the engine pick, when it can only go one way).
 signal card_pressed(slot: int, card_id: String, hero_id: String)
 ## Choosing a hero for a card started, changed or ended (target_heroes empty).
@@ -99,6 +101,8 @@ var _log_seen: int = -1
 var _called_phase: String = ""
 ## Choosing a hero for a card: whose card, which, the heroes it can go on, why not the others.
 var target_slot: int = -1
+## Select: the hero each local player has chosen but not yet confirmed (slot -> hero id).
+var picks: Dictionary = {}
 var target_cid: String = ""
 var target_heroes: PackedStringArray = PackedStringArray()
 var _target_why: Dictionary = {}
@@ -137,6 +141,9 @@ func setup(engine_: RulesEngine, state_: GameState, db_: CardDb, local: PackedIn
 func refresh() -> void:
 	if state == null:
 		return
+	# A chosen but unconfirmed hero only lasts the Select phase.
+	if state.phase != GameState.PHASE_SELECT and not picks.is_empty():
+		picks.clear()
 	# Choosing a hero for a card ends when the card can no longer be played.
 	if is_targeting() and not (_in_card_round() and state.to_act == target_slot and state.pending.is_empty()
 			and state.player(target_slot).hand.has(target_cid)):
@@ -626,8 +633,9 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	if active:
 		s.outline = Palette.GOLD
 	elif pickable:
-		s.outline = Color(Palette.GOLD, 0.55)
-		s.outline_width = 2.0
+		var chosen_pick: bool = picks.get(h.owner, "") == h.id
+		s.outline = Color("ffd36a") if chosen_pick else Color(Palette.GOLD, 0.55)
+		s.outline_width = 3.5 if chosen_pick else 2.0
 	if in_battle:
 		s.stripe = Palette.ACCENT
 	s.custom_minimum_size = Vector2(ROSTER_WIDTH - 14.0, SLICE_HEIGHT + (22.0 if expanded else 0.0))
@@ -953,8 +961,21 @@ func _hero_tag(h: HeroState, active: bool, pickable: bool, in_battle: bool) -> U
 	if in_battle:
 		return UiShape.chip("BATTLE", Palette.ACCENT, Palette.FG, 13, 20.0, 8.0)
 	if active:
+		# What the activated hero does this turn, as far as its own player may know.
+		if local_slots.has(h.owner) and state.choices.has(h.owner):
+			var rolls: bool = state.choices.get(h.owner, false)
+			if not rolls:
+				return UiShape.chip("STAYS", Palette.SURFACE_2, Palette.FG, 13, 20.0, 8.0)
+			if state.phase == GameState.PHASE_ROLL and not state.aims.has(h.owner):
+				return UiShape.chip("THROW ▸", Palette.ACCENT, Palette.FG, 13, 20.0, 8.0)
+			if state.phase == GameState.PHASE_PREROLL:
+				return UiShape.chip("WILL ROLL", Palette.GOLD, Color.BLACK, 13, 20.0, 8.0)
+			if state.phase == GameState.PHASE_ROLL:
+				return UiShape.chip("ROLLED ✓", Palette.HP, Color.BLACK, 13, 20.0, 8.0)
 		return UiShape.chip("ACTIVE", Palette.GOLD, Color.BLACK, 13, 20.0, 8.0)
 	if pickable:
+		if picks.get(h.owner, "") == h.id:
+			return UiShape.chip("CHOSEN", Palette.GOLD, Color.BLACK, 13, 20.0, 8.0)
 		return UiShape.chip("PICK", Color(Palette.GOLD, 0.25), Palette.GOLD, 13, 20.0, 8.0)
 	if h.tie_turns > 0:
 		return UiShape.chip("LOCKED", Palette.SURFACE_2, Palette.FG, 13, 20.0, 8.0)
@@ -1013,7 +1034,7 @@ func _refresh_prompt() -> void:
 	_prompt.text = ""
 	_detail.text = ""
 	_key_hint.text = ""
-	_kicker.text = state.phase.to_upper() if state.turn > 0 or state.phase == GameState.PHASE_MULLIGAN else ""
+	_kicker.text = _ribbon_phase(state.phase).to_upper() if state.turn > 0 or state.phase == GameState.PHASE_MULLIGAN else ""
 	if state.is_over() or replay:
 		_kicker.text = ""
 		return
@@ -1053,22 +1074,27 @@ func _refresh_prompt() -> void:
 				_action("New hand", func() -> void: keep_pressed.emit(slot, false))
 				_action("KEEP", func() -> void: keep_pressed.emit(slot, true), &"Primary")
 			GameState.PHASE_SELECT:
+				var picked: HeroState = state.hero(str(picks.get(slot, "")))
 				_prompt.text = "Pick a hero"
-				_detail.text = ("%s: " % who if many else "") + "click one of your heroes to activate it."
+				if picked == null:
+					_detail.text = ("%s: " % who if many else "") + "click one of your heroes."
+				else:
+					_detail.text = ("%s: " % who if many else "") + "%s is chosen. Click another to change, or confirm." % hero_name(picked)
+					_action("CONFIRM %s" % hero_name(picked).to_upper(), func() -> void: pick_confirmed.emit(slot, picked.id), &"Primary")
 				if engine.selectable_heroes(state, slot).is_empty():
 					_action("No hero can act", func() -> void: no_hero_pressed.emit(slot), &"Primary")
 			GameState.PHASE_PREROLL:
 				var h: HeroState = state.active_hero(slot)
 				_prompt.text = "Roll or Stay?"
-				_detail.text = ("%s: " % who if many else "") + "%s rolls into the arena, or stays where it is." % hero_name(h)
+				_detail.text = ("%s: " % who if many else "") + "decide now for %s; the throw itself comes in the Roll phase." % hero_name(h)
 				var stay: Button = _action("STAY", func() -> void: choice_pressed.emit(slot, false))
 				stay.disabled = h.zone == HeroState.ZONE_STRIP
 				if stay.disabled:
 					stay.tooltip_text = "A hero in the start zone must roll"
-				_action("ROLL", func() -> void: choice_pressed.emit(slot, true), &"Primary")
+				_action("I'LL ROLL", func() -> void: choice_pressed.emit(slot, true), &"Primary")
 			GameState.PHASE_ROLL:
-				_prompt.text = "Aim and throw"
-				_detail.text = ("%s: " % who if many else "") + "drag %s back, release to lock the throw in. Right click cancels." % hero_name(state.active_hero(slot))
+				_prompt.text = "Throw %s" % hero_name(state.active_hero(slot))
+				_detail.text = ("%s: " % who if many else "") + "drag the lit ball back and let go. Right click cancels."
 		break
 	if _in_card_round():
 		var slot: int = state.to_act
