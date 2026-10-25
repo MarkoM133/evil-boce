@@ -7,6 +7,8 @@
     {"set": {
       "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8], "heroes.p0:TA-001.hp": 3,
       "heroes.p0:TA-002.zone": "ko", "heroes.p0:TA-003.zone": "ko",
+      "heroes.p0:TA-001.cores": ["core:p1:1"],
+      "cores.core:p1:1.place": "hero", "cores.core:p1:1.holder": "p0:TA-001", "cores.core:p1:1.face_up": true,
       "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 8]
     }},
     {"move": {"type": "select", "player": 0, "hero": "p0:TA-002"}, "error": "KO"},
@@ -20,6 +22,8 @@
     {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001"}},
     {"expect": {
       "heroes.p0:TA-001.zone": "ko", "heroes.p0:TA-001.hp": 0,
+      "heroes.p0:TA-001.cores": {"$size": 0},
+      "cores.core:p1:1.place": "inventory", "players.p1.inventory": ["core:p1:1"],
       "phase": "over", "winner": 1, "result": "ko"
     }},
     {"move": {"type": "pass", "player": 1}, "error": "over"}

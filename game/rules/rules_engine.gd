@@ -95,14 +95,14 @@ func _shuffle(s: GameState, arr: PackedStringArray) -> void:
 func _auto_place(s: GameState) -> void:
 	var cells: Array[Vector2i] = s.map().cells()
 	for st: StageState in s.stages:
-		for gap: int in range(s.settings.stage_gap, -1, -1):
+		for gap: int in range(s.settings.effective_stage_gap(), -1, -1):
 			var options: Array[Vector2i] = []
 			for a: Vector2i in cells:
 				if stage_placement_error(s, st, a, gap).is_empty():
 					options.append(a)
 			if options.is_empty():
 				continue
-			if gap < s.settings.stage_gap:
+			if gap < s.settings.effective_stage_gap():
 				s.event("setup_gap_relaxed", {"stage": st.id, "gap": gap})
 			st.center = options[s.random_int(options.size())]
 			st.placed = true
@@ -127,7 +127,7 @@ func _auto_place(s: GameState) -> void:
 ## stage edges (-1 = the match setting).
 func stage_placement_error(s: GameState, st: StageState, a: Vector2i, gap: int = -1) -> String:
 	if gap < 0:
-		gap = s.settings.stage_gap
+		gap = s.settings.effective_stage_gap()
 	for cell: Vector2i in Hex.spiral(a, 1):
 		if not s.map().contains(cell):
 			return "stage must be fully on the map"
@@ -153,10 +153,10 @@ func core_placement_error(s: GameState, c: CoreState, a: Vector2i, gap: int = -1
 
 ## `gap` < 0 skips the distance rules (returning a core from the inventory).
 func _core_spot_error(s: GameState, c: CoreState, a: Vector2i, gap: int) -> String:
-	if s.stage_at(a) != null:
-		return "not on a stage"
 	if s.wall_at(a) or s.hero_at(a) != null:
 		return "hex is taken"
+	if s.stage_at(a) != null:
+		return "not on a stage"
 	for other: CoreState in s.cores:
 		if other == c or other.place != CoreState.ON_FIELD:
 			continue
@@ -945,15 +945,38 @@ func ring_out(s: GameState, h: HeroState, reason: String) -> void:
 	for cid: String in h.equipment:
 		p.graveyard.append(cid)
 	h.equipment = PackedStringArray()
-	_drop_cores(s, h)
+	_scatter_cores(s, h)
 	h.tie_turns = 0
 	h.locked_with = PackedStringArray()
 	_lost_active(s, h)
 	s.event("ring_out", {"hero": h.id, "reason": reason})
 
 
-## Cores fall off a KO'd or ringed-out hero and go back to their owners, who put them
-## anywhere in their own half.
+## Cores fall off a ringed-out hero and the game throws them onto random free hexes
+## (not on a stage); each keeps its face state.
+func _scatter_cores(s: GameState, h: HeroState) -> void:
+	for cid: String in h.cores:
+		var c: CoreState = s.core(cid)
+		if c == null:
+			continue
+		c.holder = ""
+		c.picked_by = ""
+		var options: Array[Vector2i] = []
+		for a: Vector2i in s.map().cells():
+			if _core_spot_error(s, c, a, -1).is_empty():
+				options.append(a)
+		if options.is_empty():
+			c.place = CoreState.IN_INVENTORY
+			s.player(c.owner).inventory.append(c.id)
+			continue
+		c.hex = options[s.random_int(options.size())]
+		c.place = CoreState.ON_FIELD
+		s.event("core_scattered", {"core": c.id, "hex": Hex.to_json(c.hex)})
+	h.cores = PackedStringArray()
+
+
+## Cores fall off a KO'd hero and go back to their owners, who put them anywhere in their
+## own half.
 func _drop_cores(s: GameState, h: HeroState) -> void:
 	for cid: String in h.cores:
 		var c: CoreState = s.core(cid)

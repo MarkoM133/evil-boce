@@ -16,12 +16,21 @@ var knockback: String = "grid"
 var wall_damage: int = 2
 ## Fewest empty hexes between stage edges, and between a core and other cores or stages.
 var stage_gap: int = 3
+## Stage gap on maps up to `small_map_max` wide (six stages do not fit the middle third of
+## a 17 x 17 map at gap 3).
+var stage_gap_small: int = 1
+var small_map_max: int = 17
 var core_gap: int = 3
 ## Stages, then cores, placed by the players in turn; false places them automatically.
 var manual_setup: bool = true
 var timer_seconds: int = 0
 ## Turns a locked (tied) battle may repeat before both sides are knocked back.
 var max_tie_turns: int = 2
+
+
+## Stage gap for this map size.
+func effective_stage_gap() -> int:
+	return stage_gap_small if map_size <= small_map_max else stage_gap
 
 
 func to_dict() -> Dictionary:
@@ -37,6 +46,8 @@ func to_dict() -> Dictionary:
 		"knockback": knockback,
 		"wall_damage": wall_damage,
 		"stage_gap": stage_gap,
+		"stage_gap_small": stage_gap_small,
+		"small_map_max": small_map_max,
 		"core_gap": core_gap,
 		"manual_setup": manual_setup,
 		"timer_seconds": timer_seconds,
@@ -57,6 +68,8 @@ static func from_dict(d: Dictionary) -> MatchSettings:
 	s.knockback = str(d.get("knockback", s.knockback))
 	s.wall_damage = JsonUtil.as_int(d.get("wall_damage", s.wall_damage), s.wall_damage)
 	s.stage_gap = JsonUtil.as_int(d.get("stage_gap", s.stage_gap), s.stage_gap)
+	s.stage_gap_small = JsonUtil.as_int(d.get("stage_gap_small", s.stage_gap_small), s.stage_gap_small)
+	s.small_map_max = JsonUtil.as_int(d.get("small_map_max", s.small_map_max), s.small_map_max)
 	s.core_gap = JsonUtil.as_int(d.get("core_gap", s.core_gap), s.core_gap)
 	s.manual_setup = JsonUtil.as_bool(d.get("manual_setup", s.manual_setup), s.manual_setup)
 	s.timer_seconds = JsonUtil.as_int(d.get("timer_seconds", s.timer_seconds), s.timer_seconds)
