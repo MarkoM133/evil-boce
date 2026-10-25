@@ -158,7 +158,7 @@ func _draw_vertical() -> void:
 		var tint := Color(1, 1, 1) if lit else Color(0.5, 0.5, 0.5)
 		var tex: Texture2D = _art[i]
 		if tex != null:
-			var region: Rect2 = MenuTile.card_art_region(tex, w / (SLICE_H + LEAN_V))
+			var region: Rect2 = HeroSlice.card_art_region(tex, w / (SLICE_H + LEAN_V))
 			var uvs := PackedVector2Array()
 			for pt: Vector2 in pts:
 				uvs.append(region.position + region.size * Vector2(pt.x / w, (pt.y - y) / (SLICE_H + LEAN_V)))
@@ -175,3 +175,26 @@ func _draw_vertical() -> void:
 		PackedColorArray([Palette.BG, Palette.BG, clear, clear]))
 	draw_polygon(PackedVector2Array([Vector2(0, h - FADE), Vector2(w, h - FADE), Vector2(w, h), Vector2(0, h)]),
 		PackedColorArray([clear, clear, Palette.BG, Palette.BG]))
+
+
+## Strips `h` high along the top and the bottom of `parent` (drifting opposite ways), each with
+## a red line on its inner edge: the cinema menu's and the splash's letterbox.
+static func letterbox(parent: Control, db: CardDb, h: float = 110.0) -> void:
+	for bottom: bool in [false, true]:
+		var strip := HeroStrip.new()
+		strip.setup(db)
+		strip.reverse = bottom
+		strip.edge_top = bottom
+		strip.set_anchors_preset(Control.PRESET_BOTTOM_WIDE if bottom else Control.PRESET_TOP_WIDE)
+		strip.custom_minimum_size = Vector2(0, h)
+		if bottom:
+			strip.grow_vertical = Control.GROW_DIRECTION_BEGIN
+			strip.offset_top = -h
+		parent.add_child(strip)
+		var line := ColorRect.new()
+		line.color = Palette.ACCENT
+		line.set_anchors_preset(Control.PRESET_BOTTOM_WIDE if bottom else Control.PRESET_TOP_WIDE)
+		line.offset_top = -h - 3.0 if bottom else h
+		line.offset_bottom = -h if bottom else h + 3.0
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		parent.add_child(line)

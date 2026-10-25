@@ -94,3 +94,19 @@ func _draw() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
 		queue_redraw()
+
+
+## The art part of a card image cropped to `aspect` (width / height). Landscape hero cards
+## carry the art in a box on their left; portrait cards in their top half.
+static func card_art_region(tex: Texture2D, aspect: float) -> Rect2:
+	# Portrait cards: the art window sits under the name bar.
+	var box: Rect2 = Rect2(0.025, 0.07, 0.405, 0.72) if tex.get_width() > tex.get_height() else Rect2(0.075, 0.115, 0.85, 0.385)
+	var px := Vector2(tex.get_width(), tex.get_height())
+	var bw: float = box.size.x * px.x
+	var bh: float = box.size.y * px.y
+	if bw / bh < aspect:
+		# The box is taller than the slot: keep its width, take a band near the top (faces).
+		var nh: float = bw / aspect
+		return Rect2(box.position.x, box.position.y + (bh - nh) * 0.15 / px.y, box.size.x, nh / px.y)
+	var nw: float = bh * aspect
+	return Rect2(box.position.x + (bw - nw) * 0.5 / px.x, box.position.y, nw / px.x, box.size.y)
