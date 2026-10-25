@@ -1425,3 +1425,13 @@ func demo_big_card() -> void:
 	var p: PlayerState = state.player(0)
 	if not p.hand.is_empty():
 		hud._show_big(p.hand[0])
+
+
+## Screenshot helper: lasting effects on player 1's first hero (bonus for the phase, a status).
+func demo_effects() -> void:
+	_demo = true
+	var h: HeroState = state.heroes[0]
+	h.phase_bonus["pwr"] = 2000
+	h.turn_bonus["kb"] = -1
+	h.statuses["stun"] = 1
+	_sync()

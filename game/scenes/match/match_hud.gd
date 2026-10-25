@@ -210,7 +210,11 @@ func _build() -> void:
 			col.position = Vector2(14, 58)
 		else:
 			col.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-			col.position = Vector2(-ROSTER_WIDTH - 14, 58)
+			col.offset_left = -ROSTER_WIDTH - 14
+			col.offset_right = -14
+			col.offset_top = 58
+			# A wider row (an ability tab) grows to the left, onto the table, not off the screen.
+			col.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 		add_child(col)
 		_rosters.append(col)
 
@@ -588,11 +592,8 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	extra.add_theme_font_size_override("font_size", 12)
 	extra.clip_text = true
 	extra.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var status: String = _status_text(h)
-	if not status.is_empty():
-		extra.text = status
-		extra.add_theme_color_override("font_color", Palette.GOLD)
-	elif ko:
+	# Statuses show as chips under the panel (_effect_chips).
+	if ko:
 		extra.text = "Knocked out"
 		extra.add_theme_color_override("font_color", Palette.MUTED)
 	elif not h.equipment.is_empty():
@@ -627,7 +628,172 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	wrap.add_theme_constant_override("margin_right" if right else "margin_left", 0 if active else 14)
 	wrap.add_theme_constant_override("margin_left" if right else "margin_right", 14 if active else 0)
 	wrap.add_child(s)
-	return wrap
+	# The hero's ability as a tab on the panel's outer end, lasting effects as chips under it.
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", -6)
+	row.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(wrap)
+	var tabs: Control = _ability_tabs(h, active and not ko, right)
+	if tabs != null:
+		row.add_child(tabs)
+	var out := VBoxContainer.new()
+	out.add_theme_constant_override("separation", 3)
+	out.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	out.size_flags_horizontal = Control.SIZE_SHRINK_END if right else Control.SIZE_SHRINK_BEGIN
+	out.add_child(row)
+	var chips: Control = _effect_chips(h, right)
+	if chips != null:
+		out.add_child(chips)
+	return out
+
+
+## The abilities on a hero's own card and its evolutions: [{card, index, effect, n}] (n: which
+## ability of that card, for its name).
+func _hero_abilities(h: HeroState) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var ids: Array[String] = [h.card_id]
+	for e: String in h.evolutions:
+		ids.append(e)
+	for cid: String in ids:
+		var card: CardDef = engine.catalog.get_card(cid)
+		if card == null:
+			continue
+		var n: int = 0
+		for i: int in card.effects.size():
+			var e: FxEffect = card.effects[i]
+			if not e.optional or e.cond == "WIN":
+				continue
+			out.append({"card": card, "index": i, "effect": e, "n": n})
+			n += 1
+	return out
+
+
+## The ability tab(s) by a hero's panel. The activated hero's shows in full in one of three
+## states: it can be used now (straw, click to use), not now (grey, with why), used (dim, ✓).
+## The others' fold into a small ⚡ with the names on hover. The opponent's never click.
+func _ability_tabs(h: HeroState, active: bool, right: bool) -> Control:
+	var list: Array[Dictionary] = _hero_abilities(h)
+	if list.is_empty():
+		return null
+	if not active:
+		var names := PackedStringArray()
+		for a: Dictionary in list:
+			names.append(_ability_title(a))
+		var fold: UiShape = UiShape.chip("⚡", Palette.SURFACE_2, Palette.MUTED, 16, 30.0, 10.0)
+		fold.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		fold.tooltip_text = "\n".join(names)
+		fold.mouse_filter = Control.MOUSE_FILTER_STOP
+		return fold
+	var mine: bool = local_slots.has(h.owner)
+	var usable: Array[Dictionary] = []
+	if mine and _in_card_round() and state.to_act == h.owner and state.pending.is_empty():
+		usable = engine.fx.usable_abilities(state, h.owner)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for a: Dictionary in list:
+		var card: CardDef = a["card"]
+		var e: FxEffect = a["effect"]
+		var index: int = a["index"]
+		var key: String = "%s|%s|%d" % [h.id, card.id, index]
+		var used: bool = e.once and state.abilities_used.has(key)
+		var can: bool = false
+		for u: Dictionary in usable:
+			if str(u["hero"]) == h.id and str(u["card"]) == card.id and JsonUtil.as_int(u["index"]) == index:
+				can = true
+		var status: String = "CLICK TO USE"
+		if used:
+			status = "✓ USED"
+		elif not can:
+			if e.when != state.phase.to_upper():
+				status = "%s PHASE ONLY" % e.when
+			elif not mine:
+				status = "THEIR ABILITY"
+			elif state.to_act != h.owner or not _in_card_round():
+				status = "NOT YOUR TURN"
+			else:
+				status = "NOT NOW"
+		var bg: Color = Palette.GOLD if can else (Palette.PANEL_SOLID if used else Palette.SURFACE_2)
+		var fg: Color = Color.BLACK if can else (Palette.DIM if used else Palette.FG)
+		var tab := PanelContainer.new()
+		var sb: StyleBoxFlat = UiTheme.slant(bg, 24, 6)
+		if used:
+			sb.border_color = Palette.LINE
+			sb.set_border_width_all(2)
+		tab.add_theme_stylebox_override("panel", sb)
+		tab.custom_minimum_size = Vector2(176, 0)
+		tab.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		tab.tooltip_text = "%s\n%s" % [_ability_title(a), e.line]
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 0)
+		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tab.add_child(v)
+		var head: String = "ABILITY" + ("  ·  ONCE PER TURN" if e.once else "")
+		v.add_child(UiTheme.label(head, 11, fg if can else Palette.MUTED, false))
+		var name_l: Label = UiTheme.label(_ability_title(a).to_upper(), 18, fg)
+		name_l.clip_text = true
+		name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		v.add_child(name_l)
+		var st: Label = UiTheme.label(status, 11, Color.BLACK if can else (Palette.HP if used else Palette.ACCENT), false)
+		v.add_child(st)
+		for c: Node in v.get_children():
+			(c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+			(c as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
+		if can:
+			tab.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			var slot: int = h.owner
+			tab.gui_input.connect(func(ev: InputEvent) -> void:
+				if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed \
+						and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+					ability_pressed.emit(slot, h.id, card.id, index))
+			# A slow glow says it is there to be used.
+			var glow: Tween = tab.create_tween().set_loops()
+			glow.tween_property(tab, "self_modulate", Color(1.25, 1.2, 1.0), 0.8)
+			glow.tween_property(tab, "self_modulate", Color.WHITE, 0.8)
+		col.add_child(tab)
+	return col
+
+
+## The ability's name from the card (Card Engine, underlined), else what kind it is.
+func _ability_title(a: Dictionary) -> String:
+	var card: CardDef = a["card"]
+	var e: FxEffect = a["effect"]
+	var name: String = card.ability_name(JsonUtil.as_int(a["n"]))
+	return name if not name.is_empty() else "%s ability" % e.when.capitalize()
+
+
+## What lasts on a hero now, as chips under its panel: bonuses for the phase or the turn
+## (green up, red down) and statuses with their turns. Null when nothing does.
+func _effect_chips(h: HeroState, right: bool) -> Control:
+	var items: Array[Array] = []
+	for pair: Array in [[h.phase_bonus, "THIS PHASE"], [h.turn_bonus, "THIS TURN"]]:
+		var bonus: Dictionary = pair[0]
+		for k: Variant in bonus:
+			var v: int = JsonUtil.as_int(bonus[k])
+			if v != 0:
+				items.append(["%+d %s · %s" % [v, str(k).to_upper(), pair[1]], Palette.HP if v > 0 else Palette.ACCENT])
+	var names: Dictionary = {"immune_kb": "IMMUNE TO KB", "stun": "STUNNED", "hold_hit": "NO HIT, DOUBLE KB"}
+	for k: String in h.statuses:
+		var turns: int = h.statuses[k]
+		var label: String = str(names.get(k, k.to_upper()))
+		items.append([label if turns < 0 else "%s · %d TURN%s" % [label, turns, "" if turns == 1 else "S"], Palette.GOLD])
+	if items.is_empty():
+		return null
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
+	row.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for it: Array in items:
+		var color: Color = it[1]
+		var chip: UiShape = UiShape.chip(str(it[0]), Palette.SURFACE_2, color, 12, 20.0, 8.0)
+		row.add_child(chip)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left" if not right else "margin_right", 22)
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pad.add_child(row)
+	return pad
 
 
 ## One of a hero's core slots: what the core there does in short ("PWR+2K", green up, red
@@ -801,6 +967,9 @@ func _refresh_prompt() -> void:
 				var h: HeroState = state.hero(str(a["hero"]))
 				var c: CardDef = engine.catalog.get_card(str(a["card"]))
 				var e: FxEffect = a["effect"]
+				# The activated hero's own abilities are on the tab by its panel.
+				if h != null and c != null and (c.type == "Hero" or c.type == "Evolution") and state.active.get(h.owner, "") == h.id:
+					continue
 				var text: String = "%s: %s" % [hero_name(h) if h != null else (c.name if c != null else "?"), e.line.get_slice(":", 1).strip_edges()]
 				var ab: Button = _action(text, func() -> void: ability_pressed.emit(slot, str(a["hero"]), str(a["card"]), JsonUtil.as_int(a["index"])), &"Gold")
 				if c != null:
