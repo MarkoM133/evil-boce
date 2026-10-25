@@ -630,6 +630,9 @@ func _continue(s: GameState) -> void:
 			GameState.PHASE_POSTROLL:
 				if not s.round_over:
 					return
+				# Postroll bonuses without a duration end with the phase, before battles form;
+				# only "until the end of the turn" ones can start a battle.
+				_clear_phase_bonuses(s)
 				_find_battles(s)
 				s.battle_index = -1
 				_set_phase(s, GameState.PHASE_BATTLE)
@@ -662,10 +665,7 @@ func _continue(s: GameState) -> void:
 ## Every phase change goes through here, so inventory cores get queued for their return.
 func _set_phase(s: GameState, phase: String) -> void:
 	s.phase = phase
-	for h: HeroState in s.heroes:
-		if not h.phase_bonus.is_empty():
-			h.phase_bonus.clear()
-			clamp_hp(s, h)
+	_clear_phase_bonuses(s)
 	# A hero that left its stage (or whose stage got claimed) loses the reveal bonus for good.
 	s.stage_buffs = s.stage_buffs.filter(func(b: Dictionary) -> bool: return _stage_buff_holds(s, b))
 	_queue_core_returns(s)
@@ -1316,6 +1316,13 @@ func stat_flat(s: GameState, h: HeroState, key: String) -> int:
 		if str(b.get("hero", "")) == h.id and str(b.get("stat", "")) == key and _stage_buff_holds(s, b):
 			base += JsonUtil.as_int(b.get("amount", 0))
 	return base
+
+
+func _clear_phase_bonuses(s: GameState) -> void:
+	for h: HeroState in s.heroes:
+		if not h.phase_bonus.is_empty():
+			h.phase_bonus.clear()
+			clamp_hp(s, h)
 
 
 ## A stage reveal bonus counts while its hero stands on that stage and the stage is unclaimed.

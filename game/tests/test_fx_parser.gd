@@ -19,6 +19,12 @@ func test_hero_abilities() -> void:
 		"POSTROLL IF ACTIVATED: DAMAGE ALL_OTHER_IN_RANGE 2")
 	_assert_fx(_fx("Hero", "Bruno Bucciarati", "Postroll Phase Once Per Turn: Bruno Bucciarati may move up to 2 spaces."),
 		"POSTROLL ONCE OPTIONAL: MOVE SELF 2")
+	# Bucciarati after the change in the card change list.
+	_assert_fx(_fx("Hero", "Bruno Bucciarati", "Postroll Phase Once Per Turn: If Bruno Bucciarati is activated, he may move up to 2 spaces."),
+		"POSTROLL ONCE OPTIONAL IF ACTIVATED: MOVE SELF 2")
+	# Postroll range for engage cards must last the turn.
+	_assert_fx(_fx("Action", "Long Shot", "Postroll Phase: Your Hero gains +2 Range until the end of the turn."),
+		"POSTROLL: BUFF SELF RNG 2 TURN")
 	_assert_fx(_fx("Hero", "Kaido", "Kaido takes -1 DMG from all sources."), "PASSIVE: DAMAGE_MOD SELF -1")
 	_assert_fx(_fx("Hero", "Sanji", "All friendly Characters in Sanji's Range have +2000 Power."),
 		"PASSIVE: BUFF ALL_FRIENDLY_IN_RANGE PWR 2000")

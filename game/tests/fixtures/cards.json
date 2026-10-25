@@ -86,6 +86,8 @@
      "fx": "POSTROLL: MOVE ALL_FRIENDLY_IN_RANGE 1"},
     {"id": "TA-055", "name": "Switch", "type": "Action", "color": "Red", "cost": 1, "text": "x",
      "fx": "POSTROLL RANGE: SWAP FRIENDLY ENGAGED"},
+    {"id": "TA-056", "name": "Short Reach", "type": "Action", "color": "Red", "cost": 1, "text": "Postroll Phase: Your Hero gains +2 Range."},
+    {"id": "TA-057", "name": "Long Reach", "type": "Action", "color": "Red", "cost": 1, "text": "Postroll Phase: Your Hero gains +2 Range until the end of the turn."},
     {"id": "TS-007", "name": "Arena of Cards", "type": "Stage", "text": "x", "fx": "REVEAL: DUEL_TOP PWR 2000"},
     {"id": "TS-001", "name": "Frozen Lake", "type": "Stage", "text": "Terrain: Ice"},
     {"id": "TS-002", "name": "Swamp", "type": "Stage", "text": "Terrain: Mud"},
