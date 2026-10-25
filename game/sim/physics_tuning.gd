@@ -47,6 +47,13 @@ extends Resource
 ## Multiplies deceleration on that terrain.
 @export var ice_factor: float = 0.35
 @export var mud_factor: float = 2.6
+## Ramp (a hill on the 7 hexes): push away from the top at the rim, m/s^2. Above
+## `deceleration` a ball cannot come to rest on the slope, only near the top.
+@export var hill_accel: float = 11.0
+## Height of the hill top, m (drawn, and how high balls ride on it; the physics stays flat).
+@export var hill_height: float = 0.45
+## Wind: push on rolling balls, m/s^2. Kept below `deceleration` so every ball still stops.
+@export var wind_accel: float = 4.0
 
 @export_group("Ring-out")
 ## A ball below this height (m) has fallen off the table.

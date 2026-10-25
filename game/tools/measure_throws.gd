@@ -5,9 +5,22 @@ extends SceneTree
 class FlatWorld:
 	extends BallWorld
 	var factor: float = 1.0
+	## Wind everywhere, m/s^2 as (x, z).
+	var wind := Vector2.ZERO
+	## A hill: top at hill_at, radius hill_r (0 = none).
+	var hill_at := Vector3.ZERO
+	var hill_r: float = 0.0
 
 	func friction_factor_at(_pos: Vector3) -> float:
 		return factor
+
+	func push_at(pos: Vector3) -> Vector2:
+		var p: Vector2 = wind
+		if hill_r > 0.0:
+			var off := Vector2(pos.x - hill_at.x, pos.z - hill_at.z)
+			if off.length() < hill_r:
+				p += off / hill_r * tuning.hill_accel
+		return p
 
 
 var tuning: PhysicsTuning
@@ -59,6 +72,28 @@ func _run() -> void:
 	world.factor = 1.0
 
 	print("")
+	print("Wind %.1f m/s^2, WT2 thrown along -z (forward)" % tuning.wind_accel)
+	print("  wind        power   forward   sideways   seconds")
+	var winds: Dictionary[String, Vector2] = {"cross": Vector2(1, 0), "tail": Vector2(0, -1), "head": Vector2(0, 1)}
+	for name: String in winds:
+		for power: float in [1.0, 0.3]:
+			world.wind = winds[name] * tuning.wind_accel
+			var e: Array[float] = await _throw_end(2, power)
+			print("  %-6s     %4d%%   %6.2f    %6.2f     %5.2f" % [name, roundi(power * 100.0), -e[1] / spacing, e[0] / spacing, e[2]])
+	world.wind = Vector2.ZERO
+
+	print("")
+	print("Hill (radius 1.5 hexes) whose top is 3 hexes ahead; where WT2 ends, hexes from the top")
+	world.hill_r = spacing * 1.5
+	world.hill_at = Vector3(0, 0, -3.0 * spacing)
+	for power: float in [0.15, 0.2, 0.25, 0.35, 0.6]:
+		var e: Array[float] = await _throw_end(2, power)
+		var from_top: float = Vector2(e[0] - world.hill_at.x, e[1] - world.hill_at.z).length() / spacing
+		print("  %4d%%   %5.2f from the top   %s" % [roundi(power * 100.0), from_top,
+			"on top" if from_top < 0.6 else ("on the hill" if from_top < 1.5 else "off the hill")])
+	world.hill_r = 0.0
+
+	print("")
 	print("Hits at full power, target resting 4 hexes ahead (goal: WT3 into WT1 -> WT1 >= 6, WT3 < 2)")
 	print("  mover -> target   mover hexes after hit   target hexes")
 	for pair: Vector2i in [Vector2i(3, 1), Vector2i(1, 3), Vector2i(2, 2), Vector2i(4, 2)]:
@@ -91,6 +126,17 @@ func _throw(wt: int, power: float) -> Array[float]:
 	var r: RollResult = o.thrower_result()
 	_drop(b)
 	return [r.displacement() / spacing, o.duration]
+
+
+## [end x, end z, seconds] of a throw from the origin along -z.
+func _throw_end(wt: int, power: float) -> Array[float]:
+	var b: BallBody = _make("m", wt, Vector3.ZERO)
+	await physics_frame
+	runner.start(b, Vector3(0, 0, -1), power)
+	var o: RollOutcome = await runner.finished
+	var end: Vector3 = b.global_position
+	_drop(b)
+	return [end.x, end.z, o.duration]
 
 
 ## [mover hexes after the hit, target hexes]

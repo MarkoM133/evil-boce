@@ -22,6 +22,13 @@ var _emphasis: float = 0.0
 var _emphasis_goal: float = 0.0
 ## Per team: x_min, x_max, inner z (strip begins), far z (strip ends).
 var _strips: Array[Vector4] = []
+## Hills (Ramp) and wind arrows drawn over the terrain, rebuilt when the terrain changes.
+var _props: Node3D
+var _props_key: String = ""
+## Wind arrows: [MeshInstance3D, base position, unit direction (x, z), phase].
+var _arrows: Array[Array] = []
+var _time: float = 0.0
+static var _chevron: ArrayMesh
 
 
 func build(map_: HexMap, tuning_: PhysicsTuning) -> void:
@@ -41,12 +48,28 @@ func build(map_: HexMap, tuning_: PhysicsTuning) -> void:
 	_ground_mat.set_shader_parameter("hex_size", map.hex_size)
 	_ground_mat.set_shader_parameter("origin", map.origin)
 	_build_geometry()
+	_props = Node3D.new()
+	_props.name = "TerrainProps"
+	add_child(_props)
+	_props_key = ""
+	_refresh_props()
 
 
 func _process(delta: float) -> void:
 	if absf(_emphasis - _emphasis_goal) > 0.001:
 		_emphasis = move_toward(_emphasis, _emphasis_goal, delta / 0.15)
 		_ground_mat.set_shader_parameter("emphasis", _emphasis)
+	if not _arrows.is_empty():
+		# Wind: chevrons drift downwind and fade in and out.
+		_time += delta
+		for a: Array in _arrows:
+			var mi: MeshInstance3D = a[0]
+			var base: Vector3 = a[1]
+			var dir: Vector2 = a[2]
+			var phase: float = a[3]
+			var k: float = fposmod(_time * 0.7 + phase, 1.0)
+			mi.position = base + Vector3(dir.x, 0, dir.y) * (k - 0.5) * map.hex_size * 0.9
+			mi.transparency = 1.0 - 0.75 * sin(k * PI)
 
 
 # --- queries ----------------------------------------------------------------
@@ -113,6 +136,110 @@ func refresh_terrain() -> void:
 	_refresh_cells()
 
 
+## Ground height at `pos` (a Ramp hill), so pieces standing there can be drawn on top.
+func height_at(pos: Vector3) -> float:
+	var a: Vector2i = hex_at(pos)
+	if terrain.at(a) != Terrain.Type.RAMP:
+		return 0.0
+	var top: Vector3 = hex_center(terrain.center_of(a))
+	var k: float = Vector2(pos.x - top.x, pos.z - top.z).length() / hill_radius()
+	return tuning.hill_height * maxf(0.0, 1.0 - k * k)
+
+
+## A hill covers the 7-hex patch: its radius reaches the outer edge of the ring.
+func hill_radius() -> float:
+	return map.spacing() * 1.5
+
+
+func _refresh_props() -> void:
+	if _props == null:
+		return
+	var key: String = JSON.stringify(terrain.to_dict())
+	if key == _props_key:
+		return
+	_props_key = key
+	for c: Node in _props.get_children():
+		c.queue_free()
+	_arrows.clear()
+	var hills: Dictionary[Vector2i, bool] = {}
+	for a: Vector2i in terrain.cells:
+		match terrain.at(a):
+			Terrain.Type.RAMP:
+				hills[terrain.center_of(a)] = true
+			Terrain.Type.WIND:
+				_add_arrow(a, terrain.dir_of(a))
+	for c: Vector2i in hills:
+		var mi := MeshInstance3D.new()
+		mi.mesh = _hill_mesh(hill_radius(), tuning.hill_height)
+		# The ground shader works from world x / z, so the hill keeps the hex lines and colour.
+		mi.material_override = _ground_mat
+		mi.position = hex_center(c)
+		_props.add_child(mi)
+
+
+func _add_arrow(a: Vector2i, dir: int) -> void:
+	var d: Vector2 = Hex.to_world(Hex.DIRECTIONS[posmod(dir, 6)], 1.0).normalized()
+	var mi := MeshInstance3D.new()
+	mi.mesh = _chevron_mesh()
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var base: Vector3 = hex_center(a) + Vector3(0, 0.02, 0)
+	mi.position = base
+	mi.scale = Vector3.ONE * map.hex_size
+	# The chevron points along +x; turn it to the wind (x, z).
+	mi.rotation.y = -atan2(d.y, d.x)
+	_props.add_child(mi)
+	_arrows.append([mi, base, d, randf()])
+
+
+## A paraboloid cap: height h at the centre, 0 at radius r (the shape height_at() follows).
+static func _hill_mesh(r: float, h: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rings: int = 10
+	var segs: int = 40
+	var pts: Array[Vector3] = []
+	for i: int in rings + 1:
+		var k: float = float(i) / rings
+		for j: int in segs + 1:
+			var ang: float = TAU * j / segs
+			pts.append(Vector3(cos(ang) * k * r, h * (1.0 - k * k) + 0.005, sin(ang) * k * r))
+	for i: int in rings:
+		for j: int in segs:
+			var a: Vector3 = pts[i * (segs + 1) + j]
+			var b: Vector3 = pts[(i + 1) * (segs + 1) + j]
+			var c: Vector3 = pts[(i + 1) * (segs + 1) + j + 1]
+			var d: Vector3 = pts[i * (segs + 1) + j + 1]
+			for v: Vector3 in [a, c, b, a, d, c]:
+				st.add_vertex(v)
+	st.generate_normals()
+	return st.commit()
+
+
+## A flat ">" on the ground, pointing along +x, about half a hex long.
+static func _chevron_mesh() -> ArrayMesh:
+	if _chevron != null:
+		return _chevron
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var w: float = 0.09
+	for side: float in [1.0, -1.0]:
+		var tip := Vector3(0.22, 0, 0)
+		var back := Vector3(-0.12, 0, 0.26 * side)
+		var n: Vector3 = Vector3(0, 0, -side) * w
+		var quad: Array[Vector3] = [back - n, tip - n, tip + n, back + n]
+		for idx: int in [0, 1, 2, 0, 2, 3]:
+			st.set_normal(Vector3.UP)
+			st.add_vertex(quad[idx])
+	_chevron = st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.85, 1.0, 0.98, 0.9)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_chevron.surface_set_material(0, mat)
+	return _chevron
+
+
 func show_range(cells: Array[Vector2i], marked: Array[Vector2i]) -> void:
 	_range.clear()
 	_marks.clear()
@@ -139,6 +266,7 @@ func _refresh_cells() -> void:
 		if t != 0 or g > 0.0 or b > 0.0:
 			_cells_img.set_pixel(o.x, o.y, Color(t / 255.0, g, b, 1.0))
 	_cells_tex.update(_cells_img)
+	_refresh_props()
 
 
 # --- geometry ---------------------------------------------------------------

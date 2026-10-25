@@ -30,6 +30,9 @@ var _rng: SpinBox
 var _hp: SpinBox
 var _open_btn: Button
 var _terrain_btns: Array[Button] = []
+## Hex.DIRECTIONS index for painted wind, and how each one looks from the default camera.
+const WIND_ARROWS: Array[String] = ["→", "↘", "↙", "←", "↖", "↗"]
+var _wind_dir: int = 0
 var _last_big: Label
 var _last_info: Label
 var _data_info: Label
@@ -117,16 +120,24 @@ func _init() -> void:
 	rm.pressed.connect(func() -> void: remove_pressed.emit())
 
 	_header(col, "TERRAIN (7 HEXES)")
+	var names: Array[String] = ["Ice", "Mud", "Clear", "Ramp", "Wind"]
+	var types: Array[int] = [Terrain.Type.ICE, Terrain.Type.MUD, Terrain.Type.NONE, Terrain.Type.RAMP, Terrain.Type.WIND]
 	var ter_row := _row(col)
-	var names: Array[String] = ["Ice", "Mud", "Clear"]
-	var types: Array[int] = [Terrain.Type.ICE, Terrain.Type.MUD, Terrain.Type.NONE]
-	for i: int in 3:
+	for i: int in names.size():
+		if i == 3:
+			ter_row = _row(col)
 		var b := _button(ter_row, names[i])
 		b.toggle_mode = true
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var t: int = types[i]
 		b.toggled.connect(func(on: bool) -> void: _on_terrain_toggled(b, t, on))
 		_terrain_btns.append(b)
+	# Wind direction for the next Wind patch, as seen from the default camera.
+	var dir_btn := _button(ter_row, WIND_ARROWS[_wind_dir])
+	dir_btn.tooltip_text = "Wind direction (click to turn)"
+	dir_btn.pressed.connect(func() -> void:
+		_wind_dir = (_wind_dir + 1) % 6
+		dir_btn.text = WIND_ARROWS[_wind_dir])
 
 	_header(col, "VIEW")
 	var path := CheckBox.new()
@@ -164,6 +175,10 @@ func set_heroes(list: Array[HeroDef], info: String) -> void:
 func selected_hero() -> HeroDef:
 	var i: int = _hero_pick.selected
 	return heroes[i] if i >= 0 and i < heroes.size() else null
+
+
+func wind_dir() -> int:
+	return _wind_dir
 
 
 func selected_team() -> int:

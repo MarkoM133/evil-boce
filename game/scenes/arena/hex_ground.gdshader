@@ -2,7 +2,7 @@ shader_type spatial;
 // Top of the hex map. Hex lines are faint and get stronger with `emphasis` (aiming, placing).
 // Colours are mixed in sRGB (so small mixes stay small) and converted at the end.
 // Per-hex data comes from `cells` (one texel per hex, odd-r offset layout):
-//   r = terrain id (0 none, 1 ice, 2 mud), g = in range, b = marked (footprint / hover).
+//   r = terrain id (0 none, 1 ice, 2 mud, 3 ramp, 4 wind), g = in range, b = marked.
 
 uniform sampler2D cells : filter_nearest, repeat_disable;
 uniform int map_n = 17;
@@ -18,6 +18,8 @@ uniform vec3 range_color = vec3(1.0, 0.82, 0.25);
 uniform vec3 mark_color = vec3(1.0, 1.0, 1.0);
 uniform vec3 ice_color = vec3(0.62, 0.85, 1.0);
 uniform vec3 mud_color = vec3(0.3, 0.2, 0.12);
+uniform vec3 ramp_color = vec3(0.55, 0.42, 0.26);
+uniform vec3 wind_color = vec3(0.55, 0.8, 0.78);
 
 varying vec3 wpos;
 
@@ -99,6 +101,10 @@ void fragment() {
 		col = mix(col, mud_color, 0.8);
 		rough = 1.0;
 		spec = 0.1;
+	} else if (ter == 3) {
+		col = mix(col, ramp_color, 0.5);
+	} else if (ter == 4) {
+		col = mix(col, wind_color, 0.22);
 	}
 
 	float thin = 1.0 - smoothstep(0.0, aa * 1.5 + 0.01, edge);

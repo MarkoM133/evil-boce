@@ -26,6 +26,16 @@ func friction_factor_at(_pos: Vector3) -> float:
 	return 1.0
 
 
+## Extra horizontal acceleration on a rolling ball here (hill slope, wind), m/s^2 as (x, z).
+func push_at(_pos: Vector3) -> Vector2:
+	return Vector2.ZERO
+
+
+## Height of the ground here (a hill), for drawing the ball on top of it.
+func height_at(_pos: Vector3) -> float:
+	return 0.0
+
+
 func hex_at(pos: Vector3) -> Vector2i:
 	return Hex.from_world(Vector2(pos.x, pos.z), tuning.hex_size)
 

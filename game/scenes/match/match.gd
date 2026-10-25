@@ -898,6 +898,9 @@ func _process(delta: float) -> void:
 	if _sling.is_aiming():
 		_sling.update(cam.camera, get_viewport().get_mouse_position(), get_viewport().get_visible_rect().size.y)
 	_refresh_range()
+	for id: String in _views:
+		# Balls ride over hills (the physics stays flat; see ArenaWorld.push_at).
+		_views[id].position.y = arena.height_at(_bodies[id].global_position)
 	if _replay != null:
 		_run_playback(delta)
 		return

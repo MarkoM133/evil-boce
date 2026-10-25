@@ -411,6 +411,8 @@ static func _dist2(a: Vector3, b: Vector3) -> float:
 
 func _process(delta: float) -> void:
 	for p: SandboxPiece in pieces:
+		# Balls ride over hills (the physics stays flat; see ArenaWorld.push_at).
+		p.view.position.y = arena.height_at(p.body.global_position)
 		if p.return_in >= 0.0:
 			p.return_in -= delta
 			if p.return_in < 0.0:
@@ -715,7 +717,7 @@ func _paint_at_mouse() -> void:
 	if g == null:
 		return
 	var gp: Vector3 = g
-	terrain.set_patch(arena.hex_at(gp), _terrain_tool, arena.map)
+	terrain.set_patch(arena.hex_at(gp), _terrain_tool, arena.map, _panel.wind_dir())
 	arena.refresh_terrain()
 
 
@@ -846,3 +848,17 @@ func debug_dump() -> void:
 func demo_big() -> void:
 	if _selected != null:
 		_on_wt_changed(4)
+
+
+## A hill and a wind patch in front of Luffy, with Zoro standing on the hilltop. After
+## demo_setup; then demo_throw sends Luffy over them.
+func demo_terrain() -> void:
+	var c: Vector2i = arena.map.center_cell()
+	terrain.set_patch(c + Vector2i(-1, 0), Terrain.Type.RAMP, arena.map)
+	terrain.set_patch(c + Vector2i(3, -3), Terrain.Type.WIND, arena.map, 0)
+	arena.refresh_terrain()
+	for p: SandboxPiece in pieces:
+		if p.hero.id == "OP1-002":
+			p.body.place(arena.hex_center(c + Vector2i(-1, 0)))
+			p.view.open()
+	cam.focus(arena.hex_center(c), 15.0)

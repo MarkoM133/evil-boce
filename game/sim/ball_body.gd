@@ -132,8 +132,13 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if not _grounded or motion == Motion.SNAPPING:
 		return
 	var v: Vector3 = state.linear_velocity
-	# The table is flat in 1a: nothing should push a ball upwards.
+	# The table is flat: nothing should push a ball upwards. Hills and wind are pushes along
+	# the ground, and only on rolling balls, so a ball at rest stays put.
 	v.y = minf(v.y, 0.0)
+	if motion == Motion.MOVING:
+		var push: Vector2 = world.push_at(state.transform.origin) * state.step
+		v.x += push.x
+		v.z += push.y
 	var speed: float = Vector2(v.x, v.z).length()
 	if speed <= 0.0:
 		state.linear_velocity = v

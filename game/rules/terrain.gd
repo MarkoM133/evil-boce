@@ -1,8 +1,10 @@
 class_name Terrain
 extends RefCounted
-## Ground types a stage can turn its 7 hexes into. Ramp and Wind come in step 1b.
+## Ground types a stage can turn its 7 hexes into (GDD 6). Ice and Mud change the slow-down;
+## Ramp is a hill (balls slow going up, speed up going down, rest only near the top); Wind
+## pushes rolling balls one way. The ids are also the terrain ids in the ground shader.
 
-enum Type { NONE, ICE, MUD }
+enum Type { NONE, ICE, MUD, RAMP, WIND }
 
 
 static func name_of(t: Type) -> String:
@@ -11,6 +13,10 @@ static func name_of(t: Type) -> String:
 			return "Ice"
 		Type.MUD:
 			return "Mud"
+		Type.RAMP:
+			return "Ramp"
+		Type.WIND:
+			return "Wind"
 	return "None"
 
 
@@ -21,4 +27,8 @@ static func parse(name: String) -> Type:
 			return Type.ICE
 		"mud":
 			return Type.MUD
+		"ramp", "hill":
+			return Type.RAMP
+		"wind":
+			return Type.WIND
 	return Type.NONE
