@@ -34,13 +34,17 @@ static func take(catalog: CardCatalog) -> Dictionary:
 ## (-1 = the last one) with the same seats (bots stay bots).
 static func from_record(record: MatchRecord, frame: int = -1, replay: bool = false) -> Dictionary:
 	var bots := PackedInt32Array()
+	var level: String = "easy"
 	for p: Dictionary in record.players:
 		if JsonUtil.as_bool(p.get("bot", false)):
 			bots.append(JsonUtil.as_int(p.get("slot", 0)))
+			if not str(p.get("bot_level", "")).is_empty():
+				level = str(p.get("bot_level", ""))
 	var c: Dictionary = {
 		"settings": MatchSettings.from_dict(record.settings),
 		"decks": record.decks,
 		"bots": bots,
+		"bot_level": level,
 		"seed": record.seed,
 		"frame": frame,
 	}

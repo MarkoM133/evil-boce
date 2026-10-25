@@ -32,6 +32,7 @@ static func start(engine_: RulesEngine, settings: MatchSettings, decks: Array, s
 			"name": str(meta.get("name", d.get("name", "Player %d" % (i + 1)))),
 			"team": rec.state.team_of(i),
 			"bot": JsonUtil.as_bool(meta.get("bot", false)),
+			"bot_level": str(meta.get("bot_level", "")),
 			"deck_name": str(meta.get("deck_name", d.get("deck_name", ""))),
 			"heroes": Array(JsonUtil.as_strings(d.get("heroes", []))),
 			"stages": Array(JsonUtil.as_strings(d.get("stages", []))),

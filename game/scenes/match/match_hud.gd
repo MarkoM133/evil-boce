@@ -18,6 +18,7 @@ signal hero_clicked(hero_id: String)
 signal hero_hovered(hero_id: String)
 signal menu_pressed
 signal rematch_pressed
+signal watch_replay_pressed
 ## Setup: the player picked which stage or core to place next.
 signal setup_item_pressed(id: String)
 
@@ -55,6 +56,9 @@ var _dialog_box: VBoxContainer
 var _over: Control
 var _over_title: Label
 var _over_info: Label
+var _over_stats: GridContainer
+## The match summary (MatchRecord.summary) shown on the end screen; set by the match scene.
+var end_summary: Dictionary = {}
 var _toast: Label
 var _toast_tween: Tween
 
@@ -257,10 +261,19 @@ func _build() -> void:
 	_over_info.theme_type_variation = &"Muted"
 	_over_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	over_col.add_child(_over_info)
+	_over_stats = GridContainer.new()
+	_over_stats.columns = 3
+	_over_stats.add_theme_constant_override("h_separation", 24)
+	_over_stats.add_theme_constant_override("v_separation", 4)
+	over_col.add_child(_over_stats)
 	var rematch := Button.new()
 	rematch.text = "Rematch"
 	rematch.pressed.connect(func() -> void: rematch_pressed.emit())
 	over_col.add_child(rematch)
+	var watch := Button.new()
+	watch.text = "Watch the replay"
+	watch.pressed.connect(func() -> void: watch_replay_pressed.emit())
+	over_col.add_child(watch)
 	var back := Button.new()
 	back.text = "Main menu"
 	back.pressed.connect(func() -> void: menu_pressed.emit())
@@ -879,6 +892,32 @@ func _refresh_over() -> void:
 		_over_title.text = "%s WINS" % player_name(state.winner).to_upper()
 		_over_title.add_theme_color_override("font_color", Palette.team(state.team_of(state.winner)))
 	_over_info.text = "%s  ·  turn %d" % [str(reasons.get(state.result, state.result)), state.turn]
+	# Per player, from the match summary that also goes to stats/ (GDD 11: end of match shows stats).
+	_clear(_over_stats)
+	if end_summary.is_empty():
+		return
+	var players: Array = JsonUtil.as_array(end_summary.get("players", []))
+	_stat_cell("", true)
+	for p: Variant in players:
+		_stat_cell(str(JsonUtil.as_dict(p).get("name", "")), true)
+	for row: Array in [["Stages claimed", "stages_claimed"], ["Heroes KO", "kos_suffered"], ["Ring-outs", "ring_outs_suffered"]]:
+		_stat_cell(str(row[0]), false)
+		for p: Variant in players:
+			_stat_cell(str(JsonUtil.as_int(JsonUtil.as_dict(p).get(str(row[1]), 0))), true)
+	_stat_cell("Battles", false)
+	_stat_cell(str(JsonUtil.as_int(end_summary.get("battles", 0))), true)
+	_stat_cell("", false)
+
+
+func _stat_cell(text: String, strong: bool) -> void:
+	var l := Label.new()
+	l.text = text
+	if strong:
+		l.add_theme_font_override("font", UiTheme.display_bold())
+		l.add_theme_font_size_override("font_size", 18)
+	else:
+		l.theme_type_variation = &"Muted"
+	_over_stats.add_child(l)
 
 
 # --- helpers ------------------------------------------------------------------------

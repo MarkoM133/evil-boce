@@ -1,7 +1,7 @@
 extends Node3D
 ## A 1v1 match (step 2). The rules engine owns the GameState; this scene draws it, turns clicks
 ## into moves, runs the physics for the Roll phase and feeds the RollOutcome back. Slots are
-## local players (hot seat) or the placeholder SimpleBot.
+## local players (hot seat) or the Bot (Easy or Hard).
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
@@ -23,7 +23,7 @@ var arena: Arena
 var world: ArenaWorld
 var cam: OrbitCamera
 var hud: MatchHud
-var bots: Dictionary[int, SimpleBot] = {}
+var bots: Dictionary[int, Bot] = {}
 
 var _config: Dictionary = {}
 var _runner: RollRunner
@@ -69,6 +69,7 @@ func _ready() -> void:
 	var decks: Array = _config["decks"]
 	var seed_: int = JsonUtil.as_int(_config.get("seed", 1), 1)
 	var bot_slots: Array = JsonUtil.as_array(_config.get("bots", []))
+	var bot_level: String = str(_config.get("bot_level", "easy"))
 	# Every match is recorded (replay, save, stats); a resumed or watched one uses the cards as
 	# they were when it was played.
 	var resume_from: MatchRecord = _config.get("resume", null)
@@ -85,12 +86,12 @@ func _ready() -> void:
 		var seats: Array = []
 		for i: int in decks.size():
 			var d: Dictionary = JsonUtil.as_dict(decks[i])
-			seats.append({"name": d.get("name", ""), "bot": bot_slots.has(i), "deck_name": d.get("deck_name", "")})
+			seats.append({"name": d.get("name", ""), "bot": bot_slots.has(i), "bot_level": bot_level, "deck_name": d.get("deck_name", "")})
 		recorder = MatchRecorder.start(engine, settings, decks, seed_, seats, str(ProjectSettings.get_setting("application/config/version", "")))
 	if recorder != null:
 		state = recorder.state
 	for slot: Variant in bot_slots:
-		bots[JsonUtil.as_int(slot)] = SimpleBot.new(seed_ + JsonUtil.as_int(slot))
+		bots[JsonUtil.as_int(slot)] = Bot.new(seed_ + JsonUtil.as_int(slot), Bot.level_from(bot_level))
 
 	TableEnv.add_to(self)
 	arena = Arena.new()
@@ -209,6 +210,9 @@ func _build_hud() -> void:
 	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
 	hud.menu_pressed.connect(_toggle_menu)
 	hud.rematch_pressed.connect(_rematch)
+	hud.watch_replay_pressed.connect(func() -> void:
+		MatchLaunch.config = MatchLaunch.from_record(recorder.record, 0, true)
+		get_tree().change_scene_to_file(MATCH_SCENE))
 	hud.setup_item_pressed.connect(func(id: String) -> void:
 		_setup_pick = id
 		_range_key = ""
@@ -299,6 +303,7 @@ func _after_change() -> void:
 		ReplayStore.clear_current()
 		ReplayStore.save_replay(recorder.record)
 		ReplayStore.write_stats(recorder.record, db.root_dir)
+		hud.end_summary = recorder.record.summary()
 	elif recorder.record.frame_count() != _saved_frames:
 		_saved_frames = recorder.record.frame_count()
 		ReplayStore.save_current(recorder.record)
@@ -931,15 +936,15 @@ func _ground_under_mouse() -> Variant:
 func demo_autoplay() -> void:
 	for p: PlayerState in state.players:
 		if not bots.has(p.slot):
-			bots[p.slot] = SimpleBot.new(p.slot + 7)
+			bots[p.slot] = Bot.new(p.slot + 7, Bot.Level.HARD)
 	hud.local_slots = PackedInt32Array()
 
 
-## Makes the next local move as if clicked (a SimpleBot decides). At the aim it only draws the
+## Makes the next local move as if clicked (an Easy bot decides). At the aim it only draws the
 ## slingshot on the activated hero and stops, so a screenshot shows the aim.
 func demo_step() -> void:
 	for slot: int in hud.local_slots:
-		var helper := SimpleBot.new(slot + 3)
+		var helper := Bot.new(slot + 3)
 		var positions: Dictionary[String, Vector2] = {}
 		for id: String in _bodies:
 			positions[id] = Vector2(_bodies[id].global_position.x, _bodies[id].global_position.z)

@@ -59,7 +59,8 @@ func _ready() -> void:
 
 	_header(col, "PLAYER 2 IS")
 	_opponent = OptionButton.new()
-	_opponent.add_item("Bot (placeholder, plays simple legal moves)")
+	_opponent.add_item("Bot · Easy")
+	_opponent.add_item("Bot · Hard")
 	_opponent.add_item("Second player on this computer")
 	col.add_child(_opponent)
 
@@ -132,17 +133,19 @@ func _start() -> void:
 	settings.range_delta = _range.get_selected_id() - 10
 	settings.manual_setup = _setup_mode.selected == 0
 	GameSettings.set_map_size(settings.map_size)
-	var bot: bool = _opponent.selected == 0
+	var bot: bool = _opponent.selected < 2
+	var level: String = "hard" if _opponent.selected == 1 else "easy"
 	var engine_decks: Array = []
 	for slot: int in 2:
 		var i: int = _deck_pick[slot].selected
 		var deck: Dictionary = DeckCode.random_deck(db.catalog, rng) if i <= 0 else decks[i - 1]
-		var who: String = "Bot" if bot and slot == 1 else "Player %d" % (slot + 1)
+		var who: String = ("Bot (%s)" % level.capitalize()) if bot and slot == 1 else "Player %d" % (slot + 1)
 		engine_decks.append(MatchLaunch.engine_deck(db.catalog, deck, who, rng))
 	MatchLaunch.config = {
 		"settings": settings,
 		"decks": engine_decks,
 		"bots": PackedInt32Array([1]) if bot else PackedInt32Array(),
+		"bot_level": level,
 		"seed": rng.randi(),
 	}
 	get_tree().change_scene_to_file(MATCH_SCENE)
