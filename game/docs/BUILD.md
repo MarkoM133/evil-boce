@@ -70,7 +70,16 @@ protocol and roles in `net.md`.
 ```
 powershell -File game/tools/export_windows.ps1            # release
 powershell -File game/tools/export_windows.ps1 -Debug     # with console wrapper
+powershell -File game/tools/export_windows.ps1 -Publish   # also hand it out through Syncthing
 ```
+
+Godot comes from `$env:GODOT` if set, else `godot_console` / `godot` on PATH.
+
+`-Publish` copies the exe to `<shared folder>/game/<version>/EvilBoce.exe` (version =
+`config/version` in `project.godot`) and rewrites `<shared folder>/game/Evil Boce.cmd`, which
+starts that version with the shared folder it sits in (`-- --data=...`), so the other player
+needs no settings. An existing version folder is kept unless `-Force`; raise the version
+instead, because online play refuses a guest whose game version differs from the host's.
 
 Output: `game/build/EvilBoce.exe` (one file, data stays in the shared folder). The script
 copies `data/branding/evil-boce.ico` into `game/.branding/` for the exe icon; both
