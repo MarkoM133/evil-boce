@@ -41,15 +41,27 @@ func is_running() -> bool:
 
 ## Throws `thrower`; `finished` fires when the table is still again. Ignored while a roll runs.
 func start(thrower: BallBody, dir: Vector3, power: float) -> bool:
-	if _running:
+	return start_many([{"ball": thrower, "dir": dir, "power": power}])
+
+
+## Launches several balls in the same frame (the Roll phase throws everything at once).
+## Each entry is {"ball": BallBody, "dir": Vector3, "power": float}; the first is the
+## outcome's thrower.
+func start_many(throws: Array[Dictionary]) -> bool:
+	if _running or throws.is_empty():
 		return false
-	watch(thrower)
 	_outcome = RollOutcome.new()
-	_outcome.thrower = thrower.ball_id
 	_running = true
 	_frames = 0
 	_elapsed = 0.0
-	thrower.launch(dir, power)
+	for t: Dictionary in throws:
+		var ball: BallBody = t["ball"]
+		var dir: Vector3 = t["dir"]
+		var power: float = t["power"]
+		watch(ball)
+		if _outcome.thrower.is_empty():
+			_outcome.thrower = ball.ball_id
+		ball.launch(dir, power)
 	return true
 
 

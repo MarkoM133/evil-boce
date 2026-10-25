@@ -50,6 +50,41 @@ static func encode(heroes: PackedStringArray, cards: Dictionary, version: int) -
 	return "|".join([PREFIX, "v%d" % version, ",".join(heroes), ",".join(items)])
 
 
+## A random deck like the app's randomFill: 3 different heroes, then cards of their colours
+## (evolutions only for those heroes) up to 40 or until the pool runs out.
+## Returns {"name", "heroes": PackedStringArray, "cards": {id: n}}.
+static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator) -> Dictionary:
+	var heroes: Array[CardDef] = catalog.of_type("Hero")
+	var picked: Array[CardDef] = []
+	while picked.size() < HERO_COUNT and not heroes.is_empty():
+		picked.append(heroes.pop_at(rng.randi_range(0, heroes.size() - 1)))
+	var ids := PackedStringArray()
+	var colors := PackedStringArray()
+	var names := PackedStringArray()
+	for h: CardDef in picked:
+		ids.append(h.id)
+		colors.append(h.color)
+		names.append(h.name)
+	var pool: Array[CardDef] = []
+	for t: String in DECK_TYPES:
+		for c: CardDef in catalog.of_type(t):
+			if colors.has(c.color) and (t != "Evolution" or names.has(c.hero)):
+				pool.append(c)
+	var cards: Dictionary = {}
+	var total: int = 0
+	while total < DECK_SIZE:
+		var open: Array[CardDef] = []
+		for c: CardDef in pool:
+			if JsonUtil.as_int(cards.get(c.id, 0)) < LIMITS[c.type]:
+				open.append(c)
+		if open.is_empty():
+			break
+		var c: CardDef = open[rng.randi_range(0, open.size() - 1)]
+		cards[c.id] = JsonUtil.as_int(cards.get(c.id, 0)) + 1
+		total += 1
+	return {"name": "Random (%s)" % ", ".join(names), "heroes": ids, "cards": cards}
+
+
 ## Errors that make the deck unplayable (same rules as the app, minus the pool-size warning).
 static func check(catalog: CardCatalog, heroes: PackedStringArray, cards: Dictionary) -> PackedStringArray:
 	var errors := PackedStringArray()

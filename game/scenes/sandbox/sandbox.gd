@@ -10,7 +10,7 @@ var tuning: PhysicsTuning
 var db: CardDb
 var heroes: Array[HeroDef] = []
 var arena: Arena
-var world: SandboxWorld
+var world: ArenaWorld
 ## Painted terrain; the arena draws it and the world reads friction from it.
 var terrain := TerrainMap.new()
 var cam: OrbitCamera
@@ -58,45 +58,13 @@ func _ready() -> void:
 # --- scene ------------------------------------------------------------------
 
 func _build_scene() -> void:
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Palette.BG
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("fff3e0")
-	env.ambient_light_energy = 0.55
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.glow_enabled = true
-	env.glow_intensity = 0.5
-	env.glow_bloom = 0.05
-	env.ssao_enabled = true
-	env.ssao_radius = 1.2
-	env.ssao_intensity = 1.5
-	env.fog_enabled = true
-	env.fog_light_color = Palette.BG
-	env.fog_density = 0.004
-	env.fog_sky_affect = 0.0
-	var we := WorldEnvironment.new()
-	we.environment = env
-	add_child(we)
-
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-58, 32, 0)
-	sun.light_energy = 1.15
-	sun.shadow_enabled = true
-	sun.shadow_blur = 1.5
-	sun.directional_shadow_max_distance = 120.0
-	add_child(sun)
-	var rim := DirectionalLight3D.new()
-	rim.rotation_degrees = Vector3(-30, 200, 0)
-	rim.light_energy = 0.3
-	rim.light_color = Color("bfd8ff")
-	add_child(rim)
+	TableEnv.add_to(self)
 
 	arena = Arena.new()
 	arena.name = "Arena"
 	add_child(arena)
 	arena.set_terrain(terrain)
-	world = SandboxWorld.new(tuning, arena, terrain)
+	world = ArenaWorld.new(tuning, arena, terrain)
 	_balls = Node3D.new()
 	_balls.name = "Balls"
 	add_child(_balls)
@@ -134,7 +102,7 @@ func _clear_balls() -> void:
 	for p: SandboxPiece in pieces:
 		p.body.queue_free()
 	pieces.clear()
-	world.pieces.clear()
+	world.bodies.clear()
 	_by_body.clear()
 	_runner.unwatch_all()
 	_last_outcome = null
@@ -286,7 +254,7 @@ func spawn(hero: HeroDef, team: int, pos: Vector3) -> SandboxPiece:
 	p.body.roll_finished.connect(_on_roll_finished)
 	p.view.state_changed.connect(func(_s: BallView.State) -> void: _on_view_state(p))
 	pieces.append(p)
-	world.pieces.append(p)
+	world.bodies.append(p.body)
 	_by_body[p.body] = p
 	_runner.watch(p.body)
 	p.view.settle()
@@ -303,7 +271,7 @@ func _remove(p: SandboxPiece) -> void:
 	if _hovered == p:
 		_hovered = null
 	pieces.erase(p)
-	world.pieces.erase(p)
+	world.bodies.erase(p.body)
 	_by_body.erase(p.body)
 	_runner.unwatch(p.body)
 	p.body.queue_free()

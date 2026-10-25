@@ -79,6 +79,12 @@ func strip_at(pos: Vector3) -> int:
 	return -1
 
 
+## Left and right x of a team's strip.
+func strip_x_range(team: int) -> Vector2:
+	var s: Vector4 = _strips[team]
+	return Vector2(s.x, s.y)
+
+
 ## A point on the middle line of a team's strip, x clamped to the strip.
 func strip_point(team: int, x: float, margin: float = 0.0) -> Vector3:
 	var s: Vector4 = _strips[team]

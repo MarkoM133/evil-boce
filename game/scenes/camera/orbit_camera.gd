@@ -38,10 +38,12 @@ func _init() -> void:
 
 
 ## Sets the default view for a table of `extent` (x, z) size; the near strip is at the bottom.
-func frame_table(extent: Vector2) -> void:
+## `near_bias` moves the view centre towards the near strip (fraction of the table depth) and
+## `zoom` scales the distance; the match uses more of both so the HUD does not cover the strip.
+func frame_table(extent: Vector2, near_bias: float = 0.06, zoom: float = 1.25) -> void:
 	bounds = extent * 0.5
-	_home_target = Vector3(0, 0, extent.y * 0.06)
-	_home_distance = maxf(extent.x, extent.y) * 1.25
+	_home_target = Vector3(0, 0, extent.y * near_bias)
+	_home_distance = maxf(extent.x, extent.y) * zoom
 	reset_view(true)
 
 

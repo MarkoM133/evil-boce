@@ -94,7 +94,13 @@ func _shuffle(s: GameState, arr: PackedStringArray) -> void:
 ## shrinks for the items that are left and the log says so. See docs/pitanja.md.
 func _auto_place(s: GameState) -> void:
 	var cells: Array[Vector2i] = s.map().cells()
+	# Placing one by one can box itself in; a few fresh tries usually find a full layout.
+	for _attempt: int in 64:
+		if _try_place_stages(s, cells):
+			break
 	for st: StageState in s.stages:
+		if st.placed:
+			continue
 		for gap: int in range(s.settings.effective_stage_gap(), -1, -1):
 			var options: Array[Vector2i] = []
 			for a: Vector2i in cells:
@@ -123,6 +129,24 @@ func _auto_place(s: GameState) -> void:
 			break
 
 
+## One random pass over all stages at the full gap; on a dead end it clears them and says false.
+func _try_place_stages(s: GameState, cells: Array[Vector2i]) -> bool:
+	for st: StageState in s.stages:
+		st.placed = false
+	for st: StageState in s.stages:
+		var options: Array[Vector2i] = []
+		for a: Vector2i in cells:
+			if stage_placement_error(s, st, a).is_empty():
+				options.append(a)
+		if options.is_empty():
+			for other: StageState in s.stages:
+				other.placed = false
+			return false
+		st.center = options[s.random_int(options.size())]
+		st.placed = true
+	return true
+
+
 ## "" when stage `st` may be placed centred on `a`. `gap` is the fewest empty hexes between
 ## stage edges (-1 = the match setting).
 func stage_placement_error(s: GameState, st: StageState, a: Vector2i, gap: int = -1) -> String:
@@ -136,8 +160,8 @@ func stage_placement_error(s: GameState, st: StageState, a: Vector2i, gap: int =
 	for other: StageState in s.stages:
 		if other == st or not other.placed:
 			continue
-		# Edge to edge gap: centres are 1 + gap + 1 apart or more.
-		if Hex.distance(a, other.center) < gap + 2:
+		# `gap` empty hexes between the edges: centres are 1 + gap + 1 + 1 apart or more.
+		if Hex.distance(a, other.center) < gap + 3:
 			return "too close to another stage"
 	return ""
 

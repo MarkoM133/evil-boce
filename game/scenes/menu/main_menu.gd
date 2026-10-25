@@ -1,7 +1,8 @@
 extends Control
-## Main menu (GDD 7). In step 1a only Sandbox and Exit work.
+## Main menu (GDD 7). Play (local match or against the placeholder bot), Sandbox and Exit work.
 
 const SANDBOX_SCENE: String = "res://scenes/sandbox/sandbox.tscn"
+const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
 
 
 func _ready() -> void:
@@ -42,7 +43,7 @@ func _ready() -> void:
 	col.add_child(gap)
 
 	var first: Button = null
-	for entry: Array in [["PLAY", ""], ["SANDBOX", "sandbox"], ["REPLAYS", ""], ["DECKS", ""],
+	for entry: Array in [["PLAY", "play"], ["SANDBOX", "sandbox"], ["REPLAYS", ""], ["DECKS", ""],
 			["SETTINGS", ""], ["EXIT", "exit"]]:
 		var b := Button.new()
 		b.text = str(entry[0])
@@ -58,7 +59,7 @@ func _ready() -> void:
 		b.pressed.connect(_on_pressed.bind(action))
 		b.mouse_entered.connect(func() -> void: if not b.disabled: b.grab_focus())
 		col.add_child(b)
-		if action == "sandbox":
+		if action == "play":
 			first = b
 	if first != null:
 		first.grab_focus.call_deferred()
@@ -80,6 +81,8 @@ func _ready() -> void:
 
 func _on_pressed(action: String) -> void:
 	match action:
+		"play":
+			get_tree().change_scene_to_file(SETUP_SCENE)
 		"sandbox":
 			get_tree().change_scene_to_file(SANDBOX_SCENE)
 		"exit":

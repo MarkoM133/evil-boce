@@ -1,11 +1,14 @@
-class_name SandboxWorld
+class_name ArenaWorld
 extends BallWorld
-## BallWorld backed by the arena: map / strip / void, terrain, and snapping to the nearest
-## free hex.
+## BallWorld backed by an Arena: map / strip / void, terrain, and snapping to the nearest free
+## hex. Used by the sandbox and the match.
 
 var arena: Arena
 var terrain: TerrainMap
-var pieces: Array[SandboxPiece] = []
+## Balls that occupy hexes when they rest on the map.
+var bodies: Array[BallBody] = []
+## Extra hexes nothing may stop on (walls).
+var blocked: Dictionary[Vector2i, bool] = {}
 
 
 func _init(tuning_: PhysicsTuning, arena_: Arena, terrain_: TerrainMap) -> void:
@@ -44,11 +47,14 @@ func snap_point(ball: BallBody) -> Vector3:
 	return pos
 
 
-## True when a ball of that size could rest on `center` without overlapping another.
+## True when a ball of that size could rest on `center` without overlapping another ball,
+## a wall or the edge of the map.
 func is_free(center: Vector2i, big: bool, except: BallBody = null) -> bool:
 	var mine: Array[Vector2i] = arena.map.footprint(center, big)
-	for p: SandboxPiece in pieces:
-		var b: BallBody = p.body
+	for a: Vector2i in mine:
+		if not arena.map.contains(a) or blocked.has(a):
+			return false
+	for b: BallBody in bodies:
 		if b == except:
 			continue
 		if b.motion != BallBody.Motion.RESTING and b.motion != BallBody.Motion.SNAPPING:
