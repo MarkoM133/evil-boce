@@ -24,6 +24,8 @@ static func take(catalog: CardCatalog) -> Dictionary:
 		],
 		"bots": PackedInt32Array([1]),
 		"seed": rng.randi(),
+		# Opened straight from the editor or a tool, not from Play: nothing gets saved.
+		"dev": true,
 	}
 
 

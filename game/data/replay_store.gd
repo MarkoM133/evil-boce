@@ -105,3 +105,30 @@ static func _safe(s: String) -> String:
 	for ch: String in s:
 		out += ch if ch.is_valid_identifier() or ch == "-" else "_"
 	return out.substr(0, 60)
+
+
+# --- the last match's picture (main menu, Play tile on hover) -----------------------------------
+
+const LAST_SHOT: String = "user://last_match.jpg"
+const LAST_INFO: String = "user://last_match.json"
+
+
+## Keeps a picture of the table from the last match, with a line about it.
+static func save_last_shot(img: Image, caption: String) -> void:
+	if img == null or img.is_empty():
+		return
+	if img.get_width() > 960:
+		img.resize(960, roundi(960.0 * img.get_height() / img.get_width()), Image.INTERPOLATE_LANCZOS)
+	img.save_jpg(ProjectSettings.globalize_path(LAST_SHOT), 0.85)
+	_write_json(LAST_INFO, {"caption": caption, "at": Time.get_datetime_string_from_system(true) + "Z"})
+
+
+static func last_shot() -> Texture2D:
+	if not FileAccess.file_exists(LAST_SHOT):
+		return null
+	var img: Image = Image.load_from_file(ProjectSettings.globalize_path(LAST_SHOT))
+	return ImageTexture.create_from_image(img) if img != null and not img.is_empty() else null
+
+
+static func last_caption() -> String:
+	return str(_read_json(LAST_INFO).get("caption", ""))

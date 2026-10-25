@@ -35,6 +35,9 @@ var _quiet: bool = false
 var _slowed: bool = false
 ## demo_until_cards: give player 1 back to the mouse when it may play cards.
 var _demo_hand_back: bool = false
+## Set by every demo_ helper: a screenshot run never writes the save, replays, stats or the
+## main menu's last-match picture.
+var _demo: bool = false
 ## Phases in which demo_until_cards / demo_mulligan hand player 1 back.
 var _demo_phases: Array[String] = [GameState.PHASE_PREROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE]
 ## A guest's copy of the finished match, sent by the host when it ends.
@@ -85,6 +88,7 @@ func _ready() -> void:
 	tuning = PhysicsTuning.load_default()
 	db = CardDb.load_from(GameSettings.data_path())
 	_config = MatchLaunch.take(db.catalog)
+	_demo = JsonUtil.as_bool(_config.get("dev", false))
 	var settings: MatchSettings = _config["settings"]
 	var decks: Array = _config["decks"]
 	var seed_: int = JsonUtil.as_int(_config.get("seed", 1), 1)
@@ -363,8 +367,29 @@ func _toggle_menu() -> void:
 
 ## Back to the main menu; an online match closes its link first.
 func _leave() -> void:
+	await _snapshot()
 	_close_net()
 	get_tree().change_scene_to_file(MENU_SCENE)
+
+
+## A picture of the table (no HUD) for the main menu's Play tile; not while watching a replay.
+func _snapshot() -> void:
+	if _replay != null or _demo or state == null or not is_inside_tree():
+		return
+	var menu_was: bool = _menu.visible
+	hud.visible = false
+	_menu.visible = false
+	await RenderingServer.frame_post_draw
+	var img: Image = get_viewport().get_texture().get_image()
+	hud.visible = true
+	_menu.visible = menu_was
+	var names := PackedStringArray()
+	for p: PlayerState in state.players:
+		names.append(hud.player_name(p.slot))
+	var caption: String = "Last match: %s  ·  turn %d" % [" vs ".join(names), state.turn]
+	if state.is_over():
+		caption += "  ·  " + ("draw" if state.winner < 0 else "%s won" % hud.player_name(state.winner))
+	ReplayStore.save_last_shot(img, caption)
 
 
 func _close_net() -> void:
@@ -453,12 +478,13 @@ func _on_net_balls(positions: Dictionary) -> void:
 ## A resumed match starts from the beginning of its last phase, so the save is only written
 ## when a new phase opens, not after every move.
 func _after_change() -> void:
-	if net_role == "client":
+	if net_role == "client" or _demo:
 		return
 	if state.is_over():
 		if _filed:
 			return
 		_filed = true
+		_snapshot()
 		if net_role == "":
 			ReplayStore.clear_current()
 		ReplayStore.save_replay(recorder.record)
@@ -1180,6 +1206,7 @@ func _ground_under_mouse() -> Variant:
 
 ## Lets the bots play both sides for a few seconds of turns.
 func demo_autoplay() -> void:
+	_demo = true
 	for p: PlayerState in state.players:
 		if not bots.has(p.slot):
 			bots[p.slot] = Bot.new(p.slot + 7, Bot.Level.HARD)
@@ -1189,6 +1216,7 @@ func demo_autoplay() -> void:
 ## Makes the next local move as if clicked (an Easy bot decides). At the aim it only draws the
 ## slingshot on the activated hero and stops, so a screenshot shows the aim.
 func demo_step() -> void:
+	_demo = true
 	for slot: int in hud.local_slots:
 		var helper := Bot.new(slot + 3)
 		var positions: Dictionary[String, Vector2] = {}
@@ -1225,6 +1253,7 @@ func debug_dump() -> void:
 ## Screenshot helpers for the hit / knockback / KO animations. They change the drawn state
 ## directly (not through the engine), so use them only in a throwaway match.
 func demo_fx_place() -> void:
+	_demo = true
 	var mid: Vector2i = arena.hex_at(Vector3.ZERO)
 	var spots: Array[Vector2i] = [mid, mid + Vector2i(2, 0), mid + Vector2i(-1, 2), mid + Vector2i(1, -2)]
 	for i: int in mini(spots.size(), state.heroes.size()):
@@ -1236,6 +1265,7 @@ func demo_fx_place() -> void:
 
 ## Hits hero 0, knocks hero 1 three hexes away and knocks out hero 2.
 func demo_fx_hit() -> void:
+	_demo = true
 	state.heroes[0].hp -= 3
 	state.heroes[1].hex += Vector2i(3, 0)
 	state.heroes[2].hp = 0
@@ -1245,6 +1275,7 @@ func demo_fx_hit() -> void:
 
 ## Both of the above, 1.2 s apart (screenshot: --call=demo_fx --wait=82 --frames=0).
 func demo_fx() -> void:
+	_demo = true
 	demo_fx_place()
 	await get_tree().create_timer(1.2).timeout
 	demo_fx_hit()
@@ -1253,18 +1284,21 @@ func demo_fx() -> void:
 ## Screenshot helper: bots play until player 1 may play cards, then player 1 is handed back
 ## (its hand shows). Use with --wait=2400 or so.
 func demo_until_cards() -> void:
+	_demo = true
 	demo_autoplay()
 	_demo_hand_back = true
 
 
 ## Screenshot helper: bots place stages and cores, then player 1 gets the mulligan screen.
 func demo_mulligan() -> void:
+	_demo = true
 	_demo_phases = [GameState.PHASE_MULLIGAN]
 	demo_until_cards()
 
 
 ## Screenshot helper: the damage choice a lost battle asks for (drawn only, not applied).
 func demo_damage() -> void:
+	_demo = true
 	var mine: Array = []
 	for h: HeroState in state.heroes_of(0):
 		mine.append(h.id)
@@ -1276,6 +1310,7 @@ func demo_damage() -> void:
 
 ## Screenshot helper: the end screen as if player 1 won on stages (drawn only).
 func demo_victory() -> void:
+	_demo = true
 	state.phase = GameState.PHASE_OVER
 	state.winner = 0
 	state.result = "stages"
@@ -1289,5 +1324,6 @@ func demo_victory() -> void:
 
 ## Screenshot helper: one of each banner, queued.
 func demo_banners() -> void:
+	_demo = true
 	hud.banner("BATTLE!", Palette.ACCENT, "GIORNO\n3000", "SHANKS\n2500")
 	hud.banner("RING-OUT", Palette.GOLD, "", "SHANKS")

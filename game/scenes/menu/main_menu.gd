@@ -145,6 +145,14 @@ func _build_tiles(logo: Texture2D) -> void:
 	for h: HeroDef in pair:
 		var tex: Texture2D = db.large(h.id)
 		play.split_art.append(tex if tex != null else db.thumb(h.id))
+	# On hover: the table of the last match, or a stage when there is none yet.
+	play.hover_art = ReplayStore.last_shot()
+	play.hover_subtitle = ReplayStore.last_caption()
+	if play.hover_art == null and db.is_ok() and not db.catalog.of_type("Stage").is_empty():
+		var st: CardDef = db.catalog.of_type("Stage").pick_random()
+		play.hover_art = db.large(st.id)
+		play.hover_card = true
+		play.hover_subtitle = "Pick decks, stages and cores  ·  %s" % st.name
 	play.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	# Online: three others.
 	var crew: Array[Texture2D] = []
@@ -464,3 +472,11 @@ func _on_pressed(action: String) -> void:
 			get_tree().change_scene_to_file(DECKS_SCENE)
 		"exit":
 			get_tree().quit()
+
+
+## Screenshot helper: hovers the Play tile.
+func demo_hover_play() -> void:
+	for t: Node in find_children("*", "MenuTile", true, false):
+		var tile := t as MenuTile
+		if tile.title == "PLAY":
+			tile._set_hover(true)

@@ -23,9 +23,17 @@ var cut: float = 18.0
 var figures: Array[Texture2D] = []
 ## Two card images side by side, cut apart on a slant (a face-off); overrides `art`.
 var split_art: Array[Texture2D] = []
+## Shown over the tile while the mouse is on it (fades in), with `hover_subtitle` in place of
+## the subtitle. Cropped to cover the tile.
+var hover_art: Texture2D
+var hover_subtitle: String = ""
+## hover_art is a card image: show its art part, not the whole card.
+var hover_card: bool = false
 ## Figure height as a share of the tile's height.
 var figure_size: float = 0.86
 var _hover: bool = false
+## 0..1: how far hover_art has faded in.
+var _mix: float = 0.0
 var _title_l: Label
 var _sub_l: Label
 var _figure_nodes: Array[TextureRect] = []
@@ -99,6 +107,13 @@ func _layout(text: VBoxContainer) -> void:
 
 func _set_hover(on: bool) -> void:
 	_hover = on
+	if hover_art != null:
+		var mt: Tween = create_tween()
+		mt.tween_method(func(v: float) -> void:
+			_mix = v
+			queue_redraw(), _mix, 1.0 if on else 0.0, 0.25)
+		if _sub_l != null and not hover_subtitle.is_empty():
+			_sub_l.text = hover_subtitle if on else subtitle
 	var t: Tween = create_tween()
 	t.tween_property(self, "scale", Vector2.ONE * (1.025 if on else 1.0), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	for i: int in _figure_nodes.size():
@@ -155,6 +170,17 @@ func _draw() -> void:
 		# The lines and the floor ran past the slanted ends: cut them back to the background.
 		draw_colored_polygon(PackedVector2Array([Vector2(0, 0), Vector2(cut, 0), Vector2(0, h)]), Palette.BG)
 		draw_colored_polygon(PackedVector2Array([Vector2(w, 0), Vector2(w, h), Vector2(w - cut, h)]), Palette.BG)
+	if hover_art != null and _mix > 0.0:
+		var r: Rect2 = card_art_region(hover_art, w / h) if hover_card else _cover(hover_art, w / h)
+		var uvs := PackedVector2Array()
+		for p: Vector2 in pts:
+			uvs.append(Vector2(r.position.x + r.size.x * p.x / w, r.position.y + r.size.y * p.y / h))
+		var c := Color(1, 1, 1, _mix)
+		draw_polygon(pts, PackedColorArray([c, c, c, c]), uvs, hover_art)
+		var dark := Color(0, 0, 0, 0.8 * _mix)
+		var clear := Color(0, 0, 0, 0)
+		draw_polygon(PackedVector2Array([Vector2(cut * 0.4, h * 0.5), Vector2(w - cut * 0.4, h * 0.5), Vector2(w - cut, h), Vector2(0, h)]),
+			PackedColorArray([clear, clear, dark, dark]))
 	if _hover:
 		var loop: PackedVector2Array = pts.duplicate()
 		loop.append(pts[0])
@@ -193,6 +219,16 @@ func _draw_split(w: float, h: float, pts: PackedVector2Array) -> void:
 	# The cut between them.
 	draw_colored_polygon(PackedVector2Array([Vector2(mid + lean - 4, 0), Vector2(mid + lean + 4, 0), Vector2(mid - lean + 4, h),
 		Vector2(mid - lean - 4, h)]), Palette.GOLD)
+
+
+## The middle of a picture cropped to `aspect`, covering the tile.
+static func _cover(tex: Texture2D, aspect: float) -> Rect2:
+	var a: float = float(tex.get_width()) / float(tex.get_height())
+	if a > aspect:
+		var w: float = aspect / a
+		return Rect2((1.0 - w) * 0.5, 0, w, 1)
+	var h: float = a / aspect
+	return Rect2(0, (1.0 - h) * 0.5, 1, h)
 
 
 ## The art part of a card image cropped to `aspect` (width / height). Landscape hero cards
