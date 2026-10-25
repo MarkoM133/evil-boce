@@ -5,12 +5,15 @@ extends Control
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const RANDOM: String = "Random deck"
+## Offered changes to every hero's printed range (Standard is -1, see MatchSettings.standard).
+const RANGE_DELTAS: Array[int] = [-2, -1, 0, 1]
 
 var db: CardDb
 var decks: Array[Dictionary] = []
 var _deck_pick: Array[OptionButton] = []
 var _opponent: OptionButton
 var _map: OptionButton
+var _range: OptionButton
 var _problems: Label
 
 
@@ -66,6 +69,13 @@ func _ready() -> void:
 	_map.select(GameSettings.MAP_SIZES.find(GameSettings.map_size()))
 	col.add_child(_map)
 
+	_header(col, "HERO RANGE")
+	_range = OptionButton.new()
+	for d: int in RANGE_DELTAS:
+		_range.add_item(_range_label(d), d + 10)
+	_range.select(RANGE_DELTAS.find(MatchSettings.standard().range_delta))
+	col.add_child(_range)
+
 	_problems = Label.new()
 	_problems.theme_type_variation = &"Muted"
 	_problems.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -110,8 +120,9 @@ func _check() -> void:
 func _start() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	var settings := MatchSettings.new()
+	var settings: MatchSettings = MatchSettings.standard()
 	settings.map_size = _map.get_selected_id()
+	settings.range_delta = _range.get_selected_id() - 10
 	settings.manual_setup = false
 	GameSettings.set_map_size(settings.map_size)
 	var bot: bool = _opponent.selected == 0
@@ -128,3 +139,10 @@ func _start() -> void:
 		"seed": rng.randi(),
 	}
 	get_tree().change_scene_to_file(MATCH_SCENE)
+
+
+static func _range_label(d: int) -> String:
+	var label: String = "As printed on the cards" if d == 0 else "%+d to every hero (never below 2)" % d if d < 0 else "%+d to every hero" % d
+	if d == MatchSettings.standard().range_delta:
+		label += "  ·  Standard"
+	return label

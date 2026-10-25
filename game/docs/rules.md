@@ -120,3 +120,7 @@ Things the GDD does not spell out; each is one line to confirm or veto.
 - Stage reveal bonuses last while the hero stays on that stage and it is unclaimed.
 - Stage-002 (Elbaph): "players in combat" are the players with a hero on the stage when it is
   revealed; the higher top-card cost gives their heroes there +2000 Power.
+- Standard (`MatchSettings.standard()`): map 23×23, `range_delta = -1` (never below 2), until the
+  cards carry the lower ranges; then `range_delta` goes back to 0. `MatchSettings.new()` keeps
+  the cards as printed (map 17) for the scenario tests. Throw distances at full power are
+  22 / 18 / 15 / 11 hexes for WT 1–4.

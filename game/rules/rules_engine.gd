@@ -1304,7 +1304,7 @@ func stat_flat(s: GameState, h: HeroState, key: String) -> int:
 		"pwr":
 			base = card.pwr
 		"rng":
-			base = card.rng
+			base = s.settings.adjust_rng(card.rng)
 		"kb":
 			base = card.kb
 	for eid: String in h.equipment:

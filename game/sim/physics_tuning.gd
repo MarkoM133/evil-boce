@@ -11,7 +11,7 @@ extends Resource
 @export var radius_by_wt: PackedFloat32Array = PackedFloat32Array([0.5, 0.62, 0.75, 1.3])
 @export var mass_by_wt: PackedFloat32Array = PackedFloat32Array([1.0, 1.6, 2.4, 4.0])
 ## How far a full-power throw goes on plain ground, in hexes.
-@export var full_power_hexes_by_wt: PackedFloat32Array = PackedFloat32Array([18.0, 15.0, 12.0, 9.0])
+@export var full_power_hexes_by_wt: PackedFloat32Array = PackedFloat32Array([22.0, 18.0, 15.0, 11.0])
 ## From this WT up a ball covers 7 hexes.
 @export var big_from_wt: int = 4
 

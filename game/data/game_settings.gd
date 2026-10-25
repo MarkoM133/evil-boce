@@ -30,8 +30,8 @@ static func set_data_path(p: String) -> void:
 
 
 static func map_size() -> int:
-	var n: int = JsonUtil.as_int(_config().get_value("sandbox", "map_size", 17), 17)
-	return n if MAP_SIZES.has(n) else 17
+	var n: int = JsonUtil.as_int(_config().get_value("sandbox", "map_size", 23), 23)
+	return n if MAP_SIZES.has(n) else 23
 
 
 static func set_map_size(n: int) -> void:

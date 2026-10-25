@@ -237,7 +237,8 @@ func spawn(hero: HeroDef, team: int, pos: Vector3) -> SandboxPiece:
 	var p := SandboxPiece.new()
 	p.hero = hero
 	p.team = team
-	p.rng = hero.rng
+	# Same range as in a Standard match.
+	p.rng = MatchSettings.standard().adjust_rng(hero.rng)
 	p.hp = hero.hp
 	p.body = BallBody.new()
 	p.body.name = "%s_%d" % [hero.id, _next_id]

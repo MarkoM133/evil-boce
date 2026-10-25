@@ -17,7 +17,7 @@ static func take(catalog: CardCatalog) -> Dictionary:
 		return c
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	var settings := MatchSettings.new()
+	var settings: MatchSettings = MatchSettings.standard()
 	settings.map_size = GameSettings.map_size()
 	settings.manual_setup = false
 	return {
