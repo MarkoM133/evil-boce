@@ -15,6 +15,9 @@ const CORE_RADIUS: float = 0.34
 const CORE_LOOK: float = 1.3
 ## How strongly a revealed stage's art shows on its hexes.
 const STAGE_ART_ALPHA: float = 0.6
+## Battle camera: its tilt (the opening view's) and how long it stays after the last battle.
+const BATTLE_CAM_PITCH: float = 50.0
+const BATTLE_CAM_HOLD: float = 1.8
 const CORE_COLORS: Dictionary[String, Color] = {
 	"Buff": Color("4fb858"), "Major": Color("ffd23f"), "Debuff": Color("9a5bd6"),
 }
@@ -305,6 +308,7 @@ func _build_hud() -> void:
 		hud.picks.erase(slot)
 		_apply(Move.make(Move.SELECT, slot, {"hero": hero_id})))
 	hud.battle_cam_pressed.connect(_toggle_battle_cam)
+	hud.battle_resolved.connect(_on_battle_resolved)
 	hud.damage_pressed.connect(func(slot: int, target: String) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target})))
 	hud.choose_pressed.connect(func(slot: int, value: Variant) -> void: _apply(Move.make(Move.CHOOSE, slot, {"value": value})))
 	hud.ability_pressed.connect(func(slot: int, hero_id: String, card_id: String, index: int) -> void:
@@ -660,6 +664,9 @@ func _sync_hero(h: HeroState) -> void:
 		v.open()
 	elif not open and v.is_open():
 		v.close()
+	# A closed ball at rest stands upright, button to the camera (GDD 5).
+	if not open and v.state == BallView.State.CLOSED and b.motion == BallBody.Motion.RESTING:
+		v.settle()
 
 
 ## A ball opens into its figure when it stands on a stage or is in a battle (GDD 5); else it
@@ -685,8 +692,9 @@ func _slide(b: BallBody, target: Vector3, v: BallView) -> void:
 	var to := Vector3(target.x, from.y, target.z)
 	var dist: float = Vector2(to.x - from.x, to.z - from.z).length()
 	var steps: float = dist / maxf(tuning.hex_size * 1.7, 0.01)
-	var height: float = clampf(0.35 + 0.25 * steps, 0.35, 1.6)
-	var time: float = clampf(0.26 + 0.06 * steps, 0.26, 0.6)
+	# Slow enough to follow what a battle did (it used to be over in a blink).
+	var height: float = clampf(0.45 + 0.3 * steps, 0.45, 1.8)
+	var time: float = clampf(0.45 + 0.12 * steps, 0.45, 1.0)
 	var t: Tween = create_tween()
 	t.tween_method(func(k: float) -> void:
 		var p: Vector3 = from.lerp(to, k)
@@ -697,7 +705,8 @@ func _slide(b: BallBody, target: Vector3, v: BallView) -> void:
 	t.tween_callback(func() -> void:
 		b.place(target)
 		if v != null:
-			v.land())
+			v.land()
+			v.settle())
 
 
 ## Hit-stop: the world freezes for a blink when damage lands (Settings → Effects).
@@ -1652,14 +1661,14 @@ func _refresh_target_fx() -> void:
 
 
 ## Shows briefly on the hero a card just went on.
-func _flash_target(hid: String) -> void:
+func _flash_target(hid: String, hold: float = 0.35) -> void:
 	if not _bodies.has(hid):
 		return
 	var mark: Node3D = _target_mark(_bodies[hid].global_position, true)
 	mark.set_meta("flash", true)
 	_target_fx.add_child(mark)
 	var t: Tween = mark.create_tween()
-	t.tween_interval(0.35)
+	t.tween_interval(hold)
 	t.tween_property(mark, "scale", Vector3(1.4, 0.2, 1.4), 0.25)
 	t.tween_callback(mark.queue_free)
 
@@ -1805,15 +1814,22 @@ func _update_battle_cam() -> void:
 		if not _cam_battle_key.is_empty():
 			_cam_battle_key = ""
 			if hud.battle_cam:
-				hud.battle_cam = false
-				cam.reset_view()
+				# Stay on the last battle a moment, so its end can be seen, then back to the table.
+				_leave_cam_later()
 		return
 	var key: String = "%d:%d:%s" % [state.turn, state.battle_index, ",".join(ids)]
 	if key == _cam_battle_key:
 		return
+	var from_another: bool = not _cam_battle_key.is_empty()
 	_cam_battle_key = key
 	if GameSettings.battle_cam_auto() and _replay == null:
+		# From one battle to the next: a moment on the one just fought first.
+		if from_another and hud.battle_cam:
+			await get_tree().create_timer(1.2).timeout
+			if key != _cam_battle_key:
+				return
 		_frame_battle(ids)
+		hud.refresh()
 
 
 ## The camera on the battle's heroes, close enough that both fill the middle.
@@ -1831,6 +1847,8 @@ func _frame_battle(ids: PackedStringArray) -> void:
 	var spread: float = 0.0
 	for p: Vector3 in points:
 		spread = maxf(spread, Vector2(p.x - mid.x, p.z - mid.z).length())
+	# Tilted like the opening view, not from straight above.
+	cam.pitch = deg_to_rad(BATTLE_CAM_PITCH)
 	cam.focus(mid, clampf(spread * 2.4 + 7.0, 8.0, 30.0))
 	hud.battle_cam = true
 
@@ -1875,3 +1893,25 @@ func demo_reveal() -> void:
 	for st: StageState in state.stages:
 		st.revealed = true
 	_sync()
+
+
+## Back to the table after BATTLE_CAM_HOLD seconds, unless a battle has started again by then.
+func _leave_cam_later() -> void:
+	var t: SceneTreeTimer = get_tree().create_timer(BATTLE_CAM_HOLD)
+	await t.timeout
+	if _current_battle().is_empty() and hud.battle_cam:
+		hud.battle_cam = false
+		cam.reset_view()
+		hud.refresh()
+
+
+## A battle was decided: once the banner has had its moment, the winners light up.
+func _on_battle_resolved(index: int, winner_team: int) -> void:
+	if winner_team < 0 or index < 0 or index >= state.battles.size():
+		return
+	var ids: PackedStringArray = JsonUtil.as_strings(state.battles[index].get("heroes", []))
+	await get_tree().create_timer(0.5).timeout
+	for hid: String in ids:
+		var h: HeroState = state.hero(hid)
+		if h != null and state.team_of(h.owner) == winner_team:
+			_flash_target(hid, 1.1)

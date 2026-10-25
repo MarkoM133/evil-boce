@@ -19,6 +19,8 @@ signal card_pressed(slot: int, card_id: String, hero_id: String)
 signal targeting_changed
 ## The battle camera switch (next to the battle bar) was clicked.
 signal battle_cam_pressed
+## A battle was decided (the BATTLE! banner): its index and the winning team (-1: a tie).
+signal battle_resolved(index: int, winner_team: int)
 signal damage_pressed(slot: int, target: String)
 ## Answer to a "choose" decision (hero, core, card id or branch index; hexes go by click).
 signal choose_pressed(slot: int, value: Variant)
@@ -45,6 +47,8 @@ const HAND_HEIGHT: float = 210.0
 const BANNER_TIME: float = 0.8
 ## Phase call-outs stay a little longer, to be read.
 const PHASE_BANNER_TIME: float = 1.4
+## BATTLE! stays long enough to read both sides' Power.
+const BATTLE_BANNER_TIME: float = 1.6
 ## How far a hovered hand card rises.
 const LIFT: float = 56.0
 ## Log events that get a banner (the rest only go to the log).
@@ -1764,12 +1768,34 @@ func _scan_log() -> void:
 func _banner_for(e: Dictionary) -> void:
 	match str(e.get("type", "")):
 		"battle":
+			# Power is per team: each side's heroes in that battle and their total.
 			var power: Dictionary = JsonUtil.as_dict(e.get("power", {}))
-			var sides := PackedStringArray()
-			for id: Variant in power:
-				var h: HeroState = state.hero(str(id))
-				sides.append("%s\n%d" % [(hero_name(h) if h != null else str(id)).to_upper(), JsonUtil.as_int(power[id])])
-			banner("BATTLE!", Palette.ACCENT, sides[0] if sides.size() > 0 else "", sides[1] if sides.size() > 1 else "")
+			var index: int = JsonUtil.as_int(e.get("index", state.battle_index))
+			var ids: PackedStringArray = JsonUtil.as_strings(state.battles[index].get("heroes", [])) if index >= 0 and index < state.battles.size() else PackedStringArray()
+			var sides: Array[String] = ["", ""]
+			var best: int = -1
+			var best_pow: int = -1
+			var tie: bool = false
+			for t: int in 2:
+				var names := PackedStringArray()
+				for hid: String in ids:
+					var h: HeroState = state.hero(hid)
+					if h != null and state.team_of(h.owner) == t:
+						names.append(hero_name(h).to_upper())
+				# Keys are ints from the engine, strings after a replay or the network.
+				var pw: int = 0
+				for k: Variant in power:
+					if str(k) == str(t):
+						pw = JsonUtil.as_int(power[k])
+				sides[t] = "%s\n%d" % [" + ".join(names), pw]
+				if pw > best_pow:
+					best_pow = pw
+					best = t
+					tie = false
+				elif pw == best_pow:
+					tie = true
+			banner("BATTLE!", Palette.ACCENT, sides[0], sides[1], BATTLE_BANNER_TIME)
+			battle_resolved.emit(index, -1 if tie else best)
 		"ring_out":
 			banner("RING-OUT", Palette.GOLD, "", _hero_label(str(e.get("hero", ""))).to_upper())
 		"ko":
