@@ -1193,10 +1193,19 @@ func _check_claims(s: GameState) -> void:
 				if claimer >= 0:
 					break
 		else:
+			# Stay: the same activated hero must stay on the stage two turns in a row.
+			var stayer: HeroState = null
 			for slot: int in s.active:
 				var a: HeroState = s.active_hero(slot)
 				if a != null and on.has(a) and s.choices.has(slot) and not s.choices[slot]:
-					claimer = slot
+					stayer = a
+			if stayer != null:
+				if st.stay_hero == stayer.id and st.stay_turn == s.turn - 1:
+					claimer = stayer.owner
+				else:
+					st.stay_hero = stayer.id
+					st.stay_turn = s.turn
+					s.event("stage_stay", {"stage": st.id, "hero": stayer.id})
 			if claimer < 0:
 				var by_owner: Dictionary[int, int] = {}
 				for h: HeroState in on:

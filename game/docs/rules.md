@@ -124,3 +124,6 @@ Things the GDD does not spell out; each is one line to confirm or veto.
   cards carry the lower ranges; then `range_delta` goes back to 0. `MatchSettings.new()` keeps
   the cards as printed (map 17) for the scenario tests. Throw distances at full power are
   22 / 18 / 15 / 11 hexes for WT 1–4.
+- Claim by Stay needs two Stays in a row: the same activated hero stays on the same stage at
+  the end of two consecutive turns (`StageState.stay_hero / stay_turn`, event `stage_stay`).
+  The other two claims (two heroes, battle winner) are unchanged.

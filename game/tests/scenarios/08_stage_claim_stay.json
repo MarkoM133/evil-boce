@@ -1,5 +1,5 @@
 {
-  "name": "Claim: activated hero on a stage chooses Stay and is still there at the end",
+  "name": "Claim by Stay: the activated hero must stay on the stage two turns in a row",
   "steps": [
     {"setup": {"seed": 1, "decks": [
       {"name": "A", "heroes": ["TA-001", "TA-002", "TA-003"], "cards": {"TX-010": 40},
@@ -23,8 +23,20 @@
     {"pass_round": true},
     {"expect": {
       "turn": 2, "phase": "select",
+      "stages.stage:p0:1.claimed_by": -1,
+      "stages.stage:p0:1.stay_hero": "p0:TA-001",
+      "stages.stage:p0:1.stay_turn": 1
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"move": {"type": "choice", "player": 0, "roll": false}},
+    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {
+      "turn": 3, "phase": "select",
       "stages.stage:p0:1.claimed_by": 0,
-      "stages.stage:p0:1.terrain_until_turn": 2,
+      "stages.stage:p0:1.terrain_until_turn": 3,
       "battles": {"$size": 0}
     }}
   ]
