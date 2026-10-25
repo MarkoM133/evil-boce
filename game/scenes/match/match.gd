@@ -17,6 +17,7 @@ var tuning: PhysicsTuning
 var db: CardDb
 var engine: RulesEngine
 var state: GameState
+var recorder: MatchRecorder
 var arena: Arena
 var world: ArenaWorld
 var cam: OrbitCamera
@@ -56,9 +57,20 @@ func _ready() -> void:
 	var settings: MatchSettings = _config["settings"]
 	var decks: Array = _config["decks"]
 	var seed_: int = JsonUtil.as_int(_config.get("seed", 1), 1)
-	state = engine.start_match(settings, decks, seed_)
-	for slot: int in JsonUtil.as_array(_config.get("bots", [])):
-		bots[slot] = SimpleBot.new(seed_ + slot)
+	var bot_slots: Array = JsonUtil.as_array(_config.get("bots", []))
+	# Every match is recorded (replay, save, stats); a resumed one carries on from its record.
+	var resume_from: MatchRecord = _config.get("resume", null)
+	if resume_from != null:
+		recorder = MatchRecorder.resume(engine, resume_from, JsonUtil.as_int(_config.get("frame", -1), -1))
+	else:
+		var seats: Array = []
+		for i: int in decks.size():
+			var d: Dictionary = JsonUtil.as_dict(decks[i])
+			seats.append({"name": d.get("name", ""), "bot": bot_slots.has(i), "deck_name": d.get("deck_name", "")})
+		recorder = MatchRecorder.start(engine, settings, decks, seed_, seats, str(ProjectSettings.get_setting("application/config/version", "")))
+	state = recorder.state
+	for slot: Variant in bot_slots:
+		bots[JsonUtil.as_int(slot)] = SimpleBot.new(seed_ + JsonUtil.as_int(slot))
 
 	TableEnv.add_to(self)
 	arena = Arena.new()
@@ -232,11 +244,22 @@ func _rematch() -> void:
 func _apply(m: Move) -> void:
 	if _runner.is_running() or _launching:
 		return
-	var err: String = engine.apply(state, m)
+	var err: String = recorder.apply(m)
 	if not err.is_empty():
 		hud.toast(err, Palette.FG)
 		return
+	_after_change()
 	_sync()
+
+
+## Saves the match in progress; when it is over, files the replay and the stats summary.
+func _after_change() -> void:
+	if state.is_over():
+		ReplayStore.clear_current()
+		ReplayStore.save_replay(recorder.record)
+		ReplayStore.write_stats(recorder.record, db.root_dir)
+	else:
+		ReplayStore.save_current(recorder.record)
 
 
 ## Puts every node where the state says and redraws the HUD.
@@ -568,9 +591,11 @@ func _on_roll_finished(o: RollOutcome) -> void:
 		var r: RollResult = o.result_for(_picked[cid])
 		if r != null:
 			r.cores_picked.append(cid)
-	var err: String = engine.apply_roll(state, o)
+	var err: String = recorder.apply_roll(o)
 	if not err.is_empty():
 		hud.toast(err, Palette.FG)
+	else:
+		_after_change()
 	for r: RollResult in o.results:
 		var h: HeroState = state.hero(r.ball_id)
 		if h != null and (r.ring_out or r.strip_entered >= 0):

@@ -106,6 +106,29 @@ static func from_card(c: Dictionary) -> CardDef:
 	return d
 
 
+## The card as a cards.json record (what from_card reads), for replays that carry their cards.
+func to_record() -> Dictionary:
+	var rec: Dictionary = {"id": id, "name": name, "type": type, "cost": cost, "wt": wt, "text": text,
+		"traits": Array(traits)}
+	if not color.is_empty():
+		rec["color"] = color
+	if type == "Hero" or type == "Evolution":
+		rec["stats"] = {"hp": hp, "dmg": dmg, "pwr": pwr, "rng": rng, "kb": kb}
+	if evo > 0:
+		rec["evo"] = evo
+	if not hero.is_empty():
+		rec["hero"] = hero
+	if not kind.is_empty():
+		rec["kind"] = kind
+	if not bonus.is_empty():
+		rec["bonus"] = bonus.duplicate()
+	if terrain != Terrain.Type.NONE and parse_terrain(text) == Terrain.Type.NONE:
+		rec["terrain"] = Terrain.name_of(terrain)
+	if fx_hand_written:
+		rec["fx"] = fx
+	return rec
+
+
 ## Finds a `Terrain: X` line in card text.
 static func parse_terrain(text: String) -> Terrain.Type:
 	for line: String in text.split("\n"):
