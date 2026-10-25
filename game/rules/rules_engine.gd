@@ -1293,13 +1293,13 @@ func stat_card(h: HeroState) -> CardDef:
 
 
 ## One current stat: "hp" (max), "dmg", "pwr", "rng" or "kb": the flat value plus what
-## passive effects in play add.
+## passive effects in play add. Never below 0 (a Debuff core can pull a small stat under).
 func stat(s: GameState, h: HeroState, key: String) -> int:
-	return stat_flat(s, h, key) + fx.passive_stat(s, h, key)
+	return maxi(0, stat_flat(s, h, key) + fx.passive_stat(s, h, key))
 
 
-## The card's value plus equipment `bonus` fields plus bonuses that last the phase or the
-## turn; no passive effects (they use this to avoid asking about themselves).
+## The card's value plus equipment and active core `bonus` fields plus bonuses that last the
+## phase or the turn; no passive effects (they use this to avoid asking about themselves).
 func stat_flat(s: GameState, h: HeroState, key: String) -> int:
 	var card: CardDef = stat_card(h)
 	if card == null:
@@ -1320,6 +1320,13 @@ func stat_flat(s: GameState, h: HeroState, key: String) -> int:
 		var e: CardDef = catalog.get_card(eid)
 		if e != null:
 			base += e.bonus.get(key, 0)
+	# A core counts while it sits in one of the hero's slots (GDD 7.4): a Debuff hurts whoever
+	# picked it up.
+	for cid: String in h.cores:
+		var c: CoreState = s.core(cid)
+		var core: CardDef = catalog.get_card(c.card_id) if c != null else null
+		if core != null:
+			base += core.bonus.get(key, 0)
 	base += h.phase_bonus.get(key, 0) + h.turn_bonus.get(key, 0)
 	for b: Dictionary in s.stage_buffs:
 		if str(b.get("hero", "")) == h.id and str(b.get("stat", "")) == key and _stage_buff_holds(s, b):

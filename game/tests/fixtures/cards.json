@@ -94,6 +94,16 @@
     {"id": "TS-003", "name": "Plain Field", "type": "Stage", "text": ""},
     {"id": "TS-004", "name": "Glacier", "type": "Stage", "text": "Terrain: Ice"},
     {"id": "TS-005", "name": "Bog", "type": "Stage", "text": "Terrain: Mud"},
-    {"id": "TS-006", "name": "Meadow", "type": "Stage", "text": "When this Stage is revealed, the Hero with more HP gains +3000 Power."}
+    {"id": "TS-006", "name": "Meadow", "type": "Stage", "text": "When this Stage is revealed, the Hero with more HP gains +3000 Power."},
+    {"id": "CR0-001", "name": "Buff core 1", "type": "Core", "kind": "Buff"},
+    {"id": "CR0-002", "name": "Buff core 2", "type": "Core", "kind": "Buff"},
+    {"id": "CR0-003", "name": "Major core 1", "type": "Core", "kind": "Major"},
+    {"id": "CR0-004", "name": "Major core 2", "type": "Core", "kind": "Major"},
+    {"id": "CR0-005", "name": "Debuff core 1", "type": "Core", "kind": "Debuff"},
+    {"id": "CR0-006", "name": "Debuff core 2", "type": "Core", "kind": "Debuff"},
+    {"id": "CR1-001", "name": "+4000 Power", "type": "Core", "traits": ["Major"], "bonus": {"pwr": 4000}},
+    {"id": "CR1-002", "name": "+2 Damage", "type": "Core", "traits": ["Buff"], "bonus": {"dmg": 2}},
+    {"id": "CR1-003", "name": "-2 Damage", "type": "Core", "traits": ["Debuff"], "bonus": {"dmg": -2}},
+    {"id": "CR1-004", "name": "-1 Knockback", "type": "Core", "traits": ["Debuff"], "bonus": {"kb": -1}}
   ]
 }

@@ -1,0 +1,44 @@
+{
+  "name": "Cores on a hero change its stats: +4000 Power and +2 Damage turn a lost battle into a win",
+  "steps": [
+    {"setup": {"seed": 1, "decks": [
+      {"name": "A", "heroes": ["TA-001", "TA-002", "TA-003"], "cards": {"TX-010": 20, "TX-011": 20},
+       "stages": ["TS-001", "TS-002", "TS-003"],
+       "cores": ["CR1-001", "CR1-002", "CR0-003", "CR0-004", "CR0-005", "CR0-006"]},
+      {"name": "B", "heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-010": 20, "TX-011": 20},
+       "stages": ["TS-004", "TS-005", "TS-006"],
+       "cores": ["CR0-001", "CR0-002", "CR0-003", "CR0-004", "CR0-005", "CR0-006"]}
+    ]}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8],
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 8],
+      "heroes.p0:TA-001.cores": ["core:p0:1", "core:p0:2"],
+      "cores.core:p0:1.place": "hero", "cores.core:p0:1.holder": "p0:TA-001", "cores.core:p0:1.face_up": true,
+      "cores.core:p0:2.place": "hero", "cores.core:p0:2.holder": "p0:TA-001", "cores.core:p0:2.face_up": true
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002"}},
+    {"move": {"type": "choice", "player": 0, "roll": false}},
+    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {"phase": "battle", "battles": {"$size": 1}}},
+    {"pass_round": true},
+    {"expect": {
+      "pending": {"$size": 1},
+      "pending.0.type": "damage", "pending.0.player": 1, "pending.0.amount": 5,
+      "pending.0.targets": ["p1:TB-002"],
+      "battles.0.winner_team": 0
+    }},
+    {"move": {"type": "damage_to", "player": 1, "target": "p1:TB-002"}},
+    {"expect": {
+      "heroes.p1:TB-002.hp": 5,
+      "heroes.p1:TB-002.hex": [8, 8],
+      "heroes.p0:TA-001.hp": 10,
+      "heroes.p0:TA-001.cores": ["core:p0:1", "core:p0:2"],
+      "phase": "select", "turn": 2
+    }}
+  ]
+}

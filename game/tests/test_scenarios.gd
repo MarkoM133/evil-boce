@@ -19,7 +19,9 @@ func before_all() -> void:
 func test_fixture_loaded() -> void:
 	assert_true(catalog.has("TA-001"))
 	assert_eq(catalog.get_card("TS-001").terrain, Terrain.Type.ICE)
-	assert_eq(catalog.of_type("Core").size(), 6, "placeholder cores")
+	# Six cores without a bonus (what the old placeholders were) and four real ones.
+	assert_eq(catalog.of_type("Core").size(), 10, "fixture cores")
+	assert_eq(catalog.get_card("CR1-001").kind, "Major")
 
 
 func test_scenarios() -> void:
