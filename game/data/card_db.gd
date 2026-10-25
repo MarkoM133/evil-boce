@@ -95,8 +95,9 @@ func core_back(card: CardDef) -> Texture2D:
 	return texture(data_dir().path_join("cores/%s Cardback.png" % family)) if not family.is_empty() else null
 
 
-## Where the hex sits on a core image (a portrait page with the token in the middle).
-const CORE_HEX := Rect2(0.235, 0.28, 0.473, 0.392)
+## Where the hex sits on a core image: a 1500 × 2100 page with the token (white rim included)
+## right in the middle, measured off the pixels.
+const CORE_HEX := Rect2(370.0 / 1500.0, 618.0 / 2100.0, 744.0 / 1500.0, 862.0 / 2100.0)
 
 
 func logo() -> Texture2D:

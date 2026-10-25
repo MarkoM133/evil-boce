@@ -41,7 +41,8 @@ func set_mirrored(on: bool) -> void:
 
 func _set_margins() -> void:
 	# A tile that is all picture keeps its text off the cut only.
-	var near: int = int(art_w + 12.0) if art_w < 140.0 else int(CUT + 10.0)
+	# The art leans by CUT, so the text keeps clear of its far corner too.
+	var near: int = int(art_w + CUT + 8.0) if art_w < 140.0 else int(CUT + 10.0)
 	var far: int = int(CUT + 10.0)
 	content.add_theme_constant_override("margin_left", far if mirrored else near)
 	content.add_theme_constant_override("margin_right", near if mirrored else far)

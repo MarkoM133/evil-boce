@@ -1508,7 +1508,7 @@ func demo_cores() -> void:
 	hud.hover_hero = h.id
 	_sync()
 	if not field.is_empty():
-		cam.focus(arena.hex_center(field[0].hex), 7.0)
+		cam.focus(arena.hex_center(field[0].hex), 3.5)
 
 
 ## Screenshot helper: bots play until player 1 may play cards, then player 1 is handed back

@@ -728,7 +728,10 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		var from_cores: Dictionary[String, int] = _core_bonus(h)
 		var stats := RichTextLabel.new()
 		stats.bbcode_enabled = true
-		stats.fit_content = true
+		# Fixed to the panel's width (it never pushes onto the art at the far end).
+		stats.fit_content = false
+		stats.custom_minimum_size = Vector2(0, 20)
+		stats.clip_contents = true
 		stats.scroll_active = false
 		stats.autowrap_mode = TextServer.AUTOWRAP_OFF
 		stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -924,7 +927,8 @@ func _core_slot(core_id: String, hero_color: Color) -> Control:
 	var c: CoreState = state.core(core_id) if not core_id.is_empty() else null
 	var card: CardDef = engine.catalog.get_card(c.card_id) if c != null else null
 	if card == null or card.bonus.is_empty():
-		var dot: UiShape = UiShape.make(UiShape.Kind.DIAMOND, hero_color if c != null else Color(0, 0, 0, 0), Vector2(10, 10))
+		# An empty slot is a small empty slanted box, the size of a core chip.
+		var dot: UiShape = UiShape.make(UiShape.Kind.SLANT, hero_color if c != null else Color(0, 0, 0, 0), Vector2(34, 14))
 		if c == null:
 			dot.outline = Palette.DIM
 			dot.outline_width = 1.5
