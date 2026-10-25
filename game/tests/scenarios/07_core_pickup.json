@@ -1,0 +1,42 @@
+{
+  "name": "Cores picked while rolling: slots first, the overflow goes to the inventory",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.cores": ["core:p1:2", "core:p1:3"],
+      "cores.core:p1:2.place": "hero", "cores.core:p1:2.holder": "p0:TA-001",
+      "cores.core:p1:3.place": "hero", "cores.core:p1:3.holder": "p0:TA-001"
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"move": {"type": "choice", "player": 0, "roll": true}},
+    {"move": {"type": "choice", "player": 1, "roll": true}},
+    {"pass_round": true},
+    {"move": {"type": "aim", "player": 0, "dir": [0, -1], "power": 1.0}},
+    {"move": {"type": "aim", "player": 1, "dir": [0, 1], "power": 1.0}},
+    {"roll": {"thrower": "p0:TA-001", "results": [
+      {"ball": "p0:TA-001", "thrown": true, "end_area": 0, "end_hex": [2, 12],
+       "cores_picked": ["core:p1:1", "core:p1:4"]},
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 0, "end_hex": [6, 4]}
+    ]}},
+    {"expect": {
+      "heroes.p0:TA-001.cores": ["core:p1:2", "core:p1:3", "core:p1:1"],
+      "cores.core:p1:1.place": "hero", "cores.core:p1:1.holder": "p0:TA-001", "cores.core:p1:1.face_up": true,
+      "cores.core:p1:4.place": "inventory", "cores.core:p1:4.picked_by": "p0:TA-001", "cores.core:p1:4.face_up": false,
+      "players.p0.inventory": ["core:p1:4"],
+      "pending": {"$size": 0},
+      "phase": "roll"
+    }},
+    {"pass_round": true},
+    {"expect": {"phase": "postroll", "pending.0.type": "return_core", "pending.0.player": 0, "pending.0.core": "core:p1:4"}},
+    {"move": {"type": "return_core", "player": 0, "core": "core:p1:4", "hex": [2, 12]}, "error": "taken"},
+    {"move": {"type": "return_core", "player": 0, "core": "core:p1:4", "hex": [2, 4]}, "error": "within the range"},
+    {"move": {"type": "return_core", "player": 0, "core": "core:p1:4", "hex": [3, 13]}},
+    {"expect": {
+      "cores.core:p1:4.place": "field", "cores.core:p1:4.hex": [3, 13], "cores.core:p1:4.face_up": false,
+      "players.p0.inventory": {"$size": 0}, "pending": {"$size": 0}, "phase": "postroll"
+    }}
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "name": "One full turn: select, roll, no battle, next turn",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"move": {"type": "select", "player": 0, "hero": "p1:TB-001"}, "error": "not your hero"},
+    {"move": {"type": "select", "player": 0, "hero": ""}, "error": "can be activated"},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"expect": {"phase": "select"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"expect": {"phase": "preroll", "active.0": "p0:TA-001", "active.1": "p1:TB-001"}},
+    {"move": {"type": "choice", "player": 1, "roll": false}, "error": "must roll"},
+    {"move": {"type": "choice", "player": 0, "roll": true}},
+    {"move": {"type": "choice", "player": 1, "roll": true}},
+    {"expect": {"phase": "preroll"}},
+    {"pass_round": true},
+    {"expect": {"phase": "roll", "awaiting_roll": false}},
+    {"move": {"type": "pass", "player": 0}, "error": "aim first"},
+    {"move": {"type": "aim", "player": 0, "dir": [0, -1], "power": 1.0}},
+    {"move": {"type": "aim", "player": 0, "dir": [0, -1], "power": 1.0}, "error": "already aimed"},
+    {"move": {"type": "aim", "player": 1, "dir": [0, 1], "power": 0.8}},
+    {"expect": {"phase": "roll", "awaiting_roll": true}},
+    {"roll": {"thrower": "p0:TA-001", "duration": 2.5, "results": [
+      {"ball": "p0:TA-001", "thrown": true, "end_area": 0, "end_hex": [2, 12]},
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 0, "end_hex": [6, 4]}
+    ]}},
+    {"expect": {
+      "phase": "roll", "awaiting_roll": false, "rolled": true, "round_over": false,
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [2, 12],
+      "heroes.p1:TB-001.zone": "map", "heroes.p1:TB-001.hex": [6, 4]
+    }},
+    {"pass_round": true},
+    {"expect": {"phase": "postroll"}},
+    {"pass_round": true},
+    {"expect": {
+      "phase": "select", "turn": 2, "battles": {"$size": 0},
+      "players.p0.energy": 2, "players.p0.hand": {"$size": 7}, "players.p0.deck": {"$size": 33}
+    }}
+  ]
+}

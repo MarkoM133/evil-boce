@@ -9,3 +9,5 @@
 - Code and commits in English; talk to Marko in Croatian, briefly.
 - Build, tests and tools: `game/docs/BUILD.md`. Hex conventions: `game/docs/hex.md`. Ids of slots, heroes, cores and stages: `game/docs/ids.md`. Physics numbers only in `game/sim/physics_tuning.tres`.
 - The sim only reports facts (`RollResult`, gathered per Roll into `RollOutcome` by `RollRunner`); it never decides rules. Terrain is data (`TerrainMap`) owned by whoever runs the game; the arena only draws it.
+- Rules engine shape, move list, scenario test format and the assumptions it made: `game/docs/rules.md`. New rule behaviour gets a JSON scenario in `game/tests/scenarios/`.
+- After editing scripts run both `gut_cmdln.gd` and `tools/check_scripts.gd` (GUT hides parse errors in scripts it never loads).

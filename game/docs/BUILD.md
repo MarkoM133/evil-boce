@@ -27,7 +27,15 @@ godot_console --headless --path game --import        # first time, or after addi
 godot_console --headless --path game -s addons/gut/gut_cmdln.gd
 ```
 
-GUT settings are in `game/.gutconfig.json` (tests in `game/tests/`, `test_*.gd`).
+GUT settings are in `game/.gutconfig.json` (tests in `game/tests/`, `test_*.gd`). Rules
+scenarios live in `game/tests/scenarios/*.json` (format in `rules.md`).
+
+GUT does not report parse errors in scripts the tests never load (and warnings are errors in
+this project), so after touching scene or tool scripts also run:
+
+```
+godot_console --headless --path game -s res://tools/check_scripts.gd
+```
 
 ## Tools
 

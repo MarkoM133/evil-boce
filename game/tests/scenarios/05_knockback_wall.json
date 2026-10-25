@@ -1,0 +1,28 @@
+{
+  "name": "Knockback into a wall: stays put and takes 2 per missing step",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8],
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 8],
+      "walls": [{"id": "wall:1", "hexes": [[3, 8]]}]
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002"}},
+    {"move": {"type": "choice", "player": 0, "roll": false}},
+    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"move": {"type": "damage_to", "player": 0, "target": "deck"}},
+    {"expect": {
+      "heroes.p0:TA-001.hp": 6,
+      "heroes.p0:TA-001.hex": [4, 8],
+      "players.p0.deck": {"$size": 30},
+      "players.p0.graveyard": {"$size": 3},
+      "turn": 2
+    }}
+  ]
+}

@@ -50,6 +50,28 @@ static func neighbor(a: Vector2i, dir: int) -> Vector2i:
 	return a + DIRECTIONS[posmod(dir, 6)]
 
 
+## Index of the DIRECTIONS entry that points most nearly from `from` towards `to`
+## (0 when they coincide). Used for grid knockback.
+static func direction_towards(from: Vector2i, to: Vector2i) -> int:
+	if from == to:
+		return 0
+	var v: Vector2 = to_world(to, 1.0) - to_world(from, 1.0)
+	var best: int = 0
+	var best_dot: float = -INF
+	for i: int in 6:
+		var d: Vector2 = to_world(DIRECTIONS[i], 1.0)
+		var dot: float = v.normalized().dot(d.normalized())
+		if dot > best_dot:
+			best_dot = dot
+			best = i
+	return best
+
+
+## Hex coordinates as JSON: [q, r].
+static func to_json(a: Vector2i) -> Array:
+	return [a.x, a.y]
+
+
 static func neighbors(a: Vector2i) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	for d: Vector2i in DIRECTIONS:

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "cards": [
+    {"id": "TA-001", "name": "Alpha", "type": "Hero", "color": "Red", "wt": 2,
+     "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2}, "text": ""},
+    {"id": "TA-002", "name": "Bravo", "type": "Hero", "color": "Blue", "wt": 3,
+     "stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 2, "kb": 3}, "text": ""},
+    {"id": "TA-003", "name": "Charlie", "type": "Hero", "color": "Green", "wt": 1,
+     "stats": {"hp": 8, "dmg": 2, "pwr": 1000, "rng": 4, "kb": 1}, "text": ""},
+    {"id": "TA-004", "name": "Delta", "type": "Hero", "color": "Purple", "wt": 4,
+     "stats": {"hp": 14, "dmg": 5, "pwr": 4000, "rng": 2, "kb": 4}, "text": ""},
+    {"id": "TB-001", "name": "Echo", "type": "Hero", "color": "Red", "wt": 2,
+     "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2}, "text": ""},
+    {"id": "TB-002", "name": "Foxtrot", "type": "Hero", "color": "Cyan", "wt": 2,
+     "stats": {"hp": 10, "dmg": 3, "pwr": 2500, "rng": 3, "kb": 2}, "text": ""},
+    {"id": "TB-003", "name": "Golf", "type": "Hero", "color": "Yellow", "wt": 1,
+     "stats": {"hp": 9, "dmg": 2, "pwr": 1500, "rng": 2, "kb": 1}, "text": ""},
+    {"id": "TA-012", "name": "Alpha, Awakened", "type": "Evolution", "color": "Red", "cost": 3,
+     "evo": 1, "hero": "Alpha", "stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2}, "text": ""},
+    {"id": "TX-010", "name": "Filler", "type": "Action", "color": "Red", "cost": 1, "text": "Nothing."},
+    {"id": "TX-011", "name": "Filler Two", "type": "Action", "color": "Blue", "cost": 2, "text": "Nothing."},
+    {"id": "TS-001", "name": "Frozen Lake", "type": "Stage", "text": "Terrain: Ice\nWhen revealed, nothing happens."},
+    {"id": "TS-002", "name": "Swamp", "type": "Stage", "text": "Terrain: Mud"},
+    {"id": "TS-003", "name": "Plain Field", "type": "Stage", "text": "No terrain."},
+    {"id": "TS-004", "name": "Glacier", "type": "Stage", "text": "Terrain: Ice"},
+    {"id": "TS-005", "name": "Bog", "type": "Stage", "text": "Terrain: Mud"},
+    {"id": "TS-006", "name": "Meadow", "type": "Stage", "text": ""}
+  ]
+}

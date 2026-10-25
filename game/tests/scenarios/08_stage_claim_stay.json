@@ -1,0 +1,31 @@
+{
+  "name": "Claim: activated hero on a stage chooses Stay and is still there at the end",
+  "steps": [
+    {"setup": {"seed": 1, "decks": [
+      {"name": "A", "heroes": ["TA-001", "TA-002", "TA-003"], "cards": {"TX-010": 40},
+       "stages": ["TS-001"], "cores": []},
+      {"name": "B", "heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-010": 40},
+       "stages": ["TS-006"], "cores": []}
+    ]}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "stages.stage:p0:1.center": [4, 8], "stages.stage:p0:1.placed": true, "stages.stage:p0:1.revealed": true,
+      "stages.stage:p1:1.placed": false,
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [5, 8],
+      "heroes.p1:TB-001.zone": "map", "heroes.p1:TB-001.hex": [7, 2]
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"move": {"type": "choice", "player": 0, "roll": false}},
+    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {
+      "turn": 2, "phase": "select",
+      "stages.stage:p0:1.claimed_by": 0,
+      "stages.stage:p0:1.terrain_until_turn": 2,
+      "battles": {"$size": 0}
+    }}
+  ]
+}

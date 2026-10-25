@@ -343,8 +343,8 @@ func _on_motion_started(ball: BallBody, thrown: bool) -> void:
 	_range_key = ""
 
 
-## Sandbox rule: off the table or onto any start strip after being on the map counts as out.
-## (The real game decides this in the rules engine; see docs/pitanja.md for own-strip entry.)
+## Off the table or onto any start strip (own included) after being on the map is a ring-out.
+## The match applies the same rule in the rules engine; the sim only reports the facts.
 static func _is_out(r: RollResult) -> bool:
 	return r.ring_out or r.strip_entered >= 0
 

@@ -1,0 +1,39 @@
+{
+  "name": "Rolling onto any start strip is a ring-out; the player may only pass this turn",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 10],
+      "heroes.p0:TA-001.cores": ["core:p1:1"],
+      "cores.core:p1:1.place": "hero", "cores.core:p1:1.holder": "p0:TA-001", "cores.core:p1:1.face_up": true
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"move": {"type": "choice", "player": 0, "roll": true}},
+    {"move": {"type": "choice", "player": 1, "roll": true}},
+    {"pass_round": true},
+    {"move": {"type": "aim", "player": 0, "dir": [0, 1], "power": 1.0}},
+    {"move": {"type": "aim", "player": 1, "dir": [0, 1], "power": 0.5}},
+    {"roll": {"thrower": "p0:TA-001", "results": [
+      {"ball": "p0:TA-001", "thrown": true, "end_area": 1, "strip_entered": 0, "end_hex": [4, 16]},
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 1, "strip_entered": -1, "end_hex": [0, 0]}
+    ]}},
+    {"expect": {
+      "heroes.p0:TA-001.zone": "strip",
+      "heroes.p0:TA-001.hp": 10,
+      "heroes.p0:TA-001.cores": {"$size": 0},
+      "cores.core:p1:1.place": "inventory",
+      "players.p1.inventory": ["core:p1:1"],
+      "heroes.p1:TB-001.zone": "strip",
+      "only_pass": {"$has": 0},
+      "phase": "roll"
+    }},
+    {"pass_round": true},
+    {"expect": {"phase": "postroll", "pending": {"$size": 1}, "pending.0.type": "return_core", "pending.0.player": 1}},
+    {"move": {"type": "return_core", "player": 1, "core": "core:p1:1", "hex": [4, 10]}, "error": "your half"},
+    {"move": {"type": "return_core", "player": 1, "core": "core:p1:1", "hex": [6, 3]}},
+    {"expect": {"cores.core:p1:1.place": "field", "cores.core:p1:1.hex": [6, 3], "players.p1.inventory": {"$size": 0}, "pending": {"$size": 0}}}
+  ]
+}

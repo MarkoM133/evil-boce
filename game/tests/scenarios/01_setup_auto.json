@@ -1,0 +1,35 @@
+{
+  "name": "Automatic setup, mulligan, first draw",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"expect": {
+      "phase": "mulligan",
+      "turn": 0,
+      "players.p0.hand": {"$size": 5},
+      "players.p0.deck": {"$size": 35},
+      "players.p1.hand": {"$size": 5},
+      "stages.stage:p0:1.placed": true,
+      "stages.stage:p1:3.placed": true,
+      "cores.core:p0:1.place": "field",
+      "cores.core:p1:6.place": "field",
+      "cores.core:p1:6.face_up": false,
+      "heroes.p0:TA-001.zone": "strip",
+      "heroes.p0:TA-001.hp": 10,
+      "heroes.p0:TA-002.big": false,
+      "winner": -1
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}, "error": "mulligan"},
+    {"move": {"type": "mulligan", "player": 0, "keep": false}},
+    {"expect": {"players.p0.hand": {"$size": 5}, "players.p0.deck": {"$size": 35}, "players.p0.mulligan_done": true}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}, "error": "already"},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"expect": {
+      "phase": "select",
+      "turn": 1,
+      "players.p0.hand": {"$size": 6},
+      "players.p1.hand": {"$size": 6},
+      "players.p0.energy": 1,
+      "players.p1.energy": 1
+    }}
+  ]
+}
