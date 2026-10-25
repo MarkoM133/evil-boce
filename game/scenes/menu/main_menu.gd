@@ -1,8 +1,10 @@
 extends Control
-## Main menu (GDD 7). Play (local match or against the placeholder bot), Sandbox and Exit work.
+## Main menu (GDD 7). Continue (an unfinished match), Play, Sandbox, Replays and Exit work.
 
 const SANDBOX_SCENE: String = "res://scenes/sandbox/sandbox.tscn"
 const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
+const MATCH_SCENE: String = "res://scenes/match/match.tscn"
+const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
 
 
 func _ready() -> void:
@@ -43,8 +45,12 @@ func _ready() -> void:
 	col.add_child(gap)
 
 	var first: Button = null
-	for entry: Array in [["PLAY", "play"], ["SANDBOX", "sandbox"], ["REPLAYS", ""], ["DECKS", ""],
-			["SETTINGS", ""], ["EXIT", "exit"]]:
+	var entries: Array = [["PLAY", "play"], ["SANDBOX", "sandbox"], ["REPLAYS", "replays"], ["DECKS", ""],
+			["SETTINGS", ""], ["EXIT", "exit"]]
+	# A match left unfinished (quit or crash) comes back first.
+	if ReplayStore.has_current():
+		entries.push_front(["CONTINUE", "continue"])
+	for entry: Array in entries:
 		var b := Button.new()
 		b.text = str(entry[0])
 		b.theme_type_variation = &"MenuItem"
@@ -59,7 +65,7 @@ func _ready() -> void:
 		b.pressed.connect(_on_pressed.bind(action))
 		b.mouse_entered.connect(func() -> void: if not b.disabled: b.grab_focus())
 		col.add_child(b)
-		if action == "play":
+		if first == null and (action == "continue" or action == "play"):
 			first = b
 	if first != null:
 		first.grab_focus.call_deferred()
@@ -81,8 +87,18 @@ func _ready() -> void:
 
 func _on_pressed(action: String) -> void:
 	match action:
+		"continue":
+			var record: MatchRecord = ReplayStore.load_current()
+			if record == null or record.frame_count() == 0:
+				ReplayStore.clear_current()
+				get_tree().reload_current_scene()
+				return
+			MatchLaunch.config = MatchLaunch.from_record(record)
+			get_tree().change_scene_to_file(MATCH_SCENE)
 		"play":
 			get_tree().change_scene_to_file(SETUP_SCENE)
+		"replays":
+			get_tree().change_scene_to_file(REPLAYS_SCENE)
 		"sandbox":
 			get_tree().change_scene_to_file(SANDBOX_SCENE)
 		"exit":

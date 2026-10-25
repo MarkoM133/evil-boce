@@ -34,6 +34,8 @@ var local_slots: PackedInt32Array = PackedInt32Array()
 var hover_hero: String = ""
 ## True while the physics runs, so the prompt can say so.
 var rolling: bool = false
+## Watching a recorded match: no prompts, buttons or end screen, only the table and panels.
+var replay: bool = false
 ## Setup: the stage or core the local player places next (set by the match scene).
 var setup_pick: String = ""
 ## How far the hand is lowered (0 = up); it drops when the mouse is over the table (GDD 11).
@@ -508,7 +510,7 @@ func _needs_input(slot: int) -> bool:
 func _refresh_prompt() -> void:
 	_clear(_actions)
 	_prompt.text = ""
-	if state.is_over():
+	if state.is_over() or replay:
 		return
 	if rolling:
 		_prompt.text = "Rolling…"
@@ -866,7 +868,7 @@ func _describe(e: Dictionary) -> String:
 
 
 func _refresh_over() -> void:
-	_over.visible = state.is_over()
+	_over.visible = state.is_over() and not replay
 	if not _over.visible:
 		return
 	var reasons: Dictionary = {"ko": "all heroes KO", "stages": "stages claimed", "deckout": "deck-out",

@@ -5,6 +5,7 @@ extends Node3D
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
+const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
 ## Seconds between two bot moves, so a human can follow.
 const BOT_DELAY: float = 0.5
 ## Core token radius; a rolling ball picks a core up when it touches it.
@@ -47,20 +48,38 @@ var _menu: Control
 ## hex under the mouse, for the preview.
 var _setup_pick: String = ""
 var _setup_hover := Vector2i(9999, 9999)
+## Watching a recorded match: the record, the frame shown, playback.
+var _replay: MatchRecord
+var _frame: int = 0
+var _replay_bar: ReplayBar
+var _playing: bool = false
+var _play_wait: float = 0.0
+var _replay_speed: float = 1.0
+var _replay_busy: bool = false
+## Frames already in user://saves/current.json, and whether the finished match was filed.
+var _saved_frames: int = 0
+var _filed: bool = false
 
 
 func _ready() -> void:
 	tuning = PhysicsTuning.load_default()
 	db = CardDb.load_from(GameSettings.data_path())
-	engine = RulesEngine.new(db.catalog)
 	_config = MatchLaunch.take(db.catalog)
 	var settings: MatchSettings = _config["settings"]
 	var decks: Array = _config["decks"]
 	var seed_: int = JsonUtil.as_int(_config.get("seed", 1), 1)
 	var bot_slots: Array = JsonUtil.as_array(_config.get("bots", []))
-	# Every match is recorded (replay, save, stats); a resumed one carries on from its record.
+	# Every match is recorded (replay, save, stats); a resumed or watched one uses the cards as
+	# they were when it was played.
 	var resume_from: MatchRecord = _config.get("resume", null)
-	if resume_from != null:
+	_replay = _config.get("replay", null)
+	var from_record: MatchRecord = _replay if _replay != null else resume_from
+	engine = RulesEngine.new(from_record.catalog() if from_record != null else db.catalog)
+	if _replay != null:
+		_frame = clampi(JsonUtil.as_int(_config.get("frame", 0)), 0, _replay.frame_count() - 1)
+		state = _replay.state_at(_frame)
+		bot_slots = []
+	elif resume_from != null:
 		recorder = MatchRecorder.resume(engine, resume_from, JsonUtil.as_int(_config.get("frame", -1), -1))
 	else:
 		var seats: Array = []
@@ -68,7 +87,8 @@ func _ready() -> void:
 			var d: Dictionary = JsonUtil.as_dict(decks[i])
 			seats.append({"name": d.get("name", ""), "bot": bot_slots.has(i), "deck_name": d.get("deck_name", "")})
 		recorder = MatchRecorder.start(engine, settings, decks, seed_, seats, str(ProjectSettings.get_setting("application/config/version", "")))
-	state = recorder.state
+	if recorder != null:
+		state = recorder.state
 	for slot: Variant in bot_slots:
 		bots[JsonUtil.as_int(slot)] = SimpleBot.new(seed_ + JsonUtil.as_int(slot))
 
@@ -157,9 +177,25 @@ func _build_hud() -> void:
 	layer.add_child(hud)
 	var local := PackedInt32Array()
 	for p: PlayerState in state.players:
-		if not bots.has(p.slot):
+		if not bots.has(p.slot) and _replay == null:
 			local.append(p.slot)
+	hud.replay = _replay != null
 	hud.setup(engine, state, db, local)
+	if _replay != null:
+		_replay_bar = ReplayBar.new()
+		_replay_bar.theme = UiTheme.get_theme()
+		hud.add_child(_replay_bar)
+		_replay_bar.step_pressed.connect(func(d: int) -> void: _show_frame(_frame + d, d > 0))
+		_replay_bar.jump_pressed.connect(func(to_end: bool) -> void: _show_frame(_replay.frame_count() - 1 if to_end else 0, false))
+		_replay_bar.play_toggled.connect(_toggle_play)
+		_replay_bar.speed_changed.connect(func(s: float) -> void: _replay_speed = s)
+		_replay_bar.continue_pressed.connect(func() -> void:
+			MatchLaunch.config = MatchLaunch.from_record(_replay, _frame)
+			get_tree().change_scene_to_file(MATCH_SCENE))
+		_replay_bar.exit_pressed.connect(func() -> void: get_tree().change_scene_to_file(REPLAYS_SCENE))
+		_replay_bar.show_frame(_frame, _replay.frame_count(), state.turn, state.phase)
+		if JsonUtil.as_bool(_config.get("autoplay", false)):
+			_set_playing.call_deferred(true)
 	hud.pass_pressed.connect(func(slot: int) -> void: _apply(Move.make(Move.PASS, slot)))
 	hud.choice_pressed.connect(func(slot: int, roll: bool) -> void: _apply(Move.make(Move.CHOICE, slot, {"roll": roll})))
 	hud.keep_pressed.connect(func(slot: int, keep: bool) -> void: _apply(Move.make(Move.MULLIGAN, slot, {"keep": keep})))
@@ -224,7 +260,7 @@ func _build_menu_overlay() -> Control:
 
 
 func _toggle_menu() -> void:
-	if state.is_over():
+	if state.is_over() and _replay == null:
 		get_tree().change_scene_to_file(MENU_SCENE)
 		return
 	_menu.visible = not _menu.visible
@@ -242,7 +278,7 @@ func _rematch() -> void:
 # --- moves ------------------------------------------------------------------
 
 func _apply(m: Move) -> void:
-	if _runner.is_running() or _launching:
+	if _runner.is_running() or _launching or recorder == null:
 		return
 	var err: String = recorder.apply(m)
 	if not err.is_empty():
@@ -253,12 +289,18 @@ func _apply(m: Move) -> void:
 
 
 ## Saves the match in progress; when it is over, files the replay and the stats summary.
+## A resumed match starts from the beginning of its last phase, so the save is only written
+## when a new phase opens, not after every move.
 func _after_change() -> void:
 	if state.is_over():
+		if _filed:
+			return
+		_filed = true
 		ReplayStore.clear_current()
 		ReplayStore.save_replay(recorder.record)
 		ReplayStore.write_stats(recorder.record, db.root_dir)
-	else:
+	elif recorder.record.frame_count() != _saved_frames:
+		_saved_frames = recorder.record.frame_count()
 		ReplayStore.save_current(recorder.record)
 
 
@@ -278,6 +320,11 @@ func _sync() -> void:
 	hud.rolling = _runner.is_running() or _launching
 	hud.setup_pick = _setup_item()
 	hud.refresh()
+	if _replay != null:
+		# Watching: nothing moves by itself; balls only follow recorded paths.
+		for b: BallBody in _bodies.values():
+			b.freeze = true
+		return
 	if state.awaiting_roll and not _runner.is_running() and not _launching:
 		_launch_roll()
 
@@ -609,7 +656,73 @@ func _process(delta: float) -> void:
 	if _sling.is_aiming():
 		_sling.update(cam.camera, get_viewport().get_mouse_position(), get_viewport().get_visible_rect().size.y)
 	_refresh_range()
+	if _replay != null:
+		_run_playback(delta)
+		return
 	_run_bots(delta)
+
+
+# --- watching a replay --------------------------------------------------------------
+
+## Shows frame `i`; stepping one forward first plays the rolls recorded in the frame left.
+func _show_frame(i: int, animate: bool) -> void:
+	if _replay_busy:
+		return
+	var to: int = clampi(i, 0, _replay.frame_count() - 1)
+	var from: int = _frame
+	_frame = to
+	if animate and to == from + 1:
+		var rolls: Array = JsonUtil.as_array(_replay.frames[from].get("rolls", []))
+		if not rolls.is_empty():
+			_replay_busy = true
+			for r: Variant in rolls:
+				await _play_roll(RollOutcome.from_dict(JsonUtil.as_dict(r)))
+			_replay_busy = false
+	state = _replay.state_at(_frame)
+	hud.state = state
+	_range_key = ""
+	_sync()
+	_replay_bar.show_frame(_frame, _replay.frame_count(), state.turn, state.phase)
+	if _frame >= _replay.frame_count() - 1:
+		_set_playing(false)
+
+
+## Moves every ball of the outcome along its recorded path, all at once.
+func _play_roll(o: RollOutcome) -> void:
+	var step: float = float(tuning.path_sample_every) / float(Engine.physics_ticks_per_second) / _replay_speed
+	var longest: float = 0.0
+	for r: RollResult in o.results:
+		if not _bodies.has(r.ball_id) or r.path.size() < 2:
+			continue
+		var b: BallBody = _bodies[r.ball_id]
+		_views[r.ball_id].close_now()
+		b.freeze = true
+		var t: Tween = create_tween()
+		for p: Vector3 in r.path:
+			t.tween_property(b, "global_position", p, step)
+		longest = maxf(longest, step * r.path.size())
+	await get_tree().create_timer(longest + 0.15).timeout
+
+
+func _toggle_play() -> void:
+	if _frame >= _replay.frame_count() - 1:
+		_show_frame(0, false)
+	_set_playing(not _playing)
+
+
+func _set_playing(on: bool) -> void:
+	_playing = on
+	_play_wait = 0.0
+	_replay_bar.set_playing(on)
+
+
+func _run_playback(delta: float) -> void:
+	if not _playing or _replay_busy:
+		return
+	_play_wait += delta * _replay_speed
+	if _play_wait >= 1.2:
+		_play_wait = 0.0
+		_show_frame(_frame + 1, true)
 
 
 func _run_bots(delta: float) -> void:
@@ -638,6 +751,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event is InputEventKey and (event as InputEventKey).pressed and (event as InputEventKey).keycode == KEY_ESCAPE:
 			_toggle_menu()
 		return
+	if _replay != null:
+		_replay_input(event)
+		return
 	if event is InputEventKey:
 		_on_key(event as InputEventKey)
 		return
@@ -656,6 +772,31 @@ func _unhandled_input(event: InputEvent) -> void:
 			var gp: Vector3 = g
 			_setup_hover = arena.hex_at(gp)
 	if event is InputEventMouseMotion and not _sling.is_aiming() and not cam.is_dragging():
+		_set_hover(_hero_under_mouse(), true)
+	cam.handle_input(event)
+
+
+## While watching only the camera and the replay keys work: Space play / pause, Left / Right
+## step, Home view, Esc menu.
+func _replay_input(event: InputEvent) -> void:
+	if event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo:
+		match (event as InputEventKey).keycode:
+			KEY_ESCAPE:
+				_toggle_menu()
+			KEY_SPACE:
+				_toggle_play()
+			KEY_RIGHT:
+				_show_frame(_frame + 1, true)
+			KEY_LEFT:
+				_show_frame(_frame - 1, false)
+			KEY_HOME:
+				cam.reset_view()
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			cam.begin_drag(OrbitCamera.Drag.ORBIT if mb.pressed else OrbitCamera.Drag.NONE)
+	if event is InputEventMouseMotion and not cam.is_dragging():
 		_set_hover(_hero_under_mouse(), true)
 	cam.handle_input(event)
 

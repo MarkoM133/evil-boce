@@ -30,6 +30,24 @@ static func take(catalog: CardCatalog) -> Dictionary:
 	}
 
 
+## A match from a record: `replay` watches it, otherwise it carries on from frame `frame`
+## (-1 = the last one) with the same seats (bots stay bots).
+static func from_record(record: MatchRecord, frame: int = -1, replay: bool = false) -> Dictionary:
+	var bots := PackedInt32Array()
+	for p: Dictionary in record.players:
+		if JsonUtil.as_bool(p.get("bot", false)):
+			bots.append(JsonUtil.as_int(p.get("slot", 0)))
+	var c: Dictionary = {
+		"settings": MatchSettings.from_dict(record.settings),
+		"decks": record.decks,
+		"bots": bots,
+		"seed": record.seed,
+		"frame": frame,
+	}
+	c["replay" if replay else "resume"] = record
+	return c
+
+
 ## A saved or random deck plus 3 random stages and the 6 cores, as RulesEngine.start_match wants.
 static func engine_deck(catalog: CardCatalog, deck: Dictionary, player_name: String,
 		rng: RandomNumberGenerator) -> Dictionary:
