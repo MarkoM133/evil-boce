@@ -15,6 +15,8 @@ signal no_hero_pressed(slot: int)
 signal card_pressed(slot: int, card_id: String, hero_id: String)
 ## Choosing a hero for a card started, changed or ended (target_heroes empty).
 signal targeting_changed
+## The battle camera switch (next to the battle bar) was clicked.
+signal battle_cam_pressed
 signal damage_pressed(slot: int, target: String)
 ## Answer to a "choose" decision (hero, core, card id or branch index; hexes go by click).
 signal choose_pressed(slot: int, value: Variant)
@@ -95,6 +97,9 @@ var _last_why_by: Dictionary = {}
 var _aim_line: Control
 ## Under the phase ribbon while a battle is fought: which one and who with what Power.
 var _battle_bar: HBoxContainer
+## The battle camera is on (set by the match): letterbox, only the fighting heroes in the rosters.
+var battle_cam: bool = false
+var _letterbox: Array[ColorRect] = []
 ## The big card above the hand (GDD 11): the card under the mouse ("" = none) and the one shown.
 var _hover_cid: String = ""
 var _big: TextureRect
@@ -155,6 +160,8 @@ func _refresh_battle_bar() -> void:
 		c.queue_free()
 	var on: bool = state.phase == GameState.PHASE_BATTLE and state.battle_index >= 0 and state.battle_index < state.battles.size()
 	_battle_bar.visible = on
+	for bar: ColorRect in _letterbox:
+		bar.visible = on and battle_cam
 	if not on:
 		return
 	_battle_bar.add_child(UiShape.chip("BATTLE %d / %d" % [state.battle_index + 1, state.battles.size()], Palette.ACCENT, Palette.FG, 20, 32.0, 16.0))
@@ -167,6 +174,18 @@ func _refresh_battle_bar() -> void:
 		if t == 1:
 			_battle_bar.add_child(UiShape.chip("VS", Palette.PANEL_SOLID, Palette.MUTED, 16, 32.0, 10.0))
 		_battle_bar.add_child(UiShape.chip("  ·  ".join(sides[t]), Palette.PANEL_SOLID, Palette.team(t).lightened(0.25), 20, 32.0, 16.0))
+	# The camera switch: on the battle, or the whole table (key in Settings → Keys).
+	var key: String = GameSettings.key_name(GameSettings.key("battle_cam"))
+	var sw: UiShape = UiShape.chip(("● BATTLE CAM" if battle_cam else "○ TABLE") + "  ·  " + key,
+		Palette.GOLD if battle_cam else Palette.SURFACE_2, Color.BLACK if battle_cam else Palette.FG, 16, 32.0, 14.0)
+	sw.mouse_filter = Control.MOUSE_FILTER_STOP
+	sw.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	sw.tooltip_text = "Battle camera on or off"
+	sw.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			battle_cam_pressed.emit())
+	_battle_bar.add_child(sw)
+	_battle_bar.mouse_filter = Control.MOUSE_FILTER_PASS
 
 
 ## A short message under the ribbon on a slanted chip of `color`.
@@ -225,6 +244,17 @@ func hero_name(h: HeroState) -> String:
 # --- layout -----------------------------------------------------------------
 
 func _build() -> void:
+	# Thin black bars top and bottom while the battle camera is on (under everything else).
+	for bottom: bool in [false, true]:
+		var bar := ColorRect.new()
+		bar.color = Color(0, 0, 0, 0.85)
+		bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE if bottom else Control.PRESET_TOP_WIDE)
+		bar.offset_top = -26.0 if bottom else 0.0
+		bar.offset_bottom = 0.0 if bottom else 26.0
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.visible = false
+		add_child(bar)
+		_letterbox.append(bar)
 	var menu := Button.new()
 	menu.text = "≡  MENU"
 	menu.focus_mode = Control.FOCUS_NONE
@@ -559,6 +589,9 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 		inv.horizontal_alignment = info.horizontal_alignment
 		col.add_child(inv)
 	for h: HeroState in state.heroes_of(slot):
+		# In the battle camera only the heroes fighting show.
+		if battle_cam and not _in_battle(h):
+			continue
 		col.add_child(_hero_slice(h, right))
 
 

@@ -89,7 +89,8 @@ const FPS_LIMITS: Array[int] = [0, 60, 120, 144, 240]
 ## Sound buses; Music and Effects send to Master and are made on first use.
 const BUSES: Array[String] = ["Master", "Music", "Effects"]
 ## Rebindable keys: action -> default key.
-const DEFAULT_KEYS: Dictionary[String, Key] = {"pass": KEY_SPACE, "menu": KEY_ESCAPE, "card_zoom": KEY_ALT}
+const DEFAULT_KEYS: Dictionary[String, Key] = {"pass": KEY_SPACE, "menu": KEY_ESCAPE, "card_zoom": KEY_ALT,
+	"battle_cam": KEY_C}
 ## The card-zoom key: held (the card shows while it is down) or pressed (on, then off).
 const ZOOM_MODES: Array[String] = ["hold", "press"]
 
@@ -261,3 +262,8 @@ static func cinema_fill() -> String:
 	if v == "" and str(_config().get_value("display", "menu_layout", "")) == "table":
 		return "table"
 	return v if CINEMA_FILLS.has(v) else "info"
+
+
+## The camera flies to each battle as it starts (Settings → Display).
+static func battle_cam_auto() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "battle_cam", true))

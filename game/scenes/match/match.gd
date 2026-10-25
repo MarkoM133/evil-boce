@@ -60,6 +60,8 @@ var _target_fx: Node3D
 ## Red rings under the heroes of the battle being fought (HUD 4), and for which battle.
 var _battle_fx: Node3D
 var _battle_fx_key: String = ""
+## The battle camera (HUD 5): which battle it last flew to, so it flies once per battle.
+var _cam_battle_key: String = ""
 var _marks := ImmediateMesh.new()
 var _line_mat: StandardMaterial3D
 var _bodies: Dictionary[String, BallBody] = {}
@@ -293,6 +295,7 @@ func _build_hud() -> void:
 			_flash_target(hero_id)
 		_apply(Move.make(Move.PLAY_CARD, slot, data)))
 	hud.targeting_changed.connect(_refresh_target_fx)
+	hud.battle_cam_pressed.connect(_toggle_battle_cam)
 	hud.damage_pressed.connect(func(slot: int, target: String) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target})))
 	hud.choose_pressed.connect(func(slot: int, value: Variant) -> void: _apply(Move.make(Move.CHOOSE, slot, {"value": value})))
 	hud.ability_pressed.connect(func(slot: int, hero_id: String, card_id: String, index: int) -> void:
@@ -528,6 +531,7 @@ func _sync() -> void:
 	_rebuild_tokens()
 	_range_key = ""
 	_draw_marks()
+	_update_battle_cam()
 	hud.rolling = _runner.is_running() or _launching
 	hud.setup_pick = _setup_item()
 	hud.refresh()
@@ -1166,7 +1170,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_setup_hover = arena.hex_at(gp)
 	if event is InputEventMouseMotion and not _sling.is_aiming() and not cam.is_dragging():
 		_set_hover(_hero_under_mouse(), true)
-	cam.handle_input(event)
+	# Moving the camera by hand leaves the battle camera (it stays where it was moved to).
+	if cam.handle_input(event) and hud.battle_cam:
+		hud.battle_cam = false
+		hud.refresh()
 
 
 ## While watching only the camera and the replay keys work: Space play / pause, Left / Right
@@ -1211,6 +1218,8 @@ func _on_key(k: InputEventKey) -> void:
 				_apply(Move.make(Move.PASS, state.to_act))
 		KEY_HOME:
 			cam.reset_view()
+		KEY_C:
+			_toggle_battle_cam()
 
 
 func _on_left(pressed: bool) -> void:
@@ -1649,4 +1658,61 @@ func demo_battle() -> void:
 	state.battle_index = 0
 	_range_key = ""
 	_sync()
-	cam.focus(arena.hex_center(mid), 18.0)
+
+
+# --- battle camera (mockup HUD 5) ---------------------------------------------------------
+
+## As each battle starts the camera flies to it (Settings → Display); when the battles are
+## over it goes back to the table.
+func _update_battle_cam() -> void:
+	var ids: PackedStringArray = _current_battle()
+	if ids.is_empty():
+		if not _cam_battle_key.is_empty():
+			_cam_battle_key = ""
+			if hud.battle_cam:
+				hud.battle_cam = false
+				cam.reset_view()
+		return
+	var key: String = "%d:%d:%s" % [state.turn, state.battle_index, ",".join(ids)]
+	if key == _cam_battle_key:
+		return
+	_cam_battle_key = key
+	if GameSettings.battle_cam_auto() and _replay == null:
+		_frame_battle(ids)
+
+
+## The camera on the battle's heroes, close enough that both fill the middle.
+func _frame_battle(ids: PackedStringArray) -> void:
+	var points: Array[Vector3] = []
+	for hid: String in ids:
+		if _bodies.has(hid):
+			points.append(_bodies[hid].global_position)
+	if points.is_empty():
+		return
+	var mid := Vector3.ZERO
+	for p: Vector3 in points:
+		mid += p
+	mid /= points.size()
+	var spread: float = 0.0
+	for p: Vector3 in points:
+		spread = maxf(spread, Vector2(p.x - mid.x, p.z - mid.z).length())
+	cam.focus(mid, clampf(spread * 2.4 + 7.0, 8.0, 30.0))
+	hud.battle_cam = true
+
+
+## Key or switch: into the battle camera, or out to the table.
+func _toggle_battle_cam() -> void:
+	var ids: PackedStringArray = _current_battle()
+	if hud.battle_cam or ids.is_empty():
+		_leave_battle_cam()
+		return
+	_frame_battle(ids)
+	hud.refresh()
+
+
+func _leave_battle_cam() -> void:
+	if not hud.battle_cam:
+		return
+	hud.battle_cam = false
+	cam.reset_view()
+	hud.refresh()
