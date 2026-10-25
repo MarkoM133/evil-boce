@@ -15,13 +15,22 @@ extends Resource
 ## From this WT up a ball covers 7 hexes.
 @export var big_from_wt: int = 4
 
+## Highest WT the sim accepts; larger values are clamped.
+@export var max_wt: int = 9
+
 @export_group("Rolling")
 ## Constant slow-down on plain ground, m/s^2. Higher = shorter rolls.
 @export var deceleration: float = 9.0
 ## Below this speed (m/s) a ball counts as stopped.
 @export var stop_speed: float = 0.12
+## Physics frames below stop_speed before the ball counts as stopped.
+@export var rest_frames: int = 4
+## A resting ball pushed faster than this (m/s) starts a roll of its own.
+@export var wake_speed: float = 0.24
 ## Ball-to-ball bounciness, 0 = dead, 1 = perfect billiards.
 @export var ball_bounce: float = 0.9
+## Physics frames between two recorded path points.
+@export var path_sample_every: int = 3
 
 @export_group("Slingshot")
 ## Speed = full speed * power ^ exponent. 0.5 makes distance linear in drag length.
@@ -40,6 +49,8 @@ extends Resource
 @export var mud_factor: float = 2.6
 
 @export_group("Ring-out")
+## A ball below this height (m) has fallen off the table.
+@export var fell_below_y: float = -3.0
 ## Seconds a ringed-out ball keeps falling before it goes back to its strip.
 @export var ring_out_return_delay: float = 1.0
 

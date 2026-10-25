@@ -7,4 +7,5 @@
 - `rules/` is pure logic with tests; no scene or Node code there.
 - Unclear rule → write it into `game/docs/pitanja.md` and ask Marko; do not invent rules.
 - Code and commits in English; talk to Marko in Croatian, briefly.
-- Build, tests and tools: `game/docs/BUILD.md`. Hex conventions: `game/docs/hex.md`. Physics numbers only in `game/sim/physics_tuning.tres`.
+- Build, tests and tools: `game/docs/BUILD.md`. Hex conventions: `game/docs/hex.md`. Ids of slots, heroes, cores and stages: `game/docs/ids.md`. Physics numbers only in `game/sim/physics_tuning.tres`.
+- The sim only reports facts (`RollResult`, gathered per Roll into `RollOutcome` by `RollRunner`); it never decides rules. Terrain is data (`TerrainMap`) owned by whoever runs the game; the arena only draws it.

@@ -11,9 +11,13 @@ var db: CardDb
 var heroes: Array[HeroDef] = []
 var arena: Arena
 var world: SandboxWorld
+## Painted terrain; the arena draws it and the world reads friction from it.
+var terrain := TerrainMap.new()
 var cam: OrbitCamera
 var pieces: Array[SandboxPiece] = []
 
+var _runner: RollRunner
+var _last_outcome: RollOutcome
 var _by_body: Dictionary[BallBody, SandboxPiece] = {}
 var _balls: Node3D
 var _aim_mesh := ImmediateMesh.new()
@@ -38,7 +42,6 @@ var _press_pos := Vector2.ZERO
 var _press_on_empty: bool = false
 var _auto_open: bool = true
 var _show_path: bool = true
-var _throw_group: Array[SandboxPiece] = []
 var _range_key: String = ""
 var _next_id: int = 1
 
@@ -92,10 +95,15 @@ func _build_scene() -> void:
 	arena = Arena.new()
 	arena.name = "Arena"
 	add_child(arena)
-	world = SandboxWorld.new(tuning, arena)
+	arena.set_terrain(terrain)
+	world = SandboxWorld.new(tuning, arena, terrain)
 	_balls = Node3D.new()
 	_balls.name = "Balls"
 	add_child(_balls)
+	_runner = RollRunner.new()
+	_runner.name = "RollRunner"
+	_runner.finished.connect(_on_outcome)
+	add_child(_runner)
 	cam = OrbitCamera.new()
 	cam.name = "Camera"
 	add_child(cam)
@@ -112,6 +120,7 @@ func _build_scene() -> void:
 func _set_map_size(n: int) -> void:
 	_clear_balls()
 	GameSettings.set_map_size(n)
+	terrain.clear()
 	arena.build(HexMap.new(n, tuning.hex_size), tuning)
 	cam.frame_table(arena.extent())
 	_range_key = ""
@@ -127,7 +136,8 @@ func _clear_balls() -> void:
 	pieces.clear()
 	world.pieces.clear()
 	_by_body.clear()
-	_throw_group.clear()
+	_runner.unwatch_all()
+	_last_outcome = null
 	_path_mesh.clear_surfaces()
 
 
@@ -278,6 +288,7 @@ func spawn(hero: HeroDef, team: int, pos: Vector3) -> SandboxPiece:
 	pieces.append(p)
 	world.pieces.append(p)
 	_by_body[p.body] = p
+	_runner.watch(p.body)
 	p.view.settle()
 	return p
 
@@ -293,8 +304,8 @@ func _remove(p: SandboxPiece) -> void:
 		_hovered = null
 	pieces.erase(p)
 	world.pieces.erase(p)
-	_throw_group.erase(p)
 	_by_body.erase(p.body)
+	_runner.unwatch(p.body)
 	p.body.queue_free()
 	_range_key = ""
 
@@ -329,35 +340,58 @@ func _on_motion_started(ball: BallBody, thrown: bool) -> void:
 		return
 	if p.view.is_open() or p.view.state == BallView.State.CLOSING:
 		p.view.close(true)
-	if thrown:
-		_throw_group = [p]
-	elif not _throw_group.has(p):
-		_throw_group.append(p)
 	_range_key = ""
+
+
+## Sandbox rule: off the table or onto any start strip after being on the map counts as out.
+## (The real game decides this in the rules engine; see docs/pitanja.md for own-strip entry.)
+static func _is_out(r: RollResult) -> bool:
+	return r.ring_out or r.strip_entered >= 0
 
 
 func _on_roll_finished(ball: BallBody, result: RollResult) -> void:
 	var p: SandboxPiece = _by_body.get(ball)
 	if p == null:
 		return
-	p.last_path = result.path
-	if result.ring_out:
+	if _is_out(result):
 		p.return_in = tuning.ring_out_return_delay
 		_show_toast("RING-OUT  ·  %s" % p.label())
 	elif _auto_open and result.end_area == BallWorld.Area.MAP:
 		p.view.open()
 	else:
 		p.view.settle()
-	if result.thrown:
-		_report_throw(p, result)
-	_draw_paths()
 	_range_key = ""
 
 
-func _report_throw(p: SandboxPiece, r: RollResult) -> void:
+## Throws `p` through the RollRunner; false while another roll is still going.
+func _throw(p: SandboxPiece, dir: Vector3, power: float) -> bool:
+	if _runner.is_running():
+		_show_toast("Wait for the roll to finish")
+		return false
+	return _runner.start(p.body, dir, power)
+
+
+func _on_outcome(o: RollOutcome) -> void:
+	_last_outcome = o
+	_report_throw(o)
+	_draw_paths()
+
+
+func _piece_by_id(ball_id: String) -> SandboxPiece:
+	for q: SandboxPiece in pieces:
+		if q.body.ball_id == ball_id:
+			return q
+	return null
+
+
+func _report_throw(o: RollOutcome) -> void:
+	var r: RollResult = o.thrower_result()
+	var p: SandboxPiece = _piece_by_id(o.thrower)
+	if r == null or p == null:
+		return
 	var spacing: float = tuning.hex_spacing()
 	var big: String
-	if r.ring_out:
+	if _is_out(r):
 		big = "RING-OUT"
 	else:
 		big = "%d HEX" % Hex.distance(r.start_hex, r.end_hex)
@@ -365,14 +399,18 @@ func _report_throw(p: SandboxPiece, r: RollResult) -> void:
 	if not r.collisions.is_empty():
 		var names: PackedStringArray = PackedStringArray()
 		for id: String in r.collisions:
-			for q: SandboxPiece in pieces:
-				if q.body.ball_id == id:
-					names.append(q.label())
+			var q: SandboxPiece = _piece_by_id(id)
+			if q != null:
+				names.append(q.label())
 		hits = "hit " + ", ".join(names)
 	var info: String = "%s · WT%d · power %d%%\n%.1f hexes in a straight line, %.1f s, %s" % [
 		p.label(), p.body.wt, roundi(r.power * 100.0), r.displacement() / spacing, r.duration, hits]
 	if r.ring_out:
-		info += "\nout over the " + ("start strip" if r.ring_out_reason == "strip" else "edge")
+		info += "\nout over the edge"
+	elif r.strip_entered >= 0:
+		info += "\nout onto team %d's start strip" % (r.strip_entered + 1)
+	if o.results.size() > 1:
+		info += "\n%d balls moved, table still after %.1f s" % [o.results.size(), o.duration]
 	_panel.set_last_throw(big, info)
 
 
@@ -445,19 +483,24 @@ func _draw_paths() -> void:
 	_path_mesh.clear_surfaces()
 	if not _show_path:
 		return
+	if _last_outcome == null:
+		return
 	var any: bool = false
-	for p: SandboxPiece in _throw_group:
-		if p.last_path.size() >= 2:
+	for r: RollResult in _last_outcome.results:
+		if r.path.size() >= 2:
 			any = true
 	if not any:
 		return
 	_path_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, _line_mat)
-	for p: SandboxPiece in _throw_group:
+	for r: RollResult in _last_outcome.results:
+		var p: SandboxPiece = _piece_by_id(r.ball_id)
+		if p == null:
+			continue
 		var pts := PackedVector3Array()
-		for v: Vector3 in p.last_path:
+		for v: Vector3 in r.path:
 			if v.y > -0.05:
 				pts.append(Vector3(v.x, 0.03, v.z))
-		var width: float = 0.12 if p == _throw_group[0] else 0.07
+		var width: float = 0.12 if r.ball_id == _last_outcome.thrower else 0.07
 		MeshKit.ribbon(_path_mesh, pts, width, Color(Palette.team(p.team).lightened(0.35), 0.75))
 	_path_mesh.surface_end()
 
@@ -626,13 +669,16 @@ func _release_aim() -> void:
 	_cancel_aim()
 	if p == null or power < tuning.min_power:
 		return
+	if _runner.is_running():
+		_show_toast("Wait for the roll to finish")
+		return
 	if p.view.state == BallView.State.CLOSED:
-		p.body.launch(dir, power)
+		_throw(p, dir, power)
 		return
 	p.view.close(true)
 	get_tree().create_timer(BallView.CLOSE_TIME_FAST).timeout.connect(func() -> void:
 		if is_instance_valid(p.body) and p.body.motion == BallBody.Motion.RESTING:
-			p.body.launch(dir, power))
+			_throw(p, dir, power))
 
 
 func _cancel_aim() -> void:
@@ -700,14 +746,16 @@ func _paint_at_mouse() -> void:
 	if g == null:
 		return
 	var gp: Vector3 = g
-	arena.paint_terrain(arena.hex_at(gp), _terrain_tool)
+	terrain.set_patch(arena.hex_at(gp), _terrain_tool, arena.map)
+	arena.refresh_terrain()
 
 
 # --- panel callbacks ----------------------------------------------------------
 
 func _on_reset() -> void:
 	_clear_balls()
-	arena.clear_terrain()
+	terrain.clear()
+	arena.refresh_terrain()
 	_set_tool(Tool.NONE)
 	_panel.set_last_throw("–", "Distance is start hex to end hex.")
 
@@ -760,8 +808,9 @@ func demo_setup() -> void:
 	spawn(_find_hero("JO1-002"), 1, arena.hex_center(c + Vector2i(4, -1)))
 	spawn(_find_hero("OP1-002"), 0, arena.strip_point(0, -3.0, 1.0))
 	spawn(_find_hero("JO1-005"), 1, arena.strip_point(1, 4.0, 1.0))
-	arena.paint_terrain(c + Vector2i(-4, 0), Terrain.Type.ICE)
-	arena.paint_terrain(c + Vector2i(4, 1), Terrain.Type.MUD)
+	terrain.set_patch(c + Vector2i(-4, 0), Terrain.Type.ICE, arena.map)
+	terrain.set_patch(c + Vector2i(4, 1), Terrain.Type.MUD, arena.map)
+	arena.refresh_terrain()
 	for p: SandboxPiece in pieces:
 		if arena.area_at(p.body.global_position) == BallWorld.Area.MAP:
 			p.view.open()
@@ -798,14 +847,21 @@ func demo_throw() -> void:
 		return
 	var d: Vector3 = best.body.global_position - p.body.global_position
 	p.view.close_now()
-	p.body.launch(d, 0.8)
+	_throw(p, d, 0.8)
 
 
 ## Throws the selected ball straight off the left edge.
 func demo_ringout() -> void:
 	var p: SandboxPiece = _selected if _selected != null else pieces[0]
 	p.view.close_now()
-	p.body.launch(Vector3.LEFT, 1.0)
+	_throw(p, Vector3.LEFT, 1.0)
+
+
+## Throws the selected ball at full power towards the far start strip.
+func demo_strip() -> void:
+	var p: SandboxPiece = _selected if _selected != null else pieces[0]
+	p.view.close_now()
+	_throw(p, Vector3.FORWARD if p.team == 0 else Vector3.BACK, 1.0)
 
 
 ## Prints every ball's state (for tools and debugging).

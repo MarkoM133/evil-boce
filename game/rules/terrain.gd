@@ -12,3 +12,13 @@ static func name_of(t: Type) -> String:
 		Type.MUD:
 			return "Mud"
 	return "None"
+
+
+## Inverse of name_of(); unknown names are NONE. Matches the `Terrain: X` line on stage cards.
+static func parse(name: String) -> Type:
+	match name.strip_edges().to_lower():
+		"ice":
+			return Type.ICE
+		"mud":
+			return Type.MUD
+	return Type.NONE

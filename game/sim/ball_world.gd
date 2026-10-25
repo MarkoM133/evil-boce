@@ -16,6 +16,11 @@ func area_at(_pos: Vector3) -> Area:
 	return Area.MAP
 
 
+## Team whose start strip is under `pos`, or -1.
+func strip_at(_pos: Vector3) -> int:
+	return -1
+
+
 ## Multiplier for the rolling slow-down at this point.
 func friction_factor_at(_pos: Vector3) -> float:
 	return 1.0

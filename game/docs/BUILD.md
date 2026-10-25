@@ -37,7 +37,8 @@ GUT settings are in `game/.gutconfig.json` (tests in `game/tests/`, `test_*.gd`)
 - **Screenshot** (needs a window; saves to `game/.shots/`):
   `godot_console --path game -s res://tools/screenshot.gd -- --scene=res://scenes/sandbox/sandbox.tscn --call=demo_setup,demo_closeup --out=closeup.png`
   Sandbox helpers for `--call`: `demo_setup`, `demo_closeup`, `demo_aim`, `demo_throw`,
-  `demo_ringout`, `debug_dump`.
+  `demo_ringout`, `demo_strip`, `demo_big`, `debug_dump`. Use `--wait=240` or more after a
+  throw so the roll has finished before the next call.
 
 ## Windows build
 

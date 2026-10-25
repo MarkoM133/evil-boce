@@ -14,7 +14,8 @@ var tuning: PhysicsTuning
 var _cells_img: Image
 var _cells_tex: ImageTexture
 var _ground_mat := ShaderMaterial.new()
-var _terrain: Dictionary[Vector2i, Terrain.Type] = {}
+## Terrain to draw; owned by the sandbox or the rules engine, see set_terrain().
+var terrain: TerrainMap = TerrainMap.new()
 var _range: Dictionary[Vector2i, bool] = {}
 var _marks: Dictionary[Vector2i, bool] = {}
 var _emphasis: float = 0.0
@@ -28,7 +29,6 @@ func build(map_: HexMap, tuning_: PhysicsTuning) -> void:
 	tuning = tuning_
 	for c: Node in get_children():
 		c.queue_free()
-	_terrain.clear()
 	_range.clear()
 	_marks.clear()
 	_strips.clear()
@@ -87,7 +87,7 @@ func strip_point(team: int, x: float, margin: float = 0.0) -> Vector3:
 
 
 func terrain_at(pos: Vector3) -> Terrain.Type:
-	return _terrain.get(hex_at(pos), Terrain.Type.NONE)
+	return terrain.at(hex_at(pos))
 
 
 ## Rough size of the whole table, for the camera.
@@ -97,20 +97,13 @@ func extent() -> Vector2:
 
 # --- marks on the ground ----------------------------------------------------
 
-## Sets a 7-hex terrain patch around `center` (NONE clears it).
-func paint_terrain(center: Vector2i, t: Terrain.Type) -> void:
-	for a: Vector2i in Hex.spiral(center, 1):
-		if not map.contains(a):
-			continue
-		if t == Terrain.Type.NONE:
-			_terrain.erase(a)
-		else:
-			_terrain[a] = t
+## Draws `tm` from now on; call refresh_terrain() after changing it.
+func set_terrain(tm: TerrainMap) -> void:
+	terrain = tm
 	_refresh_cells()
 
 
-func clear_terrain() -> void:
-	_terrain.clear()
+func refresh_terrain() -> void:
 	_refresh_cells()
 
 
@@ -134,7 +127,7 @@ func _refresh_cells() -> void:
 	_cells_img.fill(Color(0, 0, 0, 1))
 	for a: Vector2i in map.cells():
 		var o: Vector2i = Hex.axial_to_offset(a)
-		var t: int = _terrain.get(a, Terrain.Type.NONE)
+		var t: int = terrain.at(a)
 		var g: float = 1.0 if _range.has(a) else 0.0
 		var b: float = 1.0 if _marks.has(a) else 0.0
 		if t != 0 or g > 0.0 or b > 0.0:

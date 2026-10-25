@@ -21,5 +21,8 @@ One convention everywhere (rules, sim, scenes, shader).
   team 1 on the far (-z) side.
 - **Ball footprint**: WT 1–3 cover their centre hex; WT 4+ cover 7 (centre and ring).
   Range counts from the outer footprint hexes: `HexMap.range_cells()`.
+- **In JSON** a hex is `[q, r]` (`JsonUtil.as_hex`); as a dictionary key it is `"q,r"`
+  (`TerrainMap`). A `RollResult.end_hex` of a ball that left the table is the last map hex
+  it rolled over.
 - **Shader**: `scenes/arena/hex_ground.gdshader` repeats the same maths; the per-hex
   data texture is indexed by offset `(col, row)`.

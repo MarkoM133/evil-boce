@@ -12,6 +12,7 @@ class FlatWorld:
 
 var tuning: PhysicsTuning
 var world: FlatWorld
+var runner: RollRunner
 var spacing: float = 1.0
 
 
@@ -23,6 +24,8 @@ func _run() -> void:
 	tuning = PhysicsTuning.load_default()
 	world = FlatWorld.new(tuning)
 	spacing = tuning.hex_spacing()
+	runner = RollRunner.new()
+	root.add_child(runner)
 	var ground := StaticBody3D.new()
 	ground.collision_layer = BallBody.LAYER_GROUND
 	var gmat := PhysicsMaterial.new()
@@ -70,33 +73,24 @@ func _make(id: String, wt: int, pos: Vector3) -> BallBody:
 	b.setup(id, wt, world)
 	root.add_child(b)
 	b.place(pos)
+	runner.watch(b)
 	return b
 
 
-func _settle(balls: Array[BallBody], limit: float) -> float:
-	var t: float = 0.0
-	while t < limit:
-		await physics_frame
-		t += 1.0 / Engine.physics_ticks_per_second
-		var busy: bool = false
-		for b: BallBody in balls:
-			if b.motion == BallBody.Motion.MOVING or b.motion == BallBody.Motion.SNAPPING:
-				busy = true
-		if not busy and t > 0.05:
-			break
-	return t
+func _drop(b: BallBody) -> void:
+	runner.unwatch(b)
+	b.free()
 
 
 ## [hexes travelled, seconds]
 func _throw(wt: int, power: float) -> Array[float]:
 	var b: BallBody = _make("m", wt, Vector3.ZERO)
 	await physics_frame
-	var start: Vector3 = b.global_position
-	b.launch(Vector3(0, 0, -1), power)
-	var t: float = await _settle([b], 20.0)
-	var d: float = Vector2(b.global_position.x - start.x, b.global_position.z - start.z).length()
-	b.free()
-	return [d / spacing, t]
+	runner.start(b, Vector3(0, 0, -1), power)
+	var o: RollOutcome = await runner.finished
+	var r: RollResult = o.thrower_result()
+	_drop(b)
+	return [r.displacement() / spacing, o.duration]
 
 
 ## [mover hexes after the hit, target hexes]
@@ -105,25 +99,16 @@ func _hit(mover_wt: int, target_wt: int, gap_hexes: float) -> Array[float]:
 	var target_pos := Vector3(0, 0, -gap_hexes * spacing)
 	var t: BallBody = _make("target", target_wt, target_pos)
 	await physics_frame
-	var t_start: Vector3 = t.global_position
-	m.launch(Vector3(0, 0, -1), 1.0)
+	runner.start(m, Vector3(0, 0, -1), 1.0)
 	var hit_pos := Vector3.INF
-	var waited: float = 0.0
-	while waited < 20.0:
+	while runner.is_running():
 		await physics_frame
-		waited += 1.0 / Engine.physics_ticks_per_second
 		if hit_pos == Vector3.INF and t.horizontal_speed() > 0.01:
 			hit_pos = m.global_position
-		var busy: bool = false
-		for b: BallBody in [m, t]:
-			if b.motion == BallBody.Motion.MOVING or b.motion == BallBody.Motion.SNAPPING:
-				busy = true
-		if not busy and waited > 0.05:
-			break
 	var mover_after: float = 0.0
 	if hit_pos != Vector3.INF:
 		mover_after = Vector2(m.global_position.x - hit_pos.x, m.global_position.z - hit_pos.z).length()
-	var target_d: float = Vector2(t.global_position.x - t_start.x, t.global_position.z - t_start.z).length()
-	m.free()
-	t.free()
+	var target_d: float = Vector2(t.global_position.x - target_pos.x, t.global_position.z - target_pos.z).length()
+	_drop(m)
+	_drop(t)
 	return [mover_after / spacing, target_d / spacing]

@@ -4,7 +4,8 @@ extends RigidBody3D
 ## constant rate (scaled by terrain). The collider is an upright cylinder of the ball's radius,
 ## so every ball-to-ball contact is horizontal and hits are plain billiards weighted by mass,
 ## whatever the sizes. The view draws a sphere and fakes the rolling. Every roll ends in a
-## RollResult.
+## RollResult that only states facts; rules (ring-out on a strip, where the ball goes next)
+## are decided by whoever listens. RollRunner gathers one roll's results into a RollOutcome.
 
 signal motion_started(ball: BallBody, thrown: bool)
 signal moved(delta: Vector3)
@@ -14,10 +15,6 @@ enum Motion { RESTING, MOVING, SNAPPING, OUT }
 
 const LAYER_GROUND: int = 1
 const LAYER_BALLS: int = 2
-## Physics frames between two path samples.
-const PATH_EVERY: int = 3
-## Frames below stop speed before the ball counts as stopped.
-const REST_FRAMES: int = 4
 
 var ball_id: String = ""
 var wt: int = 2
@@ -30,6 +27,7 @@ var tuning: PhysicsTuning
 var _cylinder: CylinderShape3D
 var _result: RollResult
 var _entered_map: bool = false
+var _last_map_hex: Vector2i = Vector2i.ZERO
 var _slow_frames: int = 0
 var _frame: int = 0
 var _last_pos: Vector3 = Vector3.ZERO
@@ -76,7 +74,7 @@ func is_big() -> bool:
 
 
 func set_wt(value: int) -> void:
-	wt = clampi(value, 1, 9)
+	wt = clampi(value, 1, tuning.max_wt)
 	var r: float = radius()
 	_cylinder.radius = r
 	_cylinder.height = 2.0 * r
@@ -151,7 +149,7 @@ func _physics_process(delta: float) -> void:
 	_last_pos = pos
 	match motion:
 		Motion.RESTING:
-			if horizontal_speed() > tuning.stop_speed * 2.0:
+			if horizontal_speed() > tuning.wake_speed:
 				_begin(false, 0.0)
 		Motion.MOVING:
 			if step.length_squared() > 0.0:
@@ -171,6 +169,7 @@ func _begin(thrown: bool, power: float) -> void:
 	_result.start_hex = world.hex_at(pos)
 	_result.path.append(pos)
 	_entered_map = world.area_at(pos) == BallWorld.Area.MAP
+	_last_map_hex = _result.start_hex
 	_slow_frames = 0
 	_frame = 0
 	motion = Motion.MOVING
@@ -180,23 +179,24 @@ func _begin(thrown: bool, power: float) -> void:
 func _track(pos: Vector3, delta: float) -> void:
 	_result.duration += delta
 	_frame += 1
-	if _frame % PATH_EVERY == 0:
+	if _frame % tuning.path_sample_every == 0:
 		_result.path.append(pos)
 	var area: BallWorld.Area = world.area_at(pos)
 	if area == BallWorld.Area.MAP:
 		_entered_map = true
-	elif area == BallWorld.Area.STRIP and _entered_map:
-		_go_out("strip")
-		return
-	elif area == BallWorld.Area.VOID:
+		_last_map_hex = world.hex_at(pos)
+	elif area == BallWorld.Area.STRIP:
+		if _entered_map and _result.strip_entered < 0:
+			_result.strip_entered = world.strip_at(pos)
+	else:
 		_go_out("edge")
 		return
-	if pos.y < -3.0:
+	if pos.y < tuning.fell_below_y:
 		_go_out("fell")
 		return
 	if _grounded and horizontal_speed() < tuning.stop_speed:
 		_slow_frames += 1
-		if _slow_frames >= REST_FRAMES:
+		if _slow_frames >= tuning.rest_frames:
 			_start_snap()
 	else:
 		_slow_frames = 0
@@ -207,7 +207,7 @@ func _go_out(reason: String) -> void:
 	_result.ring_out = true
 	_result.ring_out_reason = reason
 	_result.end_area = BallWorld.Area.VOID
-	_result.end_hex = world.hex_at(global_position)
+	_result.end_hex = _last_map_hex
 	_result.path.append(global_position)
 	roll_finished.emit(self, _result)
 

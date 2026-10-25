@@ -4,20 +4,26 @@ extends BallWorld
 ## free hex.
 
 var arena: Arena
+var terrain: TerrainMap
 var pieces: Array[SandboxPiece] = []
 
 
-func _init(tuning_: PhysicsTuning, arena_: Arena) -> void:
+func _init(tuning_: PhysicsTuning, arena_: Arena, terrain_: TerrainMap) -> void:
 	super(tuning_)
 	arena = arena_
+	terrain = terrain_
 
 
 func area_at(pos: Vector3) -> Area:
 	return arena.area_at(pos)
 
 
+func strip_at(pos: Vector3) -> int:
+	return arena.strip_at(pos)
+
+
 func friction_factor_at(pos: Vector3) -> float:
-	return tuning.terrain_factor(arena.terrain_at(pos))
+	return tuning.terrain_factor(terrain.at(arena.hex_at(pos)))
 
 
 func hex_at(pos: Vector3) -> Vector2i:
