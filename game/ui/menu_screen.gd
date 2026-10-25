@@ -18,6 +18,7 @@ static func build(root: Control, db: CardDb, title: String, subtitle: String = "
 	root.add_child(col)
 	var strip := HeroStrip.new()
 	strip.setup(db)
+	strip.custom_minimum_size = Vector2(0, 84)
 	col.add_child(strip)
 
 	var scroll := ScrollContainer.new()
@@ -28,7 +29,7 @@ static func build(root: Control, db: CardDb, title: String, subtitle: String = "
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(center)
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_top", 22)
+	margin.add_theme_constant_override("margin_top", 14)
 	margin.add_theme_constant_override("margin_bottom", 28)
 	center.add_child(margin)
 	var body := VBoxContainer.new()
@@ -39,7 +40,7 @@ static func build(root: Control, db: CardDb, title: String, subtitle: String = "
 	var title_row := HBoxContainer.new()
 	title_row.add_theme_constant_override("separation", 14)
 	body.add_child(title_row)
-	var slash: UiShape = UiShape.make(UiShape.Kind.SLANT, Palette.ACCENT, Vector2(16, 52))
+	var slash: UiShape = UiShape.make(UiShape.Kind.SLANT, Palette.ACCENT, Vector2(14, 44))
 	slash.cut = 8.0
 	slash.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	title_row.add_child(slash)
@@ -47,7 +48,7 @@ static func build(root: Control, db: CardDb, title: String, subtitle: String = "
 	titles.add_theme_constant_override("separation", 0)
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_row.add_child(titles)
-	titles.add_child(UiTheme.label(title.to_upper(), 52))
+	titles.add_child(UiTheme.label(title.to_upper(), 44))
 	if not subtitle.is_empty():
 		var sub := Label.new()
 		sub.text = subtitle

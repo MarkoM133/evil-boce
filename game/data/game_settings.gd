@@ -212,3 +212,12 @@ static func loadout(who: String) -> Dictionary:
 
 static func set_loadout(who: String, d: Dictionary) -> void:
 	set_value("loadout", who, d)
+
+
+## The saved deck last picked per seat ("p1", "p2", "online"); "" = random.
+static func last_deck(who: String) -> String:
+	return str(_config().get_value("last_deck", who, ""))
+
+
+static func set_last_deck(who: String, name: String) -> void:
+	set_value("last_deck", who, name)

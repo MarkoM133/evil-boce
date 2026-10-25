@@ -8,6 +8,9 @@ extends Control
 const ART_W: float = 84.0
 const CUT: float = 16.0
 
+## Width of the art end; set it to the full width for a tile that is all picture.
+var art_w: float = ART_W
+
 var art: Texture2D
 ## Part of the texture to show, in 0..1 texture coordinates.
 var art_region: Rect2 = Rect2(0, 0, 1, 1)
@@ -37,7 +40,7 @@ func set_mirrored(on: bool) -> void:
 
 
 func _set_margins() -> void:
-	var near: int = int(ART_W + 12.0)
+	var near: int = int(minf(art_w, 120.0) + 12.0) if art_w < 200.0 else 12
 	var far: int = int(CUT + 10.0)
 	content.add_theme_constant_override("margin_left", far if mirrored else near)
 	content.add_theme_constant_override("margin_right", near if mirrored else far)
@@ -61,15 +64,16 @@ func _draw() -> void:
 	# Parallelogram leaning like the app's cuts: the top edge starts CUT in on the left.
 	var body := PackedVector2Array([Vector2(CUT, 0), Vector2(w, 0), Vector2(w - CUT, h), Vector2(0, h)])
 	draw_colored_polygon(body, bg)
+	var aw: float = minf(art_w, w - CUT)
 	var a := PackedVector2Array()
 	if mirrored:
-		a = PackedVector2Array([Vector2(w - ART_W, 0), Vector2(w, 0), Vector2(w - CUT, h), Vector2(w - ART_W - CUT, h)])
+		a = PackedVector2Array([Vector2(w - aw, 0), Vector2(w, 0), Vector2(w - CUT, h), Vector2(w - aw - CUT, h)])
 	else:
-		a = PackedVector2Array([Vector2(CUT, 0), Vector2(CUT + ART_W, 0), Vector2(ART_W, h), Vector2(0, h)])
+		a = PackedVector2Array([Vector2(CUT, 0), Vector2(CUT + aw, 0), Vector2(aw, h), Vector2(0, h)])
 	if art != null:
 		var uvs := PackedVector2Array()
 		var x0: float = a[3].x
-		var span: float = ART_W + CUT
+		var span: float = aw + CUT
 		for p: Vector2 in a:
 			uvs.append(Vector2(art_region.position.x + art_region.size.x * (p.x - x0) / span,
 				art_region.position.y + art_region.size.y * p.y / h))
@@ -77,7 +81,7 @@ func _draw() -> void:
 	else:
 		draw_colored_polygon(a, art_fallback * art_tint)
 	if stripe.a > 0.0:
-		var sx: float = (w - ART_W - CUT - 6.0) if mirrored else ART_W + 2.0
+		var sx: float = (w - aw - CUT - 6.0) if mirrored else aw + 2.0
 		draw_colored_polygon(PackedVector2Array([Vector2(sx + CUT, 0), Vector2(sx + CUT + 6, 0), Vector2(sx + 6, h),
 			Vector2(sx, h)]), stripe)
 	if outline.a > 0.0:
