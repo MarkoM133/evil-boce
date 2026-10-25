@@ -57,9 +57,12 @@ func _ready() -> void:
 	bg.color = Palette.BG
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
-	_tiles = GameSettings.menu_layout() == "tiles"
-	if _tiles:
+	var layout: String = GameSettings.menu_layout()
+	_tiles = layout != "featured"
+	if layout == "tiles":
 		_build_tiles(logo)
+	elif layout == "cinema":
+		_build_cinema(logo)
 	else:
 		_build_featured(logo)
 
@@ -68,7 +71,8 @@ func _ready() -> void:
 	foot.add_theme_font_size_override("font_size", 13)
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	foot.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	foot.position = Vector2(18, -34)
+	# Above the bottom strip in the cinema layout.
+	foot.position = Vector2(18, -150 if layout == "cinema" else -34)
 	var version: String = str(ProjectSettings.get_setting("application/config/version", ""))
 	if db.is_ok():
 		foot.text = "v%s  ·  cards v%d, %d cards" % [version, db.version, db.card_count]
@@ -76,6 +80,88 @@ func _ready() -> void:
 		foot.text = "v%s  ·  %s  ·  set the shared folder in Settings" % [version, db.error]
 		foot.add_theme_color_override("font_color", Palette.GOLD)
 	add_child(foot)
+
+
+# --- cinema (mockup M8) ---------------------------------------------------------------------
+
+## Letterbox: hero strips along the top and the bottom drifting opposite ways, the logo big in
+## the middle, the entries in one row under it and a line about the one in focus.
+func _build_cinema(logo: Texture2D) -> void:
+	for bottom: bool in [false, true]:
+		var strip := HeroStrip.new()
+		strip.setup(db)
+		strip.reverse = bottom
+		strip.edge_top = bottom
+		strip.set_anchors_preset(Control.PRESET_BOTTOM_WIDE if bottom else Control.PRESET_TOP_WIDE)
+		strip.custom_minimum_size = Vector2(0, 110)
+		if bottom:
+			strip.grow_vertical = Control.GROW_DIRECTION_BEGIN
+			strip.offset_top = -110
+		add_child(strip)
+		var line := ColorRect.new()
+		line.color = Palette.ACCENT
+		line.set_anchors_preset(Control.PRESET_BOTTOM_WIDE if bottom else Control.PRESET_TOP_WIDE)
+		line.offset_top = -113.0 if bottom else 110.0
+		line.offset_bottom = -110.0 if bottom else 113.0
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(line)
+
+	var col := VBoxContainer.new()
+	col.set_anchors_preset(Control.PRESET_FULL_RECT)
+	col.offset_top = 125
+	col.offset_bottom = -125
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 18)
+	add_child(col)
+	if logo != null:
+		var img := TextureRect.new()
+		img.texture = logo
+		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		img.custom_minimum_size = Vector2(0, 380)
+		img.pivot_offset = Vector2(0, 190)
+		col.add_child(img)
+		img.modulate.a = 0.0
+		var lt: Tween = img.create_tween()
+		lt.tween_property(img, "modulate:a", 1.0, 0.4)
+	else:
+		var title: Label = UiTheme.label("EVIL BOĆE", 110)
+		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(title)
+
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 4)
+	col.add_child(row)
+	var entries: Array = ENTRIES.duplicate()
+	if ReplayStore.has_current():
+		entries.push_front(["CONTINUE", "continue", "Back to the match you left"])
+	var first: Button = null
+	for i: int in entries.size():
+		var entry: Array = entries[i]
+		var b := Button.new()
+		b.text = str(entry[0])
+		b.theme_type_variation = &"MenuItem"
+		b.add_theme_font_size_override("font_size", 36)
+		var action: String = str(entry[1])
+		if action == "continue":
+			b.add_theme_color_override("font_color", Palette.GOLD)
+		var hint: String = str(entry[2])
+		b.pressed.connect(_on_pressed.bind(action))
+		b.mouse_entered.connect(func() -> void: b.grab_focus())
+		b.focus_entered.connect(func() -> void: _hint.text = hint)
+		row.add_child(b)
+		if first == null:
+			first = b
+		b.modulate.a = 0.0
+		b.create_tween().tween_property(b, "modulate:a", 1.0, 0.22).set_delay(0.04 * i + 0.25)
+	_hint = Label.new()
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint.add_theme_color_override("font_color", Palette.MUTED)
+	_hint.add_theme_font_size_override("font_size", 15)
+	col.add_child(_hint)
+	if first != null:
+		first.grab_focus.call_deferred()
 
 
 # --- tiles (mockup M7) ----------------------------------------------------------------------

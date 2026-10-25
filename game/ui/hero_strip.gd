@@ -19,6 +19,10 @@ var _colors: Array[Color] = []
 var _art: Array[Texture2D] = []
 var _offset: float = 0.0
 var _hover: int = -1
+## Drift to the right instead of the left.
+var reverse: bool = false
+## The colour edges run along the top (a strip at the bottom of the screen).
+var edge_top: bool = false
 
 
 func _init() -> void:
@@ -47,7 +51,7 @@ func _process(delta: float) -> void:
 	if _ids.is_empty():
 		return
 	if _hover < 0:
-		_offset = fposmod(_offset + SPEED * delta, _ids.size() * (SLICE_W + GAP))
+		_offset = fposmod(_offset + SPEED * delta * (-1.0 if reverse else 1.0), _ids.size() * (SLICE_W + GAP))
 	queue_redraw()
 
 
@@ -104,8 +108,12 @@ func _draw() -> void:
 		else:
 			draw_colored_polygon(pts, _colors[i].darkened(0.5))
 		# Colour edge along the bottom, like the app's slices.
-		draw_colored_polygon(PackedVector2Array([Vector2(x + 3.0 * LEAN / h, h - 3), Vector2(x + SLICE_W + 3.0 * LEAN / h, h - 3),
-			Vector2(x + SLICE_W, h), Vector2(x, h)]), _colors[i])
+		if edge_top:
+			draw_colored_polygon(PackedVector2Array([Vector2(x + LEAN, 0), Vector2(x + LEAN + SLICE_W, 0),
+				Vector2(x + SLICE_W + LEAN * (1.0 - 3.0 / h), 3), Vector2(x + LEAN * (1.0 - 3.0 / h), 3)]), _colors[i])
+		else:
+			draw_colored_polygon(PackedVector2Array([Vector2(x + 3.0 * LEAN / h, h - 3), Vector2(x + SLICE_W + 3.0 * LEAN / h, h - 3),
+				Vector2(x + SLICE_W, h), Vector2(x, h)]), _colors[i])
 		if lit:
 			draw_string(font, Vector2(x + 14, h - 12), _names[i], HORIZONTAL_ALIGNMENT_LEFT, SLICE_W, 17, Palette.FG)
 	# Fade both ends into the background.
