@@ -7,7 +7,7 @@ extends RefCounted
 static func add_to(parent: Node3D) -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Palette.BG
+	env.background_color = Palette.TABLE_BG
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("fff3e0")
 	env.ambient_light_energy = 0.55
@@ -20,7 +20,7 @@ static func add_to(parent: Node3D) -> void:
 	env.ssao_radius = 1.2
 	env.ssao_intensity = 1.5
 	env.fog_enabled = true
-	env.fog_light_color = Palette.BG
+	env.fog_light_color = Palette.TABLE_BG
 	env.fog_density = 0.004
 	env.fog_sky_affect = 0.0
 	var we := WorldEnvironment.new()

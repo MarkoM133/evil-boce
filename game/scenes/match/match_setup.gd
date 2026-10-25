@@ -117,6 +117,7 @@ func _ready() -> void:
 	_start_btn = Button.new()
 	_start_btn.text = "Start match"
 	_start_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_start_btn.theme_type_variation = &"Primary"
 	_start_btn.pressed.connect(_start)
 	row.add_child(_start_btn)
 	_check()

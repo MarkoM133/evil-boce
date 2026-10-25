@@ -1,9 +1,11 @@
 class_name MatchHud
 extends Control
-## Match UI (GDD 11): phase bar, player and hero panels (own left, opponent right), the hand
-## of the player who acts, a prompt with the buttons that make sense now, the damage choice,
-## a one-line log and the end screen. It only reads the GameState and emits what was clicked;
-## the match scene turns that into moves.
+## Match UI (GDD 11) in the web app's look ("Arena Rush", the in-game UI mockup A): a phase
+## ribbon on top, each player's roster of hero slices in the top corners (own left, opponent
+## right), a prompt bottom left, the buttons that make sense now bottom right, the hand as a
+## fan of card images at the bottom, banners for battles, ring-outs, KOs and claims, the damage
+## and choice dialogs and the end screen. It only reads the GameState and emits what was
+## clicked; the match scene turns that into moves.
 
 signal pass_pressed(slot: int)
 signal choice_pressed(slot: int, roll: bool)
@@ -24,8 +26,14 @@ signal setup_item_pressed(id: String)
 
 const PHASES: Array[String] = [GameState.PHASE_DRAW, GameState.PHASE_SELECT, GameState.PHASE_PREROLL,
 	GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE, GameState.PHASE_END]
-const PANEL_WIDTH: float = 290.0
-const CARD_SIZE := Vector2(132, 84)
+const ROSTER_WIDTH: float = 360.0
+const SLICE_HEIGHT: float = 70.0
+const CARD_SIZE := Vector2(128, 178)
+## Height of the hand strip; the cards stick out of the bottom of the screen a little.
+const HAND_HEIGHT: float = 210.0
+const BANNER_TIME: float = 0.8
+## Log events that get a banner (the rest only go to the log).
+const BANNER_EVENTS: Array[String] = ["battle", "ring_out", "ko", "stage_claimed"]
 
 var engine: RulesEngine
 var state: GameState
@@ -41,31 +49,38 @@ var replay: bool = false
 var net_paused: String = ""
 ## Text of the end screen's first button; "" hides it (an online guest waits for the host).
 var rematch_text: String = "Rematch"
-var _rematch_btn: Button
 ## Setup: the stage or core the local player places next (set by the match scene).
 var setup_pick: String = ""
+## The match summary (MatchRecord.summary) shown on the end screen; set by the match scene.
+var end_summary: Dictionary = {}
+
 ## How far the hand is lowered (0 = up); it drops when the mouse is over the table (GDD 11).
 var _hand_drop: float = 0.0
 var _hand_box: Control
-
-var _phase_bar: HBoxContainer
-var _player_boxes: Array[VBoxContainer] = []
+var _hand: Control
+var _hand_title: Label
+var _ribbon: HBoxContainer
+var _rosters: Array[VBoxContainer] = []
+var _kicker: Label
 var _prompt: Label
-var _actions: HBoxContainer
-var _hand: HBoxContainer
-var _log_line: Button
+var _detail: Label
+var _actions: VBoxContainer
+var _key_hint: Label
+var _tray: HBoxContainer
+var _log_line: Label
 var _log_full: Label
 var _log_panel: PanelContainer
 var _dialog: PanelContainer
 var _dialog_box: VBoxContainer
 var _over: Control
-var _over_title: Label
-var _over_info: Label
-var _over_stats: GridContainer
-## The match summary (MatchRecord.summary) shown on the end screen; set by the match scene.
-var end_summary: Dictionary = {}
-var _toast: Label
+var _over_box: VBoxContainer
+var _toast_box: Control
 var _toast_tween: Tween
+var _banner_layer: Control
+var _banners: Array[Dictionary] = []
+var _banner_busy: bool = false
+## How much of state.log has been looked at for banners (-1: not yet, nothing replays).
+var _log_seen: int = -1
 
 
 func _init() -> void:
@@ -88,10 +103,11 @@ func setup(engine_: RulesEngine, state_: GameState, db_: CardDb, local: PackedIn
 func refresh() -> void:
 	if state == null:
 		return
-	_refresh_phase_bar()
+	_scan_log()
+	_refresh_ribbon()
 	for slot: int in state.players.size():
-		if slot < _player_boxes.size():
-			_fill_player(_player_boxes[slot], slot)
+		if slot < _rosters.size():
+			_fill_roster(_rosters[slot], slot)
 	_refresh_prompt()
 	_refresh_hand()
 	_refresh_dialog()
@@ -99,15 +115,29 @@ func refresh() -> void:
 	_refresh_over()
 
 
+## A short message under the ribbon on a slanted chip of `color`.
 func toast(text: String, color: Color = Palette.GOLD) -> void:
-	_toast.text = text
-	_toast.add_theme_color_override("font_color", color)
+	for c: Node in _toast_box.get_children():
+		c.queue_free()
+	var fg: Color = Color.BLACK if color.get_luminance() > 0.5 else Palette.FG
+	var chip: UiShape = UiShape.chip(text.to_upper(), color, fg, 22, 40.0, 20.0)
+	chip.position = Vector2(-chip.custom_minimum_size.x * 0.5, 0)
+	_toast_box.add_child(chip)
 	if _toast_tween != null and _toast_tween.is_valid():
 		_toast_tween.kill()
-	_toast.modulate.a = 1.0
+	_toast_box.modulate.a = 1.0
+	_toast_box.position.y = 64
 	_toast_tween = create_tween()
-	_toast_tween.tween_interval(1.6)
-	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.5)
+	_toast_tween.tween_property(_toast_box, "position:y", 70.0, 0.12).from(52.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_toast_tween.tween_interval(1.5)
+	_toast_tween.tween_property(_toast_box, "modulate:a", 0.0, 0.4)
+
+
+## A slanted band across the screen (BATTLE!, RING-OUT …): in, hold, out. Queued.
+func banner(title: String, color: Color, left: String = "", right: String = "") -> void:
+	_banners.append({"title": title, "color": color, "left": left, "right": right})
+	if not _banner_busy:
+		_next_banner()
 
 
 ## The local slot whose hand and buttons are shown: the one the game waits for.
@@ -140,94 +170,139 @@ func hero_name(h: HeroState) -> String:
 
 func _build() -> void:
 	var menu := Button.new()
-	menu.text = "MENU"
+	menu.text = "≡  MENU"
 	menu.focus_mode = Control.FOCUS_NONE
-	menu.position = Vector2(12, 12)
+	menu.position = Vector2(14, 12)
+	menu.add_theme_font_size_override("font_size", 16)
 	menu.pressed.connect(func() -> void: menu_pressed.emit())
 	add_child(menu)
 
-	_phase_bar = HBoxContainer.new()
-	_phase_bar.add_theme_constant_override("separation", 14)
-	_phase_bar.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_phase_bar.position = Vector2(-330, 14)
-	_phase_bar.size = Vector2(660, 30)
-	_phase_bar.alignment = BoxContainer.ALIGNMENT_CENTER
-	_phase_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_phase_bar)
+	_ribbon = HBoxContainer.new()
+	_ribbon.add_theme_constant_override("separation", 3)
+	_ribbon.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_ribbon.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_ribbon.position = Vector2(0, 12)
+	_ribbon.alignment = BoxContainer.ALIGNMENT_CENTER
+	_ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_ribbon)
 
 	for side: int in 2:
-		var panel := PanelContainer.new()
-		panel.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 7)
+		col.custom_minimum_size = Vector2(ROSTER_WIDTH, 0)
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if side == 0:
-			panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
-			panel.position = Vector2(12, 56)
+			col.set_anchors_preset(Control.PRESET_TOP_LEFT)
+			col.position = Vector2(14, 58)
 		else:
-			panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-			panel.position = Vector2(-PANEL_WIDTH - 12, 56)
-		add_child(panel)
-		var box := VBoxContainer.new()
-		box.add_theme_constant_override("separation", 6)
-		panel.add_child(box)
-		_player_boxes.append(box)
+			col.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+			col.position = Vector2(-ROSTER_WIDTH - 14, 58)
+		add_child(col)
+		_rosters.append(col)
 
-	var bottom := VBoxContainer.new()
-	bottom.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	bottom.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	bottom.position = Vector2(-450, -CARD_SIZE.y - 24)
-	bottom.size = Vector2(900, 0)
-	bottom.alignment = BoxContainer.ALIGNMENT_END
-	bottom.add_theme_constant_override("separation", 8)
-	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bottom)
-	_prompt = Label.new()
-	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_prompt.add_theme_font_override("font", UiTheme.display_bold())
-	_prompt.add_theme_font_size_override("font_size", 22)
-	_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	# Bottom left: what the game wants now.
+	var prompt_col := VBoxContainer.new()
+	prompt_col.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	prompt_col.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	prompt_col.position = Vector2(16, -18)
+	prompt_col.custom_minimum_size = Vector2(430, 0)
+	prompt_col.add_theme_constant_override("separation", 4)
+	prompt_col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(prompt_col)
+	_kicker = UiTheme.label("", 15, Palette.GOLD)
+	prompt_col.add_child(_kicker)
+	_prompt = UiTheme.label("", 28)
+	_prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_prompt.custom_minimum_size = Vector2(430, 0)
+	_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	_prompt.add_theme_constant_override("outline_size", 6)
-	bottom.add_child(_prompt)
-	_actions = HBoxContainer.new()
-	_actions.alignment = BoxContainer.ALIGNMENT_CENTER
-	_actions.add_theme_constant_override("separation", 8)
-	bottom.add_child(_actions)
-	# The hand sits on its own under the prompt so it can slide down out of the way.
-	_hand_box = Control.new()
-	_hand_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_hand_box.position = Vector2(-600, -CARD_SIZE.y - 12)
-	_hand_box.size = Vector2(1200, CARD_SIZE.y)
-	_hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_hand_box)
-	_hand = HBoxContainer.new()
-	_hand.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_hand.alignment = BoxContainer.ALIGNMENT_CENTER
-	_hand.add_theme_constant_override("separation", 6)
-	_hand.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_hand_box.add_child(_hand)
-
-	_log_line = Button.new()
-	_log_line.flat = true
-	_log_line.focus_mode = Control.FOCUS_NONE
-	_log_line.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_log_line.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_log_line.position = Vector2(12, -40)
-	_log_line.add_theme_font_override("font", UiTheme.body_font())
-	_log_line.add_theme_font_size_override("font_size", 14)
+	prompt_col.add_child(_prompt)
+	_detail = Label.new()
+	_detail.add_theme_color_override("font_color", Color("b9b4ab"))
+	_detail.add_theme_font_size_override("font_size", 14)
+	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_detail.custom_minimum_size = Vector2(430, 0)
+	prompt_col.add_child(_detail)
+	var log_row := HBoxContainer.new()
+	log_row.add_theme_constant_override("separation", 10)
+	prompt_col.add_child(log_row)
+	var log_btn := Button.new()
+	log_btn.text = "LOG"
+	log_btn.focus_mode = Control.FOCUS_NONE
+	log_btn.add_theme_font_size_override("font_size", 15)
+	log_btn.pressed.connect(func() -> void: _log_panel.visible = not _log_panel.visible)
+	log_row.add_child(log_btn)
+	_log_line = Label.new()
 	_log_line.add_theme_color_override("font_color", Palette.MUTED)
-	_log_line.pressed.connect(func() -> void: _log_panel.visible = not _log_panel.visible)
-	add_child(_log_line)
+	_log_line.add_theme_font_size_override("font_size", 13)
+	_log_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_log_line.clip_text = true
+	_log_line.custom_minimum_size = Vector2(300, 0)
+	_log_line.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	log_row.add_child(_log_line)
+
 	_log_panel = PanelContainer.new()
-	var log_panel: PanelContainer = _log_panel
-	log_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	log_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	log_panel.position = Vector2(12, -48)
-	log_panel.custom_minimum_size = Vector2(380, 0)
-	log_panel.visible = false
-	add_child(log_panel)
+	_log_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_log_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_log_panel.position = Vector2(16, -200)
+	_log_panel.custom_minimum_size = Vector2(430, 0)
+	_log_panel.visible = false
+	add_child(_log_panel)
 	_log_full = Label.new()
 	_log_full.theme_type_variation = &"Muted"
 	_log_full.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	log_panel.add_child(_log_full)
+	_log_panel.add_child(_log_full)
+
+	# Bottom right: the buttons; the main one is red and big.
+	var right := VBoxContainer.new()
+	right.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	right.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	right.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	right.position = Vector2(-16, -18)
+	right.alignment = BoxContainer.ALIGNMENT_END
+	right.add_theme_constant_override("separation", 6)
+	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(right)
+	_actions = VBoxContainer.new()
+	_actions.alignment = BoxContainer.ALIGNMENT_END
+	_actions.add_theme_constant_override("separation", 8)
+	_actions.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	right.add_child(_actions)
+	_key_hint = Label.new()
+	_key_hint.add_theme_color_override("font_color", Palette.MUTED)
+	_key_hint.add_theme_font_size_override("font_size", 12)
+	_key_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	right.add_child(_key_hint)
+
+	# Setup tray: stages / cores still to place, bottom centre.
+	_tray = HBoxContainer.new()
+	_tray.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_tray.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_tray.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_tray.position = Vector2(0, -30)
+	_tray.alignment = BoxContainer.ALIGNMENT_CENTER
+	_tray.add_theme_constant_override("separation", 8)
+	add_child(_tray)
+
+	# The hand: a fan of cards at the bottom; it slides down when the mouse is over the table.
+	_hand_box = Control.new()
+	_hand_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_hand_box.position = Vector2(-450, -HAND_HEIGHT)
+	_hand_box.size = Vector2(900, HAND_HEIGHT)
+	_hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_hand_box)
+	_hand = Control.new()
+	_hand.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_hand.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hand_box.add_child(_hand)
+	_hand_title = UiTheme.label("YOUR STARTING HAND", 40)
+	_hand_title.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_hand_title.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_hand_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hand_title.position = Vector2(-300, -64)
+	_hand_title.size = Vector2(600, 50)
+	_hand_title.visible = false
+	_hand_box.add_child(_hand_title)
 
 	var dialog_center := CenterContainer.new()
 	dialog_center.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -235,268 +310,332 @@ func _build() -> void:
 	add_child(dialog_center)
 	_dialog = PanelContainer.new()
 	_dialog.visible = false
+	var dsb: StyleBoxFlat = UiTheme.box(Color(0.03, 0.03, 0.03, 0.96), 0, Color(0, 0, 0, 0), 28, 22)
+	dsb.border_color = Palette.GOLD
+	dsb.border_width_top = 4
+	_dialog.add_theme_stylebox_override("panel", dsb)
 	dialog_center.add_child(_dialog)
 	_dialog_box = VBoxContainer.new()
-	_dialog_box.custom_minimum_size = Vector2(340, 0)
-	_dialog_box.add_theme_constant_override("separation", 8)
+	_dialog_box.custom_minimum_size = Vector2(420, 0)
+	_dialog_box.add_theme_constant_override("separation", 10)
 	_dialog.add_child(_dialog_box)
+
+	_banner_layer = Control.new()
+	_banner_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_banner_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_banner_layer)
 
 	_over = Control.new()
 	_over.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_over.visible = false
 	add_child(_over)
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.55)
+	dim.color = Color(0, 0, 0, 0.72)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_over.add_child(dim)
 	var over_center := CenterContainer.new()
 	over_center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_over.add_child(over_center)
-	var over_panel := PanelContainer.new()
-	over_center.add_child(over_panel)
-	var over_col := VBoxContainer.new()
-	over_col.custom_minimum_size = Vector2(320, 0)
-	over_col.add_theme_constant_override("separation", 10)
-	over_panel.add_child(over_col)
-	_over_title = Label.new()
-	_over_title.theme_type_variation = &"Big"
-	_over_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	over_col.add_child(_over_title)
-	_over_info = Label.new()
-	_over_info.theme_type_variation = &"Muted"
-	_over_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	over_col.add_child(_over_info)
-	_over_stats = GridContainer.new()
-	_over_stats.columns = 3
-	_over_stats.add_theme_constant_override("h_separation", 24)
-	_over_stats.add_theme_constant_override("v_separation", 4)
-	over_col.add_child(_over_stats)
-	_rematch_btn = Button.new()
-	_rematch_btn.pressed.connect(func() -> void: rematch_pressed.emit())
-	over_col.add_child(_rematch_btn)
-	var watch := Button.new()
-	watch.text = "Watch the replay"
-	watch.pressed.connect(func() -> void: watch_replay_pressed.emit())
-	over_col.add_child(watch)
-	var back := Button.new()
-	back.text = "Main menu"
-	back.pressed.connect(func() -> void: menu_pressed.emit())
-	over_col.add_child(back)
+	_over_box = VBoxContainer.new()
+	_over_box.custom_minimum_size = Vector2(760, 0)
+	_over_box.add_theme_constant_override("separation", 14)
+	over_center.add_child(_over_box)
 
-	_toast = Label.new()
-	_toast.add_theme_font_override("font", UiTheme.display_bold())
-	_toast.add_theme_font_size_override("font_size", 28)
-	_toast.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	_toast.add_theme_constant_override("outline_size", 8)
-	_toast.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast.position = Vector2(-400, 52)
-	_toast.size = Vector2(800, 40)
-	_toast.modulate.a = 0.0
-	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_toast)
+	_toast_box = Control.new()
+	_toast_box.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toast_box.modulate.a = 0.0
+	add_child(_toast_box)
 
 
-# --- phase bar -------------------------------------------------------------------
+# --- phase ribbon ----------------------------------------------------------------
 
-func _refresh_phase_bar() -> void:
-	_clear(_phase_bar)
-	var turn := Label.new()
-	turn.text = "TURN %d" % maxi(state.turn, 1) if state.turn > 0 else "SETUP"
-	turn.add_theme_font_override("font", UiTheme.display_bold())
-	turn.add_theme_font_size_override("font_size", 20)
-	_phase_bar.add_child(turn)
+func _refresh_ribbon() -> void:
+	_clear(_ribbon)
+	var turn_text: String = "TURN %d" % state.turn if state.turn > 0 else ("MULLIGAN" if state.phase == GameState.PHASE_MULLIGAN else "SETUP")
+	var turn: UiShape = UiShape.chip(turn_text, Palette.ACCENT, Palette.FG, 28, 40.0, 22.0)
 	if state.turn > 0:
-		var first := Label.new()
-		first.text = "▸ " + player_name(state.initiative)
-		first.add_theme_font_override("font", UiTheme.display_font())
-		first.add_theme_font_size_override("font_size", 17)
-		first.add_theme_color_override("font_color", Palette.team(state.team_of(state.initiative)))
-		first.tooltip_text = "Initiative this turn"
+		turn.tooltip_text = "Initiative this turn: %s" % player_name(state.initiative)
+		turn.mouse_filter = Control.MOUSE_FILTER_PASS
+	_ribbon.add_child(turn)
+	if state.turn > 0:
+		var first: UiShape = UiShape.chip("▸ " + player_name(state.initiative).to_upper(),
+			Palette.team(state.team_of(state.initiative)), Palette.FG, 14, 26.0, 12.0)
+		first.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		first.tooltip_text = "Goes first this turn"
 		first.mouse_filter = Control.MOUSE_FILTER_PASS
-		_phase_bar.add_child(first)
-	for ph: String in PHASES:
-		var l := Label.new()
-		l.text = ph.to_upper()
-		l.add_theme_font_override("font", UiTheme.display_font())
-		l.add_theme_font_size_override("font_size", 16)
-		l.add_theme_color_override("font_color", Palette.GOLD if ph == state.phase else Color(Palette.MUTED, 0.6))
-		_phase_bar.add_child(l)
+		_ribbon.add_child(first)
+		var now: int = PHASES.find(state.phase)
+		for i: int in PHASES.size():
+			var fill: Color = Palette.PANEL_SOLID
+			var fg: Color = Palette.MUTED
+			if i < now:
+				fill = Palette.SURFACE_2
+				fg = Palette.DIM
+			elif i == now:
+				fill = Palette.FG
+				fg = Color.BLACK
+			var w: float = UiTheme.display_heavy().get_string_size(PHASES[i].to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 34.0
+			var chev: UiShape = UiShape.make(UiShape.Kind.CHEVRON, fill, Vector2(w, 30), PHASES[i].to_upper(), 15, fg)
+			chev.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			_ribbon.add_child(chev)
+	var tag: UiShape = _status_tag()
+	if tag != null:
+		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		_ribbon.add_child(tag)
 
 
-# --- player and hero panels ---------------------------------------------------------
+## "YOUR MOVE" (straw) when the game waits for a local player, else who it waits for.
+func _status_tag() -> UiShape:
+	if replay or state.is_over():
+		return null
+	if not net_paused.is_empty():
+		return UiShape.chip("PAUSED", Palette.FG, Color.BLACK, 16, 30.0)
+	if rolling:
+		return UiShape.chip("ROLLING…", Palette.SURFACE_2, Palette.FG, 16, 30.0)
+	var waiting: int = _waiting_for()
+	if waiting < 0:
+		return null
+	if local_slots.has(waiting):
+		var text: String = "YOUR MOVE" if local_slots.size() == 1 else "%s · YOUR MOVE" % player_name(waiting).to_upper()
+		return UiShape.chip(text, Palette.GOLD, Color.BLACK, 16, 30.0)
+	return UiShape.chip("%s IS PLAYING…" % player_name(waiting).to_upper(), Palette.PANEL_SOLID, Palette.MUTED, 16, 30.0)
 
-func _fill_player(box: VBoxContainer, slot: int) -> void:
-	_clear(box)
+
+## The slot the game waits for now, or -1.
+func _waiting_for() -> int:
+	if not state.pending.is_empty():
+		return JsonUtil.as_int(state.pending[0].get("player", -1), -1)
+	if state.phase == GameState.PHASE_SETUP_STAGES or state.phase == GameState.PHASE_SETUP_CORES:
+		return state.setup_turn
+	if _in_card_round():
+		return state.to_act
+	for p: PlayerState in state.players:
+		if _needs_input(p.slot):
+			return p.slot
+	return -1
+
+
+# --- rosters --------------------------------------------------------------------------
+
+func _fill_roster(col: VBoxContainer, slot: int) -> void:
+	_clear(col)
+	var right: bool = col == _rosters[1]
 	var p: PlayerState = state.player(slot)
-	var team_color: Color = Palette.team(state.team_of(slot))
 	var head := HBoxContainer.new()
-	box.add_child(head)
-	var name_l := Label.new()
-	name_l.text = player_name(slot).to_upper()
-	name_l.add_theme_font_override("font", UiTheme.display_bold())
-	name_l.add_theme_font_size_override("font_size", 22)
-	name_l.add_theme_color_override("font_color", team_color)
-	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(name_l)
-	var energy := Label.new()
-	energy.text = "⚡ %d/%d" % [p.energy, mini(maxi(state.turn, 0), state.settings.max_energy)]
-	energy.add_theme_font_override("font", UiTheme.display_bold())
-	energy.add_theme_font_size_override("font_size", 22)
-	energy.add_theme_color_override("font_color", Palette.GOLD)
-	energy.tooltip_text = "Energy"
-	energy.mouse_filter = Control.MOUSE_FILTER_PASS
-	head.add_child(energy)
-
-	var stars: String = ""
+	head.add_theme_constant_override("separation", 8)
+	head.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
+	col.add_child(head)
+	var name_chip: UiShape = UiShape.chip(player_name(slot).to_upper(), Palette.team(state.team_of(slot)), Palette.FG, 19, 30.0)
+	head.add_child(name_chip)
+	var cap: int = mini(maxi(state.turn, 0), state.settings.max_energy)
+	var pips := HBoxContainer.new()
+	pips.add_theme_constant_override("separation", 3)
+	pips.tooltip_text = "Energy %d of %d" % [p.energy, cap]
+	pips.mouse_filter = Control.MOUSE_FILTER_PASS
+	for i: int in state.settings.max_energy:
+		var lit: bool = i < p.energy
+		var pip: UiShape = UiShape.make(UiShape.Kind.DIAMOND, Palette.GOLD if lit else (Palette.LINE if i < cap else Color(0, 0, 0, 0)), Vector2(12, 12))
+		if not lit and i >= cap:
+			pip.outline = Palette.LINE
+			pip.outline_width = 1.0
+		pip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		pips.add_child(pip)
+	head.add_child(pips)
+	head.add_child(UiTheme.label("%d/%d" % [p.energy, cap], 19, Palette.GOLD))
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(gap)
+	var claimed: int = engine.claimed_count(state, slot)
+	var stars := HBoxContainer.new()
+	stars.add_theme_constant_override("separation", 2)
+	stars.tooltip_text = "Stages claimed: %d of %d" % [claimed, state.settings.stages_to_win]
+	stars.mouse_filter = Control.MOUSE_FILTER_PASS
 	for i: int in state.settings.stages_to_win:
-		stars += "★" if i < engine.claimed_count(state, slot) else "☆"
+		var star: UiShape = UiShape.make(UiShape.Kind.STAR, Palette.GOLD if i < claimed else Color(0, 0, 0, 0), Vector2(20, 20))
+		if i >= claimed:
+			star.outline = Palette.DIM
+			star.outline_width = 1.5
+		star.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		stars.add_child(star)
+	head.add_child(stars)
+
 	var info := Label.new()
-	info.theme_type_variation = &"Muted"
-	info.text = "Deck %d  ·  Hand %d  ·  Grave %d  ·  %s" % [p.deck.size(), p.hand.size(), p.graveyard.size(), stars]
+	info.add_theme_color_override("font_color", Palette.MUTED)
+	info.add_theme_font_size_override("font_size", 13)
+	info.text = "Hand %d  ·  Deck %d  ·  Grave %d" % [p.hand.size(), p.deck.size(), p.graveyard.size()]
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
 	info.tooltip_text = "Graveyard: " + (", ".join(_card_names(p.graveyard)) if not p.graveyard.is_empty() else "empty")
 	info.mouse_filter = Control.MOUSE_FILTER_PASS
-	box.add_child(info)
+	col.add_child(info)
 	if not p.assists.is_empty():
 		var assists := Label.new()
 		assists.theme_type_variation = &"Muted"
 		assists.text = "Assists: " + ", ".join(_card_names(p.assists))
+		assists.horizontal_alignment = info.horizontal_alignment
 		assists.tooltip_text = _card_texts(p.assists)
 		assists.mouse_filter = Control.MOUSE_FILTER_PASS
-		box.add_child(assists)
+		col.add_child(assists)
 	if not p.inventory.is_empty():
 		var inv := Label.new()
-		inv.theme_type_variation = &"Muted"
-		inv.text = "Inventory: %d core(s) to put back" % p.inventory.size()
-		box.add_child(inv)
+		inv.add_theme_color_override("font_color", Palette.GOLD)
+		inv.add_theme_font_size_override("font_size", 13)
+		inv.text = "%d core(s) to put back" % p.inventory.size()
+		inv.horizontal_alignment = info.horizontal_alignment
+		col.add_child(inv)
 	for h: HeroState in state.heroes_of(slot):
-		box.add_child(_hero_row(h))
+		col.add_child(_hero_slice(h, right))
 
 
-func _hero_row(h: HeroState) -> Control:
-	var card: CardDef = engine.catalog.get_card(h.card_id)
+func _hero_slice(h: HeroState, right: bool) -> Control:
+	var card: CardDef = engine.stat_card(h)
 	var hero_color: Color = Palette.hero(card.color if card != null else "")
 	var expanded: bool = _is_expanded(h)
 	var active: bool = state.active.get(h.owner, "") == h.id
+	var ko: bool = h.is_ko()
+	var pickable: bool = _pickable(h)
+	var in_battle: bool = _in_battle(h)
 
-	var panel := PanelContainer.new()
-	var bg: Color = Color(1, 1, 1, 0.07) if h.id == hover_hero else Color(1, 1, 1, 0.02)
-	var sb: StyleBoxFlat = UiTheme.box(bg, 3, Palette.GOLD if active else Color(0, 0, 0, 0), 8, 5)
-	sb.border_width_left = 4
-	sb.border_color = Palette.GOLD if active else hero_color
-	panel.add_theme_stylebox_override("panel", sb)
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	panel.gui_input.connect(func(e: InputEvent) -> void:
+	var s := HeroSlice.new()
+	s.set_mirrored(right)
+	s.art = db.thumb(card.id) if db != null and card != null else null
+	s.art_region = HeroSlice.region_for(s.art)
+	s.art_fallback = hero_color.darkened(0.3)
+	s.bg = Color("222222") if h.id == hover_hero else Palette.PANEL_SOLID
+	if ko:
+		s.art_tint = Color(0.35, 0.35, 0.35)
+		s.modulate.a = 0.6
+	if active:
+		s.outline = Palette.GOLD
+	elif pickable:
+		s.outline = Color(Palette.GOLD, 0.55)
+		s.outline_width = 2.0
+	if in_battle:
+		s.stripe = Palette.ACCENT
+	s.custom_minimum_size = Vector2(ROSTER_WIDTH - 14.0, SLICE_HEIGHT + (22.0 if expanded else 0.0))
+	# Inactive heroes sit a little in from the edge, so the active one sticks out.
+	s.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	s.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton:
 			var mb := e as InputEventMouseButton
 			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 				hero_clicked.emit(h.id))
-	panel.mouse_entered.connect(func() -> void: hero_hovered.emit(h.id))
-	panel.mouse_exited.connect(func() -> void: hero_hovered.emit(""))
+	s.mouse_entered.connect(func() -> void: hero_hovered.emit(h.id))
+	s.mouse_exited.connect(func() -> void: hero_hovered.emit(""))
 	if card != null:
-		panel.tooltip_text = card.text
+		s.tooltip_text = "%s\n%s" % [card.name, card.text]
 
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 2)
+	col.add_theme_constant_override("separation", 5)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(col)
+	s.content.add_child(col)
 	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	top.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(top)
-	var name_l := Label.new()
-	name_l.text = hero_name(h)
-	name_l.add_theme_font_override("font", UiTheme.display_bold())
-	name_l.add_theme_font_size_override("font_size", 18)
-	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_l: Label = UiTheme.label(hero_name(h), 20)
 	name_l.clip_text = true
+	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(name_l)
-	var tag := Label.new()
-	tag.theme_type_variation = &"Muted"
-	match h.zone:
-		HeroState.ZONE_STRIP:
-			tag.text = "START"
-		HeroState.ZONE_KO:
-			tag.text = "KO"
-			tag.add_theme_color_override("font_color", Palette.ACCENT)
-		_:
-			tag.text = ""
-	if h.tie_turns > 0:
-		tag.text = "LOCKED"
-	if h.has_status("stun"):
-		tag.text = "STUN"
-	top.add_child(tag)
-	var hp := Label.new()
+	var tag: UiShape = _hero_tag(h, active, pickable, in_battle)
+	if tag != null:
+		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top.add_child(tag)
 	var max_hp: int = engine.max_hp(state, h)
-	hp.text = "%d/%d" % [h.hp, max_hp]
-	hp.add_theme_font_override("font", UiTheme.display_bold())
-	hp.add_theme_font_size_override("font_size", 18)
-	hp.add_theme_color_override("font_color", Palette.ACCENT if h.hp * 3 <= max_hp else Palette.FG)
-	top.add_child(hp)
+	top.add_child(UiTheme.label("%d/%d" % [h.hp, max_hp], 20, Palette.ACCENT if h.hp * 3 <= max_hp and not ko else Palette.FG))
 
-	var bar := _hp_bar(h.hp, max_hp, hero_color)
-	col.add_child(bar)
+	var segs := UiSegments.new()
+	segs.value = h.hp
+	segs.max_value = max_hp
+	segs.color = Palette.hp(float(h.hp) / maxf(float(max_hp), 1.0))
+	segs.mirrored = right
+	segs.custom_minimum_size = Vector2(0, 8)
+	segs.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(segs)
 
-	var cores := Label.new()
-	cores.theme_type_variation = &"Muted"
-	var dots: String = ""
+	var bottom := HBoxContainer.new()
+	bottom.add_theme_constant_override("separation", 4)
+	bottom.layout_direction = top.layout_direction
+	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(bottom)
 	for i: int in state.settings.core_slots:
-		dots += "●" if i < h.cores.size() else "○"
-	cores.text = "Cores " + dots
-	col.add_child(cores)
+		var on: bool = i < h.cores.size()
+		var core: UiShape = UiShape.make(UiShape.Kind.DIAMOND, hero_color if on else Color(0, 0, 0, 0), Vector2(10, 10))
+		if not on:
+			core.outline = Palette.DIM
+			core.outline_width = 1.5
+		core.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bottom.add_child(core)
+	var extra := Label.new()
+	extra.add_theme_font_size_override("font_size", 12)
+	extra.clip_text = true
+	extra.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var status: String = _status_text(h)
 	if not status.is_empty():
-		var st := Label.new()
-		st.theme_type_variation = &"Muted"
-		st.text = status
-		st.add_theme_color_override("font_color", Palette.GOLD)
-		st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		col.add_child(st)
-	if expanded:
+		extra.text = status
+		extra.add_theme_color_override("font_color", Palette.GOLD)
+	elif ko:
+		extra.text = "Knocked out"
+		extra.add_theme_color_override("font_color", Palette.MUTED)
+	elif not h.equipment.is_empty():
+		extra.text = "Equip: " + ", ".join(_card_names(h.equipment))
+		extra.add_theme_color_override("font_color", Palette.MUTED)
+	extra.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
+	bottom.add_child(extra)
+	if expanded and not ko:
 		var stats := Label.new()
-		stats.theme_type_variation = &"Muted"
-		stats.text = "PWR %d  ·  DMG %d  ·  RNG %d  ·  KB %d" % [engine.stat(state, h, "pwr"),
-			engine.stat(state, h, "dmg"), engine.stat(state, h, "rng"), engine.stat(state, h, "kb")]
+		stats.add_theme_font_override("font", UiTheme.display_italic())
+		stats.add_theme_font_size_override("font_size", 15)
+		stats.clip_text = true
 		stats.add_theme_color_override("font_color", Palette.FG)
+		stats.text = "PWR %d   DMG %d   RNG %d   KB %d" % [engine.stat(state, h, "pwr"),
+			engine.stat(state, h, "dmg"), engine.stat(state, h, "rng"), engine.stat(state, h, "kb")]
+		stats.horizontal_alignment = extra.horizontal_alignment
 		col.add_child(stats)
-		if not h.equipment.is_empty():
-			var eq := Label.new()
-			eq.theme_type_variation = &"Muted"
-			eq.text = "Equip: " + ", ".join(_card_names(h.equipment))
-			eq.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			col.add_child(eq)
-		if not h.evolutions.is_empty():
-			var ev := Label.new()
-			ev.theme_type_variation = &"Muted"
-			ev.text = "Evolution %d" % h.evolutions.size()
-			col.add_child(ev)
-	return panel
+	# The active hero sticks out of the column; the others sit in a little.
+	var wrap := MarginContainer.new()
+	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrap.add_theme_constant_override("margin_right" if right else "margin_left", 0 if active else 14)
+	wrap.add_theme_constant_override("margin_left" if right else "margin_right", 14 if active else 0)
+	wrap.add_child(s)
+	return wrap
 
 
-func _hp_bar(hp: int, max_hp: int, color: Color) -> Control:
-	var bar := Control.new()
-	bar.custom_minimum_size = Vector2(0, 4)
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var back := ColorRect.new()
-	back.color = Color(1, 1, 1, 0.08)
-	back.set_anchors_preset(Control.PRESET_FULL_RECT)
-	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bar.add_child(back)
-	var fill := ColorRect.new()
-	fill.color = color
-	fill.anchor_bottom = 1.0
-	fill.anchor_right = clampf(float(hp) / maxf(float(max_hp), 1.0), 0.0, 1.0)
-	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bar.add_child(fill)
-	return bar
+func _hero_tag(h: HeroState, active: bool, pickable: bool, in_battle: bool) -> UiShape:
+	if h.is_ko():
+		return UiShape.chip("KO", Palette.ACCENT_DEEP, Palette.FG, 13, 20.0, 8.0)
+	if in_battle:
+		return UiShape.chip("BATTLE", Palette.ACCENT, Palette.FG, 13, 20.0, 8.0)
+	if active:
+		return UiShape.chip("ACTIVE", Palette.GOLD, Color.BLACK, 13, 20.0, 8.0)
+	if pickable:
+		return UiShape.chip("PICK", Color(Palette.GOLD, 0.25), Palette.GOLD, 13, 20.0, 8.0)
+	if h.tie_turns > 0:
+		return UiShape.chip("LOCKED", Palette.SURFACE_2, Palette.FG, 13, 20.0, 8.0)
+	if h.zone == HeroState.ZONE_STRIP:
+		return UiShape.chip("START", Color(0, 0, 0, 0), Palette.MUTED, 13, 20.0, 8.0)
+	return null
+
+
+func _pickable(h: HeroState) -> bool:
+	if state.phase != GameState.PHASE_SELECT or not local_slots.has(h.owner) or state.active.has(h.owner):
+		return false
+	for x: HeroState in engine.selectable_heroes(state, h.owner):
+		if x.id == h.id:
+			return true
+	return false
+
+
+func _in_battle(h: HeroState) -> bool:
+	if state.phase != GameState.PHASE_BATTLE or state.battle_index < 0 or state.battle_index >= state.battles.size():
+		return false
+	return JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", [])).has(h.id)
 
 
 func _is_expanded(h: HeroState) -> bool:
-	if h.id == hover_hero or state.active.get(h.owner, "") == h.id:
-		return true
-	if state.phase == GameState.PHASE_BATTLE and state.battle_index >= 0 and state.battle_index < state.battles.size():
-		return JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", [])).has(h.id)
-	return false
+	return h.id == hover_hero or state.active.get(h.owner, "") == h.id or _in_battle(h)
 
 
 # --- prompt and actions -------------------------------------------------------------
@@ -526,10 +665,16 @@ func _needs_input(slot: int) -> bool:
 
 func _refresh_prompt() -> void:
 	_clear(_actions)
+	_clear(_tray)
 	_prompt.text = ""
+	_detail.text = ""
+	_key_hint.text = ""
+	_kicker.text = state.phase.to_upper() if state.turn > 0 or state.phase == GameState.PHASE_MULLIGAN else ""
 	if state.is_over() or replay:
+		_kicker.text = ""
 		return
 	if not net_paused.is_empty():
+		_kicker.text = "PAUSED"
 		_prompt.text = net_paused
 		return
 	if rolling:
@@ -544,9 +689,11 @@ func _refresh_prompt() -> void:
 		if not local_slots.has(who):
 			_prompt.text = "%s is deciding…" % player_name(who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_RETURN_CORE:
-			_prompt.text = "%s: click a highlighted hex to put a core back" % player_name(who)
+			_prompt.text = "Put a core back"
+			_detail.text = "%s: click a highlighted hex." % player_name(who)
 		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hex":
-			_prompt.text = "%s: %s (click a highlighted hex)" % [player_name(who), str(d.get("prompt", ""))]
+			_prompt.text = str(d.get("prompt", "Pick a hex"))
+			_detail.text = "%s: click a highlighted hex." % player_name(who)
 		return
 	var any_local: bool = false
 	for slot: int in local_slots:
@@ -554,43 +701,52 @@ func _refresh_prompt() -> void:
 			continue
 		any_local = true
 		var who: String = player_name(slot)
+		var many: bool = local_slots.size() > 1
 		match state.phase:
 			GameState.PHASE_MULLIGAN:
-				_prompt.text = "%s: keep this hand?" % who
-				_action("Keep", func() -> void: keep_pressed.emit(slot, true))
-				_action("Mulligan", func() -> void: keep_pressed.emit(slot, false))
+				_prompt.text = "Keep this hand?"
+				_detail.text = ("%s: " % who if many else "") + "a new hand is drawn once."
+				_action("New hand", func() -> void: keep_pressed.emit(slot, false))
+				_action("KEEP", func() -> void: keep_pressed.emit(slot, true), &"Primary")
 			GameState.PHASE_SELECT:
-				_prompt.text = "%s: click one of your heroes to activate it" % who
+				_prompt.text = "Pick a hero"
+				_detail.text = ("%s: " % who if many else "") + "click one of your heroes to activate it."
 				if engine.selectable_heroes(state, slot).is_empty():
-					_action("No hero can act", func() -> void: no_hero_pressed.emit(slot))
+					_action("No hero can act", func() -> void: no_hero_pressed.emit(slot), &"Primary")
 			GameState.PHASE_PREROLL:
 				var h: HeroState = state.active_hero(slot)
-				_prompt.text = "%s: Roll or Stay with %s?" % [who, hero_name(h)]
-				_action("%s · Roll" % who, func() -> void: choice_pressed.emit(slot, true))
-				var stay: Button = _action("%s · Stay" % who, func() -> void: choice_pressed.emit(slot, false))
+				_prompt.text = "Roll or Stay?"
+				_detail.text = ("%s: " % who if many else "") + "%s rolls into the arena, or stays where it is." % hero_name(h)
+				var stay: Button = _action("STAY", func() -> void: choice_pressed.emit(slot, false))
 				stay.disabled = h.zone == HeroState.ZONE_STRIP
 				if stay.disabled:
 					stay.tooltip_text = "A hero in the start zone must roll"
+				_action("ROLL", func() -> void: choice_pressed.emit(slot, true), &"Primary")
 			GameState.PHASE_ROLL:
-				_prompt.text = "%s: drag %s to aim, release to lock it in" % [who, hero_name(state.active_hero(slot))]
+				_prompt.text = "Aim and throw"
+				_detail.text = ("%s: " % who if many else "") + "drag %s back, release to lock the throw in. Right click cancels." % hero_name(state.active_hero(slot))
 		break
 	if _in_card_round():
 		var slot: int = state.to_act
+		var battle: String = _battle_line()
 		if local_slots.has(slot):
 			if not any_local:
-				_prompt.text = "%s: play a card or pass%s" % [player_name(slot), _battle_suffix()]
+				_prompt.text = "Play a card or pass" if battle.is_empty() else "Battle! Play a card or pass"
+				_detail.text = (battle + "  ·  " if not battle.is_empty() else "") + ("%s to act." % player_name(slot) if local_slots.size() > 1 else "Click a card in your hand to play it.")
 			for a: Dictionary in engine.fx.usable_abilities(state, slot):
 				var h: HeroState = state.hero(str(a["hero"]))
 				var c: CardDef = engine.catalog.get_card(str(a["card"]))
 				var e: FxEffect = a["effect"]
-				var label: String = "%s: %s" % [hero_name(h) if h != null else (c.name if c != null else "?"), e.line.get_slice(":", 1).strip_edges()]
-				var ab: Button = _action(label, func() -> void: ability_pressed.emit(slot, str(a["hero"]), str(a["card"]), JsonUtil.as_int(a["index"])))
+				var text: String = "%s: %s" % [hero_name(h) if h != null else (c.name if c != null else "?"), e.line.get_slice(":", 1).strip_edges()]
+				var ab: Button = _action(text, func() -> void: ability_pressed.emit(slot, str(a["hero"]), str(a["card"]), JsonUtil.as_int(a["index"])), &"Gold")
 				if c != null:
 					ab.tooltip_text = c.text
-			var pass_btn: Button = _action("Pass  (Space)", func() -> void: pass_pressed.emit(slot))
-			pass_btn.add_theme_color_override("font_color", Palette.GOLD)
+			# One red button at a time: while Roll / Stay waits, passing is the quiet option.
+			_action("PASS", func() -> void: pass_pressed.emit(slot), &"" if any_local else &"Primary")
+			_key_hint.text = "SPACE = PASS"
 		elif not any_local:
-			_prompt.text = "%s is playing…%s" % [player_name(slot), _battle_suffix()]
+			_prompt.text = "%s is playing…" % player_name(slot)
+			_detail.text = battle
 	elif not any_local:
 		if state.phase == GameState.PHASE_ROLL and state.awaiting_roll:
 			_prompt.text = "Rolling…"
@@ -599,23 +755,29 @@ func _refresh_prompt() -> void:
 
 
 ## Setup (GDD 7): stages, then cores, placed in turn. The tray lists what is left; the picked one
-## is gold, its legal hexes light up on the table.
+## is straw, its legal hexes light up on the table.
 func _setup_prompt() -> void:
 	var who: int = state.setup_turn
 	var stages: bool = state.phase == GameState.PHASE_SETUP_STAGES
+	_kicker.text = "SETUP · " + ("STAGES" if stages else "CORES")
 	if not local_slots.has(who):
 		_prompt.text = "%s is placing a %s…" % [player_name(who), "stage" if stages else "core"]
 		return
-	_prompt.text = ("%s: place a stage in the middle third" if stages else "%s: place a core in the opponent's half") % player_name(who) \
-		+ "  ·  pick one below, click a highlighted hex"
+	_prompt.text = "Place a stage" if stages else "Place a core"
+	_detail.text = ("In the middle third of the map." if stages else "In the opponent's half.") + "  Pick one below, then click a highlighted hex."
+	if local_slots.size() > 1:
+		_detail.text = "%s: " % player_name(who) + _detail.text
 	for id: String in setup_items(state, who):
-		var b: Button = _action(_setup_label(id), func() -> void: setup_item_pressed.emit(id))
-		if id == setup_pick:
-			b.add_theme_color_override("font_color", Palette.GOLD)
-			b.add_theme_stylebox_override("normal", UiTheme.box(Palette.BUTTON, 3, Palette.GOLD))
+		var b := Button.new()
+		b.text = _setup_label(id)
+		b.focus_mode = Control.FOCUS_NONE
+		b.theme_type_variation = &"Gold" if id == setup_pick else &""
+		b.add_theme_font_size_override("font_size", 19)
+		b.pressed.connect(func() -> void: setup_item_pressed.emit(id))
 		var tip: String = _setup_tip(id)
 		if not tip.is_empty():
 			b.tooltip_text = tip
+		_tray.add_child(b)
 
 
 ## Stages (or cores, in the core phase) `slot` still has to place.
@@ -660,17 +822,8 @@ func _status_text(h: HeroState) -> String:
 	return "  ·  ".join(parts)
 
 
-func _process(delta: float) -> void:
-	if _hand_box == null:
-		return
-	# Up while the mouse is near the bottom of the screen, else only the tops of the cards show.
-	var up: bool = get_local_mouse_position().y > size.y - CARD_SIZE.y - 70.0
-	var target: float = 0.0 if up else CARD_SIZE.y - 24.0
-	_hand_drop = move_toward(_hand_drop, target, delta * 600.0)
-	_hand_box.position.y = size.y - CARD_SIZE.y - 12.0 + _hand_drop
-
-
-func _battle_suffix() -> String:
+## "Battle 1/2: Giorno vs Shanks", or "" outside a battle.
+func _battle_line() -> String:
 	if state.phase != GameState.PHASE_BATTLE or state.battle_index < 0 or state.battle_index >= state.battles.size():
 		return ""
 	var names := PackedStringArray()
@@ -678,32 +831,69 @@ func _battle_suffix() -> String:
 		var h: HeroState = state.hero(id)
 		if h != null:
 			names.append(hero_name(h))
-	return "   ·   BATTLE %d/%d: %s" % [state.battle_index + 1, state.battles.size(), " vs ".join(names)]
+	return "Battle %d/%d: %s" % [state.battle_index + 1, state.battles.size(), " vs ".join(names)]
 
 
-func _action(text: String, cb: Callable) -> Button:
+func _action(text: String, cb: Callable, kind: StringName = &"") -> Button:
 	var b := Button.new()
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
+	b.theme_type_variation = kind
+	if kind == &"Primary":
+		b.add_theme_font_size_override("font_size", 34)
+		b.custom_minimum_size = Vector2(220, 0)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_END
 	b.pressed.connect(cb)
 	_actions.add_child(b)
 	return b
+
+
+func _process(delta: float) -> void:
+	if _hand_box == null or state == null:
+		return
+	if state.phase == GameState.PHASE_MULLIGAN:
+		# The starting hand sits in the middle, big, and stays up.
+		_hand_drop = 0.0
+		_hand_box.position.y = size.y * 0.5 - HAND_HEIGHT * 0.5
+		return
+	# Up while the mouse is near the bottom of the screen, else only the tops of the cards show.
+	var up: bool = get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0
+	var target: float = 0.0 if up else HAND_HEIGHT - 110.0
+	_hand_drop = move_toward(_hand_drop, target, delta * 900.0)
+	_hand_box.position.y = size.y - HAND_HEIGHT + 30.0 + _hand_drop
 
 
 # --- hand ------------------------------------------------------------------------
 
 func _refresh_hand() -> void:
 	_clear(_hand)
+	var mulligan: bool = state.phase == GameState.PHASE_MULLIGAN
+	_hand_title.visible = false
 	var slot: int = hand_slot()
-	if slot < 0 or state.turn == 0 and state.phase != GameState.PHASE_MULLIGAN:
+	if slot < 0 or state.turn == 0 and not mulligan:
 		return
 	# No cards are played while heroes are picked and aimed; keep the strip free to grab balls.
 	if state.phase == GameState.PHASE_SELECT or state.phase == GameState.PHASE_ROLL and not state.rolled:
 		return
 	var p: PlayerState = state.player(slot)
-	var can_play: bool = _in_card_round() and state.to_act == slot and state.pending.is_empty()
-	for cid: String in p.hand:
-		_hand.add_child(_card_button(slot, cid, can_play and _affordable(p, cid)))
+	if mulligan and not _needs_input(slot):
+		return
+	_hand_title.visible = mulligan
+	var my_round: bool = _in_card_round() and state.to_act == slot and state.pending.is_empty()
+	var n: int = p.hand.size()
+	var step: float = minf(176.0 if mulligan else 96.0, 860.0 / maxf(float(n), 1.0))
+	for i: int in n:
+		var cid: String = p.hand[i]
+		var c: CardDef = engine.catalog.get_card(cid)
+		var playable: bool = my_round and _affordable(p, cid) and c != null and c.is_ready()
+		var card: Control = _hand_card(slot, cid, playable, my_round)
+		var t: float = i - (n - 1) * 0.5
+		card.position = Vector2(_hand.size.x * 0.5 + t * step - CARD_SIZE.x * 0.5, 16.0 + (0.0 if mulligan else t * t * 4.0))
+		card.rotation_degrees = 0.0 if mulligan else t * 5.0
+		if mulligan:
+			card.scale = Vector2.ONE * 1.25
+		card.set_meta("rest_y", card.position.y)
+		_hand.add_child(card)
 
 
 func _affordable(p: PlayerState, cid: String) -> bool:
@@ -711,37 +901,83 @@ func _affordable(p: PlayerState, cid: String) -> bool:
 	return c != null and c.cost <= p.energy
 
 
-func _card_button(slot: int, cid: String, enabled: bool) -> Button:
+## One card of the hand: its image, the cost on a diamond, and how it can be used now.
+func _hand_card(slot: int, cid: String, playable: bool, my_round: bool) -> Control:
 	var c: CardDef = engine.catalog.get_card(cid)
-	var b := Button.new()
-	b.custom_minimum_size = CARD_SIZE
-	b.focus_mode = Control.FOCUS_NONE
-	b.clip_text = true
-	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	b.add_theme_font_size_override("font_size", 15)
-	if c == null:
-		b.text = cid
-		return b
-	b.text = "%s\n%d · %s" % [c.name, c.cost, c.type]
-	b.tooltip_text = "%s  (%s, %s, cost %d)\n%s" % [c.name, c.type, c.color, c.cost, c.text]
-	var col: Color = Palette.hero(c.color)
-	var normal: StyleBoxFlat = UiTheme.box(Palette.BUTTON, 3, Color(0, 0, 0, 0), 8, 6)
-	normal.border_width_top = 4
-	normal.border_color = col
-	b.add_theme_stylebox_override("normal", normal)
-	var hover: StyleBoxFlat = normal.duplicate()
-	hover.bg_color = Palette.BUTTON_HOVER
-	b.add_theme_stylebox_override("hover", hover)
-	var off: StyleBoxFlat = normal.duplicate()
-	off.bg_color = Color("201b17")
-	b.add_theme_stylebox_override("disabled", off)
-	b.disabled = not enabled
-	b.add_theme_color_override("font_disabled_color", Palette.MUTED)
-	b.pressed.connect(func() -> void: card_pressed.emit(slot, cid))
-	return b
+	var root := Control.new()
+	root.custom_minimum_size = CARD_SIZE
+	root.size = CARD_SIZE
+	root.pivot_offset = Vector2(CARD_SIZE.x * 0.5, CARD_SIZE.y)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	var back := ColorRect.new()
+	back.color = Palette.hero(c.color if c != null else "").darkened(0.45)
+	back.set_anchors_preset(Control.PRESET_FULL_RECT)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(back)
+	var tex: Texture2D = db.thumb(cid) if db != null else null
+	if tex != null:
+		var img := TextureRect.new()
+		img.texture = tex
+		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		img.set_anchors_preset(Control.PRESET_FULL_RECT)
+		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		root.add_child(img)
+	else:
+		var name_l: Label = UiTheme.label(c.name if c != null else cid, 18)
+		name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		name_l.set_anchors_preset(Control.PRESET_FULL_RECT)
+		root.add_child(name_l)
+	if c != null:
+		var poor: bool = my_round and c.cost > state.player(slot).energy
+		var cost: UiShape = UiShape.make(UiShape.Kind.DIAMOND, Palette.ACCENT if poor else Palette.GOLD, Vector2(36, 36),
+			str(c.cost), 21, Palette.FG if poor else Color.BLACK)
+		cost.outline = Color.BLACK
+		cost.outline_width = 3.0
+		cost.position = Vector2(-10, -10)
+		root.add_child(cost)
+		if not c.is_ready():
+			var nr: UiShape = UiShape.chip("NOT READY", Palette.SURFACE_2, Palette.MUTED, 12, 20.0, 8.0)
+			nr.position = Vector2(CARD_SIZE.x * 0.5 - nr.custom_minimum_size.x * 0.5, CARD_SIZE.y - 28)
+			root.add_child(nr)
+		root.tooltip_text = "%s  ·  %s %s  ·  cost %d\n%s" % [c.name, c.color, c.type, c.cost, c.text]
+		if my_round and not playable:
+			root.modulate = Color(0.5, 0.5, 0.5)
+		elif not my_round:
+			root.modulate = Color(0.88, 0.88, 0.88)
+	root.mouse_entered.connect(func() -> void: _lift(root, true, playable))
+	root.mouse_exited.connect(func() -> void: _lift(root, false, playable))
+	root.gui_input.connect(func(e: InputEvent) -> void:
+		if playable and e is InputEventMouseButton:
+			var mb := e as InputEventMouseButton
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+				card_pressed.emit(slot, cid))
+	return root
 
 
-# --- damage choice ------------------------------------------------------------------
+## Hover: the card rises, straightens and grows; a playable one gets a straw edge.
+func _lift(card: Control, up: bool, playable: bool) -> void:
+	var rest: float = JsonUtil.as_float(card.get_meta("rest_y", card.position.y))
+	card.z_index = 10 if up else 0
+	var t: Tween = card.create_tween().set_parallel(true)
+	t.tween_property(card, "position:y", rest - (56.0 if up else 0.0), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(card, "scale", Vector2.ONE * (1.18 if up else 1.0), 0.12)
+	if up and playable:
+		var edge := ReferenceRect.new()
+		edge.name = "Edge"
+		edge.border_color = Palette.GOLD
+		edge.border_width = 3.0
+		edge.editor_only = false
+		edge.set_anchors_preset(Control.PRESET_FULL_RECT)
+		edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(edge)
+	elif not up and card.has_node("Edge"):
+		card.get_node("Edge").queue_free()
+
+
+# --- dialogs ------------------------------------------------------------------------
 
 func _refresh_dialog() -> void:
 	_clear(_dialog_box)
@@ -760,30 +996,21 @@ func _refresh_dialog() -> void:
 	_dialog.visible = true
 	var amount: int = JsonUtil.as_int(d.get("amount", 0))
 	var winner: HeroState = state.hero(str(d.get("winner", "")))
-	var title := Label.new()
-	title.theme_type_variation = &"Big"
-	title.text = "%d DMG" % amount
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_dialog_box.add_child(title)
+	_dialog_box.add_child(UiTheme.label("BATTLE LOST · %s" % player_name(who).to_upper(), 15, Palette.GOLD))
+	_dialog_box.add_child(UiTheme.label("Where do %d DMG go?" % amount, 36))
 	var sub := Label.new()
-	sub.theme_type_variation = &"Muted"
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.text = "%s lost the battle. Where does the hit from %s go?" % [player_name(who), hero_name(winner) if winner != null else "?"]
+	sub.add_theme_color_override("font_color", Palette.MUTED)
+	sub.text = "The hit from %s lands on a hero, or on the deck." % (hero_name(winner) if winner != null else "?")
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_dialog_box.add_child(sub)
-	var p: PlayerState = state.player(who)
-	var deck_btn := Button.new()
-	deck_btn.text = "Deck  (%d cards, %d in hand)" % [p.deck.size(), p.hand.size()]
-	deck_btn.pressed.connect(func() -> void: damage_pressed.emit(who, "deck"))
-	_dialog_box.add_child(deck_btn)
 	for id: String in JsonUtil.as_strings(d.get("targets", [])):
 		var h: HeroState = state.hero(id)
 		if h == null:
 			continue
-		var b := Button.new()
-		b.text = "%s  (HP %d → %d)" % [hero_name(h), h.hp, maxi(h.hp - amount, 0)]
-		b.pressed.connect(func() -> void: damage_pressed.emit(who, id))
-		_dialog_box.add_child(b)
+		_option_button("%s   HP %d → %d" % [hero_name(h).to_upper(), h.hp, maxi(h.hp - amount, 0)],
+			func() -> void: damage_pressed.emit(who, id))
+	var p: PlayerState = state.player(who)
+	_option_button("DECK   %d cards, %d in hand" % [p.deck.size(), p.hand.size()], func() -> void: damage_pressed.emit(who, "deck"))
 
 
 ## A card effect asks for a hero, core, card or branch (hexes are clicked on the table).
@@ -792,38 +1019,46 @@ func _choose_dialog(d: Dictionary, who: int) -> void:
 	if kind == "hex":
 		return
 	_dialog.visible = true
-	var title := Label.new()
-	title.theme_type_variation = &"Big"
-	title.text = str(d.get("prompt", "Choose"))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_dialog_box.add_child(title)
-	var sub := Label.new()
-	sub.theme_type_variation = &"Muted"
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var ctx: Dictionary = JsonUtil.as_dict(JsonUtil.as_dict(d.get("resume", {})).get("ctx", {}))
-	sub.text = "%s  ·  %s" % [player_name(who), _card_name(str(ctx.get("card", "")))]
-	_dialog_box.add_child(sub)
+	_dialog_box.add_child(UiTheme.label(_card_name(str(ctx.get("card", ""))).to_upper(), 15, Palette.GOLD))
+	var title: Label = UiTheme.label(str(d.get("prompt", "Choose")), 36)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_dialog_box.add_child(title)
+	if local_slots.size() > 1:
+		var sub := Label.new()
+		sub.add_theme_color_override("font_color", Palette.MUTED)
+		sub.text = player_name(who)
+		_dialog_box.add_child(sub)
 	var options: Array = JsonUtil.as_array(d.get("options", []))
 	for i: int in options.size():
 		var o: Variant = options[i]
-		var b := Button.new()
+		var text: String = str(o)
 		match kind:
 			"hero":
 				var h: HeroState = state.hero(str(o))
-				b.text = "%s  (HP %d)" % [hero_name(h), h.hp] if h != null else str(o)
+				text = "%s   HP %d" % [hero_name(h).to_upper(), h.hp] if h != null else str(o)
 			"core":
 				var c: CoreState = state.core(str(o))
-				b.text = "%s core at %s" % ["face-up" if c != null and c.face_up else "face-down", str(c.hex) if c != null else "?"]
+				text = "%s CORE AT %s" % ["FACE-UP" if c != null and c.face_up else "FACE-DOWN", str(c.hex) if c != null else "?"]
 			"card":
-				b.text = _card_name(str(o))
-			_:
-				b.text = str(o)
+				text = _card_name(str(o)).to_upper()
 		var value: Variant = i if kind == "option" else o
-		b.pressed.connect(func() -> void: choose_pressed.emit(who, value))
-		_dialog_box.add_child(b)
+		_option_button(text, func() -> void: choose_pressed.emit(who, value))
 
 
-# --- log and end -----------------------------------------------------------------------
+func _option_button(text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.add_theme_font_size_override("font_size", 22)
+	b.custom_minimum_size = Vector2(420, 50)
+	b.pressed.connect(cb)
+	_dialog_box.add_child(b)
+	return b
+
+
+# --- log and banners -----------------------------------------------------------------
 
 func _refresh_log() -> void:
 	var lines := PackedStringArray()
@@ -831,9 +1066,103 @@ func _refresh_log() -> void:
 		var s: String = _describe(e)
 		if not s.is_empty():
 			lines.append(s)
-	_log_line.text = ("≡  " + lines[lines.size() - 1]) if not lines.is_empty() else "≡"
+	_log_line.text = lines[lines.size() - 1] if not lines.is_empty() else ""
 	var start: int = maxi(0, lines.size() - 16)
 	_log_full.text = "\n".join(lines.slice(start))
+
+
+## New log entries since the last look: banners for the big moments. The first look (and a
+## replay stepping back) only takes note.
+func _scan_log() -> void:
+	var n: int = state.log.size()
+	if _log_seen < 0 or n < _log_seen:
+		_log_seen = n
+		return
+	var fresh: Array[Dictionary] = []
+	for i: int in range(_log_seen, n):
+		var e: Dictionary = state.log[i]
+		var t: String = str(e.get("type", ""))
+		if BANNER_EVENTS.has(t):
+			fresh.append(e)
+		elif t == "stage_revealed":
+			var st: StageState = state.stage(str(e.get("stage", "")))
+			var card: CardDef = engine.catalog.get_card(st.card_id) if st != null else null
+			if card != null:
+				var terrain: String = Terrain.name_of(card.terrain) if card.terrain != Terrain.Type.NONE else ""
+				toast("Stage revealed · %s%s" % [card.name, (" · " + terrain) if not terrain.is_empty() else ""])
+	_log_seen = n
+	# A replay jumping ahead shows only the last few.
+	for e: Dictionary in fresh.slice(maxi(0, fresh.size() - 3)):
+		_banner_for(e)
+
+
+func _banner_for(e: Dictionary) -> void:
+	match str(e.get("type", "")):
+		"battle":
+			var power: Dictionary = JsonUtil.as_dict(e.get("power", {}))
+			var sides := PackedStringArray()
+			for id: Variant in power:
+				var h: HeroState = state.hero(str(id))
+				sides.append("%s\n%d" % [(hero_name(h) if h != null else str(id)).to_upper(), JsonUtil.as_int(power[id])])
+			banner("BATTLE!", Palette.ACCENT, sides[0] if sides.size() > 0 else "", sides[1] if sides.size() > 1 else "")
+		"ring_out":
+			banner("RING-OUT", Palette.GOLD, "", _hero_label(str(e.get("hero", ""))).to_upper())
+		"ko":
+			banner("KO", Palette.ACCENT_DEEP, "", _hero_label(str(e.get("hero", ""))).to_upper())
+		"stage_claimed":
+			var st: StageState = state.stage(str(e.get("stage", "")))
+			banner("STAGE CLAIMED", Palette.GOLD, player_name(JsonUtil.as_int(e.get("player", 0))).to_upper(),
+				_card_name(st.card_id if st != null else "").to_upper())
+
+
+func _next_banner() -> void:
+	if _banners.is_empty():
+		_banner_busy = false
+		return
+	_banner_busy = true
+	var b: Dictionary = _banners.pop_front()
+	var color: Color = b["color"]
+	var fg: Color = Color.BLACK if color.get_luminance() > 0.5 else Palette.FG
+	var w: float = size.x + 200.0
+	var band := Panel.new()
+	var sb: StyleBoxFlat = UiTheme.box(color, 0)
+	sb.border_color = Color.BLACK
+	sb.set_border_width_all(6)
+	band.add_theme_stylebox_override("panel", sb)
+	band.size = Vector2(w, 100)
+	band.pivot_offset = band.size * 0.5
+	band.position = Vector2(-100.0 - w, size.y * 0.5 - 50.0)
+	band.rotation_degrees = -3.0
+	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_banner_layer.add_child(band)
+	var row := HBoxContainer.new()
+	row.set_anchors_preset(Control.PRESET_FULL_RECT)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 40)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	band.add_child(row)
+	row.add_child(_banner_side(str(b["left"]), fg, true))
+	var title: Label = UiTheme.label(str(b["title"]), 84, fg)
+	title.add_theme_color_override("font_outline_color", Color.BLACK)
+	title.add_theme_constant_override("outline_size", 10 if fg == Palette.FG else 0)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(title)
+	row.add_child(_banner_side(str(b["right"]), fg, false))
+	var t: Tween = band.create_tween()
+	t.tween_property(band, "position:x", -100.0, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_interval(BANNER_TIME)
+	t.tween_property(band, "position:x", size.x + 100.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_callback(func() -> void:
+		band.queue_free()
+		_next_banner())
+
+
+func _banner_side(text: String, fg: Color, left: bool) -> Label:
+	var l: Label = UiTheme.label(text, 26, fg)
+	l.custom_minimum_size = Vector2(220, 0)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if left else HORIZONTAL_ALIGNMENT_LEFT
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	return l
 
 
 func _describe(e: Dictionary) -> String:
@@ -887,49 +1216,114 @@ func _describe(e: Dictionary) -> String:
 	return ""
 
 
+# --- end of the match ----------------------------------------------------------------
+
 func _refresh_over() -> void:
+	var was: bool = _over.visible
 	_over.visible = state.is_over() and not replay
 	if not _over.visible:
 		return
-	_rematch_btn.text = rematch_text
-	_rematch_btn.visible = not rematch_text.is_empty()
-	var reasons: Dictionary = {"ko": "all heroes KO", "stages": "stages claimed", "deckout": "deck-out",
-		"surrender": "surrender", "draw": "draw"}
-	if state.winner < 0:
-		_over_title.text = "DRAW"
-	else:
-		_over_title.text = "%s WINS" % player_name(state.winner).to_upper()
-		_over_title.add_theme_color_override("font_color", Palette.team(state.team_of(state.winner)))
-	_over_info.text = "%s  ·  turn %d" % [str(reasons.get(state.result, state.result)), state.turn]
+	_clear(_over_box)
+	var reasons: Dictionary = {"ko": "ALL HEROES KO", "stages": "STAGES CLAIMED", "deckout": "DECK-OUT",
+		"surrender": "SURRENDER", "draw": "DRAW"}
+	_over_box.add_child(UiTheme.label("%s  ·  TURN %d" % [str(reasons.get(state.result, state.result.to_upper())), state.turn], 18, Palette.GOLD))
+	var title: String = "DRAW"
+	var title_color: Color = Palette.FG
+	if state.winner >= 0:
+		if local_slots.size() == 1:
+			title = "VICTORY" if local_slots.has(state.winner) else "DEFEAT"
+			title_color = Palette.FG if local_slots.has(state.winner) else Palette.MUTED
+		else:
+			title = "%s WINS" % player_name(state.winner).to_upper()
+	# The title with a red shadow behind it, like the app's stickers.
+	var stack := Control.new()
+	stack.custom_minimum_size = Vector2(0, 130)
+	_over_box.add_child(stack)
+	var shadow: Label = UiTheme.label(title, 120, Palette.ACCENT)
+	shadow.position = Vector2(8, 8)
+	stack.add_child(shadow)
+	var main: Label = UiTheme.label(title, 120, title_color)
+	main.add_theme_color_override("font_outline_color", Color.BLACK)
+	main.add_theme_constant_override("outline_size", 8)
+	stack.add_child(main)
+	if state.winner >= 0:
+		var strips := HBoxContainer.new()
+		strips.add_theme_constant_override("separation", 6)
+		_over_box.add_child(strips)
+		for h: HeroState in state.heroes_of(state.winner):
+			var s := HeroSlice.new()
+			var card: CardDef = engine.stat_card(h)
+			s.art = db.thumb(card.id) if db != null and card != null else null
+			s.art_region = HeroSlice.region_for(s.art)
+			s.art_fallback = Palette.hero(card.color if card != null else "")
+			s.custom_minimum_size = Vector2(HeroSlice.ART_W + HeroSlice.CUT + 4.0, 56)
+			if h.is_ko():
+				s.art_tint = Color(0.35, 0.35, 0.35)
+			s.tooltip_text = hero_name(h)
+			strips.add_child(s)
+	if not end_summary.is_empty():
+		_over_box.add_child(_stats_table())
 	if rematch_text.is_empty():
-		_over_info.text += "
-The host can take everyone back to the lobby."
-	# Per player, from the match summary that also goes to stats/ (GDD 11: end of match shows stats).
-	_clear(_over_stats)
-	if end_summary.is_empty():
-		return
+		var wait := Label.new()
+		wait.add_theme_color_override("font_color", Palette.MUTED)
+		wait.text = "The host can take everyone back to the lobby."
+		_over_box.add_child(wait)
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 12)
+	_over_box.add_child(buttons)
+	if not rematch_text.is_empty():
+		var again := Button.new()
+		again.text = rematch_text.to_upper()
+		again.theme_type_variation = &"Primary"
+		again.add_theme_font_size_override("font_size", 28)
+		again.pressed.connect(func() -> void: rematch_pressed.emit())
+		buttons.add_child(again)
+	var watch := Button.new()
+	watch.text = "WATCH REPLAY"
+	watch.add_theme_font_size_override("font_size", 22)
+	watch.pressed.connect(func() -> void: watch_replay_pressed.emit())
+	buttons.add_child(watch)
+	var back := Button.new()
+	back.text = "MENU"
+	back.add_theme_font_size_override("font_size", 22)
+	back.pressed.connect(func() -> void: menu_pressed.emit())
+	buttons.add_child(back)
+	if not was:
+		_over_box.modulate.a = 0.0
+		_over_box.scale = Vector2(1.08, 1.08)
+		var t: Tween = _over_box.create_tween().set_parallel(true)
+		t.tween_property(_over_box, "modulate:a", 1.0, 0.25)
+		t.tween_property(_over_box, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Per player, from the match summary that also goes to stats/ (GDD 11: the end shows stats).
+func _stats_table() -> Control:
+	var panel := PanelContainer.new()
+	var grid := GridContainer.new()
 	var players: Array = JsonUtil.as_array(end_summary.get("players", []))
-	_stat_cell("", true)
+	grid.columns = players.size() + 1
+	grid.add_theme_constant_override("h_separation", 40)
+	grid.add_theme_constant_override("v_separation", 6)
+	panel.add_child(grid)
+	grid.add_child(Control.new())
 	for p: Variant in players:
-		_stat_cell(str(JsonUtil.as_dict(p).get("name", "")), true)
+		var d: Dictionary = JsonUtil.as_dict(p)
+		grid.add_child(UiTheme.label(str(d.get("name", "")).to_upper(), 20, Palette.team(JsonUtil.as_int(d.get("slot", 0)))))
 	for row: Array in [["Stages claimed", "stages_claimed"], ["Heroes KO", "kos_suffered"], ["Ring-outs", "ring_outs_suffered"]]:
-		_stat_cell(str(row[0]), false)
+		var l := Label.new()
+		l.text = str(row[0])
+		l.add_theme_color_override("font_color", Palette.MUTED)
+		grid.add_child(l)
 		for p: Variant in players:
-			_stat_cell(str(JsonUtil.as_int(JsonUtil.as_dict(p).get(str(row[1]), 0))), true)
-	_stat_cell("Battles", false)
-	_stat_cell(str(JsonUtil.as_int(end_summary.get("battles", 0))), true)
-	_stat_cell("", false)
-
-
-func _stat_cell(text: String, strong: bool) -> void:
-	var l := Label.new()
-	l.text = text
-	if strong:
-		l.add_theme_font_override("font", UiTheme.display_bold())
-		l.add_theme_font_size_override("font_size", 18)
-	else:
-		l.theme_type_variation = &"Muted"
-	_over_stats.add_child(l)
+			grid.add_child(UiTheme.label(str(JsonUtil.as_int(JsonUtil.as_dict(p).get(str(row[1]), 0))), 26))
+	var battles := Label.new()
+	battles.text = "Battles"
+	battles.add_theme_color_override("font_color", Palette.MUTED)
+	grid.add_child(battles)
+	grid.add_child(UiTheme.label(str(JsonUtil.as_int(end_summary.get("battles", 0))), 26))
+	for i: int in players.size() - 1:
+		grid.add_child(Control.new())
+	return panel
 
 
 # --- helpers ------------------------------------------------------------------------

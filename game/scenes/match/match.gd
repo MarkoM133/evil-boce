@@ -33,6 +33,10 @@ var _ko_shown: Dictionary[String, bool] = {}
 var _quiet: bool = false
 ## Slow motion already ran in this roll.
 var _slowed: bool = false
+## demo_until_cards: give player 1 back to the mouse when it may play cards.
+var _demo_hand_back: bool = false
+## Phases in which demo_until_cards / demo_mulligan hand player 1 back.
+var _demo_phases: Array[String] = [GameState.PHASE_PREROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE]
 ## A guest's copy of the finished match, sent by the host when it ends.
 var _net_record: MatchRecord
 var arena: Arena
@@ -128,11 +132,6 @@ func _ready() -> void:
 				ReplayStore.save_replay(record)
 			hud.refresh())
 		net_client.back_in_lobby.connect(func() -> void: get_tree().change_scene_to_file(LOBBY_SCENE))
-		net_client.roll_received.connect(func(o: RollOutcome) -> void:
-			for r: RollResult in o.results:
-				var h: HeroState = state.hero(r.ball_id)
-				if h != null and (r.ring_out or r.strip_entered >= 0):
-					hud.toast("RING-OUT  ·  %s" % hud.hero_name(h)))
 	if net_role != "":
 		pass
 	elif _replay != null:
@@ -325,7 +324,8 @@ func _build_menu_overlay() -> Control:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(title)
 	var resume := Button.new()
-	resume.text = "Resume"
+	resume.text = "RESUME"
+	resume.theme_type_variation = &"Primary"
 	resume.pressed.connect(_toggle_menu)
 	col.add_child(resume)
 	if net_role != "":
@@ -886,10 +886,7 @@ func _on_roll_finished(o: RollOutcome) -> void:
 		hud.toast(err, Palette.FG)
 	else:
 		_after_change()
-	for r: RollResult in o.results:
-		var h: HeroState = state.hero(r.ball_id)
-		if h != null and (r.ring_out or r.strip_entered >= 0):
-			hud.toast("RING-OUT  ·  %s" % hud.hero_name(h))
+	# Ring-outs get a banner from the log (MatchHud._scan_log).
 	_sync()
 
 
@@ -906,6 +903,12 @@ func _process(delta: float) -> void:
 		_run_playback(delta)
 		return
 	_run_bots(delta)
+	var mull: bool = state.phase == GameState.PHASE_MULLIGAN and not state.player(0).mulligan_done
+	if _demo_hand_back and _demo_phases.has(state.phase) and not state.player(0).hand.is_empty() 			and (mull or state.to_act == 0 and not state.round_over and state.pending.is_empty()):
+		_demo_hand_back = false
+		bots.erase(0)
+		hud.local_slots = PackedInt32Array([0])
+		hud.refresh()
 
 
 # --- watching a replay --------------------------------------------------------------
@@ -1245,3 +1248,46 @@ func demo_fx() -> void:
 	demo_fx_place()
 	await get_tree().create_timer(1.2).timeout
 	demo_fx_hit()
+
+
+## Screenshot helper: bots play until player 1 may play cards, then player 1 is handed back
+## (its hand shows). Use with --wait=2400 or so.
+func demo_until_cards() -> void:
+	demo_autoplay()
+	_demo_hand_back = true
+
+
+## Screenshot helper: bots place stages and cores, then player 1 gets the mulligan screen.
+func demo_mulligan() -> void:
+	_demo_phases = [GameState.PHASE_MULLIGAN]
+	demo_until_cards()
+
+
+## Screenshot helper: the damage choice a lost battle asks for (drawn only, not applied).
+func demo_damage() -> void:
+	var mine: Array = []
+	for h: HeroState in state.heroes_of(0):
+		mine.append(h.id)
+	state.pending = [{"type": RulesEngine.DECISION_DAMAGE, "player": 0, "amount": 3,
+		"winner": state.heroes_of(1)[0].id, "targets": mine}]
+	hud.local_slots = PackedInt32Array([0])
+	hud.refresh()
+
+
+## Screenshot helper: the end screen as if player 1 won on stages (drawn only).
+func demo_victory() -> void:
+	state.phase = GameState.PHASE_OVER
+	state.winner = 0
+	state.result = "stages"
+	state.turn = 9
+	hud.local_slots = PackedInt32Array([0])
+	hud.end_summary = {"battles": 6, "players": [
+		{"slot": 0, "name": state.player(0).name, "stages_claimed": 3, "kos_suffered": 1, "ring_outs_suffered": 0},
+		{"slot": 1, "name": state.player(1).name, "stages_claimed": 1, "kos_suffered": 2, "ring_outs_suffered": 2}]}
+	hud.refresh()
+
+
+## Screenshot helper: one of each banner, queued.
+func demo_banners() -> void:
+	hud.banner("BATTLE!", Palette.ACCENT, "GIORNO\n3000", "SHANKS\n2500")
+	hud.banner("RING-OUT", Palette.GOLD, "", "SHANKS")

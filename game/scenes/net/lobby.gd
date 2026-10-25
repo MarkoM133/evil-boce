@@ -205,6 +205,7 @@ func _build() -> void:
 	_room.add_child(_ready_btn)
 	_start_btn = Button.new()
 	_start_btn.text = "Start match"
+	_start_btn.theme_type_variation = &"Primary"
 	_start_btn.pressed.connect(_start)
 	_room.add_child(_start_btn)
 
