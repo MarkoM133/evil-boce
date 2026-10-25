@@ -151,7 +151,14 @@ func _build_tiles(logo: Texture2D) -> void:
 	for h: HeroDef in with_sprite:
 		if crew.size() < 3 and not pair.has(h):
 			crew.append(db.sprite(h))
-	_tile(big, "ONLINE", "Host or join over Tailscale", Color("1d4fd1").darkened(0.25), 56, "online", crew)
+	var online: MenuTile = _tile(big, "ONLINE", "Host or join over Tailscale", Color("1d4fd1").darkened(0.25), 56, "online", crew)
+	# Behind the crew: a random stage's art, as if they stood there.
+	var stages: Array[CardDef] = db.catalog.of_type("Stage") if db.is_ok() else []
+	if not stages.is_empty():
+		var st: CardDef = stages.pick_random()
+		online.art = db.large(st.id) if db.large(st.id) != null else db.thumb(st.id)
+		online.fit_art = true
+		online.tooltip_text = "Host or join over Tailscale  ·  on %s" % st.name
 
 	var small := HBoxContainer.new()
 	small.add_theme_constant_override("separation", 12)

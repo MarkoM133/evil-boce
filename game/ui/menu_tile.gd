@@ -12,6 +12,8 @@ var subtitle: String = ""
 ## Card art under the wash; leave empty for the plain ground with speed lines.
 var art: Texture2D
 var region: Rect2 = Rect2(0, 0, 1, 1)
+## Crop `art` to the tile's shape (card_art_region) instead of using `region`.
+var fit_art: bool = false
 var color: Color = Palette.PANEL_SOLID
 var title_size: int = 64
 var title_color: Color = Palette.FG
@@ -123,12 +125,18 @@ func _draw() -> void:
 	if split_art.size() == 2:
 		_draw_split(w, h, pts)
 	elif art != null:
+		var r: Rect2 = card_art_region(art, w / h) if fit_art else region
 		var uvs := PackedVector2Array()
 		for p: Vector2 in pts:
-			uvs.append(Vector2(region.position.x + region.size.x * p.x / w, region.position.y + region.size.y * p.y / h))
+			uvs.append(Vector2(r.position.x + r.size.x * p.x / w, r.position.y + r.size.y * p.y / h))
 		var tint := Color(1, 1, 1) if _hover else Color(0.8, 0.8, 0.8)
 		draw_polygon(pts, PackedColorArray([tint, tint, tint, tint]), uvs, art)
-		draw_polygon(pts, PackedColorArray([Color(color, 0.6), Color(color, 0.25), Color(color, 0.6), Color(color, 0.92)]))
+		if figures.is_empty():
+			draw_polygon(pts, PackedColorArray([Color(color, 0.6), Color(color, 0.25), Color(color, 0.6), Color(color, 0.92)]))
+		else:
+			# A scene behind the figures: tinted, clear at the top, deep at the bottom for the title.
+			draw_polygon(pts, PackedColorArray([Color(color, 0.18), Color(color, 0.08), Color(color, 0.7), Color(color, 0.85)]))
+			draw_rect(Rect2(0, h - 26, w, 26), Color(0, 0, 0, 0.25))
 	elif figures.is_empty():
 		draw_colored_polygon(pts, color.lightened(0.06) if _hover else color)
 	else:
@@ -190,7 +198,8 @@ func _draw_split(w: float, h: float, pts: PackedVector2Array) -> void:
 ## The art part of a card image cropped to `aspect` (width / height). Landscape hero cards
 ## carry the art in a box on their left; portrait cards in their top half.
 static func card_art_region(tex: Texture2D, aspect: float) -> Rect2:
-	var box: Rect2 = Rect2(0.025, 0.07, 0.405, 0.72) if tex.get_width() > tex.get_height() else Rect2(0.06, 0.06, 0.88, 0.48)
+	# Portrait cards: the art window sits under the name bar.
+	var box: Rect2 = Rect2(0.025, 0.07, 0.405, 0.72) if tex.get_width() > tex.get_height() else Rect2(0.075, 0.115, 0.85, 0.385)
 	var px := Vector2(tex.get_width(), tex.get_height())
 	var bw: float = box.size.x * px.x
 	var bh: float = box.size.y * px.y
