@@ -567,10 +567,26 @@ func _sync_hero(h: HeroState) -> void:
 			v.close_now()
 			b.place(target)
 			v.settle()
-	if h.is_on_map() and not v.is_open() and v.state != BallView.State.OPENING:
+	var open: bool = _shows_figure(h)
+	if open and not v.is_open() and v.state != BallView.State.OPENING:
 		v.open()
-	elif not h.is_on_map() and v.is_open():
+	elif not open and v.is_open():
 		v.close()
+
+
+## A ball opens into its figure when it stands on a stage or is in a battle (GDD 5); else it
+## stays a ball.
+func _shows_figure(h: HeroState) -> bool:
+	if not h.is_on_map():
+		return false
+	for st: StageState in state.stages:
+		if st.placed and st.covers(h.hex):
+			return true
+	if state.phase == GameState.PHASE_BATTLE:
+		for b: Dictionary in state.battles:
+			if JsonUtil.as_strings(b.get("heroes", [])).has(h.id):
+				return true
+	return false
 
 
 ## Knockback and other rule moves: the ball hops over to its new hex in an arc (higher and
@@ -1402,3 +1418,10 @@ func demo_banners() -> void:
 	_demo = true
 	hud.banner("BATTLE!", Palette.ACCENT, "GIORNO\n3000", "SHANKS\n2500")
 	hud.banner("RING-OUT", Palette.GOLD, "", "SHANKS")
+
+
+## Screenshot helper: player 1's first hand card shown big.
+func demo_big_card() -> void:
+	var p: PlayerState = state.player(0)
+	if not p.hand.is_empty():
+		hud._show_big(p.hand[0])

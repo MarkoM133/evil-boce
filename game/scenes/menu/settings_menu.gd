@@ -3,7 +3,8 @@ extends Control
 ## change is saved and applied at once; the data folder is checked as it is typed.
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
-const KEY_LABELS: Dictionary[String, String] = {"pass": "Pass / end the round", "menu": "Menu / cancel"}
+const KEY_LABELS: Dictionary[String, String] = {"pass": "Pass / end the round", "menu": "Menu / cancel",
+	"card_zoom": "Show a card big"}
 
 var _data_path: LineEdit
 var _data_check: Label
@@ -96,6 +97,8 @@ func _ready() -> void:
 		b.pressed.connect(_start_binding.bind(action))
 		row.add_child(b)
 		_key_buttons[action] = b
+	var zoom := _option(col, "Card zoom key", ["Hold it", "Press on / off"], GameSettings.ZOOM_MODES.find(GameSettings.zoom_mode()))
+	zoom.item_selected.connect(func(i: int) -> void: _store("keys", "zoom_mode", GameSettings.ZOOM_MODES[i]))
 	var reset := Button.new()
 	reset.text = "Default keys"
 	reset.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -106,7 +109,7 @@ func _ready() -> void:
 	col.add_child(reset)
 	var note := Label.new()
 	note.theme_type_variation = &"Muted"
-	note.text = "Mouse: drag to aim, right click cancels, wheel zooms. Home resets the camera."
+	note.text = "Mouse: drag to aim, right click cancels, wheel zooms. Home resets the camera. Right click on a card or a hero shows its card big."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(note)
 

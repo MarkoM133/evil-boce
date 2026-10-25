@@ -81,6 +81,12 @@ var _banners: Array[Dictionary] = []
 var _banner_busy: bool = false
 ## How much of state.log has been looked at for banners (-1: not yet, nothing replays).
 var _log_seen: int = -1
+## The big card above the hand (GDD 11): the card under the mouse ("" = none) and the one shown.
+var _hover_cid: String = ""
+var _big: TextureRect
+var _big_cid: String = ""
+## Big card: the height it shows at.
+const BIG_HEIGHT: float = 470.0
 
 
 func _init() -> void:
@@ -515,13 +521,21 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	s.custom_minimum_size = Vector2(ROSTER_WIDTH - 14.0, SLICE_HEIGHT + (22.0 if expanded else 0.0))
 	# Inactive heroes sit a little in from the edge, so the active one sticks out.
 	s.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var shown_id: String = card.id if card != null else ""
 	s.gui_input.connect(func(e: InputEvent) -> void:
+		if _card_click(e, shown_id):
+			return
 		if e is InputEventMouseButton:
 			var mb := e as InputEventMouseButton
 			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 				hero_clicked.emit(h.id))
-	s.mouse_entered.connect(func() -> void: hero_hovered.emit(h.id))
-	s.mouse_exited.connect(func() -> void: hero_hovered.emit(""))
+	s.mouse_entered.connect(func() -> void:
+		_hovered(shown_id)
+		hero_hovered.emit(h.id))
+	s.mouse_exited.connect(func() -> void:
+		if _hover_cid == shown_id:
+			_hover_cid = ""
+		hero_hovered.emit(""))
 	if card != null:
 		s.tooltip_text = "%s\n%s" % [card.name, card.text]
 
@@ -926,9 +940,9 @@ func _refresh_hand() -> void:
 	var step: float = minf(176.0 if mulligan else 96.0, 860.0 / maxf(float(n), 1.0))
 	for i: int in n:
 		var cid: String = p.hand[i]
-		var c: CardDef = engine.catalog.get_card(cid)
-		var playable: bool = my_round and _affordable(p, cid) and c != null and c.is_ready()
-		var card: Control = _hand_card(slot, cid, playable, my_round)
+		var check: Dictionary = _play_check(slot, cid) if my_round else {}
+		var playable: bool = my_round and check.get("ok", false) == true
+		var card: Control = _hand_card(slot, cid, playable, my_round, str(check.get("why", "")))
 		var t: float = i - (n - 1) * 0.5
 		card.position = Vector2(_hand.size.x * 0.5 + t * step - CARD_SIZE.x * 0.5, 16.0 + (0.0 if mulligan else t * t * 4.0))
 		card.rotation_degrees = 0.0 if mulligan else t * 5.0
@@ -938,31 +952,70 @@ func _refresh_hand() -> void:
 		_hand.add_child(card)
 
 
-func _affordable(p: PlayerState, cid: String) -> bool:
-	var c: CardDef = engine.catalog.get_card(cid)
-	return c != null and c.cost <= p.energy
+## Messages from the engine that still mean "you can play it" (it asks for a choice after).
+const PLAY_ASKS: Array[String] = ["choose an assist to replace"]
 
 
-## One card of the hand: its image, the cost on a diamond, and how it can be used now.
-func _hand_card(slot: int, cid: String, playable: bool, my_round: bool) -> Control:
+## Whether `slot` may play `cid` now, asked of the engine itself: the move is tried on a copy of
+## the state, once for each hero the card could go on. {"ok", "why" (the engine's reason when
+## not), "heroes" (ids it can go on)}.
+func _play_check(slot: int, cid: String) -> Dictionary:
+	var heroes := PackedStringArray()
+	var why: String = ""
+	var targets: Array[String] = []
+	for h: HeroState in engine.card_context_heroes(state, slot):
+		targets.append(h.id)
+	if targets.is_empty():
+		targets.append("")
+	for hid: String in targets:
+		var copy: GameState = GameState.from_dict(state.to_dict())
+		var err: String = engine.apply(copy, Move.make(Move.PLAY_CARD, slot, {"card": cid, "hero": hid}))
+		for ask: String in PLAY_ASKS:
+			if err.begins_with(ask):
+				err = ""
+		if err.is_empty():
+			if not hid.is_empty():
+				heroes.append(hid)
+		elif why.is_empty():
+			why = err
+	var ok: bool = not heroes.is_empty() or (targets[0].is_empty() and why.is_empty())
+	return {"ok": ok, "why": "" if ok else why, "heroes": heroes}
+
+
+## Where a card picture of `tex` sits in the card slot (aspect kept, centred).
+static func _card_rect(tex: Texture2D) -> Rect2:
+	if tex == null:
+		return Rect2(Vector2.ZERO, CARD_SIZE)
+	var k: float = minf(CARD_SIZE.x / tex.get_width(), CARD_SIZE.y / tex.get_height())
+	var s := Vector2(tex.get_width(), tex.get_height()) * k
+	return Rect2((CARD_SIZE - s) * 0.5, s)
+
+
+## One card of the hand: its image, the cost on a diamond, and how it can be used now; `why`
+## (shown on hover) says what keeps it from being played.
+func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: String = "") -> Control:
 	var c: CardDef = engine.catalog.get_card(cid)
 	var root := Control.new()
 	root.custom_minimum_size = CARD_SIZE
 	root.size = CARD_SIZE
 	root.pivot_offset = Vector2(CARD_SIZE.x * 0.5, CARD_SIZE.y)
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	var tex: Texture2D = db.thumb(cid) if db != null else null
+	var pic: Rect2 = _card_rect(tex)
+	root.set_meta("pic", pic)
 	var back := ColorRect.new()
 	back.color = Palette.hero(c.color if c != null else "").darkened(0.45)
-	back.set_anchors_preset(Control.PRESET_FULL_RECT)
+	back.position = pic.position
+	back.size = pic.size
 	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(back)
-	var tex: Texture2D = db.thumb(cid) if db != null else null
 	if tex != null:
 		var img := TextureRect.new()
 		img.texture = tex
 		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		img.set_anchors_preset(Control.PRESET_FULL_RECT)
+		img.stretch_mode = TextureRect.STRETCH_SCALE
+		img.position = pic.position
+		img.size = pic.size
 		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		root.add_child(img)
 	else:
@@ -978,25 +1031,105 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool) -> Contr
 			str(c.cost), 21, Palette.FG if poor else Color.BLACK)
 		cost.outline = Color.BLACK
 		cost.outline_width = 3.0
-		cost.position = Vector2(-10, -10)
+		cost.name = "Cost"
+		cost.position = pic.position - Vector2(10, 10)
 		root.add_child(cost)
 		if not c.is_ready():
 			var nr: UiShape = UiShape.chip("NOT READY", Palette.SURFACE_2, Palette.MUTED, 12, 20.0, 8.0)
-			nr.position = Vector2(CARD_SIZE.x * 0.5 - nr.custom_minimum_size.x * 0.5, CARD_SIZE.y - 28)
+			nr.position = Vector2(CARD_SIZE.x * 0.5 - nr.custom_minimum_size.x * 0.5, pic.end.y - 28)
 			root.add_child(nr)
+		elif my_round and not playable and not why.is_empty():
+			# Why it is grey, on hover.
+			var w: UiShape = UiShape.chip(why.to_upper(), Color(0, 0, 0, 0.85), Palette.FG, 10, 18.0, 6.0)
+			w.name = "Why"
+			w.visible = false
+			w.position = Vector2(CARD_SIZE.x * 0.5 - w.custom_minimum_size.x * 0.5, pic.end.y + 4.0)
+			root.add_child(w)
 		root.tooltip_text = "%s  ·  %s %s  ·  cost %d\n%s" % [c.name, c.color, c.type, c.cost, c.text]
 		if my_round and not playable:
-			root.modulate = Color(0.5, 0.5, 0.5)
+			root.tooltip_text = why.capitalize() + "\n\n" + root.tooltip_text if not why.is_empty() else root.tooltip_text
+			root.modulate = Color(0.45, 0.45, 0.45)
 		elif not my_round:
 			root.modulate = Color(0.88, 0.88, 0.88)
-	root.mouse_entered.connect(func() -> void: _lift(root, true, playable))
-	root.mouse_exited.connect(func() -> void: _lift(root, false, playable))
+	root.mouse_entered.connect(func() -> void:
+		_hovered(cid)
+		_lift(root, true, playable))
+	root.mouse_exited.connect(func() -> void:
+		if _hover_cid == cid:
+			_hover_cid = ""
+		_lift(root, false, playable))
 	root.gui_input.connect(func(e: InputEvent) -> void:
+		if _card_click(e, cid):
+			return
 		if playable and e is InputEventMouseButton:
 			var mb := e as InputEventMouseButton
 			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 				card_pressed.emit(slot, cid))
 	return root
+
+
+## Shows card `cid` big above the hand (or hides it with ""); again for the same card hides it.
+func _toggle_big(cid: String) -> void:
+	_show_big("" if cid == _big_cid else cid)
+
+
+func _show_big(cid: String) -> void:
+	var tex: Texture2D = null
+	if not cid.is_empty() and db != null:
+		tex = db.large(cid) if db.large(cid) != null else db.thumb(cid)
+	if tex == null:
+		cid = ""
+	_big_cid = cid
+	if _big == null:
+		_big = TextureRect.new()
+		_big.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		_big.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		_big.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_big.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		add_child(_big)
+	_big.visible = tex != null
+	if tex == null:
+		return
+	move_child(_big, -1)
+	_big.texture = tex
+	var w: float = minf(BIG_HEIGHT * tex.get_width() / tex.get_height(), 700.0)
+	_big.size = Vector2(w, BIG_HEIGHT)
+	_big.position = Vector2(size.x * 0.5 - w * 0.5, size.y - BIG_HEIGHT - 190.0)
+	_big.modulate.a = 0.0
+	_big.create_tween().tween_property(_big, "modulate:a", 1.0, 0.1)
+
+
+## The card-zoom key (Settings → Keys; held, or pressed on and off) shows the card under the mouse.
+func _input(event: InputEvent) -> void:
+	if not event is InputEventKey:
+		return
+	var k := event as InputEventKey
+	if k.echo or k.keycode != GameSettings.key("card_zoom"):
+		return
+	if GameSettings.zoom_mode() == "press":
+		if k.pressed:
+			_toggle_big(_hover_cid)
+	else:
+		_show_big(_hover_cid if k.pressed else "")
+
+
+## The mouse is on card `cid`; with the zoom key held, the big card follows it.
+func _hovered(cid: String) -> void:
+	_hover_cid = cid
+	if GameSettings.zoom_mode() == "hold" and Input.is_key_pressed(GameSettings.key("card_zoom")):
+		_show_big(cid)
+
+
+## Right click shows the card big; any other click puts it away.
+func _card_click(e: InputEvent, cid: String) -> bool:
+	if e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
+		if (e as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT:
+			_toggle_big(cid)
+			accept_event()
+			return true
+		if not _big_cid.is_empty():
+			_show_big("")
+	return false
 
 
 ## Hover: the card rises, straightens and grows; a playable one gets a straw edge.
@@ -1006,15 +1139,26 @@ func _lift(card: Control, up: bool, playable: bool) -> void:
 	var t: Tween = card.create_tween().set_parallel(true)
 	t.tween_property(card, "position:y", rest - (56.0 if up else 0.0), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	t.tween_property(card, "scale", Vector2.ONE * (1.18 if up else 1.0), 0.12)
+	if card.has_node("Why"):
+		(card.get_node("Why") as Control).visible = up
+	# The straw edge runs round the picture and the cost diamond on its corner.
+	var cost: UiShape = card.get_node_or_null("Cost") as UiShape
+	if cost != null:
+		cost.outline = Palette.GOLD if up and playable else Color.BLACK
+		cost.queue_redraw()
 	if up and playable:
+		var pic: Rect2 = card.get_meta("pic", Rect2(Vector2.ZERO, CARD_SIZE))
 		var edge := ReferenceRect.new()
 		edge.name = "Edge"
 		edge.border_color = Palette.GOLD
 		edge.border_width = 3.0
 		edge.editor_only = false
-		edge.set_anchors_preset(Control.PRESET_FULL_RECT)
+		edge.position = pic.position - Vector2(1.5, 1.5)
+		edge.size = pic.size + Vector2(3, 3)
 		edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		card.add_child(edge)
+		if cost != null:
+			card.move_child(cost, -1)
 	elif not up and card.has_node("Edge"):
 		card.get_node("Edge").queue_free()
 

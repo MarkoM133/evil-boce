@@ -89,7 +89,15 @@ const FPS_LIMITS: Array[int] = [0, 60, 120, 144, 240]
 ## Sound buses; Music and Effects send to Master and are made on first use.
 const BUSES: Array[String] = ["Master", "Music", "Effects"]
 ## Rebindable keys: action -> default key.
-const DEFAULT_KEYS: Dictionary[String, Key] = {"pass": KEY_SPACE, "menu": KEY_ESCAPE}
+const DEFAULT_KEYS: Dictionary[String, Key] = {"pass": KEY_SPACE, "menu": KEY_ESCAPE, "card_zoom": KEY_ALT}
+## The card-zoom key: held (the card shows while it is down) or pressed (on, then off).
+const ZOOM_MODES: Array[String] = ["hold", "press"]
+
+
+static func zoom_mode() -> String:
+	var v: String = str(_config().get_value("keys", "zoom_mode", "hold"))
+	return v if ZOOM_MODES.has(v) else "hold"
+
 
 static var _display_applied: bool = false
 
