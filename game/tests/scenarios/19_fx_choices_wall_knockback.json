@@ -1,0 +1,34 @@
+{
+  "name": "fx choices: a wall goes on a chosen hex, a knockback asks which enemy",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8],
+      "heroes.p1:TB-001.zone": "map", "heroes.p1:TB-001.hex": [6, 8],
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [2, 10],
+      "heroes.p1:TB-003.zone": "map", "heroes.p1:TB-003.hex": [8, 2],
+      "players.p0.hand": ["TA-046", "TA-045"],
+      "players.p0.energy": 5,
+      "initiative": 0
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003"}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-046"}},
+    {"expect": {"pending.0.type": "choose", "pending.0.kind": "hex", "pending.0.player": 0, "players.p0.energy": 4}},
+    {"move": {"type": "pass", "player": 1}, "error": "waiting for player 0"},
+    {"move": {"type": "choose", "player": 0, "value": [4, 8]}, "error": "offered"},
+    {"move": {"type": "choose", "player": 0, "value": [3, 8]}},
+    {"expect": {"pending": {"$size": 0}, "walls": {"$size": 1}, "walls.0.hexes": [[3, 8]], "to_act": 1}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "pass", "player": 0}},
+    {"move": {"type": "choice", "player": 0, "roll": false}},
+    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"expect": {"phase": "postroll", "to_act": 0}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-045"}},
+    {"expect": {"pending.0.kind": "hero", "pending.0.options": ["p1:TB-001", "p1:TB-002"]}},
+    {"move": {"type": "choose", "player": 0, "value": "p1:TB-001"}},
+    {"expect": {"heroes.p1:TB-001.hex": [9, 8], "heroes.p1:TB-002.hex": [2, 10], "pending": {"$size": 0}}}
+  ]
+}

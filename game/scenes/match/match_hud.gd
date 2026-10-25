@@ -11,6 +11,9 @@ signal keep_pressed(slot: int, keep: bool)
 signal no_hero_pressed(slot: int)
 signal card_pressed(slot: int, card_id: String)
 signal damage_pressed(slot: int, target: String)
+## Answer to a "choose" decision (hero, core, card id or branch index; hexes go by click).
+signal choose_pressed(slot: int, value: Variant)
+signal ability_pressed(slot: int, hero_id: String, card_id: String, index: int)
 signal hero_clicked(hero_id: String)
 signal hero_hovered(hero_id: String)
 signal menu_pressed
@@ -493,6 +496,8 @@ func _refresh_prompt() -> void:
 			_prompt.text = "%s is deciding…" % player_name(who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_RETURN_CORE:
 			_prompt.text = "%s: click a highlighted hex to put a core back" % player_name(who)
+		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hex":
+			_prompt.text = "%s: %s (click a highlighted hex)" % [player_name(who), str(d.get("prompt", ""))]
 		return
 	var any_local: bool = false
 	for slot: int in local_slots:
@@ -525,6 +530,14 @@ func _refresh_prompt() -> void:
 		if local_slots.has(slot):
 			if not any_local:
 				_prompt.text = "%s: play a card or pass%s" % [player_name(slot), _battle_suffix()]
+			for a: Dictionary in engine.fx.usable_abilities(state, slot):
+				var h: HeroState = state.hero(str(a["hero"]))
+				var c: CardDef = engine.catalog.get_card(str(a["card"]))
+				var e: FxEffect = a["effect"]
+				var label: String = "%s: %s" % [hero_name(h) if h != null else (c.name if c != null else "?"), e.line.get_slice(":", 1).strip_edges()]
+				var ab: Button = _action(label, func() -> void: ability_pressed.emit(slot, str(a["hero"]), str(a["card"]), JsonUtil.as_int(a["index"])))
+				if c != null:
+					ab.tooltip_text = c.text
 			var pass_btn: Button = _action("Pass  (Space)", func() -> void: pass_pressed.emit(slot))
 			pass_btn.add_theme_color_override("font_color", Palette.GOLD)
 		elif not any_local:
@@ -615,10 +628,13 @@ func _refresh_dialog() -> void:
 	if state.pending.is_empty():
 		return
 	var d: Dictionary = state.pending[0]
-	if str(d.get("type", "")) != RulesEngine.DECISION_DAMAGE:
-		return
 	var who: int = JsonUtil.as_int(d.get("player", -1), -1)
 	if not local_slots.has(who):
+		return
+	if str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE:
+		_choose_dialog(d, who)
+		return
+	if str(d.get("type", "")) != RulesEngine.DECISION_DAMAGE:
 		return
 	_dialog.visible = true
 	var amount: int = JsonUtil.as_int(d.get("amount", 0))
@@ -646,6 +662,43 @@ func _refresh_dialog() -> void:
 		var b := Button.new()
 		b.text = "%s  (HP %d → %d)" % [hero_name(h), h.hp, maxi(h.hp - amount, 0)]
 		b.pressed.connect(func() -> void: damage_pressed.emit(who, id))
+		_dialog_box.add_child(b)
+
+
+## A card effect asks for a hero, core, card or branch (hexes are clicked on the table).
+func _choose_dialog(d: Dictionary, who: int) -> void:
+	var kind: String = str(d.get("kind", ""))
+	if kind == "hex":
+		return
+	_dialog.visible = true
+	var title := Label.new()
+	title.theme_type_variation = &"Big"
+	title.text = str(d.get("prompt", "Choose"))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dialog_box.add_child(title)
+	var sub := Label.new()
+	sub.theme_type_variation = &"Muted"
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ctx: Dictionary = JsonUtil.as_dict(JsonUtil.as_dict(d.get("resume", {})).get("ctx", {}))
+	sub.text = "%s  ·  %s" % [player_name(who), _card_name(str(ctx.get("card", "")))]
+	_dialog_box.add_child(sub)
+	var options: Array = JsonUtil.as_array(d.get("options", []))
+	for i: int in options.size():
+		var o: Variant = options[i]
+		var b := Button.new()
+		match kind:
+			"hero":
+				var h: HeroState = state.hero(str(o))
+				b.text = "%s  (HP %d)" % [hero_name(h), h.hp] if h != null else str(o)
+			"core":
+				var c: CoreState = state.core(str(o))
+				b.text = "%s core at %s" % ["face-up" if c != null and c.face_up else "face-down", str(c.hex) if c != null else "?"]
+			"card":
+				b.text = _card_name(str(o))
+			_:
+				b.text = str(o)
+		var value: Variant = i if kind == "option" else o
+		b.pressed.connect(func() -> void: choose_pressed.emit(who, value))
 		_dialog_box.add_child(b)
 
 
@@ -688,6 +741,22 @@ func _describe(e: Dictionary) -> String:
 			return "%s → %s" % [_card_name(str(e.get("card", ""))), hero_l]
 		"assist":
 			return "Assist: %s" % _card_name(str(e.get("card", "")))
+		"heal":
+			return "%s heals %d (HP %d)" % [hero_l, JsonUtil.as_int(e.get("amount", 0)), JsonUtil.as_int(e.get("hp", 0))]
+		"ability":
+			return "%s uses %s" % [hero_l, _card_name(str(e.get("card", "")))]
+		"wall":
+			return "Wall placed"
+		"fx_skipped":
+			return "%s: %s" % [_card_name(str(e.get("card", ""))), str(e.get("why", ""))]
+		"roll_again":
+			return "%s rolls again" % hero_l
+		"core_revealed":
+			return "A core is revealed"
+		"energy":
+			return "%s energy %+d" % [player_name(JsonUtil.as_int(e.get("player", 0))), JsonUtil.as_int(e.get("amount", 0))]
+		"discard":
+			return "%s discards %s" % [player_name(JsonUtil.as_int(e.get("player", 0))), _card_name(str(e.get("card", "")))]
 		"battle_locked":
 			return "Battle tied, heroes locked"
 		"turn_end":

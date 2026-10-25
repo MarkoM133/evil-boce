@@ -28,6 +28,51 @@ var bonus: Dictionary[String, int] = {}
 var terrain: Terrain.Type = Terrain.Type.NONE
 var text: String = ""
 var traits: PackedStringArray = PackedStringArray()
+## Effects in the fx language: the web app's `fx` field when set, else what FxTextParser read
+## from the text. `fx_hand_written` says which. Sentences nobody understood are in `unparsed`.
+var fx: String = ""
+var fx_hand_written: bool = false
+var effects: Array[FxEffect] = []
+var unparsed: PackedStringArray = PackedStringArray()
+
+
+## A card the game can play: every sentence is understood (or an fx was written by hand).
+func is_ready() -> bool:
+	return unparsed.is_empty()
+
+
+## Effects that fire or can be used in `when` (an fx WHEN word, e.g. "POSTROLL").
+func effects_when(when: String) -> Array[FxEffect]:
+	var out: Array[FxEffect] = []
+	for e: FxEffect in effects:
+		if e.when == when:
+			out.append(e)
+	return out
+
+
+func has_trait(t: String) -> bool:
+	for x: String in traits:
+		if x.to_lower() == t.to_lower():
+			return true
+	return false
+
+
+## Fills fx, effects and unparsed from the record's `fx` field or from the text.
+func build_effects(fx_field: String) -> void:
+	unparsed = PackedStringArray()
+	if not fx_field.strip_edges().is_empty():
+		fx = fx_field.strip_edges()
+		fx_hand_written = true
+		var bad := PackedStringArray()
+		effects = FxEffect.parse_all(fx, bad)
+		for b: String in bad:
+			unparsed.append("fx: " + b)
+		return
+	var parsed: Dictionary = FxTextParser.parse(self)
+	fx = str(parsed.get("fx", ""))
+	fx_hand_written = false
+	effects = FxEffect.parse_all(fx)
+	unparsed = JsonUtil.as_strings(parsed.get("unparsed", []))
 
 
 static func from_card(c: Dictionary) -> CardDef:
@@ -57,6 +102,7 @@ static func from_card(c: Dictionary) -> CardDef:
 	d.terrain = parse_terrain(d.text)
 	if d.terrain == Terrain.Type.NONE and c.has("terrain"):
 		d.terrain = Terrain.parse(str(c.get("terrain", "")))
+	d.build_effects(str(c.get("fx", "")) if c.get("fx") != null else "")
 	return d
 
 

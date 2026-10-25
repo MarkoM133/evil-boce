@@ -21,6 +21,11 @@ const PLAY_CARD: String = "play_card"
 const DAMAGE_TO: String = "damage_to"
 ## {"core": id, "hex": [q, r]} for a core from the inventory.
 const RETURN_CORE: String = "return_core"
+## An optional ability of a card in play: {"hero": id, "card": id, "index": n} (index among
+## that card's effects); counts as an action in the card round.
+const USE_ABILITY: String = "use_ability"
+## Answer to a pending "choose" decision: {"value": hero id | [q, r] | core id | card id | branch index}.
+const CHOOSE: String = "choose"
 const SURRENDER: String = "surrender"
 
 var type: String = ""

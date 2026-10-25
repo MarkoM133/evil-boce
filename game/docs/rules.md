@@ -54,8 +54,11 @@ resets the passes.
 - **Action**: only cards whose whole effect is a `bonus` (e.g. "+2000 Power"); the bonus
   lasts until the end of the phase (`HeroState.phase_bonus`). Anything else is refused with
   "not ready" until step 2c (parser + fx).
-- `RulesEngine.stat()` = card (or top evolution) + equipment bonuses + phase and turn bonuses.
-  `DeckCode` decodes, encodes and checks deck codes exactly like the web app.
+- `RulesEngine.stat()` = card (or top evolution) + equipment bonuses + phase and turn bonuses
+  + passive fx. `DeckCode` decodes, encodes and checks deck codes exactly like the web app.
+- Text effects run through the fx layer: format, parser, verbs and choices are in
+  `fx-keywords.md`. Moves: `use_ability {hero, card, index}` for "may" abilities,
+  `choose {value}` for a pending `choose` decision.
 
 ## Scenario tests
 

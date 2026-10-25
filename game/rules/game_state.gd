@@ -50,6 +50,14 @@ var battle_index: int = -1
 var pending: Array[Dictionary] = []
 ## Slots that may only Pass until the end of the turn.
 var only_pass: PackedInt32Array = PackedInt32Array()
+## Hero ids the sim has to throw next (all rollers at first, one hero after ROLL_AGAIN).
+var pending_rolls: PackedStringArray = PackedStringArray()
+## "hero|card|index" of once-per-turn abilities already used this turn.
+var abilities_used: PackedStringArray = PackedStringArray()
+## Effects waiting for a battle win: {"player", "hero", "fx", "ctx"}.
+var deferred: Array[Dictionary] = []
+## Things that last until the end of the turn: {"kind": "cost"|"no_claim"|"dmg_taken", ...}.
+var turn_mods: Array[Dictionary] = []
 ## Slot placing the next stage or core during setup.
 var setup_turn: int = 0
 
@@ -227,6 +235,10 @@ func reset_turn_data() -> void:
 	battle_index = -1
 	pending.clear()
 	only_pass = PackedInt32Array()
+	pending_rolls = PackedStringArray()
+	abilities_used = PackedStringArray()
+	deferred.clear()
+	turn_mods.clear()
 
 
 # --- serialisation ----------------------------------------------------------------
@@ -280,6 +292,10 @@ func to_dict() -> Dictionary:
 		"battle_index": battle_index,
 		"pending": pending.duplicate(true),
 		"only_pass": Array(only_pass),
+		"pending_rolls": Array(pending_rolls),
+		"abilities_used": Array(abilities_used),
+		"deferred": deferred.duplicate(true),
+		"turn_mods": turn_mods.duplicate(true),
 		"setup_turn": setup_turn,
 		"winner": winner,
 		"result": result,
@@ -332,6 +348,12 @@ static func from_dict(d: Dictionary) -> GameState:
 		s.pending.append(JsonUtil.as_dict(p))
 	for v: Variant in JsonUtil.as_array(d.get("only_pass", [])):
 		s.only_pass.append(JsonUtil.as_int(v))
+	s.pending_rolls = JsonUtil.as_strings(d.get("pending_rolls", []))
+	s.abilities_used = JsonUtil.as_strings(d.get("abilities_used", []))
+	for x: Variant in JsonUtil.as_array(d.get("deferred", [])):
+		s.deferred.append(JsonUtil.as_dict(x))
+	for x: Variant in JsonUtil.as_array(d.get("turn_mods", [])):
+		s.turn_mods.append(JsonUtil.as_dict(x))
 	s.setup_turn = JsonUtil.as_int(d.get("setup_turn", 0))
 	s.winner = JsonUtil.as_int(d.get("winner", -1), -1)
 	s.result = str(d.get("result", ""))

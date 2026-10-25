@@ -1,0 +1,44 @@
+{
+  "name": "fx: an 'if you win' effect waits for the battle; the opponent picks a branch",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8], "heroes.p0:TA-001.hp": 5,
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 8],
+      "players.p0.hand": ["TA-047", "TA-051"],
+      "players.p0.energy": 4,
+      "players.p1.hand": ["TX-010", "TX-011"],
+      "players.p1.energy": 3,
+      "initiative": 0
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002"}},
+    {"move": {"type": "choice", "player": 0, "roll": false}},
+    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"pass_round": true},
+    {"expect": {"phase": "postroll", "to_act": 0}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-051"}},
+    {"expect": {"pending.0.kind": "option", "pending.0.player": 1, "pending.0.options": {"$size": 2}}},
+    {"move": {"type": "choose", "player": 1, "value": 1}},
+    {"expect": {"heroes.p0:TA-001.hp": 8, "heroes.p1:TB-002.hp": 7, "players.p0.energy": 2, "pending": {"$size": 0}}},
+    {"pass_round": true},
+    {"expect": {"phase": "battle", "to_act": 0}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-047"}},
+    {"expect": {"deferred": {"$size": 1}, "heroes.p0:TA-001.phase_bonus.pwr": 2000, "players.p0.energy": 0}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "pass", "player": 0}},
+    {"expect": {"battles.0.winner_team": 0, "pending.0.type": "damage", "pending.0.player": 1}},
+    {"move": {"type": "damage_to", "player": 1, "target": "deck"}},
+    {"expect": {"pending.0.type": "choose", "pending.0.kind": "card", "pending.0.player": 1, "pending.0.options": ["TX-010", "TX-011"]}},
+    {"move": {"type": "choose", "player": 1, "value": "TX-011"}},
+    {"expect": {
+      "players.p1.hand": {"$size": 2},
+      "players.p1.graveyard": {"$size": 4},
+      "deferred": {"$size": 0},
+      "heroes.p1:TB-002.hex": [8, 8],
+      "turn": 2
+    }}
+  ]
+}

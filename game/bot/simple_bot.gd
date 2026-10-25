@@ -60,6 +60,14 @@ func _decide(engine: RulesEngine, s: GameState, slot: int, d: Dictionary) -> Mov
 				var a: Vector2i = cells[(start + i) % cells.size()]
 				if engine.core_return_error(s, c, a).is_empty():
 					return Move.make(Move.RETURN_CORE, slot, {"core": c.id, "hex": Hex.to_json(a)})
+		FxRuntime.DECISION_CHOOSE:
+			# A card effect asks for a hero, hex, core, card or branch: take one at random.
+			var options: Array = JsonUtil.as_array(d.get("options", []))
+			if options.is_empty():
+				return null
+			var i: int = rng.randi_range(0, options.size() - 1)
+			var value: Variant = i if str(d.get("kind", "")) == "option" else options[i]
+			return Move.make(Move.CHOOSE, slot, {"value": value})
 	return null
 
 

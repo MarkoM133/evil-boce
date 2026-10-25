@@ -150,6 +150,9 @@ func _build_hud() -> void:
 	hud.no_hero_pressed.connect(func(slot: int) -> void: _apply(Move.make(Move.SELECT, slot, {"hero": ""})))
 	hud.card_pressed.connect(func(slot: int, cid: String) -> void: _apply(Move.make(Move.PLAY_CARD, slot, {"card": cid})))
 	hud.damage_pressed.connect(func(slot: int, target: String) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target})))
+	hud.choose_pressed.connect(func(slot: int, value: Variant) -> void: _apply(Move.make(Move.CHOOSE, slot, {"value": value})))
+	hud.ability_pressed.connect(func(slot: int, hero_id: String, card_id: String, index: int) -> void:
+		_apply(Move.make(Move.USE_ABILITY, slot, {"hero": hero_id, "card": card_id, "index": index})))
 	hud.hero_clicked.connect(_on_hero_clicked)
 	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
 	hud.menu_pressed.connect(_toggle_menu)
@@ -426,6 +429,11 @@ func _refresh_range() -> void:
 		for a: Vector2i in arena.map.cells():
 			if engine.core_return_error(state, c, a).is_empty():
 				cells.append(a)
+	elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hex":
+		key += "choose:%d" % state.pending.size()
+		cells.clear()
+		for o: Variant in JsonUtil.as_array(d.get("options", [])):
+			cells.append(JsonUtil.as_hex(o))
 	if key == _range_key:
 		return
 	_range_key = key
@@ -595,6 +603,12 @@ func _on_left(pressed: bool) -> void:
 				var gp: Vector3 = g
 				_apply(Move.make(Move.RETURN_CORE, JsonUtil.as_int(d.get("player", 0)),
 					{"core": str(d.get("core", "")), "hex": Hex.to_json(arena.hex_at(gp))}))
+			return
+		if str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hex":
+			var g: Variant = _ground_under_mouse()
+			if g != null:
+				var gp: Vector3 = g
+				_apply(Move.make(Move.CHOOSE, JsonUtil.as_int(d.get("player", 0)), {"value": Hex.to_json(arena.hex_at(gp))}))
 			return
 		var id: String = _hero_under_mouse()
 		if not id.is_empty() and _try_aim(id):

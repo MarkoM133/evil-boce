@@ -1,0 +1,42 @@
+{
+  "name": "fx actions: heal, immune to knockback and -1 damage this turn, phase lock",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8], "heroes.p0:TA-001.hp": 4,
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 8],
+      "players.p0.hand": ["TA-043", "TA-044", "TA-045"],
+      "players.p0.energy": 5,
+      "initiative": 0
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002"}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-045"}, "error": "playable in the postroll"},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-043"}},
+    {"expect": {"heroes.p0:TA-001.hp": 9, "players.p0.energy": 3}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-044"}},
+    {"expect": {
+      "heroes.p0:TA-001.statuses.immune_kb": 1,
+      "turn_mods": {"$size": 1},
+      "turn_mods.0.kind": "dmg_taken", "turn_mods.0.amount": -1,
+      "players.p0.energy": 2
+    }},
+    {"move": {"type": "choice", "player": 0, "roll": false}},
+    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {"pending.0.type": "damage", "pending.0.player": 0, "pending.0.amount": 3}},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001"}},
+    {"expect": {
+      "heroes.p0:TA-001.hp": 7,
+      "heroes.p0:TA-001.hex": [4, 8],
+      "turn": 2,
+      "heroes.p0:TA-001.statuses": {},
+      "turn_mods": {"$size": 0}
+    }}
+  ]
+}

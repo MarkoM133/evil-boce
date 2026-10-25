@@ -1,0 +1,44 @@
+{
+  "name": "fx: an assist discounts a trait, and roll again asks for a second aim in the same Roll phase",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "players.p0.assists": ["TA-034"],
+      "players.p0.hand": ["TA-049", "TA-048"],
+      "players.p0.energy": 4,
+      "initiative": 0
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"move": {"type": "choice", "player": 0, "roll": true}},
+    {"move": {"type": "choice", "player": 1, "roll": true}},
+    {"pass_round": true},
+    {"move": {"type": "aim", "player": 0, "dir": [0, -1], "power": 1.0}},
+    {"move": {"type": "aim", "player": 1, "dir": [0, 1], "power": 1.0}},
+    {"expect": {"awaiting_roll": true, "pending_rolls": ["p0:TA-001", "p1:TB-001"]}},
+    {"roll": {"thrower": "p0:TA-001", "results": [
+      {"ball": "p0:TA-001", "thrown": true, "end_area": 0, "end_hex": [2, 12]},
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 0, "end_hex": [6, 4]}
+    ]}},
+    {"expect": {"phase": "roll", "rolled": true, "pending_rolls": {"$size": 0}, "to_act": 0}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-048"}},
+    {"expect": {
+      "phase": "roll", "rolled": false, "awaiting_roll": false,
+      "pending_rolls": ["p0:TA-001"],
+      "players.p0.energy": 2
+    }},
+    {"move": {"type": "pass", "player": 1}, "error": "aim first"},
+    {"move": {"type": "aim", "player": 0, "dir": [1, -1], "power": 0.5}},
+    {"expect": {"awaiting_roll": true, "pending_rolls": ["p0:TA-001"]}},
+    {"roll": {"thrower": "p0:TA-001", "results": [
+      {"ball": "p0:TA-001", "thrown": true, "end_area": 0, "end_hex": [4, 8]}
+    ]}},
+    {"expect": {"heroes.p0:TA-001.hex": [4, 8], "rolled": true, "phase": "roll"}},
+    {"pass_round": true},
+    {"expect": {"phase": "postroll", "to_act": 0}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-049"}},
+    {"expect": {"players.p0.energy": 0, "heroes.p0:TA-001.phase_bonus.pwr": 1000}}
+  ]
+}

@@ -9,10 +9,13 @@ const DECISION_DAMAGE: String = "damage"
 const DECISION_RETURN_CORE: String = "return_core"
 
 var catalog: CardCatalog
+## Card effects (docs/fx-keywords.md).
+var fx: FxRuntime
 
 
 func _init(catalog_: CardCatalog) -> void:
 	catalog = catalog_
+	fx = FxRuntime.new(self)
 
 
 # =====================================================================================
@@ -211,7 +214,7 @@ func apply(s: GameState, m: Move) -> String:
 	if m.type == Move.SURRENDER:
 		p.surrendered = true
 		s.event("surrender", {"player": m.player})
-		_end_match(s, _other_team_slot(s, m.player), "surrender")
+		_end_match(s, other_slot(s, m.player), "surrender")
 		return ""
 	# Decisions the engine is waiting for come before anything else.
 	if not s.pending.is_empty():
@@ -293,7 +296,7 @@ func _apply_mulligan(s: GameState, m: Move) -> String:
 		p.hand = PackedStringArray()
 		p.deck.append_array(back)
 		_shuffle(s, p.deck)
-		_draw(s, p, s.settings.start_hand)
+		draw(s, p, s.settings.start_hand)
 		s.event("mulligan", {"player": p.slot})
 	p.mulligan_done = true
 	return ""
@@ -395,7 +398,16 @@ func _apply_card_round_move(s: GameState, m: Move) -> String:
 		s.passed = PackedInt32Array()
 		s.to_act = _next_slot(s, s.to_act)
 		return ""
-	return "pass or play a card"
+	if m.type == Move.USE_ABILITY:
+		if s.only_pass.has(m.player):
+			return "you can only pass this turn"
+		var err: String = fx.use_ability(s, m.player, m.str_arg("hero"), m.str_arg("card"), JsonUtil.as_int(m.data.get("index", 0)))
+		if not err.is_empty():
+			return err
+		s.passed = PackedInt32Array()
+		s.to_act = _next_slot(s, s.to_act)
+		return ""
+	return "pass, play a card or use an ability"
 
 
 func _apply_decision(s: GameState, m: Move) -> String:
@@ -442,6 +454,15 @@ func _apply_decision(s: GameState, m: Move) -> String:
 			c.hex = a
 			c.picked_by = ""
 			s.event("core_returned", {"core": c.id, "hex": Hex.to_json(a)})
+		FxRuntime.DECISION_CHOOSE:
+			if m.type != Move.CHOOSE:
+				return str(d.get("prompt", "make your choice"))
+			var trial: Array[Dictionary] = s.pending.duplicate()
+			s.pending.pop_front()
+			var err: String = fx.resume(s, d, m.data.get("value", null))
+			if not err.is_empty():
+				s.pending = trial
+				return err
 		_:
 			return "unknown decision"
 	_continue(s)
@@ -457,7 +478,7 @@ func core_return_error(s: GameState, c: CoreState, a: Vector2i) -> String:
 		return err
 	var picker: HeroState = s.hero(c.picked_by)
 	if picker != null and picker.is_on_map():
-		if not _reaches_hex(s, picker, a):
+		if not reaches_hex(s, picker, a):
 			return "must be within the range of %s" % picker.id
 	elif not s.in_half_of_team(a, s.team_of(c.owner)):
 		return "must be in your half"
@@ -480,6 +501,7 @@ func apply_roll(s: GameState, o: RollOutcome) -> String:
 		_apply_result(s, h, r)
 	s.awaiting_roll = false
 	s.rolled = true
+	s.pending_rolls = PackedStringArray()
 	s.event("rolled", {"moved": Array(o.moved_ids())})
 	_start_card_round(s)
 	_continue(s)
@@ -490,7 +512,7 @@ func _apply_result(s: GameState, h: HeroState, r: RollResult) -> void:
 	for cid: String in r.cores_picked:
 		var c: CoreState = s.core(cid)
 		if c != null and c.place == CoreState.ON_FIELD:
-			_pick_core(s, h, c)
+			pick_core(s, h, c)
 	if r.ring_out or r.strip_entered >= 0:
 		ring_out(s, h, "edge" if r.ring_out else "strip")
 		return
@@ -502,10 +524,11 @@ func _apply_result(s: GameState, h: HeroState, r: RollResult) -> void:
 		if st != null and not st.revealed:
 			st.revealed = true
 			s.event("stage_revealed", {"stage": st.id, "by": h.id})
+			fx.on_reveal(s, st, h)
 	# end_area STRIP without entering the map: a weak throw, the hero stays in its zone.
 
 
-func _pick_core(s: GameState, h: HeroState, c: CoreState) -> void:
+func pick_core(s: GameState, h: HeroState, c: CoreState) -> void:
 	var p: PlayerState = s.player(h.owner)
 	if h.cores.size() < s.settings.core_slots:
 		h.cores.append(c.id)
@@ -541,7 +564,7 @@ func _continue(s: GameState) -> void:
 				if not _all_cores_placed(s):
 					return
 				for p: PlayerState in s.players:
-					_draw(s, p, s.settings.start_hand)
+					draw(s, p, s.settings.start_hand)
 				_set_phase(s, GameState.PHASE_MULLIGAN)
 			GameState.PHASE_MULLIGAN:
 				for p: PlayerState in s.players:
@@ -571,6 +594,9 @@ func _continue(s: GameState) -> void:
 				if not _all_aims_in(s):
 					return
 				if not s.rolled:
+					if s.pending_rolls.is_empty():
+						for h: HeroState in _rollers(s):
+							s.pending_rolls.append(h.id)
 					s.awaiting_roll = true
 					return
 				if not s.round_over:
@@ -615,8 +641,11 @@ func _set_phase(s: GameState, phase: String) -> void:
 	for h: HeroState in s.heroes:
 		if not h.phase_bonus.is_empty():
 			h.phase_bonus.clear()
-			_clamp_hp(s, h)
+			clamp_hp(s, h)
 	_queue_core_returns(s)
+	match phase:
+		GameState.PHASE_PREROLL, GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE, GameState.PHASE_END:
+			fx.fire_phase(s, phase)
 
 
 func _all_stages_placed(s: GameState) -> bool:
@@ -668,16 +697,16 @@ func _draw_phase(s: GameState) -> void:
 	for h: HeroState in s.heroes:
 		if not h.turn_bonus.is_empty():
 			h.turn_bonus.clear()
-			_clamp_hp(s, h)
+			clamp_hp(s, h)
 	for p: PlayerState in s.players:
 		if p.surrendered:
 			continue
-		_draw(s, p, 1)
+		draw(s, p, 1)
 		p.energy = mini(s.turn, s.settings.max_energy)
 	s.event("draw")
 
 
-func _draw(s: GameState, p: PlayerState, n: int) -> void:
+func draw(s: GameState, p: PlayerState, n: int) -> void:
 	for _i: int in n:
 		if p.deck.is_empty():
 			return
@@ -703,7 +732,7 @@ func _next_slot(s: GameState, slot: int) -> int:
 	return slot
 
 
-func _other_team_slot(s: GameState, slot: int) -> int:
+func other_slot(s: GameState, slot: int) -> int:
 	var team: int = s.team_of(slot)
 	for p: PlayerState in s.players:
 		if p.team != team:
@@ -871,6 +900,7 @@ func _finish_battle(s: GameState, index: int) -> void:
 			winners.append(h)
 		else:
 			losers.append(h)
+	fx.on_battle_done(s, winners, members)
 	var kb: int = 0
 	for w: HeroState in winners:
 		kb = maxi(kb, stat(s, w, "kb"))
@@ -928,8 +958,13 @@ func _battle_tie(s: GameState, members: Array[HeroState]) -> void:
 # Damage, knockback, KO, ring-out
 # =====================================================================================
 
+## Damage to a hero, after "takes ±N DMG from all sources" modifiers.
 func hero_damage(s: GameState, h: HeroState, amount: int) -> void:
 	if h == null or h.is_ko() or amount <= 0:
+		return
+	amount = maxi(amount + fx.damage_mod(s, h), 0)
+	if amount <= 0:
+		s.event("damage", {"hero": h.id, "amount": 0, "hp": h.hp})
 		return
 	h.hp -= amount
 	s.event("damage", {"hero": h.id, "amount": amount, "hp": h.hp})
@@ -954,7 +989,7 @@ func deck_damage(s: GameState, p: PlayerState, amount: int) -> void:
 			p.hand.remove_at(p.hand.size() - 1)
 		else:
 			s.event("deck_out", {"player": p.slot})
-			_end_match(s, _other_team_slot(s, p.slot), "deckout")
+			_end_match(s, other_slot(s, p.slot), "deckout")
 			return
 	s.event("deck_damage", {"player": p.slot, "amount": amount})
 
@@ -1125,10 +1160,20 @@ func _check_claims(s: GameState) -> void:
 				for slot: int in by_owner:
 					if by_owner[slot] >= 2 and not _battled_on(s, on):
 						claimer = slot
+		if claimer >= 0 and _claim_blocked(s, claimer):
+			s.event("claim_blocked", {"stage": st.id, "player": claimer})
+			claimer = -1
 		if claimer >= 0:
 			st.claimed_by = claimer
 			st.terrain_until_turn = s.turn + 1
 			s.event("stage_claimed", {"stage": st.id, "player": claimer})
+
+
+func _claim_blocked(s: GameState, slot: int) -> bool:
+	for m: Dictionary in s.turn_mods:
+		if str(m.get("kind", "")) == "no_claim" and JsonUtil.as_int(m.get("player", -1)) == slot:
+			return true
+	return false
 
 
 func _battled_on(s: GameState, on: Array[HeroState]) -> bool:
@@ -1194,9 +1239,15 @@ func stat_card(h: HeroState) -> CardDef:
 	return catalog.get_card(h.card_id)
 
 
-## One current stat: "hp" (max), "dmg", "pwr", "rng" or "kb": the card's value plus
-## equipment bonuses plus bonuses that last the phase or the turn.
-func stat(_s: GameState, h: HeroState, key: String) -> int:
+## One current stat: "hp" (max), "dmg", "pwr", "rng" or "kb": the flat value plus what
+## passive effects in play add.
+func stat(s: GameState, h: HeroState, key: String) -> int:
+	return stat_flat(s, h, key) + fx.passive_stat(s, h, key)
+
+
+## The card's value plus equipment `bonus` fields plus bonuses that last the phase or the
+## turn; no passive effects (they use this to avoid asking about themselves).
+func stat_flat(_s: GameState, h: HeroState, key: String) -> int:
 	var card: CardDef = stat_card(h)
 	if card == null:
 		return 0
@@ -1222,7 +1273,7 @@ func stat(_s: GameState, h: HeroState, key: String) -> int:
 
 ## Current HP never exceeds the current max (GDD 10: losing an HP source lowers HP to the
 ## new max, never below it).
-func _clamp_hp(s: GameState, h: HeroState) -> void:
+func clamp_hp(s: GameState, h: HeroState) -> void:
 	h.hp = mini(h.hp, max_hp(s, h))
 
 
@@ -1254,8 +1305,14 @@ func _play_card(s: GameState, m: Move) -> String:
 	var card: CardDef = catalog.get_card(cid)
 	if card == null:
 		return "unknown card"
-	if card.cost > p.energy:
-		return "not enough energy (%d, costs %d)" % [p.energy, card.cost]
+	if not card.is_ready():
+		return "card effects are not ready yet"
+	var cost: int = card_cost(s, p, card)
+	if cost > p.energy:
+		return "not enough energy (%d, costs %d)" % [p.energy, cost]
+	var phase_lock: String = _play_phase(card)
+	if not phase_lock.is_empty() and phase_lock != s.phase.to_upper():
+		return "playable in the %s phase" % phase_lock.to_lower()
 	var context: Array[HeroState] = card_context_heroes(s, m.player)
 	if context.is_empty():
 		return "no hero to play cards for"
@@ -1314,8 +1371,11 @@ func _play_card(s: GameState, m: Move) -> String:
 			p.assists.append(cid)
 			s.event("assist", {"card": cid})
 		"Action":
-			if card.bonus.is_empty():
+			if card.bonus.is_empty() and card.effects.is_empty():
 				return "card effects are not ready yet"
+			var extra: int = _cost_damage(card)
+			if extra > 0 and target.hp <= extra:
+				return "cannot pay %d damage" % extra
 			_take_from_hand(p, cid)
 			for key: String in card.bonus:
 				target.add_bonus(target.phase_bonus, key, card.bonus[key])
@@ -1323,8 +1383,88 @@ func _play_card(s: GameState, m: Move) -> String:
 			s.event("action", {"card": cid, "hero": target.id})
 		_:
 			return "%s cards cannot be played" % card.type
-	p.energy -= card.cost
+	p.energy -= cost
+	_run_play_effects(s, m.player, target, card)
 	return ""
+
+
+## Effects that happen as the card is played: PLAY ones, and phase ones on an Action
+## (its WHEN only says when it may be played). "If you win" ones wait for the battle.
+func _run_play_effects(s: GameState, slot: int, target: HeroState, card: CardDef) -> void:
+	var ctx: Dictionary = {"player": slot, "hero": target.id if target != null else "", "card": card.id, "stage": ""}
+	for e: FxEffect in card.effects:
+		if e.when == "PASSIVE" or e.when == "REVEAL":
+			continue
+		if card.type != "Action" and e.when != "PLAY":
+			continue
+		if e.optional and card.type != "Action":
+			continue
+		if not fx.cond_ok(s, ctx, e):
+			continue
+		if e.cond == "WIN":
+			s.deferred.append({"player": slot, "hero": ctx["hero"], "fx": e.line, "ctx": ctx})
+			continue
+		var err: String = fx.run(s, ctx, e)
+		if not err.is_empty():
+			s.event("fx_skipped", {"card": card.id, "why": err})
+
+
+## The phase an Action is locked to ("" = any card round).
+func _play_phase(card: CardDef) -> String:
+	if card.type != "Action":
+		return ""
+	for e: FxEffect in card.effects:
+		if e.when != "PLAY" and e.when != "PASSIVE":
+			return e.when
+	return ""
+
+
+func _cost_damage(card: CardDef) -> int:
+	for e: FxEffect in card.effects:
+		for a: Dictionary in e.actions:
+			if str(a["verb"]) == "COST_DAMAGE":
+				var args: PackedStringArray = a["args"]
+				return args[0].to_int()
+	return 0
+
+
+## Energy a card costs this player now: discounts never go below 1 (GDD 10).
+func card_cost(s: GameState, p: PlayerState, card: CardDef) -> int:
+	var mod: int = fx.cost_mod(s, p, card)
+	if card.cost <= 0:
+		return maxi(card.cost + mod, 0)
+	return maxi(card.cost + mod, 1)
+
+
+## ROLL_AGAIN: the activated hero rolls once more, right away, in the Roll phase.
+func roll_again(s: GameState, slot: int) -> String:
+	if s.phase != GameState.PHASE_ROLL or not s.rolled:
+		return "roll again only works in the Roll phase after the roll"
+	var h: HeroState = s.active_hero(slot)
+	if h == null or h.is_ko():
+		return "no activated hero to roll"
+	s.rolled = false
+	s.aims.erase(slot)
+	s.choices[slot] = true
+	s.pending_rolls = PackedStringArray([h.id])
+	s.event("roll_again", {"hero": h.id})
+	return ""
+
+
+## A core comes off a hero (deactivated by an effect): its owner puts it back within the
+## hero's range at the next phase, like an overflow core.
+func deactivate_core(s: GameState, h: HeroState, cid: String) -> void:
+	if not h.cores.has(cid):
+		return
+	var c: CoreState = s.core(cid)
+	h.cores.remove_at(h.cores.find(cid))
+	if c == null:
+		return
+	c.place = CoreState.IN_INVENTORY
+	c.holder = ""
+	c.picked_by = h.id
+	s.player(h.owner).inventory.append(c.id)
+	s.event("core_deactivated", {"core": c.id, "hero": h.id})
 
 
 func _take_from_hand(p: PlayerState, cid: String) -> void:
@@ -1345,7 +1485,7 @@ func remove_evolution(s: GameState, h: HeroState) -> void:
 	var cid: String = h.evolutions[h.evolutions.size() - 1]
 	h.evolutions.remove_at(h.evolutions.size() - 1)
 	s.player(h.owner).graveyard.append(cid)
-	_clamp_hp(s, h)
+	clamp_hp(s, h)
 	s.event("evolution_removed", {"card": cid, "hero": h.id})
 
 
@@ -1355,7 +1495,7 @@ func remove_equipment(s: GameState, h: HeroState, cid: String) -> void:
 		return
 	h.equipment.remove_at(h.equipment.find(cid))
 	s.player(h.owner).graveyard.append(cid)
-	_clamp_hp(s, h)
+	clamp_hp(s, h)
 	s.event("equipment_removed", {"card": cid, "hero": h.id})
 
 
@@ -1379,7 +1519,7 @@ func in_range(s: GameState, a: HeroState, b: HeroState) -> bool:
 	return gap <= stat(s, a, "rng")
 
 
-func _reaches_hex(s: GameState, a: HeroState, cell: Vector2i) -> bool:
+func reaches_hex(s: GameState, a: HeroState, cell: Vector2i) -> bool:
 	var gap: int = Hex.distance(a.hex, cell) - (1 if a.big else 0)
 	return gap >= 1 and gap <= stat(s, a, "rng")
 
