@@ -1,13 +1,26 @@
 extends Control
-## Main menu (GDD 7). Every entry works: Continue (an unfinished match), Play, Sandbox, Replays,
-## Decks, Settings and Exit.
+## Main menu (GDD 7) in the web app's look: the hero strip on top, the logo on the left and big
+## italic entries on the right that slide in one after another. Every entry works: Continue (an
+## unfinished match), Play, Online, Sandbox, Replays, Decks, Settings and Exit.
 
 const SANDBOX_SCENE: String = "res://scenes/sandbox/sandbox.tscn"
 const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
+const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
 const SETTINGS_SCENE: String = "res://scenes/menu/settings_menu.tscn"
 const DECKS_SCENE: String = "res://scenes/decks/decks_menu.tscn"
+
+## [label, action, what it is]
+const ENTRIES: Array = [
+	["PLAY", "play", "Against the bot, or two players on this computer"],
+	["ONLINE", "online", "Host a match or join one over Tailscale"],
+	["SANDBOX", "sandbox", "Throw balls around, try terrain"],
+	["REPLAYS", "replays", "Watch past matches, continue from any phase"],
+	["DECKS", "decks", "Your decks, deck codes"],
+	["SETTINGS", "settings", "Shared folder, display, sound, keys"],
+	["EXIT", "exit", ""],
+]
 
 
 func _ready() -> void:
@@ -22,66 +35,99 @@ func _ready() -> void:
 	bg.color = Palette.BG
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
+	var strip := HeroStrip.new()
+	strip.setup(db)
+	strip.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	strip.custom_minimum_size = Vector2(0, 150)
+	add_child(strip)
 
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
-	center.add_child(col)
+	var row := HBoxContainer.new()
+	row.set_anchors_preset(Control.PRESET_FULL_RECT)
+	row.offset_top = 170
+	row.offset_bottom = -50
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 80)
+	add_child(row)
 
+	# Left: the logo, big.
+	var left := CenterContainer.new()
+	left.custom_minimum_size = Vector2(560, 0)
+	row.add_child(left)
 	if logo != null:
 		var img := TextureRect.new()
 		img.texture = logo
 		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		img.custom_minimum_size = Vector2(460, 300)
-		col.add_child(img)
+		img.custom_minimum_size = Vector2(520, 480)
+		left.add_child(img)
+		img.pivot_offset = Vector2(260, 240)
+		img.scale = Vector2(0.9, 0.9)
+		img.modulate.a = 0.0
+		var lt: Tween = img.create_tween().set_parallel(true)
+		lt.tween_property(img, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		lt.tween_property(img, "modulate:a", 1.0, 0.3)
 	else:
-		var title := Label.new()
-		title.text = "EVIL BOĆE"
-		title.add_theme_font_override("font", UiTheme.display_bold())
-		title.add_theme_font_size_override("font_size", 96)
-		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(title)
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 18)
-	col.add_child(gap)
+		left.add_child(UiTheme.label("EVIL BOĆE", 110))
 
-	var first: Button = null
-	var entries: Array = [["PLAY", "play"], ["SANDBOX", "sandbox"], ["REPLAYS", "replays"], ["DECKS", "decks"],
-			["SETTINGS", "settings"], ["EXIT", "exit"]]
+	# Right: the entries.
+	var right := VBoxContainer.new()
+	right.alignment = BoxContainer.ALIGNMENT_CENTER
+	right.add_theme_constant_override("separation", 2)
+	right.custom_minimum_size = Vector2(520, 0)
+	row.add_child(right)
+	var entries: Array = ENTRIES.duplicate()
 	# A match left unfinished (quit or crash) comes back first.
 	if ReplayStore.has_current():
-		entries.push_front(["CONTINUE", "continue"])
-	for entry: Array in entries:
+		entries.push_front(["CONTINUE", "continue", "Back to the match you left"])
+	var first: Button = null
+	for i: int in entries.size():
+		var entry: Array = entries[i]
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 12)
+		right.add_child(line)
+		var num: Label = UiTheme.label("%02d" % (i + 1), 18, Palette.DIM)
+		num.custom_minimum_size = Vector2(30, 0)
+		num.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		line.add_child(num)
 		var b := Button.new()
 		b.text = str(entry[0])
 		b.theme_type_variation = &"MenuItem"
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.custom_minimum_size = Vector2(320, 0)
-		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		b.custom_minimum_size = Vector2(250, 0)
 		var action: String = str(entry[1])
-		b.disabled = action.is_empty()
-		if b.disabled:
-			b.tooltip_text = "Coming in a later step"
-			b.focus_mode = Control.FOCUS_NONE
+		if action == "continue":
+			b.add_theme_color_override("font_color", Palette.GOLD)
 		b.pressed.connect(_on_pressed.bind(action))
-		b.mouse_entered.connect(func() -> void: if not b.disabled: b.grab_focus())
-		col.add_child(b)
-		if first == null and (action == "continue" or action == "play"):
+		b.mouse_entered.connect(func() -> void: b.grab_focus())
+		line.add_child(b)
+		var what := Label.new()
+		what.text = str(entry[2])
+		what.add_theme_color_override("font_color", Palette.MUTED)
+		what.add_theme_font_size_override("font_size", 13)
+		what.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		what.visible = false
+		line.add_child(what)
+		b.focus_entered.connect(func() -> void: what.visible = true)
+		b.focus_exited.connect(func() -> void: what.visible = false)
+		if first == null:
 			first = b
+		# Entries slide in from the right, one after another.
+		line.modulate.a = 0.0
+		var t: Tween = line.create_tween().set_parallel(true)
+		t.tween_property(line, "modulate:a", 1.0, 0.2).set_delay(0.05 * i + 0.1)
+		t.tween_property(num, "position:x", 0.0, 0.25).from(60.0).set_delay(0.05 * i + 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	if first != null:
 		first.grab_focus.call_deferred()
 
 	var foot := Label.new()
-	foot.theme_type_variation = &"Muted"
+	foot.add_theme_color_override("font_color", Palette.DIM)
+	foot.add_theme_font_size_override("font_size", 13)
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	foot.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	foot.position = Vector2(16, -34)
+	foot.position = Vector2(18, -34)
 	var version: String = str(ProjectSettings.get_setting("application/config/version", ""))
 	if db.is_ok():
-		foot.text = "v%s  ·  cards.json v%d, %d cards  ·  %s" % [version, db.version, db.card_count, db.root_dir]
+		foot.text = "v%s  ·  cards v%d, %d cards  ·  %s" % [version, db.version, db.card_count, db.root_dir]
 	else:
 		foot.text = "v%s  ·  %s  ·  set the shared folder in Settings" % [version, db.error]
 		foot.add_theme_color_override("font_color", Palette.GOLD)
@@ -100,6 +146,8 @@ func _on_pressed(action: String) -> void:
 			get_tree().change_scene_to_file(MATCH_SCENE)
 		"play":
 			get_tree().change_scene_to_file(SETUP_SCENE)
+		"online":
+			get_tree().change_scene_to_file(LOBBY_SCENE)
 		"replays":
 			get_tree().change_scene_to_file(REPLAYS_SCENE)
 		"sandbox":
