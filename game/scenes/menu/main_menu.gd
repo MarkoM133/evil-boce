@@ -27,6 +27,13 @@ const ENTRIES: Array = [
 
 var db: CardDb
 var _hint: Label
+## The menu comes in after building it (at once, or behind the splash's cut): what fades in
+## (and after how long), what slides in from the left, the logo, and the tweens doing it.
+var _fade_ins: Array[Control] = []
+var _fade_delays: Array[float] = []
+var _slide_ins: Array[Control] = []
+var _logo_node: Control
+var _intro: Array[Tween] = []
 
 
 func _ready() -> void:
@@ -68,11 +75,49 @@ func _ready() -> void:
 		foot.add_theme_color_override("font_color", Palette.GOLD)
 	add_child(foot)
 
-	if not Splash.done:
-		var splash := Splash.new()
-		splash.set_anchors_preset(Control.PRESET_FULL_RECT)
-		add_child(splash)
-		splash.setup(db, logo, _news_items(), _version_line())
+	for f: Control in _fade_ins:
+		f.modulate.a = 0.0
+	if _logo_node != null:
+		_logo_node.modulate.a = 0.0
+	if Splash.done:
+		_play_intro(true)
+		return
+	var splash := Splash.new()
+	splash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(splash)
+	splash.setup(db, logo, _news_items(), _version_line(), _logo_node)
+	splash.wipe_started.connect(_play_intro.bind(false))
+	splash.finished.connect(func() -> void:
+		if _logo_node != null:
+			_logo_node.modulate.a = 1.0
+		if splash.skipped:
+			for t: Tween in _intro:
+				if t.is_valid():
+					t.custom_step(10.0))
+
+
+func _fade_in(c: Control, delay: float) -> void:
+	_fade_ins.append(c)
+	_fade_delays.append(delay)
+
+
+## Fades and slides the menu in; `with_logo` fades the logo too (no splash logo lands on it).
+func _play_intro(with_logo: bool) -> void:
+	for i: int in _fade_ins.size():
+		var c: Control = _fade_ins[i]
+		var t: Tween = c.create_tween()
+		t.tween_property(c, "modulate:a", 1.0, 0.22).set_delay(_fade_delays[i])
+		_intro.append(t)
+	for c: Control in _slide_ins:
+		var x: float = c.position.x
+		c.position.x = x - 320.0
+		var t: Tween = c.create_tween()
+		t.tween_property(c, "position:x", x, 0.45).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_intro.append(t)
+	if with_logo and _logo_node != null:
+		var t: Tween = _logo_node.create_tween()
+		t.tween_property(_logo_node, "modulate:a", 1.0, 0.4)
+		_intro.append(t)
 
 
 func _version_line() -> String:
@@ -154,18 +199,16 @@ func _build_cinema(logo: Texture2D, fill: String = "info") -> void:
 		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		img.custom_minimum_size = {"table": Vector2(340, 320), "empty": Vector2(480, 460)}.get(fill, Vector2(400, 380))
 		stage.add_child(img)
-		img.modulate.a = 0.0
-		var lt: Tween = img.create_tween()
-		lt.tween_property(img, "modulate:a", 1.0, 0.4)
+		_logo_node = img
 	else:
 		var title: Label = UiTheme.label("EVIL BOĆE", 110)
 		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		stage.add_child(title)
+		_logo_node = title
 	if not cards.is_empty():
 		stage.add_child(cards[1])
 	for c: Control in cards:
-		c.modulate.a = 0.0
-		c.create_tween().tween_property(c, "modulate:a", 1.0, 0.3).set_delay(0.35)
+		_fade_in(c, 0.35)
 
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -207,8 +250,7 @@ func _entry_buttons(parent: BoxContainer, font_size: int, left: bool, delay: flo
 		parent.add_child(b)
 		if i == 0:
 			b.grab_focus.call_deferred()
-		b.modulate.a = 0.0
-		b.create_tween().tween_property(b, "modulate:a", 1.0, 0.22).set_delay(0.05 * i + delay)
+		_fade_in(b, 0.05 * i + delay)
 
 
 # --- side strip (mockup M3) -----------------------------------------------------------------
@@ -255,6 +297,7 @@ func _build_strip(logo: Texture2D) -> void:
 	_hint.custom_minimum_size = Vector2(0, 40)
 	_hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	col.add_child(_hint)
+	_slide_ins.append_array([strip, fade, col])
 
 	# The logo, big, right of the middle; left alone for a while, the last match shows in its
 	# circle.
@@ -272,10 +315,10 @@ func _build_strip(logo: Texture2D) -> void:
 		img.caption = ReplayStore.last_caption().trim_prefix("Last match: ")
 		img.custom_minimum_size = Vector2(580, 580)
 		holder.add_child(img)
-		img.modulate.a = 0.0
-		img.create_tween().tween_property(img, "modulate:a", 1.0, 0.4)
+		_logo_node = img
 	else:
-		holder.add_child(UiTheme.label("EVIL BOĆE", 120))
+		_logo_node = UiTheme.label("EVIL BOĆE", 120)
+		holder.add_child(_logo_node)
 
 
 const SIDE_CARD := Vector2(330, 380)

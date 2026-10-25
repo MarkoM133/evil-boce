@@ -178,8 +178,10 @@ func _draw_vertical() -> void:
 
 
 ## Strips `h` high along the top and the bottom of `parent` (drifting opposite ways), each with
-## a red line on its inner edge: the cinema menu's and the splash's letterbox.
-static func letterbox(parent: Control, db: CardDb, h: float = 110.0) -> void:
+## a red line on its inner edge: the cinema menu's and the splash's letterbox. Returns them,
+## top strip and line first.
+static func letterbox(parent: Control, db: CardDb, h: float = 110.0) -> Array[Control]:
+	var out: Array[Control] = []
 	for bottom: bool in [false, true]:
 		var strip := HeroStrip.new()
 		strip.setup(db)
@@ -191,6 +193,7 @@ static func letterbox(parent: Control, db: CardDb, h: float = 110.0) -> void:
 			strip.grow_vertical = Control.GROW_DIRECTION_BEGIN
 			strip.offset_top = -h
 		parent.add_child(strip)
+		out.append(strip)
 		var line := ColorRect.new()
 		line.color = Palette.ACCENT
 		line.set_anchors_preset(Control.PRESET_BOTTOM_WIDE if bottom else Control.PRESET_TOP_WIDE)
@@ -198,3 +201,5 @@ static func letterbox(parent: Control, db: CardDb, h: float = 110.0) -> void:
 		line.offset_bottom = -h if bottom else h + 3.0
 		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		parent.add_child(line)
+		out.append(line)
+	return out

@@ -2,7 +2,8 @@ extends SceneTree
 ## Loads a scene, optionally calls methods on it, waits, saves a PNG to game/.shots/, quits.
 ## godot_console --path game -s res://tools/screenshot.gd -- --scene=res://scenes/sandbox/sandbox.tscn
 ##     [--frames=90] [--out=sandbox.png] [--call=demo_setup,demo_closeup] [--size=1600x900]
-## Methods in --call run one after another, `--wait` frames apart (default 30). Runs at 60 FPS.
+## Methods in --call run one after another, `--wait` frames apart (default 30), the first one
+## `--start` frames in (default 5). Runs at 60 FPS.
 ## [--setting=display/menu_layout:strip,display/ui_scale:1.0] changes settings for this run only
 ## (never saved).
 
@@ -18,6 +19,7 @@ func _run() -> void:
 		"out": "shot.png",
 		"call": "",
 		"wait": "30",
+		"start": "5",
 		"size": "1600x900",
 	}
 	for arg: String in OS.get_cmdline_user_args():
@@ -40,7 +42,7 @@ func _run() -> void:
 	var node: Node = packed.instantiate()
 	root.add_child(node)
 	current_scene = node
-	await _frames(5)
+	await _frames(int(opts["start"]))
 	for m: String in opts["call"].split(",", false):
 		if node.has_method(m):
 			node.call(m)
