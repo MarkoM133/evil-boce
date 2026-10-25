@@ -9,6 +9,8 @@ const PLACEHOLDER_FX: String = "res://data/placeholders/card_fx.json"
 var root_dir: String = ""
 var version: int = 0
 var card_count: int = 0
+## Card id -> small image in data/thumbs/ (same name as the full image, as .jpg).
+var thumbs: Dictionary[String, String] = {}
 var heroes: Array[HeroDef] = []
 ## Rules-side view of the same cards (placeholder cores and terrain applied).
 var catalog: CardCatalog = CardCatalog.new()
@@ -55,6 +57,9 @@ func parse(text: String) -> void:
 		if JsonUtil.as_bool(card.get("deleted", false)):
 			continue
 		card_count += 1
+		var image: String = str(card.get("image", ""))
+		if not image.is_empty():
+			thumbs[str(card.get("id", ""))] = data_dir().path_join("thumbs/%s.jpg" % image.get_file().get_basename())
 		if str(card.get("type", "")) == "Hero":
 			heroes.append(HeroDef.from_card(card, data_dir()))
 	heroes.sort_custom(func(a: HeroDef, b: HeroDef) -> bool: return a.id < b.id)
@@ -70,6 +75,11 @@ func sprite(hero: HeroDef) -> Texture2D:
 
 func emblem(set_code: String) -> Texture2D:
 	return texture(data_dir().path_join("branding/emblem-%s.png" % set_code))
+
+
+## The card's small image, or null.
+func thumb(card_id: String) -> Texture2D:
+	return texture(thumbs[card_id]) if thumbs.has(card_id) else null
 
 
 func logo() -> Texture2D:

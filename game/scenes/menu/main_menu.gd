@@ -1,11 +1,13 @@
 extends Control
-## Main menu (GDD 7). Continue (an unfinished match), Play, Sandbox, Replays, Settings and Exit work.
+## Main menu (GDD 7). Every entry works: Continue (an unfinished match), Play, Sandbox, Replays,
+## Decks, Settings and Exit.
 
 const SANDBOX_SCENE: String = "res://scenes/sandbox/sandbox.tscn"
 const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
 const SETTINGS_SCENE: String = "res://scenes/menu/settings_menu.tscn"
+const DECKS_SCENE: String = "res://scenes/decks/decks_menu.tscn"
 
 
 func _ready() -> void:
@@ -47,7 +49,7 @@ func _ready() -> void:
 	col.add_child(gap)
 
 	var first: Button = null
-	var entries: Array = [["PLAY", "play"], ["SANDBOX", "sandbox"], ["REPLAYS", "replays"], ["DECKS", ""],
+	var entries: Array = [["PLAY", "play"], ["SANDBOX", "sandbox"], ["REPLAYS", "replays"], ["DECKS", "decks"],
 			["SETTINGS", "settings"], ["EXIT", "exit"]]
 	# A match left unfinished (quit or crash) comes back first.
 	if ReplayStore.has_current():
@@ -104,5 +106,7 @@ func _on_pressed(action: String) -> void:
 			get_tree().change_scene_to_file(SANDBOX_SCENE)
 		"settings":
 			get_tree().change_scene_to_file(SETTINGS_SCENE)
+		"decks":
+			get_tree().change_scene_to_file(DECKS_SCENE)
 		"exit":
 			get_tree().quit()
