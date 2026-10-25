@@ -81,6 +81,8 @@ var _banners: Array[Dictionary] = []
 var _banner_busy: bool = false
 ## How much of state.log has been looked at for banners (-1: not yet, nothing replays).
 var _log_seen: int = -1
+## The phase last called out by a banner.
+var _called_phase: String = ""
 ## The big card above the hand (GDD 11): the card under the mouse ("" = none) and the one shown.
 var _hover_cid: String = ""
 var _big: TextureRect
@@ -109,6 +111,12 @@ func setup(engine_: RulesEngine, state_: GameState, db_: CardDb, local: PackedIn
 func refresh() -> void:
 	if state == null:
 		return
+	# A new phase is called out in the middle (not on the first look, e.g. a loaded match).
+	if state.phase != _called_phase:
+		# Not while a replay rewinds (its log gets shorter).
+		if not _called_phase.is_empty() and PHASES.has(state.phase) and state.log.size() >= _log_seen:
+			banner("%s PHASE" % state.phase.to_upper(), Palette.PANEL_SOLID, "TURN %d" % state.turn, "")
+		_called_phase = state.phase
 	_scan_log()
 	_refresh_ribbon()
 	for slot: int in state.players.size():
