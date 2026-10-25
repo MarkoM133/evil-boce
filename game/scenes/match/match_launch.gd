@@ -19,7 +19,6 @@ static func take(catalog: CardCatalog) -> Dictionary:
 	rng.randomize()
 	var settings: MatchSettings = MatchSettings.standard()
 	settings.map_size = GameSettings.map_size()
-	settings.manual_setup = false
 	return {
 		"settings": settings,
 		"decks": [

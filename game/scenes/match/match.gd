@@ -42,6 +42,10 @@ var _pick_order: PackedStringArray = PackedStringArray()
 var _bot_wait: float = 0.0
 var _press_on_empty: bool = false
 var _menu: Control
+## Setup: the stage or core the local player places next ("" = the first one left) and the
+## hex under the mouse, for the preview.
+var _setup_pick: String = ""
+var _setup_hover := Vector2i(9999, 9999)
 
 
 func _ready() -> void:
@@ -157,6 +161,11 @@ func _build_hud() -> void:
 	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
 	hud.menu_pressed.connect(_toggle_menu)
 	hud.rematch_pressed.connect(_rematch)
+	hud.setup_item_pressed.connect(func(id: String) -> void:
+		_setup_pick = id
+		_range_key = ""
+		hud.setup_pick = _setup_item()
+		hud.refresh())
 	_menu = _build_menu_overlay()
 	layer.add_child(_menu)
 
@@ -244,6 +253,7 @@ func _sync() -> void:
 	_range_key = ""
 	_draw_marks()
 	hud.rolling = _runner.is_running() or _launching
+	hud.setup_pick = _setup_item()
 	hud.refresh()
 	if state.awaiting_roll and not _runner.is_running() and not _launching:
 		_launch_roll()
@@ -421,6 +431,13 @@ func _refresh_range() -> void:
 		key += "%s:%s:%d;" % [h.id, h.hex, rng]
 		cells.append_array(arena.map.range_cells(h.hex, h.big, rng))
 		marked.append_array(state.footprint(h))
+	var item: String = _setup_item()
+	if not item.is_empty():
+		key = "setup:%s:%s" % [item, _setup_hover]
+		cells = _setup_cells(item)
+		marked.clear()
+		if cells.has(_setup_hover):
+			marked = Hex.spiral(_setup_hover, 1) if state.stage(item) != null else [_setup_hover]
 	var d: Dictionary = _local_decision()
 	if str(d.get("type", "")) == RulesEngine.DECISION_RETURN_CORE:
 		var c: CoreState = state.core(str(d.get("core", "")))
@@ -438,6 +455,43 @@ func _refresh_range() -> void:
 		return
 	_range_key = key
 	arena.show_range(cells, marked)
+
+
+## The stage or core a local player places now, or "" outside a local setup turn.
+func _setup_item() -> String:
+	if state.phase != GameState.PHASE_SETUP_STAGES and state.phase != GameState.PHASE_SETUP_CORES:
+		return ""
+	if not hud.local_slots.has(state.setup_turn):
+		return ""
+	var left: PackedStringArray = MatchHud.setup_items(state, state.setup_turn)
+	if left.has(_setup_pick):
+		return _setup_pick
+	return left[0] if not left.is_empty() else ""
+
+
+## Legal hexes for a stage (its centre) or a core during setup.
+func _setup_cells(item: String) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var st: StageState = state.stage(item)
+	var c: CoreState = state.core(item)
+	for a: Vector2i in arena.map.cells():
+		if st != null and engine.stage_placement_error(state, st, a).is_empty():
+			out.append(a)
+		elif c != null and engine.core_placement_error(state, c, a).is_empty():
+			out.append(a)
+	return out
+
+
+func _place_at_mouse(item: String) -> void:
+	var g: Variant = _ground_under_mouse()
+	if g == null:
+		return
+	var gp: Vector3 = g
+	var hex: Array = Hex.to_json(arena.hex_at(gp))
+	if state.stage(item) != null:
+		_apply(Move.make(Move.PLACE_STAGE, state.setup_turn, {"stage": item, "hex": hex}))
+	else:
+		_apply(Move.make(Move.PLACE_CORE, state.setup_turn, {"core": item, "hex": hex}))
 
 
 ## The pending decision if a local player has to make it, else {}.
@@ -571,6 +625,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_sling.cancel()
 			arena.set_grid_emphasis(false)
 			return
+	if event is InputEventMouseMotion and not _setup_item().is_empty():
+		var g: Variant = _ground_under_mouse()
+		if g != null:
+			var gp: Vector3 = g
+			_setup_hover = arena.hex_at(gp)
 	if event is InputEventMouseMotion and not _sling.is_aiming() and not cam.is_dragging():
 		_set_hover(_hero_under_mouse(), true)
 	cam.handle_input(event)
@@ -596,6 +655,10 @@ func _on_key(k: InputEventKey) -> void:
 func _on_left(pressed: bool) -> void:
 	if pressed:
 		_press_on_empty = false
+		var item: String = _setup_item()
+		if not item.is_empty() and _hero_under_mouse().is_empty():
+			_place_at_mouse(item)
+			return
 		var d: Dictionary = _local_decision()
 		if str(d.get("type", "")) == RulesEngine.DECISION_RETURN_CORE:
 			var g: Variant = _ground_under_mouse()

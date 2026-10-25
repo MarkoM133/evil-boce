@@ -14,6 +14,7 @@ var _deck_pick: Array[OptionButton] = []
 var _opponent: OptionButton
 var _map: OptionButton
 var _range: OptionButton
+var _setup_mode: OptionButton
 var _problems: Label
 
 
@@ -76,6 +77,12 @@ func _ready() -> void:
 	_range.select(RANGE_DELTAS.find(MatchSettings.standard().range_delta))
 	col.add_child(_range)
 
+	_header(col, "STAGES AND CORES")
+	_setup_mode = OptionButton.new()
+	_setup_mode.add_item("Placed by the players in turn  ·  Standard")
+	_setup_mode.add_item("Placed at random")
+	col.add_child(_setup_mode)
+
 	_problems = Label.new()
 	_problems.theme_type_variation = &"Muted"
 	_problems.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -123,7 +130,7 @@ func _start() -> void:
 	var settings: MatchSettings = MatchSettings.standard()
 	settings.map_size = _map.get_selected_id()
 	settings.range_delta = _range.get_selected_id() - 10
-	settings.manual_setup = false
+	settings.manual_setup = _setup_mode.selected == 0
 	GameSettings.set_map_size(settings.map_size)
 	var bot: bool = _opponent.selected == 0
 	var engine_decks: Array = []

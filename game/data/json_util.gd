@@ -63,8 +63,14 @@ static func as_dict(v: Variant) -> Dictionary:
 	return {}
 
 
+## Arrays, and packed arrays (they come from code, not from JSON) as a plain Array.
 static func as_array(v: Variant) -> Array:
 	if v is Array:
 		var a: Array = v
 		return a
-	return []
+	var out: Array = []
+	if v is PackedInt32Array or v is PackedInt64Array or v is PackedStringArray or v is PackedFloat32Array \
+			or v is PackedFloat64Array or v is PackedVector2Array:
+		for x: Variant in v:
+			out.append(x)
+	return out

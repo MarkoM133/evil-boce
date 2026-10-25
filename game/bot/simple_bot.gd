@@ -23,6 +23,9 @@ func next_move(engine: RulesEngine, s: GameState, slot: int, positions: Dictiona
 			return null
 		return _decide(engine, s, slot, d)
 	match s.phase:
+		GameState.PHASE_SETUP_STAGES, GameState.PHASE_SETUP_CORES:
+			if s.setup_turn == slot:
+				return _place(engine, s, slot)
 		GameState.PHASE_MULLIGAN:
 			if not s.player(slot).mulligan_done:
 				return Move.make(Move.MULLIGAN, slot, {"keep": true})
@@ -68,6 +71,29 @@ func _decide(engine: RulesEngine, s: GameState, slot: int, d: Dictionary) -> Mov
 			var i: int = rng.randi_range(0, options.size() - 1)
 			var value: Variant = i if str(d.get("kind", "")) == "option" else options[i]
 			return Move.make(Move.CHOOSE, slot, {"value": value})
+	return null
+
+
+## Setup: the next own stage or core on a random legal hex.
+func _place(engine: RulesEngine, s: GameState, slot: int) -> Move:
+	var cells: Array[Vector2i] = s.map().cells()
+	var start: int = rng.randi_range(0, cells.size() - 1)
+	if s.phase == GameState.PHASE_SETUP_STAGES:
+		for st: StageState in s.stages:
+			if st.owner != slot or st.placed:
+				continue
+			for i: int in cells.size():
+				var a: Vector2i = cells[(start + i) % cells.size()]
+				if engine.stage_placement_error(s, st, a).is_empty():
+					return Move.make(Move.PLACE_STAGE, slot, {"stage": st.id, "hex": Hex.to_json(a)})
+		return null
+	for c: CoreState in s.cores:
+		if c.owner != slot or c.place != CoreState.UNPLACED:
+			continue
+		for i: int in cells.size():
+			var a: Vector2i = cells[(start + i) % cells.size()]
+			if engine.core_placement_error(s, c, a).is_empty():
+				return Move.make(Move.PLACE_CORE, slot, {"core": c.id, "hex": Hex.to_json(a)})
 	return null
 
 

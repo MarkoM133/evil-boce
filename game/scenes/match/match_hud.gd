@@ -18,6 +18,8 @@ signal hero_clicked(hero_id: String)
 signal hero_hovered(hero_id: String)
 signal menu_pressed
 signal rematch_pressed
+## Setup: the player picked which stage or core to place next.
+signal setup_item_pressed(id: String)
 
 const PHASES: Array[String] = [GameState.PHASE_DRAW, GameState.PHASE_SELECT, GameState.PHASE_PREROLL,
 	GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE, GameState.PHASE_END]
@@ -32,6 +34,11 @@ var local_slots: PackedInt32Array = PackedInt32Array()
 var hover_hero: String = ""
 ## True while the physics runs, so the prompt can say so.
 var rolling: bool = false
+## Setup: the stage or core the local player places next (set by the match scene).
+var setup_pick: String = ""
+## How far the hand is lowered (0 = up); it drops when the mouse is over the table (GDD 11).
+var _hand_drop: float = 0.0
+var _hand_box: Control
 
 var _phase_bar: HBoxContainer
 var _player_boxes: Array[VBoxContainer] = []
@@ -156,7 +163,7 @@ func _build() -> void:
 	bottom.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	bottom.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	bottom.position = Vector2(-450, -16)
+	bottom.position = Vector2(-450, -CARD_SIZE.y - 24)
 	bottom.size = Vector2(900, 0)
 	bottom.alignment = BoxContainer.ALIGNMENT_END
 	bottom.add_theme_constant_override("separation", 8)
@@ -173,10 +180,19 @@ func _build() -> void:
 	_actions.alignment = BoxContainer.ALIGNMENT_CENTER
 	_actions.add_theme_constant_override("separation", 8)
 	bottom.add_child(_actions)
+	# The hand sits on its own under the prompt so it can slide down out of the way.
+	_hand_box = Control.new()
+	_hand_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_hand_box.position = Vector2(-600, -CARD_SIZE.y - 12)
+	_hand_box.size = Vector2(1200, CARD_SIZE.y)
+	_hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_hand_box)
 	_hand = HBoxContainer.new()
+	_hand.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_hand.alignment = BoxContainer.ALIGNMENT_CENTER
 	_hand.add_theme_constant_override("separation", 6)
-	bottom.add_child(_hand)
+	_hand.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hand_box.add_child(_hand)
 
 	_log_line = Button.new()
 	_log_line.flat = true
@@ -409,6 +425,14 @@ func _hero_row(h: HeroState) -> Control:
 		dots += "●" if i < h.cores.size() else "○"
 	cores.text = "Cores " + dots
 	col.add_child(cores)
+	var status: String = _status_text(h)
+	if not status.is_empty():
+		var st := Label.new()
+		st.theme_type_variation = &"Muted"
+		st.text = status
+		st.add_theme_color_override("font_color", Palette.GOLD)
+		st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(st)
 	if expanded:
 		var stats := Label.new()
 		stats.theme_type_variation = &"Muted"
@@ -489,6 +513,9 @@ func _refresh_prompt() -> void:
 	if rolling:
 		_prompt.text = "Rolling…"
 		return
+	if state.phase == GameState.PHASE_SETUP_STAGES or state.phase == GameState.PHASE_SETUP_CORES:
+		_setup_prompt()
+		return
 	if not state.pending.is_empty():
 		var d: Dictionary = state.pending[0]
 		var who: int = JsonUtil.as_int(d.get("player", -1), -1)
@@ -547,6 +574,78 @@ func _refresh_prompt() -> void:
 			_prompt.text = "Rolling…"
 		else:
 			_prompt.text = "Waiting for the opponent…"
+
+
+## Setup (GDD 7): stages, then cores, placed in turn. The tray lists what is left; the picked one
+## is gold, its legal hexes light up on the table.
+func _setup_prompt() -> void:
+	var who: int = state.setup_turn
+	var stages: bool = state.phase == GameState.PHASE_SETUP_STAGES
+	if not local_slots.has(who):
+		_prompt.text = "%s is placing a %s…" % [player_name(who), "stage" if stages else "core"]
+		return
+	_prompt.text = ("%s: place a stage in the middle third" if stages else "%s: place a core in the opponent's half") % player_name(who) \
+		+ "  ·  pick one below, click a highlighted hex"
+	for id: String in setup_items(state, who):
+		var b: Button = _action(_setup_label(id), func() -> void: setup_item_pressed.emit(id))
+		if id == setup_pick:
+			b.add_theme_color_override("font_color", Palette.GOLD)
+			b.add_theme_stylebox_override("normal", UiTheme.box(Palette.BUTTON, 3, Palette.GOLD))
+		var tip: String = _setup_tip(id)
+		if not tip.is_empty():
+			b.tooltip_text = tip
+
+
+## Stages (or cores, in the core phase) `slot` still has to place.
+static func setup_items(s: GameState, slot: int) -> PackedStringArray:
+	var out := PackedStringArray()
+	if s.phase == GameState.PHASE_SETUP_STAGES:
+		for st: StageState in s.stages:
+			if st.owner == slot and not st.placed:
+				out.append(st.id)
+	elif s.phase == GameState.PHASE_SETUP_CORES:
+		for c: CoreState in s.cores:
+			if c.owner == slot and c.place == CoreState.UNPLACED:
+				out.append(c.id)
+	return out
+
+
+func _setup_label(id: String) -> String:
+	var st: StageState = state.stage(id)
+	if st != null:
+		var card: CardDef = engine.catalog.get_card(st.card_id)
+		var terrain: String = Terrain.name_of(card.terrain) if card != null and card.terrain != Terrain.Type.NONE else ""
+		return (card.name if card != null else st.card_id) + ("  ·  " + terrain if not terrain.is_empty() else "")
+	var c: CoreState = state.core(id)
+	var cc: CardDef = engine.catalog.get_card(c.card_id) if c != null else null
+	return "Core · %s" % (cc.kind if cc != null and not cc.kind.is_empty() else "?")
+
+
+func _setup_tip(id: String) -> String:
+	var st: StageState = state.stage(id)
+	var card: CardDef = engine.catalog.get_card(st.card_id if st != null else state.core(id).card_id)
+	return card.text if card != null else ""
+
+
+## Status line for a hero: "Immune to KB (1 turn) · Hold hit".
+func _status_text(h: HeroState) -> String:
+	var names: Dictionary = {"immune_kb": "Immune to KB", "stun": "Stunned", "hold_hit": "No hit, double KB"}
+	var parts := PackedStringArray()
+	for k: String in h.statuses:
+		var label: String = str(names.get(k, k.capitalize()))
+		var turns: int = h.statuses[k]
+		parts.append(label if turns < 0 else "%s (%d turn%s)" % [label, turns, "" if turns == 1 else "s"])
+	return "  ·  ".join(parts)
+
+
+func _process(delta: float) -> void:
+	if _hand_box == null:
+		return
+	# Up while the mouse is near the bottom of the screen, else only the tops of the cards show.
+	var up: bool = get_local_mouse_position().y > size.y - CARD_SIZE.y - 70.0
+	var target: float = 0.0 if up else CARD_SIZE.y - 24.0
+	_hand_drop = move_toward(_hand_drop, target, delta * 600.0)
+	_hand_box.position.y = size.y - CARD_SIZE.y - 12.0 + _hand_drop
 
 
 func _battle_suffix() -> String:
