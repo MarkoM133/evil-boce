@@ -1,0 +1,9 @@
+{
+  "_comment": "Terrain per stage until the stage cards carry a `Terrain: X` line. Only used for cards without one.",
+  "Stage-001": "Ice",
+  "Stage-002": "None",
+  "Stage-003": "Mud",
+  "Stage-004": "Mud",
+  "Stage-005": "None",
+  "Stage-006": "Ice"
+}

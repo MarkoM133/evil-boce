@@ -1,0 +1,40 @@
+{
+  "name": "Equipment: activated hero only, cost, three at most, same card once",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "players.p0.hand": ["TA-020", "TA-021", "TA-021", "TA-022", "TA-023", "TA-012"],
+      "players.p0.energy": 4,
+      "initiative": 0
+    }},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-020"}, "error": "select a hero"},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"expect": {"phase": "preroll", "to_act": 0}},
+    {"move": {"type": "play_card", "player": 1, "card": "TA-020"}, "error": "not your turn"},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-012"}, "error": "start zone"},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-020"}},
+    {"expect": {
+      "heroes.p0:TA-001.equipment": ["TA-020"],
+      "players.p0.energy": 2,
+      "players.p0.hand": {"$size": 5},
+      "to_act": 1, "passed": {"$size": 0}
+    }},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-021"}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-021"}, "error": "already has that equipment"},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-022"}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-023"}, "error": "already has 3 equipment"},
+    {"expect": {
+      "heroes.p0:TA-001.equipment": ["TA-020", "TA-021", "TA-022"],
+      "players.p0.energy": 1,
+      "phase": "preroll"
+    }},
+    {"move": {"type": "pass", "player": 0}},
+    {"expect": {"round_over": true}}
+  ]
+}

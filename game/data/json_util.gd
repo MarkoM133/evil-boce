@@ -38,6 +38,9 @@ static func as_hex(v: Variant, fallback: Vector2i = Vector2i.ZERO) -> Vector2i:
 
 
 static func as_strings(v: Variant) -> PackedStringArray:
+	if v is PackedStringArray:
+		var packed: PackedStringArray = v
+		return packed.duplicate()
 	var out := PackedStringArray()
 	for s: Variant in as_array(v):
 		out.append(str(s))

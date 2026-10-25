@@ -36,7 +36,26 @@ engine is shaped and which gaps it had to fill on its own (see **Assumptions**).
 | `over` | nothing | — |
 
 `surrender` is accepted at any time. Card rounds alternate from the initiative player and end
-when every player has passed in a row.
+when every player has passed in a row; playing a card hands the turn to the next player and
+resets the passes.
+
+## Playing cards (`play_card {"card", "hero"?, "replace"?}`)
+
+- Costs energy (`PlayerState.energy`, refilled to min(turn, 8) every Draw).
+- Played in the colour of the **context heroes**: outside a battle the activated hero; in a
+  battle your heroes taking part in it. `hero` picks one when several fit.
+- **Equipment**: on a context hero, at most `equipment_limit` (3), the same card once per
+  hero. Its `bonus` (`{"pwr": 1000, "hp": 2}` from the web app) counts while equipped.
+- **Evolution**: on a context hero that is on the map, `hero` name must match, level
+  `evo` must be the next one. Stats come from the evolution card; damage carries over
+  (new max − damage taken). `remove_evolution()` drops HP only down to the new max.
+- **Assist**: at most `assist_limit` (3) per player, the same card once; a fourth needs
+  `replace` (an assist in play that goes to the graveyard).
+- **Action**: only cards whose whole effect is a `bonus` (e.g. "+2000 Power"); the bonus
+  lasts until the end of the phase (`HeroState.phase_bonus`). Anything else is refused with
+  "not ready" until step 2c (parser + fx).
+- `RulesEngine.stat()` = card (or top evolution) + equipment bonuses + phase and turn bonuses.
+  `DeckCode` decodes, encodes and checks deck codes exactly like the web app.
 
 ## Scenario tests
 

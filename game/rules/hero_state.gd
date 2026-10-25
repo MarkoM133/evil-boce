@@ -1,6 +1,7 @@
 class_name HeroState
 extends RefCounted
-## One hero in a match. Stats come from the card (or the top evolution), see Engine.stats().
+## One hero in a match. Stats come from the card (or the top evolution) plus equipment and
+## temporary bonuses, see RulesEngine.stat().
 
 const ZONE_STRIP: String = "strip"
 const ZONE_MAP: String = "map"
@@ -23,6 +24,9 @@ var equipment: PackedStringArray = PackedStringArray()
 var evolutions: PackedStringArray = PackedStringArray()
 ## Status name -> turns left (-1 = until removed).
 var statuses: Dictionary[String, int] = {}
+## Stat bonuses that end with the phase / with the turn: {"pwr": 2000, ...}.
+var phase_bonus: Dictionary[String, int] = {}
+var turn_bonus: Dictionary[String, int] = {}
 ## Turns this hero has been locked in a tied battle (0 = free).
 var tie_turns: int = 0
 ## Ids of the heroes it is locked with.
@@ -41,6 +45,10 @@ func has_status(name: String) -> bool:
 	return statuses.has(name)
 
 
+func add_bonus(target: Dictionary[String, int], stat: String, amount: int) -> void:
+	target[stat] = target.get(stat, 0) + amount
+
+
 func to_dict() -> Dictionary:
 	return {
 		"id": id,
@@ -54,9 +62,19 @@ func to_dict() -> Dictionary:
 		"equipment": Array(equipment),
 		"evolutions": Array(evolutions),
 		"statuses": statuses.duplicate(),
+		"phase_bonus": phase_bonus.duplicate(),
+		"turn_bonus": turn_bonus.duplicate(),
 		"tie_turns": tie_turns,
 		"locked_with": Array(locked_with),
 	}
+
+
+static func _int_dict(v: Variant, fallback: int) -> Dictionary[String, int]:
+	var out: Dictionary[String, int] = {}
+	var d: Dictionary = JsonUtil.as_dict(v)
+	for k: Variant in d:
+		out[str(k)] = JsonUtil.as_int(d[k], fallback)
+	return out
 
 
 static func from_dict(d: Dictionary) -> HeroState:
@@ -71,8 +89,9 @@ static func from_dict(d: Dictionary) -> HeroState:
 	h.cores = JsonUtil.as_strings(d.get("cores", []))
 	h.equipment = JsonUtil.as_strings(d.get("equipment", []))
 	h.evolutions = JsonUtil.as_strings(d.get("evolutions", []))
-	for k: Variant in JsonUtil.as_dict(d.get("statuses", {})):
-		h.statuses[str(k)] = JsonUtil.as_int(JsonUtil.as_dict(d.get("statuses", {}))[k], -1)
+	h.statuses = _int_dict(d.get("statuses", {}), -1)
+	h.phase_bonus = _int_dict(d.get("phase_bonus", {}), 0)
+	h.turn_bonus = _int_dict(d.get("turn_bonus", {}), 0)
 	h.tie_turns = JsonUtil.as_int(d.get("tie_turns", 0))
 	h.locked_with = JsonUtil.as_strings(d.get("locked_with", []))
 	return h

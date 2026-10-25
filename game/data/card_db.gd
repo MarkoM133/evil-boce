@@ -3,10 +3,14 @@ extends RefCounted
 ## Reads cards.json and images straight from the shared data folder. Loaded when a match or
 ## the sandbox starts, kept until it ends.
 
+const PLACEHOLDER_TERRAIN: String = "res://data/placeholders/stage_terrain.json"
+
 var root_dir: String = ""
 var version: int = 0
 var card_count: int = 0
 var heroes: Array[HeroDef] = []
+## Rules-side view of the same cards (placeholder cores and terrain applied).
+var catalog: CardCatalog = CardCatalog.new()
 var error: String = ""
 
 var _textures: Dictionary[String, Texture2D] = {}
@@ -36,6 +40,9 @@ func parse(text: String) -> void:
 		return
 	var doc: Dictionary = json.data
 	version = JsonUtil.as_int(doc.get("version", 0))
+	catalog = CardCatalog.from_doc(doc)
+	if FileAccess.file_exists(PLACEHOLDER_TERRAIN):
+		catalog.apply_terrain_overrides(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(PLACEHOLDER_TERRAIN))))
 	var cards: Array = JsonUtil.as_array(doc.get("cards", []))
 	card_count = 0
 	for c: Variant in cards:

@@ -1,0 +1,29 @@
+{
+  "name": "Assist: three in play, the fourth replaces one of them",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "players.p0.hand": ["TA-030", "TA-031", "TA-032", "TA-033"],
+      "players.p0.energy": 8,
+      "initiative": 0
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-030"}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-031"}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-032"}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-033"}, "error": "choose an assist to replace"},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-033", "replace": "TA-030"}},
+    {"expect": {
+      "players.p0.assists": ["TA-031", "TA-032", "TA-033"],
+      "players.p0.graveyard": ["TA-030"],
+      "players.p0.hand": {"$size": 0},
+      "players.p0.energy": 4
+    }}
+  ]
+}

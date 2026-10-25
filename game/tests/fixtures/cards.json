@@ -15,10 +15,31 @@
      "stats": {"hp": 10, "dmg": 3, "pwr": 2500, "rng": 3, "kb": 2}, "text": ""},
     {"id": "TB-003", "name": "Golf", "type": "Hero", "color": "Yellow", "wt": 1,
      "stats": {"hp": 9, "dmg": 2, "pwr": 1500, "rng": 2, "kb": 1}, "text": ""},
+
     {"id": "TA-012", "name": "Alpha, Awakened", "type": "Evolution", "color": "Red", "cost": 3,
      "evo": 1, "hero": "Alpha", "stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2}, "text": ""},
+    {"id": "TA-013", "name": "Alpha, Ascended", "type": "Evolution", "color": "Red", "cost": 5,
+     "evo": 2, "hero": "Alpha", "stats": {"hp": 14, "dmg": 5, "pwr": 4000, "rng": 3, "kb": 3}, "text": ""},
+    {"id": "TB-012", "name": "Echo, Awakened", "type": "Evolution", "color": "Red", "cost": 3,
+     "evo": 1, "hero": "Echo", "stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2}, "text": ""},
+
+    {"id": "TA-020", "name": "Red Blade", "type": "Equipment", "color": "Red", "cost": 2, "bonus": {"pwr": 1000, "hp": 2}, "text": ""},
+    {"id": "TA-021", "name": "Red Cloak", "type": "Equipment", "color": "Red", "cost": 1, "bonus": {}, "text": "Nothing."},
+    {"id": "TA-022", "name": "Red Boots", "type": "Equipment", "color": "Red", "cost": 0, "bonus": {}, "text": "Nothing."},
+    {"id": "TA-023", "name": "Red Ring", "type": "Equipment", "color": "Red", "cost": 0, "bonus": {}, "text": "Nothing."},
+
+    {"id": "TA-030", "name": "Helper One", "type": "Assist", "color": "Red", "cost": 1, "text": "Nothing."},
+    {"id": "TA-031", "name": "Helper Two", "type": "Assist", "color": "Red", "cost": 1, "text": "Nothing."},
+    {"id": "TA-032", "name": "Helper Three", "type": "Assist", "color": "Red", "cost": 1, "text": "Nothing."},
+    {"id": "TA-033", "name": "Helper Four", "type": "Assist", "color": "Red", "cost": 1, "text": "Nothing."},
+
+    {"id": "TA-040", "name": "Red Surge", "type": "Action", "color": "Red", "cost": 1, "bonus": {"pwr": 1000}, "text": "Your Hero gains +1000 Power."},
+    {"id": "TA-041", "name": "Red Trick", "type": "Action", "color": "Red", "cost": 1, "bonus": {}, "text": "Postroll Phase: may move 2 spaces."},
+    {"id": "TA-042", "name": "Blue Surge", "type": "Action", "color": "Blue", "cost": 1, "bonus": {"pwr": 1000}, "text": "Your Hero gains +1000 Power."},
+    {"id": "TB-050", "name": "Orange Trick", "type": "Action", "color": "Orange", "cost": 1, "bonus": {}, "text": "Nothing."},
     {"id": "TX-010", "name": "Filler", "type": "Action", "color": "Red", "cost": 1, "text": "Nothing."},
     {"id": "TX-011", "name": "Filler Two", "type": "Action", "color": "Blue", "cost": 2, "text": "Nothing."},
+
     {"id": "TS-001", "name": "Frozen Lake", "type": "Stage", "text": "Terrain: Ice\nWhen revealed, nothing happens."},
     {"id": "TS-002", "name": "Swamp", "type": "Stage", "text": "Terrain: Mud"},
     {"id": "TS-003", "name": "Plain Field", "type": "Stage", "text": "No terrain."},

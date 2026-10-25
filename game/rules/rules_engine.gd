@@ -365,7 +365,12 @@ func _apply_card_round_move(s: GameState, m: Move) -> String:
 	if m.type == Move.PLAY_CARD:
 		if s.only_pass.has(m.player):
 			return "you can only pass this turn"
-		return "card effects are not ready yet"
+		var err: String = _play_card(s, m)
+		if not err.is_empty():
+			return err
+		s.passed = PackedInt32Array()
+		s.to_act = _next_slot(s, s.to_act)
+		return ""
 	return "pass or play a card"
 
 
@@ -583,6 +588,10 @@ func _continue(s: GameState) -> void:
 ## Every phase change goes through here, so inventory cores get queued for their return.
 func _set_phase(s: GameState, phase: String) -> void:
 	s.phase = phase
+	for h: HeroState in s.heroes:
+		if not h.phase_bonus.is_empty():
+			h.phase_bonus.clear()
+			_clamp_hp(s, h)
 	_queue_core_returns(s)
 
 
@@ -632,6 +641,10 @@ func _start_card_round(s: GameState) -> void:
 
 func _draw_phase(s: GameState) -> void:
 	s.reset_turn_data()
+	for h: HeroState in s.heroes:
+		if not h.turn_bonus.is_empty():
+			h.turn_bonus.clear()
+			_clamp_hp(s, h)
 	for p: PlayerState in s.players:
 		if p.surrendered:
 			continue
@@ -1157,23 +1170,169 @@ func stat_card(h: HeroState) -> CardDef:
 	return catalog.get_card(h.card_id)
 
 
-## One current stat: "hp" (max), "dmg", "pwr", "rng" or "kb".
+## One current stat: "hp" (max), "dmg", "pwr", "rng" or "kb": the card's value plus
+## equipment bonuses plus bonuses that last the phase or the turn.
 func stat(_s: GameState, h: HeroState, key: String) -> int:
 	var card: CardDef = stat_card(h)
 	if card == null:
 		return 0
+	var base: int = 0
 	match key:
 		"hp":
-			return card.hp
+			base = card.hp
 		"dmg":
-			return card.dmg
+			base = card.dmg
 		"pwr":
-			return card.pwr
+			base = card.pwr
 		"rng":
-			return card.rng
+			base = card.rng
 		"kb":
-			return card.kb
-	return 0
+			base = card.kb
+	for eid: String in h.equipment:
+		var e: CardDef = catalog.get_card(eid)
+		if e != null:
+			base += e.bonus.get(key, 0)
+	base += h.phase_bonus.get(key, 0) + h.turn_bonus.get(key, 0)
+	return base
+
+
+## Current HP never exceeds the current max (GDD 10: losing an HP source lowers HP to the
+## new max, never below it).
+func _clamp_hp(s: GameState, h: HeroState) -> void:
+	h.hp = mini(h.hp, max_hp(s, h))
+
+
+# =====================================================================================
+# Playing cards (step 2b: no text effects yet)
+# =====================================================================================
+
+## Own heroes a card may be played for right now: the activated hero, or in a battle the
+## own heroes taking part in it. Cards are played in the colour of these heroes.
+func card_context_heroes(s: GameState, slot: int) -> Array[HeroState]:
+	var out: Array[HeroState] = []
+	if s.phase == GameState.PHASE_BATTLE and s.battle_index >= 0 and s.battle_index < s.battles.size():
+		for h: HeroState in _battle_heroes(s, s.battles[s.battle_index]):
+			if h.owner == slot:
+				out.append(h)
+		return out
+	var a: HeroState = s.active_hero(slot)
+	if a != null and not a.is_ko():
+		out.append(a)
+	return out
+
+
+## play_card {"card": id, "hero": target id (optional when only one fits), "replace": assist id}.
+func _play_card(s: GameState, m: Move) -> String:
+	var p: PlayerState = s.player(m.player)
+	var cid: String = m.str_arg("card")
+	if not p.hand.has(cid):
+		return "card is not in your hand"
+	var card: CardDef = catalog.get_card(cid)
+	if card == null:
+		return "unknown card"
+	if card.cost > p.energy:
+		return "not enough energy (%d, costs %d)" % [p.energy, card.cost]
+	var context: Array[HeroState] = card_context_heroes(s, m.player)
+	if context.is_empty():
+		return "no hero to play cards for"
+	var same_colour: Array[HeroState] = []
+	for h: HeroState in context:
+		var hc: CardDef = catalog.get_card(h.card_id)
+		if hc != null and hc.color == card.color:
+			same_colour.append(h)
+	if same_colour.is_empty():
+		return "no %s hero to play this for" % card.color
+	var target: HeroState = null
+	var wanted: String = m.str_arg("hero")
+	if wanted.is_empty():
+		if same_colour.size() == 1:
+			target = same_colour[0]
+		elif card.type != "Assist":
+			return "say which hero: " + ", ".join(_ids(same_colour))
+	else:
+		for h: HeroState in same_colour:
+			if h.id == wanted:
+				target = h
+		if target == null:
+			return "that hero cannot take this card now"
+	match card.type:
+		"Equipment":
+			if target.equipment.size() >= s.settings.equipment_limit:
+				return "hero already has %d equipment" % s.settings.equipment_limit
+			if target.equipment.has(cid):
+				return "hero already has that equipment"
+			_take_from_hand(p, cid)
+			target.equipment.append(cid)
+			s.event("equipped", {"card": cid, "hero": target.id})
+		"Evolution":
+			if not target.is_on_map():
+				return "a hero in the start zone cannot evolve"
+			var hero_card: CardDef = catalog.get_card(target.card_id)
+			if hero_card == null or hero_card.name != card.hero:
+				return "this evolution is for %s" % card.hero
+			if card.evo != target.evolutions.size() + 1:
+				return "needs evolution level %d first" % (card.evo - 1)
+			_take_from_hand(p, cid)
+			var damage: int = max_hp(s, target) - target.hp
+			target.evolutions.append(cid)
+			target.hp = maxi(max_hp(s, target) - damage, 0)
+			s.event("evolved", {"card": cid, "hero": target.id, "level": card.evo})
+		"Assist":
+			if p.assists.has(cid):
+				return "that assist is already in play"
+			if p.assists.size() >= s.settings.assist_limit:
+				var out: String = m.str_arg("replace")
+				if not p.assists.has(out):
+					return "choose an assist to replace: " + ", ".join(p.assists)
+				p.assists.remove_at(p.assists.find(out))
+				p.graveyard.append(out)
+			_take_from_hand(p, cid)
+			p.assists.append(cid)
+			s.event("assist", {"card": cid})
+		"Action":
+			if card.bonus.is_empty():
+				return "card effects are not ready yet"
+			_take_from_hand(p, cid)
+			for key: String in card.bonus:
+				target.add_bonus(target.phase_bonus, key, card.bonus[key])
+			p.graveyard.append(cid)
+			s.event("action", {"card": cid, "hero": target.id})
+		_:
+			return "%s cards cannot be played" % card.type
+	p.energy -= card.cost
+	return ""
+
+
+func _take_from_hand(p: PlayerState, cid: String) -> void:
+	p.hand.remove_at(p.hand.find(cid))
+
+
+static func _ids(list: Array[HeroState]) -> PackedStringArray:
+	var out := PackedStringArray()
+	for h: HeroState in list:
+		out.append(h.id)
+	return out
+
+
+## Takes the top evolution off (card to the graveyard); HP only drops to the new max.
+func remove_evolution(s: GameState, h: HeroState) -> void:
+	if h.evolutions.is_empty():
+		return
+	var cid: String = h.evolutions[h.evolutions.size() - 1]
+	h.evolutions.remove_at(h.evolutions.size() - 1)
+	s.player(h.owner).graveyard.append(cid)
+	_clamp_hp(s, h)
+	s.event("evolution_removed", {"card": cid, "hero": h.id})
+
+
+## Takes one equipment off (card to the graveyard); HP only drops to the new max.
+func remove_equipment(s: GameState, h: HeroState, cid: String) -> void:
+	if not h.equipment.has(cid):
+		return
+	h.equipment.remove_at(h.equipment.find(cid))
+	s.player(h.owner).graveyard.append(cid)
+	_clamp_hp(s, h)
+	s.event("equipment_removed", {"card": cid, "hero": h.id})
 
 
 ## All current stats, for display.

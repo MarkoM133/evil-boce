@@ -21,6 +21,9 @@ var evo: int = 0
 var hero: String = ""
 ## Core kind: "Buff", "Major" or "Debuff".
 var kind: String = ""
+## Flat stat bonus from the web app's `bonus` field ({"pwr": 2000, "kb": 1} ...). Equipment
+## keeps it while equipped; an Action gives it until the end of the phase.
+var bonus: Dictionary[String, int] = {}
 ## Stage terrain, from the `Terrain: X` line in the text.
 var terrain: Terrain.Type = Terrain.Type.NONE
 var text: String = ""
@@ -46,6 +49,11 @@ static func from_card(c: Dictionary) -> CardDef:
 	d.kind = str(c.get("kind", "")) if c.get("kind") != null else ""
 	d.text = str(c.get("text", "")) if c.get("text") != null else ""
 	d.traits = JsonUtil.as_strings(c.get("traits", []))
+	var bonus: Dictionary = JsonUtil.as_dict(c.get("bonus", {}))
+	for k: Variant in bonus:
+		var v: int = JsonUtil.as_int(bonus[k])
+		if v != 0:
+			d.bonus[str(k)] = v
 	d.terrain = parse_terrain(d.text)
 	if d.terrain == Terrain.Type.NONE and c.has("terrain"):
 		d.terrain = Terrain.parse(str(c.get("terrain", "")))
