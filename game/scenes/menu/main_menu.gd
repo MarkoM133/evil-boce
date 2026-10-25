@@ -63,16 +63,27 @@ func _ready() -> void:
 		_build_tiles(logo)
 	elif layout == "cinema":
 		_build_cinema(logo)
+	elif layout == "strip":
+		_build_strip(logo)
 	else:
 		_build_featured(logo)
 
 	var foot := Label.new()
 	foot.add_theme_color_override("font_color", Palette.DIM)
 	foot.add_theme_font_size_override("font_size", 13)
-	foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	foot.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	# Above the bottom strip in the cinema layout.
-	foot.position = Vector2(18, -150 if layout == "cinema" else -34)
+	# Above the bottom strip in the cinema layout; bottom right beside the side strip.
+	if layout == "strip":
+		foot.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+		foot.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		foot.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		foot.offset_left = -20
+		foot.offset_right = -20
+		foot.offset_top = -16
+		foot.offset_bottom = -16
+	else:
+		foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+		foot.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		foot.position = Vector2(18, -150 if layout == "cinema" else -34)
 	var version: String = str(ProjectSettings.get_setting("application/config/version", ""))
 	if db.is_ok():
 		foot.text = "v%s  ·  cards v%d, %d cards" % [version, db.version, db.card_count]
@@ -144,16 +155,32 @@ func _build_cinema(logo: Texture2D) -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 4)
 	col.add_child(row)
+	_entry_buttons(row, 36, false, 0.25)
+	_hint = Label.new()
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint.add_theme_color_override("font_color", Palette.MUTED)
+	_hint.add_theme_font_size_override("font_size", 15)
+	col.add_child(_hint)
+
+
+## The entries as big italic buttons (Continue first when a match waits), fading in one after
+## another from `delay`; hovering or focusing one puts its line in `_hint`, which the caller
+## makes. The first one gets the focus.
+func _entry_buttons(parent: BoxContainer, font_size: int, left: bool, delay: float) -> void:
 	var entries: Array = ENTRIES.duplicate()
+	# A match left unfinished (quit or crash) comes back first.
 	if ReplayStore.has_current():
 		entries.push_front(["CONTINUE", "continue", "Back to the match you left"])
-	var first: Button = null
 	for i: int in entries.size():
 		var entry: Array = entries[i]
 		var b := Button.new()
 		b.text = str(entry[0])
 		b.theme_type_variation = &"MenuItem"
-		b.add_theme_font_size_override("font_size", 36)
+		b.add_theme_font_size_override("font_size", font_size)
+		if left:
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.custom_minimum_size = Vector2(300, 0)
+			b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		var action: String = str(entry[1])
 		if action == "continue":
 			b.add_theme_color_override("font_color", Palette.GOLD)
@@ -161,18 +188,76 @@ func _build_cinema(logo: Texture2D) -> void:
 		b.pressed.connect(_on_pressed.bind(action))
 		b.mouse_entered.connect(func() -> void: b.grab_focus())
 		b.focus_entered.connect(func() -> void: _hint.text = hint)
-		row.add_child(b)
-		if first == null:
-			first = b
+		parent.add_child(b)
+		if i == 0:
+			b.grab_focus.call_deferred()
 		b.modulate.a = 0.0
-		b.create_tween().tween_property(b, "modulate:a", 1.0, 0.22).set_delay(0.04 * i + 0.25)
+		b.create_tween().tween_property(b, "modulate:a", 1.0, 0.22).set_delay(0.05 * i + delay)
+
+
+# --- side strip (mockup M3) -----------------------------------------------------------------
+
+## The hero strip runs down the left edge and drifts up; the entries stand beside it in big
+## italics, the logo big on the right.
+func _build_strip(logo: Texture2D) -> void:
+	const STRIP_W: float = 280.0
+	var strip := HeroStrip.new()
+	strip.vertical = true
+	strip.setup(db)
+	strip.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	strip.custom_minimum_size = Vector2(STRIP_W, 0)
+	strip.offset_right = STRIP_W
+	add_child(strip)
+	# The strip fades into the black on its right.
+	var fade := TextureRect.new()
+	var grad := GradientTexture2D.new()
+	grad.gradient = Gradient.new()
+	grad.gradient.set_color(0, Palette.BG)
+	grad.gradient.set_color(1, Color(Palette.BG, 0.0))
+	grad.width = 64
+	grad.height = 4
+	fade.texture = grad
+	fade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	fade.stretch_mode = TextureRect.STRETCH_SCALE
+	fade.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	fade.offset_left = STRIP_W
+	fade.offset_right = STRIP_W + 120
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(fade)
+
+	var col := VBoxContainer.new()
+	col.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	col.offset_left = STRIP_W + 100
+	col.offset_right = STRIP_W + 600
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 4)
+	add_child(col)
+	_entry_buttons(col, 54, true, 0.1)
 	_hint = Label.new()
-	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.add_theme_color_override("font_color", Palette.MUTED)
 	_hint.add_theme_font_size_override("font_size", 15)
+	_hint.custom_minimum_size = Vector2(0, 40)
+	_hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	col.add_child(_hint)
-	if first != null:
-		first.grab_focus.call_deferred()
+
+	# The logo, big, right of the middle.
+	var holder := CenterContainer.new()
+	holder.anchor_left = 0.52
+	holder.anchor_right = 1.0
+	holder.anchor_bottom = 1.0
+	holder.offset_right = -60
+	add_child(holder)
+	if logo != null:
+		var img := TextureRect.new()
+		img.texture = logo
+		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		img.custom_minimum_size = Vector2(580, 580)
+		holder.add_child(img)
+		img.modulate.a = 0.0
+		img.create_tween().tween_property(img, "modulate:a", 1.0, 0.4)
+	else:
+		holder.add_child(UiTheme.label("EVIL BOĆE", 120))
 
 
 const SIDE_CARD := Vector2(330, 380)
@@ -622,42 +707,13 @@ func _build_featured(logo: Texture2D) -> void:
 	col.position = Vector2(86, 214)
 	col.add_theme_constant_override("separation", 4)
 	add_child(col)
-	var entries: Array = ENTRIES.duplicate()
-	# A match left unfinished (quit or crash) comes back first.
-	if ReplayStore.has_current():
-		entries.push_front(["CONTINUE", "continue", "Back to the match you left"])
-	var first: Button = null
-	for i: int in entries.size():
-		var entry: Array = entries[i]
-		var b := Button.new()
-		b.text = str(entry[0])
-		b.theme_type_variation = &"MenuItem"
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_font_size_override("font_size", 50)
-		b.custom_minimum_size = Vector2(300, 0)
-		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		var action: String = str(entry[1])
-		if action == "continue":
-			b.add_theme_color_override("font_color", Palette.GOLD)
-		var hint: String = str(entry[2])
-		b.pressed.connect(_on_pressed.bind(action))
-		b.mouse_entered.connect(func() -> void: b.grab_focus())
-		b.focus_entered.connect(func() -> void: _hint.text = hint)
-		col.add_child(b)
-		if first == null:
-			first = b
-		# Entries slide in from the left, one after another.
-		b.modulate.a = 0.0
-		var t: Tween = b.create_tween()
-		t.tween_property(b, "modulate:a", 1.0, 0.22).set_delay(0.05 * i + 0.1)
+	_entry_buttons(col, 50, true, 0.1)
 	_hint = Label.new()
 	_hint.add_theme_color_override("font_color", Palette.MUTED)
 	_hint.add_theme_font_size_override("font_size", 15)
 	_hint.custom_minimum_size = Vector2(0, 40)
 	_hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	col.add_child(_hint)
-	if first != null:
-		first.grab_focus.call_deferred()
 	_show_hero(0)
 
 

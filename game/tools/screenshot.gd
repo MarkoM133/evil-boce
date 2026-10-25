@@ -3,6 +3,7 @@ extends SceneTree
 ## godot_console --path game -s res://tools/screenshot.gd -- --scene=res://scenes/sandbox/sandbox.tscn
 ##     [--frames=90] [--out=sandbox.png] [--call=demo_setup,demo_closeup] [--size=1600x900]
 ## Methods in --call run one after another, `--wait` frames apart (default 30). Runs at 60 FPS.
+## [--setting=display/menu_layout:strip] changes a setting for this run only (never saved).
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -21,6 +22,12 @@ func _run() -> void:
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--") and arg.contains("="):
 			opts[arg.substr(2, arg.find("=") - 2)] = arg.substr(arg.find("=") + 1)
+	if opts.has("setting"):
+		var kv: PackedStringArray = opts["setting"].split(":", true, 1)
+		var at: PackedStringArray = kv[0].split("/", true, 1)
+		if kv.size() == 2 and at.size() == 2:
+			GameSettings.in_memory = true
+			GameSettings.set_value(at[0], at[1], kv[1])
 	var dims: PackedStringArray = opts["size"].split("x")
 	if dims.size() == 2:
 		DisplayServer.window_set_size(Vector2i(int(dims[0]), int(dims[1])))

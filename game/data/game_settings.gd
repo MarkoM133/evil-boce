@@ -233,8 +233,8 @@ static func set_last_deck(who: String, name: String) -> void:
 	set_value("last_deck", who, name)
 
 
-## Main menu layouts: a big hero (mockup M5), tiles (M7), cinema (M8).
-const MENU_LAYOUTS: Array[String] = ["featured", "tiles", "cinema"]
+## Main menu layouts: a big hero (mockup M5), tiles (M7), cinema (M8), a strip down the left (M3).
+const MENU_LAYOUTS: Array[String] = ["featured", "tiles", "cinema", "strip"]
 
 
 static func menu_layout() -> String:
