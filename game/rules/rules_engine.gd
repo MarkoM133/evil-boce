@@ -536,12 +536,35 @@ func pick_core(s: GameState, h: HeroState, c: CoreState) -> void:
 		c.holder = h.id
 		c.face_up = true
 		s.event("core_activated", {"core": c.id, "hero": h.id})
+		_spring_core_traps(s, h, c)
 	else:
 		p.inventory.append(c.id)
 		c.place = CoreState.IN_INVENTORY
 		c.holder = ""
 		c.picked_by = h.id
 		s.event("core_to_inventory", {"core": c.id, "hero": h.id})
+
+
+## TRAP_CORE: an enemy of the trap's player activating that core this turn takes damage.
+func _spring_core_traps(s: GameState, h: HeroState, c: CoreState) -> void:
+	for m: Dictionary in s.turn_mods:
+		if str(m.get("kind", "")) != "core_trap" or str(m.get("core", "")) != c.id:
+			continue
+		if s.team_of(JsonUtil.as_int(m.get("player", -1))) == s.team_of(h.owner):
+			continue
+		s.event("core_trap", {"core": c.id, "hero": h.id})
+		hero_damage(s, h, JsonUtil.as_int(m.get("amount", 0)))
+
+
+## "" when an effect may move core `c` onto `a` (free hex, not on a stage).
+func core_move_error(s: GameState, c: CoreState, a: Vector2i) -> String:
+	if not s.map().contains(a):
+		return "not on the map"
+	return _core_spot_error(s, c, a, -1)
+
+
+func shuffle(s: GameState, arr: PackedStringArray) -> void:
+	_shuffle(s, arr)
 
 
 # =====================================================================================
@@ -553,6 +576,7 @@ func _continue(s: GameState) -> void:
 	var guard: int = 0
 	while not s.is_over() and guard < 64:
 		guard += 1
+		_drop_held_hits(s)
 		if not s.pending.is_empty():
 			return
 		match s.phase:
@@ -608,8 +632,8 @@ func _continue(s: GameState) -> void:
 					return
 				_find_battles(s)
 				s.battle_index = -1
-				_next_battle(s)
 				_set_phase(s, GameState.PHASE_BATTLE)
+				_next_battle(s)
 			GameState.PHASE_BATTLE:
 				if s.battle_index >= s.battles.size():
 					_set_phase(s, GameState.PHASE_END)
@@ -822,6 +846,20 @@ func _next_battle(s: GameState) -> void:
 	s.battle_index += 1
 	if s.battle_index < s.battles.size():
 		_start_card_round(s)
+		fx.fire_battle(s)
+
+
+## A winner that chose HOLD_HIT deals no damage: its pending damage decisions go away.
+func _drop_held_hits(s: GameState) -> void:
+	var i: int = 0
+	while i < s.pending.size():
+		var d: Dictionary = s.pending[i]
+		var w: HeroState = s.hero(str(d.get("winner", "")))
+		if str(d.get("type", "")) == DECISION_DAMAGE and w != null and w.has_status("hold_hit"):
+			s.pending.remove_at(i)
+			s.event("hit_held", {"hero": w.id})
+			continue
+		i += 1
 
 
 func _battle_heroes(s: GameState, b: Dictionary) -> Array[HeroState]:
@@ -875,6 +913,9 @@ func _resolve_battle(s: GameState, index: int) -> void:
 				targets.append(l.id)
 		if targets.is_empty():
 			continue
+		# "After winning, may deal no DMG": the owner decides before the loser does.
+		if fx.hold_hit_effect(s, w) != null:
+			fx.offer_hold_hit(s, w)
 		var loser_owner: int = s.hero(str(targets[0])).owner
 		s.pending.append({
 			"type": DECISION_DAMAGE, "player": loser_owner, "winner": w.id,
@@ -903,7 +944,7 @@ func _finish_battle(s: GameState, index: int) -> void:
 	fx.on_battle_done(s, winners, members)
 	var kb: int = 0
 	for w: HeroState in winners:
-		kb = maxi(kb, stat(s, w, "kb"))
+		kb = maxi(kb, stat(s, w, "kb") * (2 if w.has_status("hold_hit") else 1))
 	for l: HeroState in losers:
 		if not l.is_on_map():
 			continue
@@ -958,11 +999,12 @@ func _battle_tie(s: GameState, members: Array[HeroState]) -> void:
 # Damage, knockback, KO, ring-out
 # =====================================================================================
 
-## Damage to a hero, after "takes ±N DMG from all sources" modifiers.
-func hero_damage(s: GameState, h: HeroState, amount: int) -> void:
+## Damage to a hero, after "takes ±N DMG from all sources" modifiers (unless unblockable).
+func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = false) -> void:
 	if h == null or h.is_ko() or amount <= 0:
 		return
-	amount = maxi(amount + fx.damage_mod(s, h), 0)
+	if not unblockable:
+		amount = maxi(amount + fx.damage_mod(s, h), 0)
 	if amount <= 0:
 		s.event("damage", {"hero": h.id, "amount": 0, "hp": h.hp})
 		return
@@ -1298,8 +1340,18 @@ func card_context_heroes(s: GameState, slot: int) -> Array[HeroState]:
 
 ## play_card {"card": id, "hero": target id (optional when only one fits), "replace": assist id}.
 func _play_card(s: GameState, m: Move) -> String:
-	var p: PlayerState = s.player(m.player)
-	var cid: String = m.str_arg("card")
+	return _play(s, m.player, m.str_arg("card"), m.str_arg("hero"), false, null, m.str_arg("replace"))
+
+
+## FREE_PLAY: a card from the hand goes on `on` without paying its cost (colour and context
+## rules do not apply; the card's own limits and phase lock do).
+func play_free(s: GameState, slot: int, cid: String, on: HeroState) -> String:
+	return _play(s, slot, cid, on.id, true, on)
+
+
+func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, forced: HeroState,
+		replace: String = "") -> String:
+	var p: PlayerState = s.player(slot)
 	if not p.hand.has(cid):
 		return "card is not in your hand"
 	var card: CardDef = catalog.get_card(cid)
@@ -1307,24 +1359,26 @@ func _play_card(s: GameState, m: Move) -> String:
 		return "unknown card"
 	if not card.is_ready():
 		return "card effects are not ready yet"
-	var cost: int = card_cost(s, p, card)
+	var cost: int = 0 if free else card_cost(s, p, card)
 	if cost > p.energy:
 		return "not enough energy (%d, costs %d)" % [p.energy, cost]
 	var phase_lock: String = _play_phase(card)
 	if not phase_lock.is_empty() and phase_lock != s.phase.to_upper():
 		return "playable in the %s phase" % phase_lock.to_lower()
-	var context: Array[HeroState] = card_context_heroes(s, m.player)
-	if context.is_empty():
-		return "no hero to play cards for"
 	var same_colour: Array[HeroState] = []
-	for h: HeroState in context:
-		var hc: CardDef = catalog.get_card(h.card_id)
-		if hc != null and hc.color == card.color:
-			same_colour.append(h)
-	if same_colour.is_empty():
-		return "no %s hero to play this for" % card.color
+	if forced != null:
+		same_colour.append(forced)
+	else:
+		var context: Array[HeroState] = card_context_heroes(s, slot)
+		if context.is_empty():
+			return "no hero to play cards for"
+		for h: HeroState in context:
+			var hc: CardDef = catalog.get_card(h.card_id)
+			if hc != null and hc.color == card.color:
+				same_colour.append(h)
+		if same_colour.is_empty():
+			return "no %s hero to play this for" % card.color
 	var target: HeroState = null
-	var wanted: String = m.str_arg("hero")
 	if wanted.is_empty():
 		if same_colour.size() == 1:
 			target = same_colour[0]
@@ -1362,7 +1416,7 @@ func _play_card(s: GameState, m: Move) -> String:
 			if p.assists.has(cid):
 				return "that assist is already in play"
 			if p.assists.size() >= s.settings.assist_limit:
-				var out: String = m.str_arg("replace")
+				var out: String = replace
 				if not p.assists.has(out):
 					return "choose an assist to replace: " + ", ".join(p.assists)
 				p.assists.remove_at(p.assists.find(out))
@@ -1384,7 +1438,7 @@ func _play_card(s: GameState, m: Move) -> String:
 		_:
 			return "%s cards cannot be played" % card.type
 	p.energy -= cost
-	_run_play_effects(s, m.player, target, card)
+	_run_play_effects(s, slot, target, card)
 	return ""
 
 

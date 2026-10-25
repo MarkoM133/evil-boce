@@ -71,6 +71,9 @@ func fire_phase(s: GameState, phase: String) -> void:
 		var card: CardDef = src["card"]
 		if src["stage"] != null:
 			continue
+		# An assist's Battle effect is about "your Hero" in a battle: it fires per battle.
+		if when == "BATTLE" and src["hero"] == null:
+			continue
 		for e: FxEffect in card.effects_when(when):
 			if e.optional:
 				continue
@@ -81,6 +84,49 @@ func fire_phase(s: GameState, phase: String) -> void:
 				s.deferred.append({"player": ctx["player"], "hero": ctx["hero"], "fx": e.line, "ctx": ctx})
 				continue
 			run(s, ctx, e)
+
+
+## A battle starts: assists' Battle effects run with "your Hero" = that player's hero in it.
+func fire_battle(s: GameState) -> void:
+	if s.battle_index < 0 or s.battle_index >= s.battles.size():
+		return
+	var ids: PackedStringArray = JsonUtil.as_strings(s.battles[s.battle_index].get("heroes", []))
+	for src: Dictionary in sources(s):
+		if src["hero"] != null or src["stage"] != null:
+			continue
+		var slot: int = JsonUtil.as_int(src["player"])
+		var mine: HeroState = null
+		for id: String in ids:
+			var h: HeroState = s.hero(id)
+			if h != null and h.owner == slot:
+				mine = h
+				break
+		if mine == null:
+			continue
+		var card: CardDef = src["card"]
+		for e: FxEffect in card.effects_when("BATTLE"):
+			if e.optional:
+				continue
+			var ctx: Dictionary = {"player": slot, "hero": mine.id, "card": card.id, "stage": ""}
+			if cond_ok(s, ctx, e):
+				run(s, ctx, e)
+
+
+## The winner's "after winning, may deal no DMG" ability (HOLD_HIT), if it has one.
+func hold_hit_effect(s: GameState, h: HeroState) -> FxEffect:
+	var card: CardDef = engine.stat_card(h)
+	if card == null:
+		return null
+	for e: FxEffect in card.effects:
+		if e.when == "BATTLE" and e.cond == "WIN" and e.has_verb("HOLD_HIT"):
+			return e
+	return null
+
+
+## Asks the winner's owner whether to hold the hit (a "choose" decision).
+func offer_hold_hit(s: GameState, h: HeroState) -> void:
+	var e: FxEffect = FxEffect.parse_line("BATTLE: CHOOSE ME [NOOP] [HOLD_HIT SELF]")
+	run(s, {"player": h.owner, "hero": h.id, "card": h.card_id, "stage": ""}, e)
 
 
 ## Optional abilities `slot` could use now: [{"hero", "card", "index", "effect": FxEffect}].
@@ -94,7 +140,7 @@ func usable_abilities(s: GameState, slot: int) -> Array[Dictionary]:
 		var h: HeroState = src["hero"]
 		for i: int in card.effects.size():
 			var e: FxEffect = card.effects[i]
-			if not e.optional or e.when != when:
+			if not e.optional or e.when != when or e.cond == "WIN":
 				continue
 			var key: String = "%s|%s|%d" % [h.id if h != null else "", card.id, i]
 			if e.once and s.abilities_used.has(key):
@@ -153,14 +199,30 @@ func cond_ok(s: GameState, ctx: Dictionary, e: FxEffect) -> bool:
 			var hero_id: String = str(ctx.get("hero", ""))
 			return not hero_id.is_empty() and s.active.get(JsonUtil.as_int(ctx.get("player", -1)), "") == hero_id
 		"OPP_EQUIPPED":
-			var me: HeroState = s.hero(str(ctx.get("hero", "")))
+			# In a battle only the heroes in it count, else every enemy on the map.
+			var team: int = s.team_of(JsonUtil.as_int(ctx.get("player", 0)))
+			var in_battle := PackedStringArray()
+			if s.phase == GameState.PHASE_BATTLE and s.battle_index >= 0 and s.battle_index < s.battles.size():
+				in_battle = JsonUtil.as_strings(s.battles[s.battle_index].get("heroes", []))
 			for h: HeroState in s.heroes:
-				if me != null and not s.same_team(h, me) and h.is_on_map():
-					for eid: String in h.equipment:
-						var c: CardDef = engine.catalog.get_card(eid)
-						if c != null and c.has_trait(e.cond_arg.trim_prefix("{").trim_suffix("}")):
-							return true
+				if s.team_of(h.owner) == team or not h.is_on_map():
+					continue
+				if not in_battle.is_empty() and not in_battle.has(h.id):
+					continue
+				for eid: String in h.equipment:
+					var c: CardDef = engine.catalog.get_card(eid)
+					if c != null and c.has_trait(e.cond_arg.trim_prefix("{").trim_suffix("}")):
+						return true
 			return false
+		"COPIES":
+			# This card played this many times by the player in this phase (this one included).
+			var n: int = 0
+			for ev: Dictionary in s.log:
+				if JsonUtil.as_int(ev.get("turn", -1)) == s.turn and str(ev.get("phase", "")) == s.phase \
+						and str(ev.get("type", "")) == "action" and str(ev.get("card", "")) == str(ctx.get("card", "")) \
+						and JsonUtil.as_int(ev.get("player", -1)) == JsonUtil.as_int(ctx.get("player", -2)):
+					n += 1
+			return n >= maxi(e.cond_arg.to_int(), 1)
 	return false
 
 
@@ -314,6 +376,9 @@ func _per(s: GameState, src: Dictionary, h: HeroState, args: PackedStringArray) 
 				if not o.is_ko() and o.hp <= limit:
 					n += 1
 			return n
+		"COUNT":
+			# How many things the effect's earlier action did (e.g. cores deactivated).
+			return JsonUtil.as_int(src.get("count", 0))
 	return 1
 
 
@@ -404,13 +469,55 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 					return {}
 				return {"player": player, "kind": "hero", "options": options, "prompt": "Choose a hero for %s" % verb.to_lower()}
 		"MOVE":
-			var who: HeroState = me if target == "SELF" else null
-			if who == null:
+			if target != "SELF":
+				# A group move runs as one MOVE_ID per hero (see _do).
+				return {}
+			if me == null:
 				return {"error": "move needs a hero"}
-			var hexes: Array = _move_options(s, who, args[0].to_int())
+			var hexes: Array = _move_options(s, me, args[0].to_int())
 			if hexes.is_empty():
 				return {"error": "nowhere to move"}
-			return {"player": player, "kind": "hex", "options": hexes, "prompt": "Move %s up to %s" % [who.id, args[0]]}
+			return {"player": player, "kind": "hex", "options": hexes, "prompt": "Move %s up to %s" % [me.id, args[0]]}
+		"MOVE_ID":
+			var who: HeroState = s.hero(args[0])
+			if who == null or not who.is_on_map():
+				return {}
+			# "may": the hero's own hex means it stays.
+			var hexes: Array = [Hex.to_json(who.hex)]
+			hexes.append_array(_move_options(s, who, args[1].to_int()))
+			return {"player": who.owner, "kind": "hex", "options": hexes, "prompt": "Move %s up to %s (or click it to stay)" % [who.id, args[1]]}
+		"PICK_CORE":
+			var cores: Array = _core_options(s, ctx, e, false)
+			if cores.is_empty():
+				return {"error": "no core in reach"}
+			if cores.size() == 1:
+				return {}
+			return {"player": player, "kind": "core", "options": cores, "prompt": "Choose a core"}
+		"MOVE_CORE":
+			var c: CoreState = s.core(str(ctx.get("core", "")))
+			if c == null or c.place != CoreState.ON_FIELD:
+				return {"error": "no core to move"}
+			var hexes: Array = []
+			for cell: Vector2i in Hex.spiral(c.hex, args[0].to_int()):
+				if cell != c.hex and s.map().contains(cell) and engine.core_move_error(s, c, cell).is_empty():
+					hexes.append(Hex.to_json(cell))
+			if hexes.is_empty():
+				return {"error": "the core cannot move"}
+			return {"player": player, "kind": "hex", "options": hexes, "prompt": "Move the core up to %s" % args[0]}
+		"FREE_PLAY":
+			var options: Array = _free_play_options(s, player, args)
+			if options.is_empty():
+				return {"error": "no card to play for free"}
+			return {"player": player, "kind": "card", "options": options, "prompt": "Play a card for free"}
+		"SWAP":
+			var options: Array = _hero_options(s, ctx, e, "FRIENDLY")
+			if args.has("ENGAGED"):
+				options = options.filter(func(id: Variant) -> bool: return _engaged(s, s.hero(str(id))))
+			if options.is_empty():
+				return {"error": "no friendly hero to swap with"}
+			if options.size() == 1:
+				return {}
+			return {"player": player, "kind": "hero", "options": options, "prompt": "Swap places with"}
 		"WALL":
 			var hexes: Array = _wall_options(s, ctx, e)
 			if hexes.is_empty():
@@ -424,6 +531,15 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 				return {}
 			return {"player": player, "kind": "core", "options": cores, "prompt": "Choose a core"}
 		"DEACTIVATE_CORE":
+			if args.has("UPTO"):
+				# "up to n": the player picks how many (0 is allowed).
+				var most: int = mini(args[0].to_int(), me.cores.size() if me != null else 0)
+				var labels: Array = ["None"]
+				for k: int in range(1, most + 1):
+					labels.append("%d core%s" % [k, "" if k == 1 else "s"])
+				if most == 0:
+					return {}
+				return {"player": player, "kind": "option", "options": labels, "prompt": "Deactivate how many cores?"}
 			if me == null or me.cores.is_empty():
 				return {"error": "no core to deactivate"}
 			if me.cores.size() == 1:
@@ -443,8 +559,8 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			for branch: Variant in JsonUtil.as_array(a.get("branches", [])):
 				var parts := PackedStringArray()
 				for b: Variant in JsonUtil.as_array(branch):
-					parts.append(FxEffect.action_to_fx(JsonUtil.as_dict(b)))
-				labels.append("; ".join(parts))
+					parts.append(FxEffect.describe(JsonUtil.as_dict(b)))
+				labels.append(", ".join(parts))
 			return {"player": who, "kind": "option", "options": labels, "prompt": "Choose one"}
 	return {}
 
@@ -461,21 +577,34 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			if e.when == "PASSIVE":
 				return ""
 			var amount: int = args[1].to_int()
-			var turn: bool = args.has("TURN")
+			# A stage's reveal bonus lasts the turn, so it still counts in that turn's battle.
+			var turn: bool = args.has("TURN") or e.when == "REVEAL"
 			for h: HeroState in _targets(s, ctx, e, target, answer):
-				var n: int = amount * _per(s, {"hero": me, "stage": null, "player": player}, h, args)
+				var n: int = amount * _per(s, {"hero": me, "stage": null, "player": player, "count": ctx.get("count", 0)}, h, args)
 				h.add_bonus(h.turn_bonus if turn else h.phase_bonus, args[0].to_lower(), n)
 				engine.clamp_hp(s, h)
 			s.event("fx_buff", {"card": ctx.get("card", ""), "stat": args[0], "amount": amount})
 		"DAMAGE":
 			var n: int = engine.stat(s, me, "dmg") if args[0] == "DMG" and me != null else args[0].to_int()
+			# TRUE: "this damage cannot be blocked" (no damage modifiers).
+			var unblockable: bool = args.has("TRUE")
 			for h: HeroState in _targets(s, ctx, e, target, answer):
-				engine.hero_damage(s, h, n)
+				engine.hero_damage(s, h, n, unblockable)
 		"HEAL":
 			for h: HeroState in _targets(s, ctx, e, target, answer):
 				engine.heal(s, h, args[0].to_int())
 				s.event("heal", {"hero": h.id, "amount": args[0].to_int(), "hp": h.hp})
 		"MOVE":
+			if target != "SELF":
+				var sub := FxEffect.new()
+				sub.when = e.when
+				for h: HeroState in _targets(s, ctx, e, target, answer):
+					if h.is_on_map():
+						sub.actions.append({"verb": "MOVE_ID", "target": "", "args": PackedStringArray([h.id, args[0]])})
+				if sub.actions.is_empty():
+					return ""
+				sub.line = sub.to_fx()
+				return run(s, ctx, sub)
 			if me == null:
 				return "move needs a hero"
 			var hex: Vector2i = JsonUtil.as_hex(answer)
@@ -483,6 +612,92 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 				return "that hex is taken"
 			me.hex = hex
 			s.event("moved", {"hero": me.id, "hex": Hex.to_json(hex), "by": "fx"})
+		"MOVE_ID":
+			var who: HeroState = s.hero(args[0])
+			if who == null or answer == null:
+				return ""
+			var to: Vector2i = JsonUtil.as_hex(answer)
+			if to != who.hex:
+				who.hex = to
+				s.event("moved", {"hero": who.id, "hex": Hex.to_json(to), "by": "fx"})
+		"RECYCLE":
+			var p: PlayerState = s.player(player if target == "ME" else engine.other_slot(s, player))
+			var mode: String = args[1] if args.size() > 1 else "TOP"
+			for _i: int in args[0].to_int():
+				if p.graveyard.is_empty():
+					break
+				var cid: String = p.graveyard[p.graveyard.size() - 1]
+				p.graveyard.remove_at(p.graveyard.size() - 1)
+				if mode == "TOP":
+					p.deck.insert(0, cid)
+				else:
+					p.deck.append(cid)
+				s.event("recycled", {"player": p.slot, "card": cid, "to": mode.to_lower()})
+			if mode == "SHUFFLE":
+				engine.shuffle(s, p.deck)
+		"PICK_CORE":
+			ctx["core"] = str(answer) if answer != null else str(_core_options(s, ctx, e, false)[0])
+		"MOVE_CORE":
+			var c: CoreState = s.core(str(ctx.get("core", "")))
+			if c == null:
+				return "no core picked"
+			c.hex = JsonUtil.as_hex(answer)
+			s.event("core_moved", {"core": c.id, "hex": Hex.to_json(c.hex)})
+		"TRAP_CORE":
+			s.turn_mods.append({"kind": "core_trap", "core": str(ctx.get("core", "")), "player": player, "amount": args[0].to_int()})
+		"HOLD_HIT":
+			if me != null:
+				me.statuses["hold_hit"] = 1
+				s.event("hold_hit", {"hero": me.id})
+		"NOOP":
+			return ""
+		"FREE_PLAY":
+			if me == null:
+				return "no hero to play the card on"
+			return engine.play_free(s, player, str(answer), me)
+		"SWAP":
+			if me == null or not me.is_on_map():
+				return "swap needs a hero on the map"
+			var others: Array[HeroState] = _targets(s, ctx, e, "FRIENDLY", answer)
+			if others.is_empty():
+				return "no hero to swap with"
+			var other: HeroState = others[0]
+			var a_hex: Vector2i = me.hex
+			me.hex = other.hex
+			other.hex = a_hex
+			if not s.is_free(me.hex, me.big, me) or not s.is_free(other.hex, other.big, other):
+				other.hex = me.hex
+				me.hex = a_hex
+				return "they do not fit each other's place"
+			s.event("swapped", {"hero": me.id, "with": other.id})
+		"DUEL_TOP":
+			var st: StageState = s.stage(str(ctx.get("stage", "")))
+			if st == null:
+				return ""
+			var best: int = -1
+			var best_cost: int = -1
+			var tie: bool = false
+			var slots: Array[int] = []
+			for h: HeroState in s.heroes_on_stage(st):
+				if not slots.has(h.owner):
+					slots.append(h.owner)
+			for sl: int in slots:
+				var p: PlayerState = s.player(sl)
+				if p.deck.is_empty():
+					continue
+				var top: CardDef = engine.catalog.get_card(p.deck[0])
+				var cost: int = top.cost if top != null else 0
+				s.event("top_card", {"player": sl, "card": p.deck[0], "cost": cost})
+				if cost > best_cost:
+					best_cost = cost
+					best = sl
+					tie = false
+				elif cost == best_cost:
+					tie = true
+			if best >= 0 and not tie:
+				for h: HeroState in s.heroes_on_stage(st):
+					if h.owner == best:
+						h.add_bonus(h.turn_bonus, args[0].to_lower(), args[1].to_int())
 		"KNOCKBACK":
 			if me == null:
 				return "knockback needs a hero"
@@ -523,8 +738,17 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 		"DEACTIVATE_CORE":
 			if me == null:
 				return "no hero"
+			if args.has("UPTO"):
+				var k: int = mini(JsonUtil.as_int(answer, 0), me.cores.size())
+				for _i: int in k:
+					engine.deactivate_core(s, me, me.cores[0])
+				ctx["count"] = k
+				return ""
+			if me.cores.is_empty():
+				return "no core to deactivate"
 			var cid: String = str(answer) if answer != null else me.cores[0]
 			engine.deactivate_core(s, me, cid)
+			ctx["count"] = 1
 		"CHARGE", "DISCHARGE":
 			var p: PlayerState = s.player(player if target == "ME" else engine.other_slot(s, player))
 			var n: int = args[0].to_int() * (1 if verb == "CHARGE" else -1)
@@ -565,13 +789,39 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			var sub := FxEffect.new()
 			sub.when = e.when
 			sub.range = e.range
-			sub.line = "%s: %s" % [e.when, "; ".join(_branch_fx(branches[index]))]
 			for b: Variant in JsonUtil.as_array(branches[index]):
 				sub.actions.append(JsonUtil.as_dict(b))
+			sub.line = sub.to_fx()
 			return run(s, ctx, sub)
 		_:
 			return "unknown verb %s" % verb
 	return ""
+
+
+## Cards in hand the player may play for free: cost up to args[0], with the trait if given.
+func _free_play_options(s: GameState, slot: int, args: PackedStringArray) -> Array:
+	var out: Array = []
+	var max_cost: int = args[0].to_int()
+	var wanted_trait: String = args[1].trim_prefix("{").trim_suffix("}") if args.size() > 1 else ""
+	for cid: String in s.player(slot).hand:
+		var c: CardDef = engine.catalog.get_card(cid)
+		if c == null or not c.is_ready() or c.cost > max_cost:
+			continue
+		if not wanted_trait.is_empty() and not c.has_trait(wanted_trait):
+			continue
+		if not out.has(cid):
+			out.append(cid)
+	return out
+
+
+## The hero is in a fight: an enemy reaches it or it reaches an enemy.
+func _engaged(s: GameState, h: HeroState) -> bool:
+	if h == null or not h.is_on_map():
+		return false
+	for o: HeroState in s.heroes:
+		if not s.same_team(o, h) and (engine.in_range(s, o, h) or engine.in_range(s, h, o)):
+			return true
+	return false
 
 
 static func _branch_fx(branch: Variant) -> PackedStringArray:

@@ -1,0 +1,26 @@
+{
+  "name": "fx: an optional roll again costs 2 damage that ignores damage reduction",
+  "steps": [
+    {"setup": {"seed": 1, "decks": [
+      {"heroes": ["TA-011", "TA-002", "TA-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []},
+      {"heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []}
+    ]}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {"initiative": 0}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-011"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"move": {"type": "choice", "player": 0, "roll": true}},
+    {"move": {"type": "choice", "player": 1, "roll": true}},
+    {"pass_round": true},
+    {"move": {"type": "aim", "player": 0, "dir": [0, -1], "power": 0.8}},
+    {"move": {"type": "aim", "player": 1, "dir": [0, 1], "power": 0.8}},
+    {"roll": {"thrower": "p0:TA-011", "results": [
+      {"ball": "p0:TA-011", "thrown": true, "end_area": 0, "end_hex": [2, 12]},
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 0, "end_hex": [8, 2]}
+    ]}},
+    {"expect": {"to_act": 0, "rolled": true}},
+    {"move": {"type": "use_ability", "player": 0, "hero": "p0:TA-011", "card": "TA-011", "index": 1}},
+    {"expect": {"heroes.p0:TA-011.hp": 8, "rolled": false, "pending_rolls": ["p0:TA-011"]}}
+  ]
+}

@@ -36,7 +36,14 @@ happens). A stage's `PASSIVE` effect uses `EACH_HERO` = the heroes on it.
   cores must be within the hero's range.
 - `IF ACTIVATED`: the hero is this turn's activated hero. `IF WIN`: the effect waits and runs
   only if the hero's side wins the current battle (after damage, before knockback).
-  `IF OPP_EQUIPPED {Trait}`: an enemy on the map has equipment with that trait.
+  `IF OPP_EQUIPPED {Trait}`: an enemy (in a battle: an enemy in that battle) has equipment
+  with that trait. `IF COPIES <n>`: this is at least the n-th copy of the card the player
+  played in this phase.
+- An assist's `BATTLE` effect runs at the start of every battle with SELF = its player's hero
+  in that battle.
+
+Cards the parser cannot read get a hand-written line in `game/data/placeholders/card_fx.json`
+until the web app's Effect tab writes `fx` into `cards.json`.
 
 ### TARGET
 
@@ -69,6 +76,20 @@ Players: `ME`, `OPP`.
 | `ROLL_AGAIN` | | the activated hero rolls once more, right away (Roll phase, after the roll) |
 | `COST_DAMAGE <n>` | | additional cost: SELF takes n as the card is played (needs more than n HP) |
 | `CHOOSE <p> [A; B] [C; D]` | | that player picks a branch; its actions run |
+| `RECYCLE <p> <n> [TOP|BOTTOM|SHUFFLE]` | | the top n of the graveyard go back into the deck |
+| `PICK_CORE` | | pick a core on the field (in range with `RANGE`); `MOVE_CORE` / `TRAP_CORE` use it |
+| `MOVE_CORE <n>` | | the picked core moves up to n hexes (free hex, not on a stage) |
+| `TRAP_CORE <n>` | | an enemy hero that activates the picked core this turn takes n |
+| `HOLD_HIT SELF` | | with `BATTLE IF WIN`: after winning, the owner may deal no DMG and double the Knockback |
+| `NOOP` | | nothing (a "no" branch) |
+| `FREE_PLAY <max cost> [{Trait}]` | | play a card from the hand on SELF without paying (colour rules do not apply) |
+| `SWAP FRIENDLY [ENGAGED]` | | SELF and a friendly hero trade hexes (`ENGAGED`: one an enemy reaches or that reaches an enemy) |
+| `DUEL_TOP <STAT> <n>` | | stage: players with heroes on it show their top card; the higher cost gets +n for its heroes there |
+
+Extra arguments: `DAMAGE … TRUE` ignores damage modifiers ("cannot be blocked");
+`DEACTIVATE_CORE SELF <n> UPTO` lets the player pick how many (0 … n), and `PER COUNT` in a
+later `BUFF` multiplies by that number. `MOVE` with a group target asks every hero in turn
+(its own hex = stays). A stage's `REVEAL` bonus lasts the turn.
 
 Counters for `PER`: `TRAIT_EQUIPPED {Trait}` (equipment with the trait on the target),
 `CORES` (cores on the target), `MISSING_HP <n>` (per n HP missing), `ENERGY` (the owner's

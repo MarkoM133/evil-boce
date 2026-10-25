@@ -1,0 +1,51 @@
+{
+  "name": "fx: deactivate up to 2 cores for a bonus per core; an assist helps in a battle against a Sword",
+  "steps": [
+    {"setup": {"seed": 1, "decks": [
+      {"heroes": ["TA-008", "TA-001", "TA-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []},
+      {"heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-010": 40}, "stages": [], "cores": ["CR0-001", "CR0-002"]}
+    ]}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-008.zone": "map", "heroes.p0:TA-008.hex": [4, 8],
+      "heroes.p0:TA-008.cores": ["core:p1:1", "core:p1:2"],
+      "cores.core:p1:1.place": "hero", "cores.core:p1:1.holder": "p0:TA-008",
+      "cores.core:p1:2.place": "hero", "cores.core:p1:2.holder": "p0:TA-008",
+      "heroes.p1:TB-001.zone": "map", "heroes.p1:TB-001.hex": [6, 8],
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 12],
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 12],
+      "heroes.p1:TB-002.equipment": ["TA-024"],
+      "players.p0.assists": ["TA-035"],
+      "initiative": 0
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-008"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"move": {"type": "choice", "player": 0, "roll": false}},
+    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {"phase": "battle", "battles": {"$size": 2}, "battles.0.heroes": ["p0:TA-008", "p1:TB-001"], "to_act": 0}},
+    {"move": {"type": "use_ability", "player": 0, "hero": "p0:TA-008", "card": "TA-008", "index": 0}},
+    {"expect": {"pending.0.kind": "option", "pending.0.options": ["None", "1 core", "2 cores"]}},
+    {"move": {"type": "choose", "player": 0, "value": 2}},
+    {"expect": {
+      "heroes.p0:TA-008.cores": {"$size": 0},
+      "heroes.p0:TA-008.turn_bonus.dmg": 2,
+      "heroes.p0:TA-008.turn_bonus.pwr": 4000,
+      "players.p0.inventory": {"$size": 2},
+      "to_act": 1
+    }},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "pass", "player": 0}},
+    {"expect": {"battles.0.winner_team": 0, "pending.0.type": "damage", "pending.0.amount": 5}},
+    {"move": {"type": "damage_to", "player": 1, "target": "p1:TB-001"}},
+    {"expect": {
+      "heroes.p1:TB-001.hp": 5,
+      "battle_index": 1,
+      "heroes.p0:TA-001.phase_bonus.pwr": 2000
+    }},
+    {"pass_round": true},
+    {"expect": {"battles.1.winner_team": 0, "pending.0.player": 1}}
+  ]
+}

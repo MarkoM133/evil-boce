@@ -15,7 +15,7 @@ extends RefCounted
 ##        the current battle), EQUIPPED {Trait} (an enemy in the battle has that trait).
 
 const WHENS: Array[String] = ["PLAY", "PREROLL", "ROLL", "POSTROLL", "BATTLE", "END", "PASSIVE", "REVEAL"]
-const CONDS: Array[String] = ["ACTIVATED", "WIN", "OPP_EQUIPPED"]
+const CONDS: Array[String] = ["ACTIVATED", "WIN", "OPP_EQUIPPED", "COPIES"]
 ## Verb -> [takes a target, number of extra args at least].
 const VERBS: Dictionary[String, Array] = {
 	"BUFF": [true, 2],          # BUFF <target> <STAT> <n> [TURN] [PER <COUNTER> [arg]]
@@ -39,12 +39,22 @@ const VERBS: Dictionary[String, Array] = {
 	"ROLL_AGAIN": [false, 0],   # ROLL_AGAIN  (the activated hero rolls once more)
 	"COST_DAMAGE": [false, 1],  # COST_DAMAGE <n>  (paid by SELF before the rest)
 	"CHOOSE": [true, 0],        # CHOOSE <ME|OPP> [ACTION; ACTION] [ACTION; ACTION]  (that player picks a branch)
+	"RECYCLE": [true, 1],       # RECYCLE <ME|OPP> <n> [TOP|BOTTOM|SHUFFLE]  (graveyard top -> deck)
+	"PICK_CORE": [false, 0],    # PICK_CORE  (choose a core on the field; MOVE_CORE / TRAP_CORE use it)
+	"MOVE_CORE": [false, 1],    # MOVE_CORE <n>  (the picked core, up to n hexes)
+	"TRAP_CORE": [false, 1],    # TRAP_CORE <n>  (an enemy hero activating the picked core this turn takes n)
+	"HOLD_HIT": [true, 0],      # HOLD_HIT SELF  (after a win: deal no DMG, double Knockback)
+	"NOOP": [false, 0],         # NOOP  (nothing; a "no" branch for CHOOSE)
+	"FREE_PLAY": [false, 1],    # FREE_PLAY <max cost> [{Trait}]  (play a card from hand on SELF for free)
+	"SWAP": [true, 0],          # SWAP FRIENDLY [ENGAGED]  (SELF and that hero trade hexes)
+	"DUEL_TOP": [false, 2],     # DUEL_TOP <STAT> <n>  (players on the stage show their top card; higher cost wins)
+	"MOVE_ID": [false, 2],      # MOVE_ID <hero id> <n>  (one hero of a group move; written by the runtime)
 }
 const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "ALL_FRIENDLY", "ALL_ENEMY",
 	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR"]
 const PLAYER_TARGETS: Array[String] = ["ME", "OPP"]
 const STATS: Array[String] = ["PWR", "DMG", "KB", "RNG", "HP"]
-const COUNTERS: Array[String] = ["TRAIT_EQUIPPED", "CORES", "MISSING_HP", "ENERGY", "LOW_HP_FRIENDLY"]
+const COUNTERS: Array[String] = ["TRAIT_EQUIPPED", "CORES", "MISSING_HP", "ENERGY", "LOW_HP_FRIENDLY", "COUNT"]
 
 var when: String = "PLAY"
 var once: bool = false
@@ -92,6 +102,40 @@ static func action_to_fx(a: Dictionary) -> String:
 			items.append(action_to_fx(JsonUtil.as_dict(b)))
 		out.append("[" + "; ".join(items) + "]")
 	return " ".join(out)
+
+
+## Plain English for one action, for buttons and choice dialogs.
+static func describe(a: Dictionary) -> String:
+	var verb: String = str(a.get("verb", ""))
+	var target: String = str(a.get("target", ""))
+	var args: PackedStringArray = JsonUtil.as_strings(a.get("args", []))
+	var who: String = {"ME": "you", "OPP": "the opponent", "SELF": "your hero", "ENEMY": "an enemy hero",
+		"FRIENDLY": "a friendly hero", "EQUIPPED": "the equipped hero"}.get(target, target.to_lower().replace("_", " "))
+	var n: String = args[0] if not args.is_empty() else ""
+	match verb:
+		"BUFF":
+			return "%s +%s %s" % [who, args[1] if args.size() > 1 else "", n]
+		"DAMAGE":
+			return "%s takes %s DMG" % [who, n]
+		"HEAL":
+			return "%s heals %s HP" % [who, n]
+		"CHARGE":
+			return "%s charge %s energy" % [who, n]
+		"DISCHARGE":
+			return "%s discharge %s energy" % [who, n]
+		"DRAW":
+			return "%s draw %s" % [who, n]
+		"DISCARD":
+			return "%s discard %s" % [who, n]
+		"HOLD_HIT":
+			return "Deal no DMG, double Knockback"
+		"NOOP":
+			return "Deal DMG as usual"
+		"MOVE":
+			return "%s moves up to %s" % [who, n]
+		"KNOCKBACK":
+			return "Knock %s back %s" % [who, n]
+	return action_to_fx(a)
 
 
 ## Does this effect fire or become usable in `phase` (GameState phase name)?
@@ -198,7 +242,8 @@ static func parse_action(text: String) -> Dictionary:
 					return {}
 				branch.append(b)
 			branches.append(branch)
-		elif tok.begins_with("{"):
+		elif tok.begins_with("{") or tok.contains(":"):
+			# Traits and hero ids keep their case.
 			args.append(tok)
 		else:
 			args.append(tok.to_upper())

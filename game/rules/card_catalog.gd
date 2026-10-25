@@ -61,6 +61,14 @@ func apply_terrain_overrides(d: Dictionary) -> void:
 			card.terrain = Terrain.parse(str(d[k]))
 
 
+## Placeholder fx for cards that have no hand-written `fx` yet: {"JO1-004": "END ...: ..."}.
+func apply_fx_overrides(d: Dictionary) -> void:
+	for k: Variant in d:
+		var card: CardDef = get_card(str(k))
+		if card != null and not card.fx_hand_written:
+			card.build_effects(str(d[k]))
+
+
 ## Six generic cores (2 Buff, 2 Major, 2 Debuff) until the real ones exist in cards.json.
 func add_placeholder_cores() -> void:
 	var kinds: Array[String] = ["Buff", "Buff", "Major", "Major", "Debuff", "Debuff"]

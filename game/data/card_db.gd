@@ -4,6 +4,7 @@ extends RefCounted
 ## the sandbox starts, kept until it ends.
 
 const PLACEHOLDER_TERRAIN: String = "res://data/placeholders/stage_terrain.json"
+const PLACEHOLDER_FX: String = "res://data/placeholders/card_fx.json"
 
 var root_dir: String = ""
 var version: int = 0
@@ -43,6 +44,8 @@ func parse(text: String) -> void:
 	catalog = CardCatalog.from_doc(doc)
 	if FileAccess.file_exists(PLACEHOLDER_TERRAIN):
 		catalog.apply_terrain_overrides(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(PLACEHOLDER_TERRAIN))))
+	if FileAccess.file_exists(PLACEHOLDER_FX):
+		catalog.apply_fx_overrides(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(PLACEHOLDER_FX))))
 	var cards: Array = JsonUtil.as_array(doc.get("cards", []))
 	card_count = 0
 	for c: Variant in cards:

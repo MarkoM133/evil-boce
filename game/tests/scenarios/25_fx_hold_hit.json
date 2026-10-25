@@ -1,0 +1,33 @@
+{
+  "name": "fx hold hit: after winning, the hero deals no damage and knocks back twice as far",
+  "steps": [
+    {"setup": {"seed": 1, "decks": [
+      {"heroes": ["TA-009", "TA-002", "TA-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []},
+      {"heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []}
+    ]}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-009.zone": "map", "heroes.p0:TA-009.hex": [4, 8],
+      "heroes.p1:TB-001.zone": "map", "heroes.p1:TB-001.hex": [6, 8]
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-009"}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"move": {"type": "choice", "player": 0, "roll": false}},
+    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {
+      "battles.0.winner_team": 0,
+      "pending.0.type": "choose", "pending.0.kind": "option", "pending.0.player": 0,
+      "pending.1.type": "damage", "pending.1.player": 1
+    }},
+    {"move": {"type": "choose", "player": 0, "value": 1}},
+    {"expect": {
+      "heroes.p1:TB-001.hp": 10,
+      "heroes.p1:TB-001.hex": [10, 8],
+      "turn": 2
+    }}
+  ]
+}
