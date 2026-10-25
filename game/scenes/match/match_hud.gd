@@ -93,6 +93,8 @@ var target_heroes: PackedStringArray = PackedStringArray()
 var _target_why: Dictionary = {}
 var _last_why_by: Dictionary = {}
 var _aim_line: Control
+## Under the phase ribbon while a battle is fought: which one and who with what Power.
+var _battle_bar: HBoxContainer
 ## The big card above the hand (GDD 11): the card under the mouse ("" = none) and the one shown.
 var _hover_cid: String = ""
 var _big: TextureRect
@@ -136,6 +138,7 @@ func refresh() -> void:
 		_called_phase = state.phase
 	_scan_log()
 	_refresh_ribbon()
+	_refresh_battle_bar()
 	for slot: int in state.players.size():
 		if slot < _rosters.size():
 			_fill_roster(_rosters[slot], slot)
@@ -144,6 +147,26 @@ func refresh() -> void:
 	_refresh_dialog()
 	_refresh_log()
 	_refresh_over()
+
+
+## "BATTLE 1 / 2 · LUFFY 5000 VS GIORNO 4000", each side in its team's colour.
+func _refresh_battle_bar() -> void:
+	for c: Node in _battle_bar.get_children():
+		c.queue_free()
+	var on: bool = state.phase == GameState.PHASE_BATTLE and state.battle_index >= 0 and state.battle_index < state.battles.size()
+	_battle_bar.visible = on
+	if not on:
+		return
+	_battle_bar.add_child(UiShape.chip("BATTLE %d / %d" % [state.battle_index + 1, state.battles.size()], Palette.ACCENT, Palette.FG, 20, 32.0, 16.0))
+	var sides: Array[PackedStringArray] = [PackedStringArray(), PackedStringArray()]
+	for hid: String in JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", [])):
+		var h: HeroState = state.hero(hid)
+		if h != null:
+			sides[clampi(state.team_of(h.owner), 0, 1)].append("%s %d" % [hero_name(h).to_upper(), engine.stat(state, h, "pwr")])
+	for t: int in 2:
+		if t == 1:
+			_battle_bar.add_child(UiShape.chip("VS", Palette.PANEL_SOLID, Palette.MUTED, 16, 32.0, 10.0))
+		_battle_bar.add_child(UiShape.chip("  ·  ".join(sides[t]), Palette.PANEL_SOLID, Palette.team(t).lightened(0.25), 20, 32.0, 16.0))
 
 
 ## A short message under the ribbon on a slanted chip of `color`.
@@ -157,9 +180,11 @@ func toast(text: String, color: Color = Palette.GOLD) -> void:
 	if _toast_tween != null and _toast_tween.is_valid():
 		_toast_tween.kill()
 	_toast_box.modulate.a = 1.0
-	_toast_box.position.y = 64
+	# Below the battle bar when one shows.
+	var base: float = 108.0 if _battle_bar.visible else 70.0
+	_toast_box.position.y = base - 6.0
 	_toast_tween = create_tween()
-	_toast_tween.tween_property(_toast_box, "position:y", 70.0, 0.12).from(52.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_toast_tween.tween_property(_toast_box, "position:y", base, 0.12).from(base - 18.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_toast_tween.tween_interval(1.5)
 	_toast_tween.tween_property(_toast_box, "modulate:a", 0.0, 0.4)
 
@@ -354,6 +379,15 @@ func _build() -> void:
 	_dialog_box.custom_minimum_size = Vector2(420, 0)
 	_dialog_box.add_theme_constant_override("separation", 10)
 	_dialog.add_child(_dialog_box)
+
+	_battle_bar = HBoxContainer.new()
+	_battle_bar.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_battle_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_battle_bar.position = Vector2(0, 62)
+	_battle_bar.add_theme_constant_override("separation", 0)
+	_battle_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_battle_bar.visible = false
+	add_child(_battle_bar)
 
 	_aim_line = Control.new()
 	_aim_line.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -1007,7 +1041,16 @@ func _refresh_prompt() -> void:
 				# The activated hero's own abilities are on the tab by its panel.
 				if h != null and c != null and (c.type == "Hero" or c.type == "Evolution") and state.active.get(h.owner, "") == h.id:
 					continue
-				var text: String = "%s: %s" % [hero_name(h) if h != null else (c.name if c != null else "?"), e.line.get_slice(":", 1).strip_edges()]
+				# The ability's name (from the card, else its kind), not its fx.
+				var title: String = "%s ability" % e.when.capitalize()
+				if c != null:
+					var n: int = 0
+					for i: int in JsonUtil.as_int(a["index"]):
+						if c.effects[i].optional and c.effects[i].cond != "WIN":
+							n += 1
+					if not c.ability_name(n).is_empty():
+						title = c.ability_name(n)
+				var text: String = "%s: %s" % [hero_name(h) if h != null else (c.name if c != null else "?"), title]
 				var ab: Button = _action(text, func() -> void: ability_pressed.emit(slot, str(a["hero"]), str(a["card"]), JsonUtil.as_int(a["index"])), &"Gold")
 				if c != null:
 					ab.tooltip_text = c.text

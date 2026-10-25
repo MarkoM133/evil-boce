@@ -57,6 +57,9 @@ var _balls: Node3D
 var _tokens: Node3D
 ## Beams and rings on the heroes a card can go on (HUD 2).
 var _target_fx: Node3D
+## Red rings under the heroes of the battle being fought (HUD 4), and for which battle.
+var _battle_fx: Node3D
+var _battle_fx_key: String = ""
 var _marks := ImmediateMesh.new()
 var _line_mat: StandardMaterial3D
 var _bodies: Dictionary[String, BallBody] = {}
@@ -173,6 +176,9 @@ func _ready() -> void:
 	_balls = Node3D.new()
 	_balls.name = "Balls"
 	add_child(_balls)
+	_battle_fx = Node3D.new()
+	_battle_fx.name = "BattleFx"
+	add_child(_battle_fx)
 	_target_fx = Node3D.new()
 	_target_fx.name = "TargetFx"
 	add_child(_target_fx)
@@ -753,8 +759,11 @@ func _hex_prism(radius: float, height: float, color: Color, rim: Color) -> Node3
 ## Stage outlines and battle arrows.
 func _draw_marks() -> void:
 	_marks.clear_surfaces()
+	_refresh_battle_fx()
 	_marks.surface_begin(Mesh.PRIMITIVE_TRIANGLES, _line_mat)
 	var any: bool = false
+	# While a battle is on, red means only the battle: the stages step back to grey dashes.
+	var fighting: bool = not _current_battle().is_empty()
 	for st: StageState in state.stages:
 		if not st.placed:
 			continue
@@ -763,7 +772,9 @@ func _draw_marks() -> void:
 			col = Color(Palette.GOLD, 0.85)
 		if st.is_claimed():
 			col = Palette.team(state.team_of(st.claimed_by))
-		any = _outline(st.footprint(), col) or any
+		if fighting:
+			col = Color(0.45, 0.41, 0.37, 0.7)
+		any = _outline(st.footprint(), col, fighting) or any
 	if state.phase == GameState.PHASE_BATTLE or state.phase == GameState.PHASE_POSTROLL:
 		any = _battle_arrows() or any
 	if not any:
@@ -773,7 +784,8 @@ func _draw_marks() -> void:
 	_marks.surface_end()
 
 
-func _outline(cells: Array[Vector2i], color: Color) -> bool:
+## The outer edge of `cells`; `dashed` draws every edge as half a dash.
+func _outline(cells: Array[Vector2i], color: Color, dashed: bool = false) -> bool:
 	var drew: bool = false
 	for a: Vector2i in cells:
 		var c2: Vector2 = arena.map.to_world(a)
@@ -782,23 +794,39 @@ func _outline(cells: Array[Vector2i], color: Color) -> bool:
 				continue
 			var p0: Vector2 = c2 + Hex.corner(i - 1, tuning.hex_size) * 0.97
 			var p1: Vector2 = c2 + Hex.corner(i, tuning.hex_size) * 0.97
-			MeshKit.ribbon(_marks, PackedVector3Array([Vector3(p0.x, 0.04, p0.y), Vector3(p1.x, 0.04, p1.y)]), 0.09, color)
+			if dashed:
+				p1 = p0.lerp(p1, 0.5)
+			MeshKit.ribbon(_marks, PackedVector3Array([Vector3(p0.x, 0.04, p0.y), Vector3(p1.x, 0.04, p1.y)]), 0.07 if dashed else 0.09, color)
 			drew = true
 	return drew
+
+
+## The heroes in the battle being fought now, or none.
+func _current_battle() -> PackedStringArray:
+	if state.phase == GameState.PHASE_BATTLE and state.battle_index >= 0 and state.battle_index < state.battles.size():
+		return JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", []))
+	return PackedStringArray()
 
 
 ## Arrows from each hero to the opponents it reaches (range is not mutual, GDD 11).
 func _battle_arrows() -> bool:
 	var drew: bool = false
-	var current := PackedStringArray()
-	if state.phase == GameState.PHASE_BATTLE and state.battle_index >= 0 and state.battle_index < state.battles.size():
-		current = JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", []))
+	var current: PackedStringArray = _current_battle()
+	# Battles still to come this phase (thin, faint red).
+	var waiting := PackedStringArray()
+	if not current.is_empty():
+		for i: int in range(state.battle_index + 1, state.battles.size()):
+			waiting.append_array(JsonUtil.as_strings(state.battles[i].get("heroes", [])))
 	for a: HeroState in state.heroes:
 		for b: HeroState in state.heroes:
 			if a == b or state.same_team(a, b) or not engine.in_range(state, a, b):
 				continue
 			var hot: bool = current.has(a.id) and current.has(b.id)
-			var col: Color = Palette.GOLD if hot else Color(1, 1, 1, 0.35)
+			var later: bool = waiting.has(a.id) and waiting.has(b.id)
+			# During a battle only battles get arrows: the one now thick red, the next ones faint.
+			if not current.is_empty() and not hot and not later:
+				continue
+			var col: Color = Palette.ACCENT if hot else (Color(Palette.ACCENT, 0.45) if later else Color(1, 1, 1, 0.35))
 			var from: Vector3 = arena.hex_center(a.hex)
 			var to: Vector3 = arena.hex_center(b.hex)
 			var d: Vector3 = (to - from).normalized()
@@ -806,8 +834,8 @@ func _battle_arrows() -> bool:
 			var rb: float = _bodies[b.id].radius() + 0.35
 			var start: Vector3 = from + d * ra + Vector3(0, 0.06, 0)
 			var head: Vector3 = to - d * rb + Vector3(0, 0.06, 0)
-			MeshKit.ribbon(_marks, PackedVector3Array([start, head]), 0.12 if hot else 0.07, col)
-			var side: Vector3 = Vector3.UP.cross(d) * 0.3
+			MeshKit.ribbon(_marks, PackedVector3Array([start, head]), 0.22 if hot else 0.07, col)
+			var side: Vector3 = Vector3.UP.cross(d) * (0.45 if hot else 0.3)
 			_marks.surface_set_color(col)
 			_marks.surface_add_vertex(head + side)
 			_marks.surface_add_vertex(head - side)
@@ -835,6 +863,11 @@ func _refresh_range() -> void:
 		key += "%s:%s:%d;" % [h.id, h.hex, rng]
 		cells.append_array(arena.map.range_cells(h.hex, h.big, rng))
 		marked.append_array(state.footprint(h))
+	# No range circles while a battle is fought: red means the battle.
+	if not _current_battle().is_empty():
+		cells.clear()
+		marked.clear()
+		key = "battle"
 	var item: String = _setup_item()
 	if not item.is_empty():
 		key = "setup:%s:%s" % [item, _setup_hover]
@@ -1556,3 +1589,64 @@ func demo_targeting() -> void:
 	hud.refresh()
 	if a != null and _bodies.has(a.id):
 		cam.focus(_bodies[a.id].global_position, 16.0)
+
+
+# --- battles on the table (mockup HUD 4) -------------------------------------------------
+
+## A red ring that breathes under each hero of the battle being fought.
+func _refresh_battle_fx() -> void:
+	var ids: PackedStringArray = _current_battle()
+	var key: String = "%d:%s" % [state.battle_index, ",".join(ids)]
+	if key == _battle_fx_key:
+		return
+	_battle_fx_key = key
+	for c: Node in _battle_fx.get_children():
+		c.queue_free()
+	for hid: String in ids:
+		var h: HeroState = state.hero(hid)
+		if h == null or not h.is_on_map() or not _bodies.has(hid):
+			continue
+		var root := Node3D.new()
+		root.position = arena.hex_center(h.hex)
+		var r: float = _bodies[hid].radius() + 0.35
+		for k: int in 2:
+			var ring := MeshInstance3D.new()
+			var torus := TorusMesh.new()
+			torus.inner_radius = r + k * 0.22
+			torus.outer_radius = torus.inner_radius + (0.13 if k == 0 else 0.05)
+			ring.mesh = torus
+			ring.scale = Vector3(1, 0.15, 1)
+			ring.position.y = 0.05
+			ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			ring.material_override = MeshKit.unshaded(Color(Palette.ACCENT, 1.0 if k == 0 else 0.6), false)
+			root.add_child(ring)
+		_battle_fx.add_child(root)
+		var t: Tween = root.create_tween().set_loops()
+		t.tween_property(root, "scale", Vector3.ONE * 1.1, 0.55).set_trans(Tween.TRANS_SINE)
+		t.tween_property(root, "scale", Vector3.ONE, 0.55).set_trans(Tween.TRANS_SINE)
+
+
+## Screenshot helper (a throwaway match): player 1's first hero and the opponent's first stand
+## close, and the battle phase fights them, with a second battle waiting.
+func demo_battle() -> void:
+	_demo = true
+	var mine: Array[HeroState] = []
+	var theirs: Array[HeroState] = []
+	for h: HeroState in state.heroes:
+		(mine if h.owner == 0 else theirs).append(h)
+	var mid: Vector2i = arena.hex_at(Vector3.ZERO)
+	mine[0].zone = HeroState.ZONE_MAP
+	mine[0].hex = mid
+	theirs[0].zone = HeroState.ZONE_MAP
+	theirs[0].hex = mid + Vector2i(2, -1)
+	mine[1].zone = HeroState.ZONE_MAP
+	mine[1].hex = mid + Vector2i(-4, 3)
+	theirs[1].zone = HeroState.ZONE_MAP
+	theirs[1].hex = mid + Vector2i(-3, 4)
+	state.phase = GameState.PHASE_BATTLE
+	state.battles = [{"heroes": [mine[0].id, theirs[0].id], "resolved": false, "winner_team": -1, "tie": false},
+		{"heroes": [mine[1].id, theirs[1].id], "resolved": false, "winner_team": -1, "tie": false}]
+	state.battle_index = 0
+	_range_key = ""
+	_sync()
+	cam.focus(arena.hex_center(mid), 18.0)
