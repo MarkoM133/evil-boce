@@ -561,13 +561,7 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(bottom)
 	for i: int in state.settings.core_slots:
-		var on: bool = i < h.cores.size()
-		var core: UiShape = UiShape.make(UiShape.Kind.DIAMOND, hero_color if on else Color(0, 0, 0, 0), Vector2(10, 10))
-		if not on:
-			core.outline = Palette.DIM
-			core.outline_width = 1.5
-		core.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		bottom.add_child(core)
+		bottom.add_child(_core_slot(h.cores[i] if i < h.cores.size() else "", hero_color))
 	var extra := Label.new()
 	extra.add_theme_font_size_override("font_size", 12)
 	extra.clip_text = true
@@ -585,14 +579,25 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	extra.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
 	bottom.add_child(extra)
 	if expanded and not ko:
-		var stats := Label.new()
-		stats.add_theme_font_override("font", UiTheme.display_italic())
-		stats.add_theme_font_size_override("font_size", 15)
-		stats.clip_text = true
-		stats.add_theme_color_override("font_color", Palette.FG)
-		stats.text = "PWR %d   DMG %d   RNG %d   KB %d" % [engine.stat(state, h, "pwr"),
-			engine.stat(state, h, "dmg"), engine.stat(state, h, "rng"), engine.stat(state, h, "kb")]
-		stats.horizontal_alignment = extra.horizontal_alignment
+		# A stat a core changes is green (up) or red (down).
+		var from_cores: Dictionary[String, int] = _core_bonus(h)
+		var stats := RichTextLabel.new()
+		stats.bbcode_enabled = true
+		stats.fit_content = true
+		stats.scroll_active = false
+		stats.autowrap_mode = TextServer.AUTOWRAP_OFF
+		stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stats.add_theme_font_override("normal_font", UiTheme.display_italic())
+		stats.add_theme_font_size_override("normal_font_size", 15)
+		stats.add_theme_color_override("default_color", Palette.FG)
+		var parts := PackedStringArray()
+		for key: String in ["pwr", "dmg", "rng", "kb"]:
+			var text: String = "%s %d" % [key.to_upper(), engine.stat(state, h, key)]
+			var by: int = from_cores.get(key, 0)
+			if by != 0:
+				text = "[color=#%s]%s[/color]" % [(Palette.HP if by > 0 else Palette.ACCENT).to_html(false), text]
+			parts.append(text)
+		stats.text = ("[right]%s[/right]" if right else "%s") % "   ".join(parts)
 		col.add_child(stats)
 	# The active hero sticks out of the column; the others sit in a little.
 	var wrap := MarginContainer.new()
@@ -601,6 +606,43 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	wrap.add_theme_constant_override("margin_left" if right else "margin_right", 14 if active else 0)
 	wrap.add_child(s)
 	return wrap
+
+
+## One of a hero's core slots: what the core there does in short ("PWR+2K", green up, red
+## down), else an empty outline. Hover gives the core's name.
+func _core_slot(core_id: String, hero_color: Color) -> Control:
+	var c: CoreState = state.core(core_id) if not core_id.is_empty() else null
+	var card: CardDef = engine.catalog.get_card(c.card_id) if c != null else null
+	if card == null or card.bonus.is_empty():
+		var dot: UiShape = UiShape.make(UiShape.Kind.DIAMOND, hero_color if c != null else Color(0, 0, 0, 0), Vector2(10, 10))
+		if c == null:
+			dot.outline = Palette.DIM
+			dot.outline_width = 1.5
+		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		if card != null:
+			dot.tooltip_text = card.name
+		return dot
+	var key: String = card.bonus.keys()[0]
+	var v: int = card.bonus[key]
+	var amount: String = ("%+dK" % (v / 1000)) if key == "pwr" and v % 1000 == 0 else "%+d" % v
+	var chip: UiShape = UiShape.chip(key.to_upper() + amount.replace("-", "−"), Color("1b1f20"),
+		Palette.HP if v > 0 else Palette.ACCENT, 11, 16.0, 6.0)
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	chip.tooltip_text = "%s core: %s" % [card.kind, card.name]
+	return chip
+
+
+## What the hero's active cores add to each stat ({"pwr": 2000, "kb": -1}).
+func _core_bonus(h: HeroState) -> Dictionary[String, int]:
+	var out: Dictionary[String, int] = {}
+	for cid: String in h.cores:
+		var c: CoreState = state.core(cid)
+		var card: CardDef = engine.catalog.get_card(c.card_id) if c != null else null
+		if card == null:
+			continue
+		for k: String in card.bonus:
+			out[k] = out.get(k, 0) + card.bonus[k]
+	return out
 
 
 func _hero_tag(h: HeroState, active: bool, pickable: bool, in_battle: bool) -> UiShape:

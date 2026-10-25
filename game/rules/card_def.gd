@@ -21,6 +21,9 @@ var evo: int = 0
 var hero: String = ""
 ## Core kind: "Buff", "Major" or "Debuff".
 var kind: String = ""
+const CORE_KINDS: Array[String] = ["Buff", "Major", "Debuff"]
+## A core's family by the stat it changes; its face-down back shows it.
+const CORE_FAMILIES: Dictionary[String, String] = {"pwr": "Power", "dmg": "Damage", "kb": "Knockback"}
 ## Flat stat bonus from the web app's `bonus` field ({"pwr": 2000, "kb": 1} ...). Equipment
 ## keeps it while equipped; an Action gives it until the end of the phase.
 var bonus: Dictionary[String, int] = {}
@@ -48,6 +51,14 @@ func effects_when(when: String) -> Array[FxEffect]:
 		if e.when == when:
 			out.append(e)
 	return out
+
+
+## A core's family ("Power", "Damage", "Knockback"), from the stat in its bonus; "" for others.
+func core_family() -> String:
+	for k: String in bonus:
+		if CORE_FAMILIES.has(k):
+			return CORE_FAMILIES[k]
+	return ""
 
 
 func has_trait(t: String) -> bool:
@@ -99,6 +110,13 @@ static func from_card(c: Dictionary) -> CardDef:
 		var v: int = JsonUtil.as_int(bonus[k])
 		if v != 0:
 			d.bonus[str(k)] = v
+	# Cores from the web app say their kind (Buff, Major or Debuff) with a trait or in the
+	# first line of their text (the card text guide, section 5).
+	if d.type == "Core" and d.kind.is_empty():
+		var first: String = d.text.strip_edges().split("\n")[0].strip_edges()
+		for t: String in CORE_KINDS:
+			if d.has_trait(t) or first.to_lower() == t.to_lower():
+				d.kind = t
 	d.terrain = parse_terrain(d.text)
 	if d.terrain == Terrain.Type.NONE and c.has("terrain"):
 		d.terrain = Terrain.parse(str(c.get("terrain", "")))

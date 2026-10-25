@@ -11,6 +11,8 @@ const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
 const BOT_DELAY: float = 0.5
 ## Core token radius; a rolling ball picks a core up when it touches it.
 const CORE_RADIUS: float = 0.34
+## The token is drawn this much bigger than its pick-up radius, so its picture reads.
+const CORE_LOOK: float = 1.3
 const CORE_COLORS: Dictionary[String, Color] = {
 	"Buff": Color("4fb858"), "Major": Color("ffd23f"), "Debuff": Color("9a5bd6"),
 }
@@ -626,9 +628,7 @@ func _rebuild_tokens() -> void:
 	for c: CoreState in state.cores:
 		if c.place != CoreState.ON_FIELD:
 			continue
-		var card: CardDef = db.catalog.get_card(c.card_id)
-		var col: Color = CORE_COLORS.get(card.kind if card != null else "", Palette.MUTED) if c.face_up else Color("2a2622")
-		var token: Node3D = _hex_prism(CORE_RADIUS, 0.12, col, Palette.GOLD if not c.face_up else col.lightened(0.3))
+		var token: Node3D = _core_token(c)
 		token.position = arena.hex_center(c.hex) + Vector3(0, 0.06, 0)
 		_tokens.add_child(token)
 		_core_tokens[c.id] = token
@@ -648,6 +648,59 @@ func _rebuild_tokens() -> void:
 			flag.material_override = MeshKit.unshaded(Palette.team(state.team_of(st.claimed_by)), false)
 			flag.position = arena.hex_center(st.center) + Vector3(0, 1.1, 0)
 			_tokens.add_child(flag)
+
+
+## A core on the table: a dark hex chip with its picture on top, the face once it is face up,
+## else its family's back (Power, Damage, Knockback). Without pictures, a chip in its kind's colour.
+func _core_token(c: CoreState) -> Node3D:
+	var card: CardDef = db.catalog.get_card(c.card_id)
+	var pic: Texture2D = null
+	if card != null:
+		if c.face_up:
+			pic = db.large(card.id) if db.large(card.id) != null else db.thumb(card.id)
+		else:
+			pic = db.core_back(card)
+	if pic == null:
+		var col: Color = CORE_COLORS.get(card.kind if card != null else "", Palette.MUTED) if c.face_up else Color("2a2622")
+		return _hex_prism(CORE_RADIUS, 0.12, col, Palette.GOLD if not c.face_up else col.lightened(0.3))
+	var r: float = CORE_RADIUS * CORE_LOOK
+	var token: Node3D = _hex_prism(r, 0.12, Color("1b1f20"), Color("eeeaf0"))
+	# Pointy along z like the picture (the plain prism is turned flat for the map's walls).
+	token.rotation.y = 0.0
+	# The top: a hexagon cut from the picture's hex (pointy along z, like the map's).
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	var box: Rect2 = CardDb.CORE_HEX
+	var mid: Vector2 = box.get_center()
+	var pts: Array[Vector3] = []
+	var uvs: Array[Vector2] = []
+	for i: int in 6:
+		var a: float = PI / 2.0 + TAU * i / 6.0
+		var p := Vector3(cos(a), 0, sin(a)) * r
+		pts.append(p)
+		uvs.append(mid + Vector2(p.x / (sqrt(3.0) * r) * box.size.x, p.z / (2.0 * r) * box.size.y))
+	for i: int in 6:
+		st.set_uv(mid)
+		st.add_vertex(Vector3.ZERO)
+		st.set_uv(uvs[(i + 1) % 6])
+		st.add_vertex(pts[(i + 1) % 6])
+		st.set_uv(uvs[i])
+		st.add_vertex(pts[i])
+	var top := MeshInstance3D.new()
+	top.mesh = st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = pic
+	mat.roughness = 0.5
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	top.material_override = mat
+	top.position.y = 0.061
+	top.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var holder := Node3D.new()
+	holder.add_child(token)
+	holder.add_child(top)
+	return holder
 
 
 func _hex_prism(radius: float, height: float, color: Color, rim: Color) -> Node3D:
@@ -1279,6 +1332,28 @@ func demo_fx() -> void:
 	demo_fx_place()
 	await get_tree().create_timer(1.2).timeout
 	demo_fx_hit()
+
+
+## Screenshot helper (after the cores are placed): turns every other core on the table face up,
+## gives player 1's first hero two of them, and looks at a face-up one.
+func demo_cores() -> void:
+	_demo = true
+	var field: Array[CoreState] = []
+	for c: CoreState in state.cores:
+		if c.place == CoreState.ON_FIELD:
+			field.append(c)
+	for i: int in field.size():
+		field[i].face_up = i % 2 == 0
+	var h: HeroState = state.heroes[0]
+	for c: CoreState in field.slice(field.size() - 2):
+		c.place = CoreState.ON_HERO
+		c.holder = h.id
+		c.face_up = true
+		h.cores.append(c.id)
+	hud.hover_hero = h.id
+	_sync()
+	if not field.is_empty():
+		cam.focus(arena.hex_center(field[0].hex), 7.0)
 
 
 ## Screenshot helper: bots play until player 1 may play cards, then player 1 is handed back

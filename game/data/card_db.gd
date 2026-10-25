@@ -89,6 +89,16 @@ func thumb(card_id: String) -> Texture2D:
 	return texture(thumbs[card_id]) if thumbs.has(card_id) else null
 
 
+## A core's face-down back, by family (data/cores/<Family> Cardback.png), or null.
+func core_back(card: CardDef) -> Texture2D:
+	var family: String = card.core_family() if card != null else ""
+	return texture(data_dir().path_join("cores/%s Cardback.png" % family)) if not family.is_empty() else null
+
+
+## Where the hex sits on a core image (a portrait page with the token in the middle).
+const CORE_HEX := Rect2(0.235, 0.28, 0.473, 0.392)
+
+
 func logo() -> Texture2D:
 	return texture(data_dir().path_join("branding/evil-boce-logo.png"))
 
