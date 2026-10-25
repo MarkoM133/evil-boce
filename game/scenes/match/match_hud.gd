@@ -31,12 +31,18 @@ signal setup_item_pressed(id: String)
 
 const PHASES: Array[String] = [GameState.PHASE_DRAW, GameState.PHASE_SELECT, GameState.PHASE_PREROLL,
 	GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE, GameState.PHASE_END]
+## The phases as the ribbon shows them: Draw and Select read as one Start phase (the rules
+## keep both; Draw needs no input).
+const RIBBON_PHASES: Array[String] = ["start", GameState.PHASE_PREROLL, GameState.PHASE_ROLL,
+	GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE, GameState.PHASE_END]
 const ROSTER_WIDTH: float = 360.0
 const SLICE_HEIGHT: float = 70.0
 const CARD_SIZE := Vector2(128, 178)
 ## Height of the hand strip; the cards stick out of the bottom of the screen a little.
 const HAND_HEIGHT: float = 210.0
 const BANNER_TIME: float = 0.8
+## Phase call-outs stay a little longer, to be read.
+const PHASE_BANNER_TIME: float = 1.4
 ## Log events that get a banner (the rest only go to the log).
 const BANNER_EVENTS: Array[String] = ["battle", "ring_out", "ko", "stage_claimed"]
 
@@ -72,7 +78,7 @@ var _detail: Label
 var _actions: VBoxContainer
 var _key_hint: Label
 var _tray: HBoxContainer
-var _log_line: Label
+var _log_btn: Button
 ## Energy, bottom left: yours (big) and the opponent's (small, red) above it.
 var _energy: EnergyDial
 var _energy_them: EnergyDial
@@ -140,10 +146,12 @@ func refresh() -> void:
 		target_heroes = PackedStringArray()
 		targeting_changed.emit()
 	# A new phase is called out in the middle (not on the first look, e.g. a loaded match).
-	if state.phase != _called_phase:
+	if _ribbon_phase(state.phase) != _ribbon_phase(_called_phase) or _called_phase.is_empty():
 		# Not while a replay rewinds (its log gets shorter).
 		if not _called_phase.is_empty() and PHASES.has(state.phase) and state.log.size() >= _log_seen:
-			banner("%s PHASE" % state.phase.to_upper(), Palette.PANEL_SOLID, "TURN %d" % state.turn, "")
+			banner("%s PHASE" % _ribbon_phase(state.phase).to_upper(), Palette.PANEL_SOLID, "TURN %d" % state.turn, "", PHASE_BANNER_TIME)
+		_called_phase = state.phase
+	else:
 		_called_phase = state.phase
 	_scan_log()
 	_refresh_ribbon()
@@ -233,8 +241,8 @@ func toast(text: String, color: Color = Palette.GOLD) -> void:
 
 
 ## A slanted band across the screen (BATTLE!, RING-OUT …): in, hold, out. Queued.
-func banner(title: String, color: Color, left: String = "", right: String = "") -> void:
-	_banners.append({"title": title, "color": color, "left": left, "right": right})
+func banner(title: String, color: Color, left: String = "", right: String = "", hold: float = BANNER_TIME) -> void:
+	_banners.append({"title": title, "color": color, "left": left, "right": right, "hold": hold})
 	if not _banner_busy:
 		_next_banner()
 
@@ -356,24 +364,18 @@ func _build() -> void:
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_detail.custom_minimum_size = Vector2(270, 0)
 	prompt_col.add_child(_detail)
-	# The log: the last event as a small line under the prompt; a click opens the whole log.
-	_log_line = Label.new()
-	_log_line.add_theme_color_override("font_color", Palette.MUTED)
-	_log_line.add_theme_font_size_override("font_size", 13)
-	_log_line.clip_text = true
-	_log_line.custom_minimum_size = Vector2(270, 0)
-	_log_line.mouse_filter = Control.MOUSE_FILTER_STOP
-	_log_line.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_log_line.tooltip_text = "Click for the whole log"
-	_log_line.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-			_log_panel.visible = not _log_panel.visible)
-	prompt_col.add_child(_log_line)
+	# The log: a small button by MENU (the last event on hover); a click opens the whole log
+	# under it.
+	_log_btn = Button.new()
+	_log_btn.text = "LOG"
+	_log_btn.focus_mode = Control.FOCUS_NONE
+	_log_btn.position = Vector2(118, 14)
+	_log_btn.add_theme_font_size_override("font_size", 13)
+	_log_btn.pressed.connect(func() -> void: _log_panel.visible = not _log_panel.visible)
+	add_child(_log_btn)
 
 	_log_panel = PanelContainer.new()
-	_log_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_log_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_log_panel.position = Vector2(180, -200)
+	_log_panel.position = Vector2(14, 52)
 	_log_panel.custom_minimum_size = Vector2(430, 0)
 	_log_panel.visible = false
 	add_child(_log_panel)
@@ -509,8 +511,8 @@ func _refresh_ribbon() -> void:
 		first.tooltip_text = "Goes first this turn"
 		first.mouse_filter = Control.MOUSE_FILTER_PASS
 		_ribbon.add_child(first)
-		var now: int = PHASES.find(state.phase)
-		for i: int in PHASES.size():
+		var now: int = RIBBON_PHASES.find(_ribbon_phase(state.phase))
+		for i: int in RIBBON_PHASES.size():
 			var fill: Color = Palette.PANEL_SOLID
 			var fg: Color = Palette.MUTED
 			if i < now:
@@ -519,8 +521,9 @@ func _refresh_ribbon() -> void:
 			elif i == now:
 				fill = Palette.FG
 				fg = Color.BLACK
-			var w: float = UiTheme.display_heavy().get_string_size(PHASES[i].to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 34.0
-			var chev: UiShape = UiShape.make(UiShape.Kind.CHEVRON, fill, Vector2(w, 30), PHASES[i].to_upper(), 15, fg)
+			var label: String = RIBBON_PHASES[i].to_upper()
+			var w: float = UiTheme.display_heavy().get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 34.0
+			var chev: UiShape = UiShape.make(UiShape.Kind.CHEVRON, fill, Vector2(w, 30), label, 15, fg)
 			chev.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			_ribbon.add_child(chev)
 	var tag: UiShape = _status_tag()
@@ -572,10 +575,7 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 	col.add_child(head)
 	var name_chip: UiShape = UiShape.chip(player_name(slot).to_upper(), Palette.team(state.team_of(slot)), Palette.FG, 19, 30.0)
 	head.add_child(name_chip)
-	# Energy is in the bottom left corner (_refresh_energy), not here.
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(gap)
+	# Energy is in the bottom left corner (_refresh_energy); the stage stars sit by the name.
 	var claimed: int = engine.claimed_count(state, slot)
 	var stars := HBoxContainer.new()
 	stars.add_theme_constant_override("separation", 2)
@@ -590,19 +590,12 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 		stars.add_child(star)
 	head.add_child(stars)
 
-	var info := Label.new()
-	info.add_theme_color_override("font_color", Palette.MUTED)
-	info.add_theme_font_size_override("font_size", 13)
-	info.text = "Hand %d  ·  Deck %d  ·  Grave %d" % [p.hand.size(), p.deck.size(), p.graveyard.size()]
-	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
-	info.tooltip_text = "Graveyard: " + (", ".join(_card_names(p.graveyard)) if not p.graveyard.is_empty() else "empty")
-	info.mouse_filter = Control.MOUSE_FILTER_PASS
-	col.add_child(info)
+	var align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
 	if not p.assists.is_empty():
 		var assists := Label.new()
 		assists.theme_type_variation = &"Muted"
 		assists.text = "Assists: " + ", ".join(_card_names(p.assists))
-		assists.horizontal_alignment = info.horizontal_alignment
+		assists.horizontal_alignment = align
 		assists.tooltip_text = _card_texts(p.assists)
 		assists.mouse_filter = Control.MOUSE_FILTER_PASS
 		col.add_child(assists)
@@ -611,13 +604,26 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 		inv.add_theme_color_override("font_color", Palette.GOLD)
 		inv.add_theme_font_size_override("font_size", 13)
 		inv.text = "%d core(s) to put back" % p.inventory.size()
-		inv.horizontal_alignment = info.horizontal_alignment
+		inv.horizontal_alignment = align
 		col.add_child(inv)
 	for h: HeroState in state.heroes_of(slot):
 		# In the battle camera only the heroes fighting show.
 		if battle_cam and not _in_battle(h):
 			continue
 		col.add_child(_hero_slice(h, right))
+	# Under the heroes: what the player holds; the graveyard's cards on hover.
+	var info := Label.new()
+	info.add_theme_color_override("font_color", Palette.MUTED)
+	info.add_theme_font_size_override("font_size", 13)
+	info.text = "Hand %d  ·  Deck %d  ·  Grave %d" % [p.hand.size(), p.deck.size(), p.graveyard.size()]
+	info.horizontal_alignment = align
+	info.tooltip_text = "Graveyard: " + (", ".join(_card_names(p.graveyard)) if not p.graveyard.is_empty() else "empty")
+	info.mouse_filter = Control.MOUSE_FILTER_PASS
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_right" if right else "margin_left", 18)
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pad.add_child(info)
+	col.add_child(pad)
 
 
 func _hero_slice(h: HeroState, right: bool) -> Control:
@@ -1671,7 +1677,7 @@ func _refresh_log() -> void:
 		var s: String = _describe(e)
 		if not s.is_empty():
 			lines.append(s)
-	_log_line.text = ("▸ %s  ·  log" % lines[lines.size() - 1]) if not lines.is_empty() else "▸ log"
+	_log_btn.tooltip_text = (lines[lines.size() - 1] + "\n\nClick for the whole log") if not lines.is_empty() else "The match log"
 	var start: int = maxi(0, lines.size() - 16)
 	_log_full.text = "\n".join(lines.slice(start))
 
@@ -1755,7 +1761,7 @@ func _next_banner() -> void:
 	row.add_child(_banner_side(str(b["right"]), fg, false))
 	var t: Tween = band.create_tween()
 	t.tween_property(band, "position:x", -100.0, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	t.tween_interval(BANNER_TIME)
+	t.tween_interval(JsonUtil.as_float(b.get("hold", BANNER_TIME), BANNER_TIME))
 	t.tween_property(band, "position:x", size.x + 100.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	t.tween_callback(func() -> void:
 		band.queue_free()
@@ -1981,3 +1987,8 @@ static func _short_why(err: String) -> String:
 	if e.contains("damage"):
 		return "too little HP"
 	return "can't take it"
+
+
+## The ribbon's name for a rules phase: Draw and Select are both "start".
+static func _ribbon_phase(phase: String) -> String:
+	return "start" if phase == GameState.PHASE_DRAW or phase == GameState.PHASE_SELECT else phase
