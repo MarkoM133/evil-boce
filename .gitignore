@@ -2,3 +2,9 @@ docs/private/
 node_modules/
 server/config.local.json
 server/logs/
+
+# Godot (game/); *.import ostaju u gitu, Godot ih treba
+game/.godot/
+game/.shots/
+game/build/
+game/export/
