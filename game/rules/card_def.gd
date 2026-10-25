@@ -31,6 +31,8 @@ var bonus: Dictionary[String, int] = {}
 var terrain: Terrain.Type = Terrain.Type.NONE
 var text: String = ""
 var traits: PackedStringArray = PackedStringArray()
+## Ability names as the card shows them (underlined above the effect), in card order.
+var ability_names: PackedStringArray = PackedStringArray()
 ## Effects in the fx language: the web app's `fx` field when set, else what FxTextParser read
 ## from the text. `fx_hand_written` says which. Sentences nobody understood are in `unparsed`.
 var fx: String = ""
@@ -105,6 +107,7 @@ static func from_card(c: Dictionary) -> CardDef:
 	d.kind = str(c.get("kind", "")) if c.get("kind") != null else ""
 	d.text = str(c.get("text", "")) if c.get("text") != null else ""
 	d.traits = JsonUtil.as_strings(c.get("traits", []))
+	d.ability_names = JsonUtil.as_strings(c.get("abilityNames", []))
 	var bonus: Dictionary = JsonUtil.as_dict(c.get("bonus", {}))
 	for k: Variant in bonus:
 		var v: int = JsonUtil.as_int(bonus[k])
@@ -138,6 +141,8 @@ func to_record() -> Dictionary:
 		rec["hero"] = hero
 	if not kind.is_empty():
 		rec["kind"] = kind
+	if not ability_names.is_empty():
+		rec["abilityNames"] = Array(ability_names)
 	if not bonus.is_empty():
 		rec["bonus"] = bonus.duplicate()
 	if terrain != Terrain.Type.NONE and parse_terrain(text) == Terrain.Type.NONE:
@@ -158,3 +163,8 @@ static func parse_terrain(text: String) -> Terrain.Type:
 
 func is_hero() -> bool:
 	return type == "Hero"
+
+
+## The name of the card's `n`-th ability (0 = first), or "" when the card names none.
+func ability_name(n: int) -> String:
+	return ability_names[n] if n >= 0 and n < ability_names.size() else ""

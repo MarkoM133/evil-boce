@@ -66,6 +66,22 @@ export function terrainFromText(t) {
   return TERRAINS.find(x => x.toLowerCase() === m[1].toLowerCase()) ?? null;
 }
 
+// Imena abilityja: na kartama su podcrtana (<u>Gomu Gomu no Grab</u>) u retku iznad efekta.
+// Imena idu u abilityNames (redom kojim su na karti), a iz teksta van, da tekst efekta ostane kakav je bio.
+export function abilityNames(t) {
+  return [...(t ?? '').matchAll(/<u>([\s\S]*?)<\/u>/g)].map(m => stripTags(m[1])).filter(Boolean);
+}
+
+export function withoutAbilityNames(t) {
+  return (t ?? '').replace(/<u>[\s\S]*?<\/u>[ \t]*\r?\n?/g, '').replace(/<b>\s*<\/b>/g, '');
+}
+
+function setText(card, raw) {
+  const names = abilityNames(raw);
+  card.text = raw ? cleanText(withoutAbilityNames(raw)) : '';
+  if (names.length) card.abilityNames = names;
+}
+
 export function cleanText(t) {
   return t
     .replace(/^\s*<sprite=3[^>]*>/, '[Range] ')
@@ -189,7 +205,7 @@ function parseCard(node) {
   card.traits = traits ? traits.split('/').map(s => s.trim()).filter(Boolean) : [];
 
   const effect = texts.find(e => Math.abs(e.x) < 10 && e.y < -250 && e.y > -400);
-  card.text = effect ? cleanText(effect.t) : '';
+  setText(card, effect?.t ?? '');
 
   if (type === 'Stage') {
     const m = TERRAIN_RE.exec(card.text);
@@ -235,7 +251,7 @@ function parseLandscape(rawName, els, frame) {
   heroStats(card, readIcons(els, els.filter(e => e.kind === 'text')), problems);
   const traits = at('traits');
   card.traits = traits ? traits.split('/').map(t => t.trim()).filter(Boolean) : [];
-  card.text = cleanText(byIdx.get(IDX.text)?.t ?? '');
+  setText(card, byIdx.get(IDX.text)?.t ?? '');
   card.landscape = true;
   return { skip: false, code, card, problems, variant: rot ? 'rot' : null };
 }

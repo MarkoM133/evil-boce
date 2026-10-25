@@ -54,6 +54,17 @@ test('cleanText: sprite, bold i vodeći Range', () => {
   assert.equal(cleanText('Gains +1000<sprite=2 color=#FFFF00> now .'), 'Gains +1000 Power now.');
 });
 
+test('parser: podcrtano ime abilityja ide u abilityNames, a tekst efekta ostaje isti', () => {
+  const named = { ...HERO, text: '<b><u>Big Grab</u></b>\n' + HERO.text };
+  const [h] = parseCardEngineXml(xml(card(named)));
+  assert.equal(h.card.text, '[Range] Postroll: Hero A heals 2 HP.');
+  assert.deepEqual(h.card.abilityNames, ['Big Grab']);
+  const two = { ...HERO, text: '<u>One</u>\n<b>Postroll:</b> A.\n<u>Two</u>\n<b>Battle Phase:</b> B.' };
+  assert.deepEqual(parseCardEngineXml(xml(card(two)))[0].card.abilityNames, ['One', 'Two']);
+  const [plain] = parseCardEngineXml(xml(card(HERO)));
+  assert.equal(plain.card.abilityNames, undefined, 'no names, no field');
+});
+
 test('parser: Hero, Action, Evolution, Stage, token', () => {
   const r = parseCardEngineXml(xml(card(HERO), card(ACTION), card(EVO), card(STAGE), card(TOKEN)));
   assert.equal(r.length, 5);
