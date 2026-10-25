@@ -1,6 +1,6 @@
 # Evil Boće – karte i deckovi
 
-Web app za igru Evil Boće: uvoz Card Engine exporta u `cards.json`, pregled karata i deck builder (3 heroja, 40 karata, random deck, deck kod). Igra je u `game/` (Godot 4.5).
+Web app za igru Evil Boće: uvoz Card Engine exporta u `cards.json`, pregled karata (s karticama Effect i Look za igru) i deck builder (3 heroja, 40 karata, random deck, deck kod). Igra je u `game/` (Godot 4.5).
 
 Repo ima samo kod. Karte, slike, logo i pravila nisu ovdje; app i igra rade nad zajedničkim Syncthing folderom.
 
@@ -40,7 +40,7 @@ Evil Boce/
   data/sprites/      spriteovi heroja i evolucija (figurina), ID.hash.png; u export/ kao "KOD Ime Sprite.png"
   data/thumbs/       sličice 300 px, data/large/ velike slike 1000 px (JPEG, radi ih Objavi)
   data/changelog.json povijest promjena po verziji baze (piše je app)
-  data/bakugani/     biblioteka oblika bakugana: catalog.json, 3D model (.obj), siva tekstura (.jpg), sličica (.png)
+  data/fx-proposals.json kako igra čita tekst karata (piše ga game/tools/fx_proposals.gd), za karticu Effect
   data/figures/      3D figure heroja (.glb), za igru
   data/audio/        zvukovi, za igru
   data/branding/     logo i ikona igre
@@ -51,9 +51,12 @@ Evil Boce/
   logo.jpg           logo (po želji)
 ```
 
-## TTS (otpisan)
+## Kartice Effect i Look
 
-TTS mod se više ne razvija; zamjenjuje ga igra u `game/`. Kod u `tts/` i TTS dijelovi appa ostaju dok ih igra ne zamijeni.
+- **Effect:** tekst karte, kako ga igra čita, što ne razumije i prijedlog `fx` (jezik efekata: `game/docs/fx-keywords.md`). **Confirm** sprema `fx` u kartu; prazan `fx` znači da igra čita tekst sama. Filter **Needs fx** pokazuje karte koje igra ne razumije, a nemaju potvrđen fx; **Check fx** one kojima se tekst promijenio nakon fx-a. Podatke daje izvještaj igre `data/fx-proposals.json`; nakon Objave ga osvježi: `godot_console --headless --path game -s res://tools/fx_proposals.gd`.
+- **Look:** boja kuglice heroja (tijelo i akcent, u bojama igre), težina (WT) i figurina (sprite).
+
+TTS mod je otpisan i njegov kod je obrisan (10/2026); igra je u `game/`.
 
 ## Testovi
 

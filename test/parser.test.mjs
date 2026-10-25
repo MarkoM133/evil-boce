@@ -182,11 +182,10 @@ test('uvoz u praznu bazu', async () => {
   assert.equal(pub.writes.length, 4);
   const hero = pub.db.cards.find(c => c.id === 'OP9-001');
   assert.equal(hero.wt, 2);
-  assert.equal(hero.bakugan, 'Hero A');
   assert.equal(hero.rev, 1);
   assert.equal(hero.deleted, false);
   assert.match(hero.image, /^images\/OP9-001\.[0-9a-f]{8}\.png$/);
-  assert.deepEqual(Object.keys(hero), ['id', 'name', 'type', 'color', 'stats', 'wt', 'traits', 'text', 'bakugan', 'image', 'imageHash', 'rev', 'deleted']);
+  assert.deepEqual(Object.keys(hero), ['id', 'name', 'type', 'color', 'stats', 'wt', 'traits', 'text', 'image', 'imageHash', 'rev', 'deleted']);
   assert.equal(pub.db.cards.find(c => c.id === 'OP9-002').wt, undefined);
 });
 
@@ -269,11 +268,10 @@ test('promijenjena karta bez PNG-a zadržava staru sliku', async () => {
   assert.equal(next.db.cards.find(c => c.id === 'OP9-002').image, old.image);
 });
 
-test('obsoleteImages: briše se tek kad nova verzija ima Steam URL', () => {
+test('obsoleteImages: stare verzije slika karte, trenutna ostaje', () => {
   const db = { version: 1, cards: [{ id: 'OP9-001', imageHash: 'bbbbbbbb' }] };
   const files = ['OP9-001.aaaaaaaa.png', 'OP9-001.bbbbbbbb.png'];
-  assert.deepEqual(obsoleteImages(db, files, {}), []);
-  assert.deepEqual(obsoleteImages(db, files, { 'OP9-001.bbbbbbbb': 'https://x' }), ['OP9-001.aaaaaaaa.png']);
+  assert.deepEqual(obsoleteImages(db, files), ['OP9-001.aaaaaaaa.png']);
 });
 
 test('thumbPlan: nedostajuće i stare sličice', () => {
@@ -517,14 +515,14 @@ test('uvoz: landscape Evolution s rotiranom verzijom (XML i PNG "(rot)")', async
   assert.match(evo.imageRot, /^images\/OP9-021\.rot\.[0-9a-f]{8}\.png$/);
   assert.equal(pub.writes.length, 3);
   assert.equal(publishedPngPaths(a).size, 3);
-  // nova rotirana slika sama: promjena igre (karta u decku), stara rotirana se smije obrisati kad nova ima Steam URL
+  // nova rotirana slika sama: promjena igre (karta u decku), stara rotirana se smije obrisati
   const b = await analyzeExport({ xmlFiles: [], pngFiles: [png([9], 'export/OP9-021 Hero B, Requiem (rot).png')], db: pub.db });
   assert.deepEqual(b.entries.map(e => [e.id, e.status, e.rotChanged]), [['OP9-021', 'changed', true]]);
   const pub2 = buildPublish(pub.db, b);
   assert.equal(pub2.bumped, true);
   const evo2 = pub2.db.cards.find(c => c.id === 'OP9-021');
   const oldFile = evo.imageRot.split('/')[1];
-  assert.deepEqual(obsoleteImages(pub2.db, [oldFile], { [`OP9-021.rot.${evo2.imageRotHash}`]: 'https://x' }), [oldFile]);
+  assert.deepEqual(obsoleteImages(pub2.db, [oldFile, evo2.imageRot.split('/')[1]]), [oldFile]);
   assert.deepEqual(changelogEntry(pub.db, pub2.db).cards.map(c => [c.id, c.image]), [['OP9-021', true]]);
 });
 

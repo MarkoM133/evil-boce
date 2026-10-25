@@ -24,7 +24,8 @@ function summary(slug, d) {
 }
 
 const LOGO_FILES = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'];
-const BAKUGANI_PATH = 'data/bakugani/catalog.json';
+// Kako igra čita tekst karata (piše ga game/tools/fx_proposals.gd), za karticu Effect.
+const FX_PROPOSALS_PATH = 'data/fx-proposals.json';
 
 // ---------- server ----------
 
@@ -59,12 +60,12 @@ export function serverStore(info) {
       const r = await fetch(CHANGELOG_PATH, { cache: 'no-store' });
       return r.ok ? r.json() : emptyChangelog();
     },
-    // Biblioteka bakugana (oblici, sive teksture, sličice); null ako je nema.
-    async readBakugani() {
-      const r = await fetch(BAKUGANI_PATH, { cache: 'no-store' });
+    // Izvještaj igre o efektima karata; null ako ga nema.
+    async readFxProposals() {
+      const r = await fetch(FX_PROPOSALS_PATH, { cache: 'no-store' });
       return r.ok ? r.json() : null;
     },
-    // Datoteka iz data/ (npr. bakugani/dragonoid.obj).
+    // Datoteka iz data/ (npr. sprites/OP1-001.1a2b3c4d.png).
     async dataUrl(path) {
       return `data/${path}`;
     },
@@ -118,8 +119,8 @@ export function folderStore(root) {
     async readChangelog() {
       return (await readJson(CHANGELOG_PATH)) ?? emptyChangelog();
     },
-    async readBakugani() {
-      return readJson(BAKUGANI_PATH);
+    async readFxProposals() {
+      return readJson(FX_PROPOSALS_PATH);
     },
     async dataUrl(path) {
       const full = `data/${path}`;

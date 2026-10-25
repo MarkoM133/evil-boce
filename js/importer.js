@@ -7,6 +7,7 @@ export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats
 // Polja koja se uređuju samo u appu. Ponovni uvoz ih ne dira.
 // Za igru: fx (efekt karte za igru), fxStatus ('ok' | 'check' | ''), terrain (Stage; iz retka "Terrain:" ili ručno),
 // figure (put do .glb, npr. figures/OP1-001.glb), ballColor i ballColor2 (kuglica: tijelo i akcent), heroSfx.
+// bakugan* su stara TTS polja: ostaju u starim zapisima (igra ih čita kao zadanu boju kuglice), app ih više ne nudi.
 export const APP_FIELDS = ['wt', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fx', 'fxStatus', 'terrain', 'figure', 'ballColor', 'ballColor2', 'heroSfx', 'deleted'];
 // Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
 // fxStatus je samo oznaka za pregled, pa ni on ne diže verziju.
@@ -15,7 +16,7 @@ const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stat
 
 export const DEFAULT_WT = 2;
 
-// Sprite = slika figurine (otvoreni bakugan u TTS-u): "OP1-001 Luffy Sprite.png" ili "Luffy Sprite.png".
+// Sprite = slika figurine (heroj iz otvorene kuglice u igri): "OP1-001 Luffy Sprite.png" ili "Luffy Sprite.png".
 const SPRITE_RE = /\s+sprite$/i;
 const SPRITE_TYPES = ['Hero', 'Evolution'];
 const normName = s => s.replace(/\s*,\s*/g, ', ').trim();
@@ -24,7 +25,7 @@ export function emptyDb() {
   return { version: 0, updated: null, cards: [] };
 }
 
-// Baza kako je app i TTS čitaju: tip Character (do 2026-10-24) je Hero. Datoteka se ne mijenja dok se ne objavi.
+// Baza kako je app i igra čitaju: tip Character (do 2026-10-24) je Hero. Datoteka se ne mijenja dok se ne objavi.
 export function normalizeDb(db) {
   if (!db?.cards?.some(c => c.type === 'Character')) return db;
   return { ...db, cards: db.cards.map(c => (c.type === 'Character' ? { ...c, type: 'Hero' } : c)) };
@@ -102,8 +103,8 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
 
   // 2. PNG: "OP1-012 Sword Slash.png" (ili "OP1-012.png") ide karti po kodu, "Sword Slash.png" po imenu.
   // Isti PNG u više podfoldera -> noviji.
-  // "... Sprite.png" je sprite (figurina u TTS-u), ne slika karte; po imenu se zarez s razmakom ili bez ne razlikuje.
-  // "... (rot).png" je rotirana slika Hero / Evolution karte (portrait, za deck u TTS-u).
+  // "... Sprite.png" je sprite (figurina u igri), ne slika karte; po imenu se zarez s razmakom ili bez ne razlikuje.
+  // "... (rot).png" je rotirana slika Hero / Evolution karte (portrait).
   const pngByCode = new Map();
   const pngByName = new Map();
   const rotByCode = new Map();
@@ -214,7 +215,7 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     if (e.status === 'same' && e.spriteChanged) e.status = 'changed';
   }
 
-  // Rotirana slika (portrait, za deck u TTS-u): samo Hero i Evolution, isto kao sprite.
+  // Rotirana slika (portrait): samo Hero i Evolution, isto kao sprite.
   for (const [rot, found] of [
     ...[...rotByCode].map(([code, r]) => [r, pool.has(code) ? [pool.get(code)] : []]),
     ...[...rotByName].map(([name, r]) => [r, poolByName.get(name) ?? []]),
@@ -253,7 +254,7 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
   if (skipped.length) add(infos, null, `skipped ${skipped.length} ${skipped.length === 1 ? 'PNG that is not a card' : 'PNGs that are not cards'} with a code: ${skipped.join(', ')}`);
 
   // 4. Provjere na bazi kakva će biti nakon Objave.
-  // Heroj mora imati jedinstveno ime (TTS ga veže uz bakugana po imenu, Evolution ga nalazi po imenu).
+  // Heroj mora imati jedinstveno ime (Evolution ga nalazi po imenu).
   // Ostale karte smiju dijeliti ime, ali tada PNG mora počinjati kodom.
   const final = mergedCards(db, entries);
   const live = final.filter(c => !c.deleted);
@@ -271,7 +272,6 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
   const heroes = new Set(live.filter(c => c.type === 'Hero').map(c => c.name));
   for (const c of live) {
     if (c.type === 'Evolution' && !heroes.has(c.hero)) add(errors, c.id, `Evolution: hero "${c.hero}" doesn't exist`);
-    if (c.type === 'Hero' && !c.bakugan) add(warnings, c.id, 'hero without a bakugan');
   }
 
   return { entries, errors, warnings, infos };
@@ -286,11 +286,8 @@ function mergedCards(db, entries) {
 
 function withAppFields(ce, old) {
   const card = { id: ce.id, ...ce };
-  if (ce.type === 'Hero') {
-    card.wt = old?.wt ?? DEFAULT_WT;
-    card.bakugan = old?.bakugan ?? ce.name;
-  }
-  // Ostala app polja (npr. oblik i boja bakugana) ostaju kakva su bila.
+  if (ce.type === 'Hero') card.wt = old?.wt ?? DEFAULT_WT;
+  // Ostala app polja (npr. boja kuglice, fx) ostaju kakva su bila.
   for (const k of APP_FIELDS) if (card[k] === undefined && old?.[k] !== undefined) card[k] = old[k];
   // Redak "Terrain:" u tekstu stagea ima prednost pred ručno odabranim terenom.
   if (ce.type === 'Stage') {
@@ -355,8 +352,8 @@ export function buildPublish(db, analysis, now = new Date()) {
   };
 }
 
-// Izmjena app polja (wt, bakugan, deleted). edits: { [id]: { wt?, bakugan?, deleted? } }
-// Igra (wt, deleted) diže verziju; samo izgled (oblik i boja bakugana) ne, nego se skuplja pod trenutnu verziju.
+// Izmjena app polja (wt, fx, boja kuglice, deleted). edits: { [id]: { polje: vrijednost } }
+// Igra (wt, fx, terrain, deleted) diže verziju; samo izgled (boja kuglice, sprite) ne, nego se skuplja pod trenutnu verziju.
 export function applyAppEdits(db, edits, now = new Date()) {
   let changed = 0;
   let game = 0;
@@ -364,7 +361,7 @@ export function applyAppEdits(db, edits, now = new Date()) {
     const e = edits[c.id];
     if (!e) return c;
     const next = { ...c };
-    // undefined makne polje (npr. druga boja bakugana opet ista kao glavna)
+    // undefined makne polje (npr. druga boja kuglice opet zadana)
     for (const k of APP_FIELDS) if (k in e) { if (e[k] === undefined) delete next[k]; else next[k] = e[k]; }
     if (same(next, c)) return c;
     changed++;
@@ -379,16 +376,15 @@ export function applyAppEdits(db, edits, now = new Date()) {
   return { db: { version: db.version + (game ? 1 : 0), updated: now.toISOString(), cards }, changed, bumped: game > 0 };
 }
 
-// Stare verzije slika (data/images/ID.hash.png) koje se smiju obrisati: samo kad za trenutnu
-// verziju te karte već postoji Steam URL (§3), da master u TTS-u ne ostane bez filea.
-export function obsoleteImages(db, imageFiles, steamUrls) {
+// Stare verzije slika (data/images/ID.hash.png) koje se smiju obrisati: karta ima noviju sliku.
+export function obsoleteImages(db, imageFiles) {
   const current = new Map(db.cards.flatMap(c => [[c.id, c.imageHash], [`${c.id}.rot`, c.imageRotHash]]));
   return imageFiles.filter(f => {
     const m = /^(.+)\.([0-9a-f]+)\.png$/i.exec(f);
     if (!m) return false;
     const [, id, hash] = m;
     const cur = current.get(id);
-    return cur && hash !== cur && !!steamUrls[`${id}.${cur}`];
+    return !!cur && hash !== cur;
   });
 }
 
@@ -401,7 +397,7 @@ export function emptyChangelog() {
 }
 
 // Razlika dvije verzije baze, za zapis u povijest. fields = igra (polja karte, wt), image = slika karte,
-// look = izgled (oblik i boja bakugana, sprite): izgled ne diže verziju i ne broji se kao promjena karte.
+// look = izgled (boja kuglice, sprite): izgled ne diže verziju i ne broji se kao promjena karte.
 export function changelogEntry(oldDb, newDb) {
   const oldById = new Map(oldDb.cards.map(c => [c.id, c]));
   const cards = [];
@@ -466,8 +462,8 @@ export function changesSince(log, since) {
   return out;
 }
 
-// Kratak opis promjene karte: "values, slika", "nova", "maknuta", "izgled: oblik bakugana, sprite".
-const FIELD_LABELS = { bakuganShape: 'bakugan shape', bakuganColor: 'bakugan color', bakuganColor2: 'bakugan accent color', bakugan: 'bakugan', sprite: 'sprite' };
+// Kratak opis promjene karte: "values, slika", "nova", "maknuta", "izgled: boja kuglice, sprite".
+const FIELD_LABELS = { ballColor: 'ball color', ballColor2: 'ball accent color', bakuganShape: 'bakugan shape', bakuganColor: 'bakugan color', bakuganColor2: 'bakugan accent color', bakugan: 'bakugan', sprite: 'sprite' };
 
 export function describeChange(c) {
   const kind = { new: 'new', deleted: 'deleted', restored: 'restored' }[c.kind];
@@ -510,7 +506,7 @@ export function thumbName(card) {
   return card.imageHash ? `${card.id}.${card.imageHash}.jpg` : null;
 }
 
-// Koje sličice treba napraviti i koje su višak (TTS ih ne koristi, pa se stare brišu odmah).
+// Koje sličice treba napraviti i koje su višak (stare se brišu odmah).
 export function thumbPlan(db, thumbFiles) {
   const have = new Set(thumbFiles);
   const wanted = new Set(db.cards.map(thumbName).filter(Boolean));

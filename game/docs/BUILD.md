@@ -71,3 +71,16 @@ Output: `game/build/EvilBoce.exe` (one file, data stays in the shared folder). T
 copies `data/branding/evil-boce.ico` into `game/.branding/` for the exe icon; both
 folders are git-ignored. Export templates 4.5.2 must be installed
 (Editor → Manage Export Templates).
+
+## fx report for the web app
+
+After every Publish of cards, refresh the report the web app's Effect tab reads:
+
+```
+godot_console --headless --path game -s res://tools/fx_proposals.gd
+```
+
+It writes `data/fx-proposals.json` into the shared folder: per card, what the game reads from the
+text, the sentences it does not understand, a proposed fx (the line from
+`game/data/placeholders/card_fx.json` when there is one) and errors in an existing `fx`.
+Cards whose fx Marko confirmed carry it in `cards.json`; the placeholder line is then ignored.
