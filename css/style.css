@@ -937,3 +937,18 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 /* kriške s licem: crtež je lijevih ~44 % slike */
 .slice-art.wide-art { background-size: 230% auto; background-position: 0% 30%; }
 .deck-hero .slice-art.wide-art { background-size: 520% auto; background-position: 6% 28%; }
+
+/* ---------- balans (statistika partija) ---------- */
+
+.balance-block { margin-top: 18px; }
+.balance-block h3 { margin: 0 0 6px; font: italic 800 22px var(--display); }
+.balance-block .small { font-style: normal; font-weight: 400; font-size: 14px; }
+.balance-table th { width: auto; }
+.balance-table td.num { font-variant-numeric: tabular-nums; width: 90px; }
+.balance-table td.rate { width: 220px; }
+.linkish { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; clip-path: none; text-align: left; }
+.linkish:hover { text-decoration: underline; }
+.ratebar { position: relative; display: block; height: 22px; background: var(--surface-2); }
+.ratebar .fillbar { position: absolute; inset: 0 auto 0 0; background: var(--red); opacity: 0.55; }
+.ratebar em { position: relative; padding-left: 8px; font: italic 700 15px/22px var(--display); }
+.ratebar.thin { opacity: 0.55; }

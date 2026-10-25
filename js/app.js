@@ -5,6 +5,7 @@ import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, empty
 import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
 import { BALL_COLORS, DEFAULT_ACCENT, heroDefaultColor, ballColors } from './look.js';
 import { renderTools } from './tools.js';
+import { aggregate, filterMatches, ranked, cardsVersions, RESULTS } from './stats.js';
 import * as fs from './fsdir.js';
 
 const DB_PATH = 'data/cards.json';
@@ -29,6 +30,8 @@ const state = {
   pool: { q: '', type: '', color: '', set: '', trait: '' },
   focus: { color: '', value: 0.6 },
   fxProposals: null, // kako igra čita tekst karata (data/fx-proposals.json), za karticu Effect
+  stats: null, // sažeci partija iz stats/ (kartica Balance); null = još nisu učitani
+  statsFilter: { withBots: true, version: 0 },
 };
 
 const pngUrls = new Map();
@@ -520,7 +523,7 @@ function render() {
 // ---------- adresa: svaki pogled ima svoj #/…, pa gesta ili tipka Natrag vraća korak unatrag ----------
 
 // history nije u izborniku: otvara se klikom na verziju u zaglavlju ili u detalju karte.
-const TAB_SLUG = { import: 'import', browse: 'browse', decks: 'decks', tools: 'tools', history: 'history' };
+const TAB_SLUG = { import: 'import', browse: 'browse', decks: 'decks', balance: 'balance', tools: 'tools', history: 'history' };
 const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]));
 // Stare hrvatske adrese (#/uvoz, #/pregled, #/deckovi/novi) i dalje rade.
 const OLD_SLUG_TAB = { uvoz: 'import', pregled: 'browse', deckovi: 'decks' };
@@ -752,9 +755,10 @@ function renderMain() {
   const tabs = [
     ['browse', 'Browse'],
     ['decks', 'Decks'],
+    ['balance', 'Balance'],
     ['tools', 'Tools'],
   ];
-  const view = { import: renderImport, browse: renderBrowse, decks: renderDecks, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
+  const view = { import: renderImport, browse: renderBrowse, decks: renderDecks, balance: renderBalance, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
@@ -775,6 +779,99 @@ async function lamaModel() {
   const r = await fetch('tools/lama.onnx');
   if (!r.ok) throw new Error('The server has no tools/lama.onnx.');
   return r.arrayBuffer();
+}
+
+// ---------- Balance: statistika partija koje igra zapiše u stats/ (GDD 14) ----------
+
+async function loadStats() {
+  try {
+    state.stats = await state.store.listStats();
+  } catch (e) {
+    state.stats = [];
+    toast(e.message, 'error');
+  }
+  if (state.tab === 'balance') render();
+}
+
+function renderBalance() {
+  if (state.stats === null) {
+    loadStats();
+    return h('section', { class: 'panel' }, h('p', { class: 'muted' }, 'Loading match stats…'));
+  }
+  const f = state.statsFilter;
+  const versions = cardsVersions(state.stats);
+  const list = filterMatches(state.stats, { withBots: f.withBots, cardsVersion: f.version });
+  const a = aggregate(list);
+  const toolbar = h('div', { class: 'toolbar' },
+    h('label', { class: 'check' },
+      h('input', { type: 'checkbox', checked: f.withBots, onchange: e => { f.withBots = e.target.checked; render(); } }),
+      'Include games against the bot'),
+    versions.length > 1 ? h('select', { 'aria-label': 'Card version', onchange: e => { f.version = Number(e.target.value); render(); } },
+      h('option', { value: 0 }, 'All card versions'),
+      versions.map(v => h('option', { value: v, selected: f.version === v }, `Cards v${v}${v === state.db.version ? ' (now)' : ''}`))) : null,
+    h('button', { class: 'ghost', onclick: () => { state.stats = null; render(); } }, 'Reload'));
+  if (!list.length) {
+    return h('section', { class: 'panel' }, toolbar,
+      h('p', { class: 'muted' }, state.stats.length
+        ? 'No matches with these filters.'
+        : 'No matches yet. The game writes a short summary to stats/ in the shared folder after every finished match.'));
+  }
+  const ends = Object.entries(a.results).sort((x, y) => y[1] - x[1]).map(([k, n]) => `${RESULTS[k] ?? k} ${n}`).join('  ·  ');
+  return h('section', { class: 'panel balance' }, toolbar,
+    h('div', { class: 'stats' },
+      stat('matches', a.matches, ''),
+      stat('turns per match', a.avgTurns.toFixed(1), ''),
+      stat('battles per match', a.avgBattles.toFixed(1), ''),
+      a.bots.picks ? stat('bot wins', `${a.bots.rate}%`, '') : null,
+      h('p', { class: 'muted' }, `How matches end: ${ends}`)),
+    balanceTable('Heroes', 'Times in a deck and how often that player won.', ranked(a.heroes), 'hero'),
+    balanceTable('Stages', 'Times brought and how often that player won.', ranked(a.stages), 'stage'),
+    Object.keys(a.decks).length ? balanceTable('Saved decks', 'Random decks are left out.', ranked(a.decks), 'deck') : null,
+    cardsTable(a));
+}
+
+// Ime karte s točkicom boje; klik otvara kartu u pregledu.
+function cardLink(id) {
+  const c = cardById(id);
+  return h('button', { class: 'linkish', onclick: () => c && showCard(id) },
+    c?.color ? h('span', { class: `dot c-${c.color}` }) : null, ' ', c?.name ?? id);
+}
+
+// Tablica heroja / stageova / deckova: ime, odigrano, pobjede, postotak s trakom.
+function balanceTable(title, note, rows, kind) {
+  const head = { hero: 'Hero', stage: 'Stage', deck: 'Deck' }[kind];
+  return h('div', { class: 'balance-block' },
+    h('h3', {}, title, h('span', { class: 'muted small' }, `  ${note}`)),
+    h('table', { class: 'balance-table' },
+      h('thead', {}, h('tr', {}, h('th', {}, head), h('th', {}, 'Played'), h('th', {}, 'Won'), h('th', {}, 'Win rate'))),
+      h('tbody', {}, rows.map(r => h('tr', {},
+        h('td', {}, kind === 'deck' ? r.id : cardLink(r.id)),
+        h('td', { class: 'num' }, r.picks),
+        h('td', { class: 'num' }, r.wins),
+        h('td', { class: 'rate' }, rateBar(r.rate, r.picks)))))));
+}
+
+// Postotak pobjeda s trakom; s manje od 5 partija je bljeđi (premalo za zaključak).
+function rateBar(rate, n) {
+  if (rate === null) return '–';
+  return h('span', { class: `ratebar${n < 5 ? ' thin' : ''}`, title: n < 5 ? 'Fewer than 5 matches: too few to tell' : '' },
+    h('span', { class: 'fillbar', style: `width: ${rate}%` }), h('em', {}, `${rate}%`));
+}
+
+function cardsTable(a) {
+  const rows = Object.entries(a.cards).map(([id, r]) => ({ id, ...r })).sort((x, y) => y.plays - x.plays || x.id.localeCompare(y.id));
+  // Karte iz baze koje nijednom nisu odigrane (bez heroja, stageova i coreova).
+  const unplayed = state.db.cards.filter(c => !c.deleted && DECK_TYPES.includes(c.type) && !a.cards[c.id]);
+  return h('div', { class: 'balance-block' },
+    h('h3', {}, 'Cards played', h('span', { class: 'muted small' }, '  Actions, equipment, assists and evolutions.')),
+    rows.length ? h('table', { class: 'balance-table' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Card'), h('th', {}, 'Times'), h('th', {}, 'In matches'), h('th', {}, 'Per match'))),
+      h('tbody', {}, rows.map(r => h('tr', {},
+        h('td', {}, cardLink(r.id)),
+        h('td', { class: 'num' }, r.plays),
+        h('td', { class: 'num' }, r.matches),
+        h('td', { class: 'num' }, r.perMatch.toFixed(2)))))) : null,
+    unplayed.length ? h('p', { class: 'muted' }, `Never played (${unplayed.length}): ${unplayed.map(c => c.name).join(', ')}`) : null);
 }
 
 // ---------- Uvoz ----------

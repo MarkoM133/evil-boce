@@ -80,6 +80,10 @@ export function serverStore(info) {
     async listDecks() {
       return json(await fetch('api/decks', { cache: 'no-store' }));
     },
+    // Sažeci odigranih partija iz stats/ (kartica Balance).
+    async listStats() {
+      return json(await fetch('api/stats', { cache: 'no-store' }));
+    },
     async readDeck(slug) {
       return json(await fetch(`api/decks/${slug}`, { cache: 'no-store' }));
     },
@@ -150,6 +154,19 @@ export function folderStore(root) {
         if (f) return URL.createObjectURL(f);
       }
       return null;
+    },
+    async listStats() {
+      const out = [];
+      for (const n of await fs.listFileNames(root, 'stats')) {
+        if (!n.endsWith('.json')) continue;
+        try {
+          const m = await readJson(`stats/${n}`);
+          if (m) out.push(m);
+        } catch {
+          // pokvarena datoteka se preskače
+        }
+      }
+      return out;
     },
     async listDecks() {
       const out = [];

@@ -132,6 +132,25 @@ async function api(req, res, parts) {
     const db = await readJson(path.join(cfg.drive, 'data', 'cards.json'));
     return send(res, 200, { folder: path.basename(cfg.drive), version: db?.version ?? 0, cards: db?.cards.length ?? 0, logo: (await findLogo()) ? 'logo' : null });
   }
+  // Sažeci partija koje igra piše u stats/ (kartica Balance); samo čitanje.
+  if (what === 'stats' && req.method === 'GET') {
+    let names = [];
+    try {
+      names = (await fs.readdir(path.join(cfg.drive, 'stats'))).filter(n => n.endsWith('.json'));
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+    }
+    const list = [];
+    for (const n of names) {
+      try {
+        const m = await readJson(path.join(cfg.drive, 'stats', n));
+        if (m) list.push(m);
+      } catch {
+        // pokvarena datoteka se preskače
+      }
+    }
+    return send(res, 200, list);
+  }
   if (what !== 'decks') return fail(res, 404, 'unknown API');
 
   if (!slug) {
