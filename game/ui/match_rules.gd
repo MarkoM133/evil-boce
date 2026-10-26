@@ -128,6 +128,8 @@ func _build() -> void:
 	_map_box = UiTheme.box(Palette.PANEL_SOLID, 0, Color(0, 0, 0, 0), 16, 12)
 	_map_box.set_border_width_all(2)
 	_map_box.border_color = Color(0, 0, 0, 0)
+	# Leaning like START MATCH beside them (Marko 2026-10-26), the content upright inside.
+	_lean(_map_box)
 	_map_tile.add_theme_stylebox_override("panel", _map_box)
 	_map_tile.custom_minimum_size = Vector2(330, 0)
 	add_child(_map_tile)
@@ -161,6 +163,7 @@ func _build() -> void:
 	_rules_box = UiTheme.box(Palette.PANEL_SOLID, 0, Color(0, 0, 0, 0), 18, 12)
 	_rules_box.set_border_width_all(2)
 	_rules_box.border_color = Color(0, 0, 0, 0)
+	_lean(_rules_box)
 	_rules_tile.add_theme_stylebox_override("panel", _rules_box)
 	_rules_tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_child(_rules_tile)
@@ -509,3 +512,11 @@ func _arrow(text: String, on_press: Callable) -> Button:
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.pressed.connect(on_press)
 	return b
+
+
+## A tile box leaning like the slanted buttons, with room so the content clears the slant.
+static func _lean(sb: StyleBoxFlat) -> void:
+	sb.skew = Vector2(UiTheme.SKEW, 0)
+	sb.anti_aliasing = true
+	sb.content_margin_left += 22
+	sb.content_margin_right += 22

@@ -240,13 +240,6 @@ func _rebuild() -> void:
 	caption.add_theme_constant_override("separation", 10)
 	name_box.add_child(caption)
 	caption.add_child(UiTheme.label("DECK", 13, Palette.GOLD))
-	if not _view_only:
-		var builder: Button = WebApp.link("DECK BUILDER", "decks/new", "Build or change decks in the web app; saved decks show here.")
-		builder.visible = not _locked and not _deck_locked and not _drafted
-		builder.add_theme_font_size_override("font_size", 12)
-		builder.add_theme_constant_override("h_separation", 2)
-		builder.custom_minimum_size = Vector2(0, 18)
-		caption.add_child(builder)
 	var name_l: Label = UiTheme.label("DRAFTED DECK" if _drafted else (_shown_deck_name().to_upper() if _view_only else deck_name().to_upper()), 28)
 	name_l.clip_text = true
 	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -280,6 +273,12 @@ func _rebuild() -> void:
 		var same: Label = UiTheme.label("SERIES  ·  THE DECK STAYS", 12, Palette.GOLD)
 		same.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		caption.add_child(same)
+	# The web app's deck builder, on the right of the deck row (Marko 2026-10-26).
+	if not _view_only and not _locked and not _deck_locked and not _drafted:
+		var builder: Button = WebApp.link("DECK BUILDER", "decks/new", "Build or change decks in the web app; saved decks show here.")
+		builder.add_theme_font_size_override("font_size", 14)
+		builder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		deck_row.add_child(builder)
 	if deck_index == 0 and not deck_fixed_:
 		var roll := Button.new()
 		roll.text = "REROLL" if not built.is_empty() else "BUILD"
