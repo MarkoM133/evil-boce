@@ -14,7 +14,7 @@ export const COLORS = {
 export const COLOR_NAMES = Object.values(COLORS);
 
 // Character je preimenovan u Hero (2026-10-24); stari zapisi s 'Character' čitaju se kao Hero (normalizeDb).
-// Core (kodovi CR1-001…) je za igru: kuglice na mapi, ne idu u deck.
+// Core (kodovi Core-001…, kao Stage-001) je za igru: kuglice na mapi, ne idu u deck.
 export const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core'];
 export const DECK_TYPES = ['Evolution', 'Action', 'Equipment', 'Assist'];
 export const HERO_TYPES = ['Hero', 'Evolution'];
@@ -45,11 +45,18 @@ const ICONS = {
 export const STAT_KEYS = ['hp', 'dmg', 'pwr', 'rng', 'kb'];
 
 const SPRITES = { 0: 'HP', 1: 'DMG', 2: 'Power', 3: 'Range', 4: 'Knockback' };
+// Isti sprite kao stat (Core ima vrijednost u tekstu: "+2000<sprite=2 …>").
+const SPRITE_STATS = { 0: 'hp', 1: 'dmg', 2: 'pwr', 3: 'rng', 4: 'kb' };
 
-// Kod karte: SET-001, SET je veliko slovo pa do 5 slova ili brojki (OP1, JO1, CR1, DBZ, JJ5, OPM, Stage).
+// Kod karte: SET-001, SET je veliko slovo pa do 5 slova ili brojki (OP1, JO1, DBZ, JJ5, OPM; Stage i Core su posebni: Stage-001, Core-001).
 // Samo "OP" bez broja nije set: One Piece uvijek ima broj seta.
-export const CODE_RE = /^(?:Stage|(?!OP-)[A-Z][A-Z0-9]{1,5})-\d{3}$/;
+export const CODE_RE = /^(?:Stage|Core|(?!OP-)[A-Z][A-Z0-9]{1,5})-\d{3}$/;
 const LOOSE_CODE_RE = /^[A-Za-z][A-Za-z0-9]{0,5}-\d+$/;
+const CORE_NAME_RE = /^(Core-\d{3})\s/;
+// Vrsta corea kad je karta ne napiše (ni tag ni prvi redak teksta): minus je Debuff, a plus od ovog
+// iznosa naviše Major (set: Buff +2000 / +2 / +1, Major +4000 / +4 / +2).
+const CORE_MAJOR = { pwr: 4000, dmg: 4, kb: 2 };
+const CORE_KINDS = ['Buff', 'Major', 'Debuff'];
 const NUM_RE = /^[+-]?\d+$/;
 
 const COST_Y = 461;
@@ -154,8 +161,11 @@ function parseCard(node) {
   let code = texts.find(e => CODE_RE.test(e.t))?.t;
   if (!code) {
     const loose = texts.find(e => LOOSE_CODE_RE.test(e.t))?.t;
-    if (!loose) return { skip: true, name: rawName, coreWithoutCode: texts.some(e => e.t === 'Core') };
-    code = readCode(loose, problems);
+    // Core često nosi kod samo u imenu karte ("Core-001 +2000 Power"), bez teksta s kodom.
+    const inName = CORE_NAME_RE.exec(rawName)?.[1];
+    if (loose) code = readCode(loose, problems);
+    else if (inName) code = inName;
+    else return { skip: true, name: rawName, coreWithoutCode: texts.some(e => e.t === 'Core') };
   }
   // Card Engine PNG nazove po imenu karte, pa frend u ime stavi i kod ("JO1-001 Giorno Giovanna").
   // Kod je već id karte, pa se iz imena makne.
@@ -163,6 +173,7 @@ function parseCard(node) {
 
   let type = TYPE_TEXTS[texts.find(e => Object.hasOwn(TYPE_TEXTS, e.t))?.t];
   if (!type && code.startsWith('Stage-')) type = 'Stage';
+  if (!type && code.startsWith('Core-')) type = 'Core';
   if (!type) problems.push({ level: 'error', msg: 'no card type' });
 
   const card = { id: code, name, type: type ?? null };
@@ -192,6 +203,7 @@ function parseCard(node) {
   if (HERO_TYPES.includes(type)) {
     heroStats(card, ordered, problems);
   } else if (type && type !== 'Stage') { // i Core: +2000 Power i sl. su bonus
+    if (type === 'Core') Object.assign(ordered, inlineStats(texts));
     const signed = Object.entries(ordered).filter(([, v]) => /^[+-]/.test(v));
     const plain = Object.entries(ordered).filter(([, v]) => !/^[+-]/.test(v));
     card.bonus = Object.fromEntries(signed.map(([k, v]) => [k, parseInt(v, 10)]));
@@ -206,6 +218,10 @@ function parseCard(node) {
 
   const effect = texts.find(e => Math.abs(e.x) < 10 && e.y < -250 && e.y > -400);
   setText(card, effect?.t ?? '');
+  if (type === 'Core' && !card.traits.some(t => CORE_KINDS.includes(t)) && !CORE_KINDS.includes(card.text.split('\n')[0].trim())) {
+    const kind = coreKind(card.bonus ?? {});
+    if (kind) card.traits.push(kind);
+  }
 
   if (type === 'Stage') {
     const m = TERRAIN_RE.exec(card.text);
@@ -254,4 +270,22 @@ function parseLandscape(rawName, els, frame) {
   setText(card, byIdx.get(IDX.text)?.t ?? '');
   card.landscape = true;
   return { skip: false, code, card, problems, variant: rot ? 'rot' : null };
+}
+
+// Vrsta corea iz bonusa (CORE_MAJOR); null kad bonusa nema.
+function coreKind(bonus) {
+  const entries = Object.entries(bonus);
+  if (!entries.length) return null;
+  if (entries.some(([, v]) => v < 0)) return 'Debuff';
+  return entries.some(([k, v]) => CORE_MAJOR[k] !== undefined && v >= CORE_MAJOR[k]) ? 'Major' : 'Buff';
+}
+
+// Core s vrijednošću u tekstu umjesto uz ikonu: "+2000<sprite=2 color=#FFFF00>" -> { pwr: '+2000' }.
+function inlineStats(texts) {
+  const out = {};
+  for (const e of texts) {
+    const m = /^\s*([+-]\d+)\s*<sprite=(\d+)[^>]*>\s*$/.exec(e.t);
+    if (m && SPRITE_STATS[m[2]]) out[SPRITE_STATS[m[2]]] = m[1];
+  }
+  return out;
 }

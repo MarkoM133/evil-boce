@@ -81,7 +81,7 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
     }
     const seenHere = new Set();
     for (const p of parsed) {
-      if (p.skip && p.coreWithoutCode) { add(errors, null, `${f.path}: Core card "${p.name}" has no code; Core cards need one (CR1-001)`); continue; }
+      if (p.skip && p.coreWithoutCode) { add(errors, null, `${f.path}: Core card "${p.name}" has no code; Core cards need one (Core-001)`); continue; }
       if (p.skip) { tokenCount++; continue; }
       if (p.variant === 'rot') { rotOnly.set(p.code, { ...p, file: f.path }); continue; }
       if (seenHere.has(p.code)) add(errors, p.code, `${f.path}: code appears twice in the same XML`);

@@ -30,7 +30,7 @@ EB1|v6|XX1-001,XX1-002,XX1-003|XX1-010*4,XX1-011*2,XX1-020*4
 - Verzija mora biti `v` i cijeli broj.
 - Prazan treći ili četvrti dio znači da nema heroja ili karata.
 - Karta koja se ponavlja zbraja se (`A*2,A*1` je `A*3`).
-- Kodovi karata imaju oblik `SET-001` (npr. `OP1-001`, `JO1-012`, `CR1-001`, `Stage-001`); uz dekodiranje se ne provjeravaju, nego tek uz provjeru decka.
+- Kodovi karata imaju oblik `SET-001` (npr. `OP1-001`, `JO1-012`, `Stage-001`, `Core-001`); uz dekodiranje se ne provjeravaju, nego tek uz provjeru decka.
 
 ## Verzija baze
 

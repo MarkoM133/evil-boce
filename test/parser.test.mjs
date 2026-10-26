@@ -552,15 +552,26 @@ test('kodovi: JO1, CR1 i Stage su ispravni', () => {
 test('Core: s kodom je karta bez boje s bonusom, bez koda je greška, token bez koda se i dalje preskače', async () => {
   const CORE = { name: '+2000 Power', code: 'CR1-001', type: 'Core', color: null, icons: { pwr: '+2000' }, text: '' };
   const [c] = parseCardEngineXml(xml(card(CORE)));
-  assert.deepEqual(c.card, { id: 'CR1-001', name: '+2000 Power', type: 'Core', color: null, bonus: { pwr: 2000 }, traits: [], text: '' });
+  assert.deepEqual(c.card, { id: 'CR1-001', name: '+2000 Power', type: 'Core', color: null, bonus: { pwr: 2000 }, traits: ['Buff'], text: '' });
   assert.deepEqual(c.problems, []);
   const a = await analyzeExport({
     xmlFiles: [{ path: 'export/cores.xml', text: xml(card({ ...CORE, code: undefined }), card(TOKEN)), lastModified: 1 }],
     pngFiles: [],
     db: emptyDb(),
   });
-  assert.deepEqual(a.errors.map(e => e.msg), ['export/cores.xml: Core card "+2000 Power" has no code; Core cards need one (CR1-001)']);
+  assert.deepEqual(a.errors.map(e => e.msg), ['export/cores.xml: Core card "+2000 Power" has no code; Core cards need one (Core-001)']);
   assert.ok(a.infos.some(i => /skipped 1 card without a code/.test(i.msg)));
+});
+
+test('Core kao u Card Engineu: kod samo u imenu, vrijednost u tekstu, vrsta iz bonusa', () => {
+  const core = (name, value) => card({ name, color: null, extra: [el('text', value, 0, 0)] });
+  const parsed = parseCardEngineXml(xml(core('Core-001 +2000 Power', '+2000<sprite=2 color=#FFFF00>'),
+    core('Core-005 +4 Damage', '+4<sprite=1 color=#FF0000>'), core('Core-009 -1 Knockback', '-1<sprite=4 color=#0000FF>')));
+  assert.deepEqual(parsed.map(p => [p.card.id, p.card.name, p.card.type, p.card.bonus, p.card.traits, p.problems.length]), [
+    ['Core-001', '+2000 Power', 'Core', { pwr: 2000 }, ['Buff'], 0],
+    ['Core-005', '+4 Damage', 'Core', { dmg: 4 }, ['Major'], 0],
+    ['Core-009', '-1 Knockback', 'Core', { kb: -1 }, ['Debuff'], 0],
+  ]);
 });
 
 test('teren stagea: redak "Terrain:" iz teksta, inače ostaje ručno odabran; nepoznat teren je upozorenje', async () => {
