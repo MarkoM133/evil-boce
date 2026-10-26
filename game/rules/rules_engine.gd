@@ -591,7 +591,7 @@ func core_return_error(s: GameState, c: CoreState, a: Vector2i) -> String:
 
 ## Feeds the physics result of the pending knockbacks (GDD 10, 2026-10-26): every ball the sim
 ## moved lands where it stopped, with cores picked, stages revealed and ring-outs as in a roll;
-## a knocked hero takes `wall_damage` once for every ball it hit. Then the match goes on.
+## a knocked hero takes `wall_damage` once for every ball or wall it hit. Then the match goes on.
 func apply_knockback(s: GameState, o: RollOutcome) -> String:
 	if s.pending_knockbacks.is_empty():
 		return "no knockback waiting"
@@ -607,9 +607,10 @@ func apply_knockback(s: GameState, o: RollOutcome) -> String:
 		_apply_result(s, h, r)
 		if asked.has(h.id):
 			s.event("knockback", {"hero": h.id, "from": Hex.to_json(from), "to": Hex.to_json(h.hex),
-				"steps": asked[h.id], "physics": true, "hits": r.collisions.size()})
-			if h.is_on_map() and not r.collisions.is_empty():
-				hero_damage(s, h, r.collisions.size() * s.settings.wall_damage)
+				"steps": asked[h.id], "physics": true, "hits": r.collisions.size() + r.walls_hit})
+			var hits: int = r.collisions.size() + r.walls_hit
+			if h.is_on_map() and hits > 0:
+				hero_damage(s, h, hits * s.settings.wall_damage)
 	s.event("knockback_done", {"heroes": asked.keys()})
 	_check_win(s)
 	_continue(s)

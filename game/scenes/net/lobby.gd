@@ -113,6 +113,12 @@ func _build() -> void:
 	join_btn.add_theme_font_size_override("font_size", 26)
 	join_btn.pressed.connect(_join)
 	join_row.add_child(join_btn)
+	var watch_btn := Button.new()
+	watch_btn.text = "WATCH"
+	watch_btn.tooltip_text = "Join as a spectator: see the match with both hands hidden"
+	watch_btn.add_theme_font_size_override("font_size", 26)
+	watch_btn.pressed.connect(func() -> void: _join(true))
+	join_row.add_child(watch_btn)
 	var join_info := Label.new()
 	join_info.text = "Both need the same game version and the shared folder synced."
 	join_info.add_theme_color_override("font_color", Palette.MUTED)
@@ -249,7 +255,7 @@ func _enter_room(as_host: bool) -> void:
 	_wait_host.visible = as_host
 	_rules.set_editable(as_host)
 	_start_btn.visible = as_host
-	_ready_btn.visible = not as_host
+	_ready_btn.visible = not as_host and not _watching()
 	_ready_btn.set_pressed_no_signal(false)
 	_ready_btn.text = "READY"
 	_ready_btn.theme_type_variation = &"Primary"
@@ -321,7 +327,7 @@ func _start() -> void:
 
 # --- join -------------------------------------------------------------------------------
 
-func _join() -> void:
+func _join(spectate: bool = false) -> void:
 	if client != null:
 		return
 	var address: String = _address.text.strip_edges()
@@ -332,7 +338,7 @@ func _join() -> void:
 	GameSettings.set_last_host(address)
 	client = NetClient.new(GameSettings.player_name(), _version(), db.version)
 	client.name = "NetClient"
-	var err: String = client.connect_to(address)
+	var err: String = client.connect_to(address, NetProtocol.DEFAULT_PORT, spectate)
 	if not err.is_empty():
 		_status.text = err
 		client.free()
@@ -345,7 +351,7 @@ func _join() -> void:
 
 func _wire_client() -> void:
 	client.welcomed.connect(func(_slot: int) -> void:
-		_status.text = "Connected. Pick a deck and press Ready."
+		_status.text = "Watching. The match starts when the host presses START." if client.spectating else "Connected. Pick a deck and press Ready."
 		_enter_room(false))
 	client.rejected.connect(func(why: String) -> void:
 		_status.text = "Rejected: " + why
@@ -392,6 +398,8 @@ func _drop_client() -> void:
 
 ## Your deck to the table, with your picks as the other player sees them (random stays "?").
 func _send_deck() -> void:
+	if _watching():
+		return
 	var problems: PackedStringArray = _card.problems()
 	_ready_btn.disabled = not problems.is_empty()
 	var saved: Dictionary = _card.saved_deck()
@@ -416,12 +424,16 @@ func _refresh() -> void:
 	var seats: Array = host.public_seats() if host != null else (client.players if client != null else [])
 	var my_slot: int = host.host_slot if host != null else (client.slot if client != null else -1)
 	var other: Dictionary = {}
+	var watching: bool = _watching()
 	for s: Variant in seats:
 		var d: Dictionary = JsonUtil.as_dict(s)
 		var slot: int = JsonUtil.as_int(d.get("slot", 0))
-		if slot == my_slot:
+		if slot == my_slot or (watching and slot == 0):
+			# A spectator sees seat 0 on the left and seat 1 on the right, both read-only.
 			_card.set_header(str(d.get("name", GameSettings.player_name())), slot)
-			_tags(_card, d, true)
+			if watching:
+				_card.show_only(JsonUtil.as_dict(d.get("shown", {})))
+			_tags(_card, d, not watching)
 		elif other.is_empty():
 			other = d
 	_opp.visible = not other.is_empty()
@@ -435,7 +447,7 @@ func _refresh() -> void:
 	var series: MatchSeries = MatchSeries.from_dict(sd) if not sd.is_empty() else null
 	var in_series: bool = series != null and series.games > 0 and not series.is_over()
 	_series.visible = in_series
-	if in_series:
+	if in_series and not watching:
 		_series.text = "SERIES %s  ·  GAME %d NEXT  ·  THE DECKS STAY, PICK YOUR STAGES AND CORES" % [series.score(), series.games + 1]
 		if my_slot >= 0 and my_slot < series.decks.size():
 			var want: Dictionary = JsonUtil.as_dict(series.decks[my_slot])
@@ -446,15 +458,15 @@ func _refresh() -> void:
 				_card.swap_handler = _swap if has_side else Callable()
 				_card.set_fixed_deck(want)
 				_send_deck()
-	else:
+	elif not watching:
 		var m: String = _rules.settings.mode
 		_card.set_sideboard_mode(_rules.settings.series_wins > 1 and m != "draft" and m != "chaos")
 	_rules.set_editable(host != null and not in_series)
 	if host == null:
 		_rules.set_settings(MatchSettings.from_dict(client.settings if client != null else {}))
 	# Chaos (GDD 13): everyone plays random decks, stages and cores; a locked card is sent again.
-	var locked_a: bool = _card.set_locked_random(_rules.settings.mode == "chaos")
-	var locked_b: bool = _card.set_drafted(_rules.settings.mode == "draft")
+	var locked_a: bool = not watching and _card.set_locked_random(_rules.settings.mode == "chaos")
+	var locked_b: bool = not watching and _card.set_drafted(_rules.settings.mode == "draft")
 	if locked_a or locked_b:
 		_send_deck()
 	if host != null:
@@ -486,6 +498,11 @@ func _swap() -> void:
 				return
 			_card.set_fixed_deck(JsonUtil.as_dict(series.decks[slot]))
 			_send_deck())
+
+
+## Joined as a spectator (WATCH): no deck, no Ready, both seats shown read-only.
+func _watching() -> bool:
+	return client != null and client.spectating
 
 
 ## A seat's state as chips in its card header: host, bot, ready, away, no deck; the host can

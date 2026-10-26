@@ -20,7 +20,7 @@ without a scene; nothing else changes.
 
 | From | `t` | Fields | When |
 |---|---|---|---|
-| guest | `hello` | name, game_version, cards_version, net_version | right after the link is up; also on reconnect |
+| guest | `hello` | name, game_version, cards_version, net_version, spectate | right after the link is up; also on reconnect. `spectate`: only watch; the host answers slot -1, sends every state with both hands hidden and takes no moves |
 | host | `welcome` / `reject` | slot, players, settings / reason | answer to hello |
 | guest | `deck`, `ready` | engine deck dict / bool | lobby |
 | guest | `draft_pick` | id | Draft mode: the guest takes a hero or a card from the pack; refused with `refused` |

@@ -85,6 +85,17 @@ func _go() -> void:
 	await create_timer(0.5).timeout
 	_check(client.state != null, "client has a state")
 	_check(host.add_bot("hard", {}) == "the table is full", "no third seat in 1v1")
+	# A spectator: slot -1, a state with both hands hidden, never a seat.
+	var watcher := NetClient.new("Watcher", "0.1.0", db.version)
+	root.add_child(watcher)
+	_check(watcher.connect_to("127.0.0.1", PORT, true) == "", "watcher connects")
+	await create_timer(0.8).timeout
+	_check(watcher.spectating and watcher.slot == -1, "watcher is a spectator (slot %d)" % watcher.slot)
+	_check(watcher.state != null and watcher.state.player(0).hand.size() > 0 and watcher.state.player(0).hand[0] == NetProtocol.PLACEHOLDER_CARD, "watcher sees no hand")
+	_check(host.seats.size() == 2, "watcher took no seat")
+	watcher.send_move(Move.make(Move.MULLIGAN, 0, {"keep": true}))
+	await create_timer(0.3).timeout
+	_check(not host.state().player(0).mulligan_done, "a watcher cannot move")
 
 	# The match scene as the client.
 	MatchLaunch.config = {"net": {"role": "client", "node": client}, "settings": MatchSettings.from_dict(client.settings), "decks": [], "bots": PackedInt32Array(), "seed": 0}

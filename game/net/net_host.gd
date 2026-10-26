@@ -43,6 +43,8 @@ var _series_filed: bool = false
 ## The draft while it runs (Draft mode, start_draft); null otherwise.
 var draft: DraftState
 var _draft_seed: int = 0
+## Spectators (GDD 2): peers that only watch; they get every state as nobody (all hands hidden).
+var watchers: Array[int] = []
 var game_version: String = ""
 var cards_version: int = 0
 ## Seats: [{slot, name, peer (0 = host, -1 = bot), ready, bot, bot_level, deck, connected}]
@@ -273,6 +275,8 @@ func _send_states() -> void:
 		var p: int = JsonUtil.as_int(s.get("peer", -1))
 		if p > 0 and JsonUtil.as_bool(s.get("connected", false)):
 			link.send(p, {"t": NetProtocol.STATE, "state": NetProtocol.redact(full, JsonUtil.as_int(s["slot"]))})
+	for p: int in watchers:
+		link.send(p, {"t": NetProtocol.STATE, "state": NetProtocol.redact(full, -1)})
 	if recorder.state.is_over():
 		if series != null and not _series_filed:
 			_series_filed = true
@@ -348,6 +352,22 @@ func _finish_draft() -> void:
 	start(_draft_seed + 1)
 
 
+## A spectator: slot -1, the lobby and every state with both hands hidden, never a move.
+func _welcome_watcher(peer: int, name: String) -> void:
+	if not watchers.has(peer):
+		watchers.append(peer)
+	link.send(peer, {"t": NetProtocol.WELCOME, "slot": -1, "name": name, "players": public_seats(), "settings": settings.to_dict()})
+	if started:
+		link.send(peer, {"t": NetProtocol.START, "settings": settings.to_dict(), "players": recorder.record.players,
+			"seed": recorder.record.seed, "cards_version": cards_version})
+		link.send(peer, {"t": NetProtocol.STATE, "state": NetProtocol.redact(recorder.state.to_dict(), -1)})
+		if paused:
+			link.send(peer, {"t": NetProtocol.PAUSED, "by": paused_by, "name": str(seat(paused_by).get("name", ""))})
+	else:
+		link.send(peer, {"t": NetProtocol.LOBBY, "players": public_seats(), "settings": settings.to_dict(), "again": false,
+			"series": series.to_dict() if series != null else {}})
+
+
 # --- messages ---------------------------------------------------------------------------------
 
 func _on_message(peer: int, msg: Dictionary) -> void:
@@ -356,6 +376,8 @@ func _on_message(peer: int, msg: Dictionary) -> void:
 		_on_hello(peer, msg)
 		return
 	var s: Dictionary = seat_of_peer(peer)
+	if s.is_empty() and watchers.has(peer):
+		return
 	if s.is_empty():
 		link.send(peer, {"t": NetProtocol.REJECT, "reason": "say hello first"})
 		return
@@ -411,6 +433,9 @@ func _on_hello(peer: int, msg: Dictionary) -> void:
 	var name: String = str(msg.get("name", "")).strip_edges()
 	if name.is_empty():
 		name = "Player %d" % (seats.size() + 1)
+	if JsonUtil.as_bool(msg.get("spectate", false)):
+		_welcome_watcher(peer, name)
+		return
 	if name == str(seat(host_slot).get("name", "")):
 		link.send(peer, {"t": NetProtocol.REJECT, "reason": "the host is called %s too; pick another name" % name})
 		return
@@ -448,6 +473,9 @@ func _on_hello(peer: int, msg: Dictionary) -> void:
 
 ## A client dropped: in a match the game pauses and waits (GDD 11), in the lobby the seat goes.
 func _on_peer_left(peer: int) -> void:
+	if watchers.has(peer):
+		watchers.erase(peer)
+		return
 	var s: Dictionary = seat_of_peer(peer)
 	if s.is_empty():
 		return

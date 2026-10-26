@@ -35,6 +35,9 @@ var series: Dictionary = {}
 var draft: Dictionary = {}
 var state: GameState
 var started: bool = false
+## Only watching (joined with spectate): slot -1, no moves.
+var spectating: bool = false
+var _spectate: bool = false
 var paused: bool = false
 
 
@@ -51,13 +54,14 @@ func _init(my_name_: String, game_version_: String, cards_version_: int) -> void
 	link.link_failed.connect(func(why: String) -> void: disconnected.emit(why))
 
 
-func connect_to(address: String, port: int = NetProtocol.DEFAULT_PORT) -> String:
+func connect_to(address: String, port: int = NetProtocol.DEFAULT_PORT, spectate: bool = false) -> String:
+	_spectate = spectate
 	return link.join(address, port)
 
 
 func _hello() -> void:
 	link.send(1, {"t": NetProtocol.HELLO, "name": my_name, "game_version": game_version,
-		"cards_version": cards_version, "net_version": NetProtocol.VERSION})
+		"cards_version": cards_version, "net_version": NetProtocol.VERSION, "spectate": _spectate})
 
 
 func send_move(m: Move) -> void:
@@ -85,6 +89,7 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 		NetProtocol.WELCOME:
 			slot = JsonUtil.as_int(msg.get("slot", -1), -1)
 			my_name = str(msg.get("name", my_name))
+			spectating = slot < 0
 			players = JsonUtil.as_array(msg.get("players", []))
 			settings = JsonUtil.as_dict(msg.get("settings", {}))
 			series = JsonUtil.as_dict(msg.get("series", {}))

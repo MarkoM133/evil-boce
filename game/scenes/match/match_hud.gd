@@ -66,6 +66,8 @@ var rolling: bool = false
 var replay: bool = false
 ## Online: who paused the match ("" when it runs); shown instead of the prompt.
 var net_paused: String = ""
+## Only watching (a spectator): no prompts, no buttons, "WATCHING" instead.
+var spectating: bool = false
 ## Text of the end screen's first button; "" hides it (an online guest waits for the host).
 var rematch_text: String = "Rematch"
 ## End screen: NEW MATCH back to the Play setup (local matches only).
@@ -1119,6 +1121,10 @@ func _refresh_prompt() -> void:
 	_kicker.text = _ribbon_phase(state.phase).to_upper() if state.turn > 0 or state.phase == GameState.PHASE_MULLIGAN else ""
 	if state.is_over() or replay:
 		_kicker.text = ""
+		return
+	if spectating:
+		_kicker.text = "WATCHING"
+		_prompt.text = "%s vs %s" % [player_name(0), player_name(1)]
 		return
 	if not net_paused.is_empty():
 		_kicker.text = "PAUSED"

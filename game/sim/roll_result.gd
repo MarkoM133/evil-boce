@@ -22,6 +22,8 @@ var ring_out_reason: String = ""
 var strip_entered: int = -1
 ## Ids of balls this one hit, in order.
 var collisions: PackedStringArray = PackedStringArray()
+## Walls (static bodies in the "walls" group) this ball ran into.
+var walls_hit: int = 0
 ## Filled in step 2.
 var cores_picked: PackedStringArray = PackedStringArray()
 var stages_touched: PackedStringArray = PackedStringArray()
@@ -63,6 +65,7 @@ func to_dict() -> Dictionary:
 		"ring_out_reason": ring_out_reason,
 		"strip_entered": strip_entered,
 		"collisions": Array(collisions),
+		"walls_hit": walls_hit,
 		"cores_picked": Array(cores_picked),
 		"stages_touched": Array(stages_touched),
 		"duration": snappedf(duration, 0.001),
@@ -83,6 +86,7 @@ static func from_dict(d: Dictionary) -> RollResult:
 	r.ring_out_reason = str(d.get("ring_out_reason", ""))
 	r.strip_entered = JsonUtil.as_int(d.get("strip_entered", -1), -1)
 	r.collisions = JsonUtil.as_strings(d.get("collisions", []))
+	r.walls_hit = JsonUtil.as_int(d.get("walls_hit", 0))
 	r.cores_picked = JsonUtil.as_strings(d.get("cores_picked", []))
 	r.stages_touched = JsonUtil.as_strings(d.get("stages_touched", []))
 	r.duration = JsonUtil.as_float(d.get("duration", 0.0))

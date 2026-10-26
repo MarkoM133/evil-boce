@@ -263,3 +263,5 @@ func _on_body_entered(body: Node) -> void:
 		var other := body as BallBody
 		if not _result.collisions.has(other.ball_id):
 			_result.collisions.append(other.ball_id)
+	elif body.is_in_group("walls"):
+		_result.walls_hit += 1

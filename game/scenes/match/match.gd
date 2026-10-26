@@ -303,7 +303,10 @@ func _build_hud() -> void:
 	if net_role == "host":
 		local.append(net_host.host_slot)
 	elif net_role == "client":
-		local.append(net_client.slot)
+		# A spectator (slot -1) plays nobody.
+		if net_client.slot >= 0:
+			local.append(net_client.slot)
+		hud.spectating = net_client.spectating
 	else:
 		for p: PlayerState in state.players:
 			if not bots.has(p.slot) and _replay == null:
@@ -823,9 +826,22 @@ func _rebuild_tokens() -> void:
 		_core_tokens[c.id] = token
 	for w: WallState in state.walls:
 		for a: Vector2i in w.hexes:
-			var wall: Node3D = _hex_prism(tuning.hex_size * 0.92, 1.2, Color("5a5049"), Color("6d625a"))
-			wall.position = arena.hex_center(a) + Vector3(0, 0.6, 0)
-			_tokens.add_child(wall)
+			# A wall is solid for the physics too: a physics knockback bounces off it and the sim
+			# counts the hit (RollResult.walls_hit). A static body on the ground layer the balls see,
+			# with the drawn prism inside.
+			var body := StaticBody3D.new()
+			body.collision_layer = BallBody.LAYER_GROUND
+			body.collision_mask = 0
+			body.add_to_group("walls")
+			var shape := CollisionShape3D.new()
+			var cyl := CylinderShape3D.new()
+			cyl.radius = tuning.hex_size * 0.92
+			cyl.height = 1.2
+			shape.shape = cyl
+			body.add_child(shape)
+			body.add_child(_hex_prism(tuning.hex_size * 0.92, 1.2, Color("5a5049"), Color("6d625a")))
+			body.position = arena.hex_center(a) + Vector3(0, 0.6, 0)
+			_tokens.add_child(body)
 	for st: StageState in state.stages:
 		if st.is_claimed():
 			var flag := MeshInstance3D.new()
@@ -2207,3 +2223,22 @@ func demo_kb_hit() -> void:
 ## Screenshot helper: the dice that pick who starts (a real match shows them on its own).
 func demo_dice() -> void:
 	_show_initiative()
+
+
+## Screenshot helper: a physics knockback straight into a wall two hexes away.
+func demo_kb_wall() -> void:
+	_demo = true
+	state.settings.knockback = "physics"
+	var h: HeroState = state.heroes_of(0)[0]
+	h.zone = HeroState.ZONE_MAP
+	h.hex = Hex.offset_to_axial(11, 14)
+	var w := WallState.new()
+	w.id = "wall:demo"
+	var at: Vector2i = h.hex
+	for _i: int in 2:
+		at = Hex.neighbor(at, 5)
+	w.hexes.append(at)
+	state.walls.append(w)
+	_sync()
+	engine.knockback(state, h, 5, 4)
+	_sync()
