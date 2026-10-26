@@ -91,13 +91,13 @@ Paths use the JSON form of the state: `players.p0.hand`, `heroes.<id>.hp`, `core
 
 Things the GDD does not spell out; each is one line to confirm or veto.
 
-1. **Hits:** every winner that reaches a loser hits once with its own DMG; the owner of the
+1. **Hits:** (confirmed 2026-10-26) every winner that reaches a loser hits once with its own DMG; the owner of the
    first reachable loser chooses hero or deck. Deck damage takes cards from the top of the
    deck; with an empty deck from the hand (last drawn first); with an empty hand the player
    loses.
-2. **Battle order:** locked (tied) groups first, then the battle with the initiative player's
+2. **Battle order:** (confirmed 2026-10-26) locked (tied) groups first, then the battle with the initiative player's
    activated hero, the other activated hero, then the rest in initiative order.
-3. **Second tie:** each hero flies straight towards its own strip (team 0 → +z, team 1 → −z)
+3. **Second tie:** (confirmed 2026-10-26) each hero flies straight towards its own strip (team 0 → +z, team 1 → −z)
    for the other side's highest KB.
 4. **Setup** places stages then cores alternately, starting with the initiative player,
    which is rolled before setup. `manual_setup = false` places everything at random with the
