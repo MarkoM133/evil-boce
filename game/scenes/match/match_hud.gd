@@ -2084,6 +2084,9 @@ func _refresh_over() -> void:
 	back.add_theme_font_size_override("font_size", 22)
 	back.pressed.connect(func() -> void: menu_pressed.emit())
 	buttons.add_child(back)
+	var balance: Button = WebApp.link("BALANCE", "balance", "Win rates of heroes and cards from every match played.")
+	balance.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	buttons.add_child(balance)
 	if not was:
 		_over_box.modulate.a = 0.0
 		_over_box.scale = Vector2(1.08, 1.08)

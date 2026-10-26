@@ -51,9 +51,17 @@ func _ready() -> void:
 	else:
 		_build_strip(logo)
 
-	var foot := Label.new()
-	foot.add_theme_color_override("font_color", Palette.DIM)
-	foot.add_theme_font_size_override("font_size", 13)
+	# The version line, with the web app (card studio, deck builder) one click away.
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 14)
+	var studio: Button = WebApp.link("CARD STUDIO", "", "Cards, decks and Balance in the web app.")
+	studio.add_theme_font_size_override("font_size", 13)
+	foot.add_child(studio)
+	var foot_l := Label.new()
+	foot_l.add_theme_color_override("font_color", Palette.DIM)
+	foot_l.add_theme_font_size_override("font_size", 13)
+	foot_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	foot.add_child(foot_l)
 	# Above the bottom strip in the cinema layout; bottom right beside the side strip.
 	if layout == "cinema":
 		foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -67,9 +75,9 @@ func _ready() -> void:
 		foot.offset_right = -20
 		foot.offset_top = -16
 		foot.offset_bottom = -16
-	foot.text = _version_line()
+	foot_l.text = _version_line()
 	if not db.is_ok():
-		foot.add_theme_color_override("font_color", Palette.GOLD)
+		foot_l.add_theme_color_override("font_color", Palette.GOLD)
 	add_child(foot)
 
 	for f: Control in _fade_ins:

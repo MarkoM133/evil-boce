@@ -153,7 +153,16 @@ func _rebuild() -> void:
 	name_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_box.add_theme_constant_override("separation", 0)
 	deck_row.add_child(name_box)
-	name_box.add_child(UiTheme.label("DECK", 13, Palette.GOLD))
+	var caption := HBoxContainer.new()
+	caption.add_theme_constant_override("separation", 10)
+	name_box.add_child(caption)
+	caption.add_child(UiTheme.label("DECK", 13, Palette.GOLD))
+	if not _view_only:
+		var builder: Button = WebApp.link("DECK BUILDER", "decks/new", "Build or change decks in the web app; saved decks show here.")
+		builder.add_theme_font_size_override("font_size", 12)
+		builder.add_theme_constant_override("h_separation", 2)
+		builder.custom_minimum_size = Vector2(0, 18)
+		caption.add_child(builder)
 	var name_l: Label = UiTheme.label(_shown_deck_name().to_upper() if _view_only else deck_name().to_upper(), 28)
 	name_l.clip_text = true
 	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS

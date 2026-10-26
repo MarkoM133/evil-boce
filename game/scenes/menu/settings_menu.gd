@@ -89,6 +89,19 @@ func _build_game(col: VBoxContainer) -> void:
 	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_edit.text_changed.connect(func(t: String) -> void: GameSettings.set_player_name(t))
 	row.add_child(name_edit)
+	row = _row(col, "Web app")
+	var web := LineEdit.new()
+	web.text = GameSettings.web_app_url()
+	web.placeholder_text = WebApp.DEFAULT_URL
+	web.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	web.tooltip_text = "Where the deck builder and card studio open"
+	web.text_changed.connect(func(t: String) -> void: GameSettings.set_web_app_url(t))
+	row.add_child(web)
+	var open_web := Button.new()
+	open_web.text = "OPEN  ↗"
+	open_web.pressed.connect(func() -> void: WebApp.open())
+	row.add_child(open_web)
+	_hint(col, "GitHub Pages works for everyone; the local server is http://localhost:5100/ while it runs. Empty goes back to Pages.")
 
 	_header(col, "IN A MATCH")
 	var ap := _option(col, "Auto-pass", ["On", "Off"], 0 if GameSettings.auto_pass() else 1)

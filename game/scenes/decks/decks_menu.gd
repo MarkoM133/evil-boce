@@ -53,6 +53,12 @@ func _ready() -> void:
 	slash.cut = 8.0
 	title_row.add_child(slash)
 	title_row.add_child(UiTheme.label("DECKS", 44))
+	var title_gap := Control.new()
+	title_gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(title_gap)
+	var new_deck: Button = WebApp.link("NEW DECK", "decks/new", "Build a deck in the web app's deck builder; it lands in the shared folder and shows here.")
+	new_deck.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	title_row.add_child(new_deck)
 	_list = ItemList.new()
 	_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_list.item_selected.connect(_show)
@@ -161,6 +167,9 @@ func _show(i: int) -> void:
 		DisplayServer.clipboard_set(DeckCode.encode(heroes, cards, db.version))
 		_status.text = "Deck code of %s copied." % str(d["name"]))
 	head.add_child(copy)
+	if not JsonUtil.as_bool(d["local"]):
+		# Shared decks are the web app's files: decks/<slug>.json opens as #/decks/<slug>.
+		head.add_child(WebApp.link("EDIT", "decks/" + str(d["path"]).get_file().get_basename(), "Edit this deck in the web app's deck builder."))
 	if JsonUtil.as_bool(d["local"]):
 		var del := Button.new()
 		del.text = "Delete"

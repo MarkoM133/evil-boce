@@ -18,6 +18,13 @@ func _ready() -> void:
 	var frame: Dictionary = MenuScreen.build(self, db, "Replays",
 		"Saved on this computer. Watch a match phase by phase, or carry on from where it stopped.",
 		func() -> void: get_tree().change_scene_to_file(MENU_SCENE), 1300.0)
+	# Balance (web app) sums up every match, beside the single replays here.
+	var title_row: HBoxContainer = frame["title_row"]
+	var balance: Button = WebApp.link("BALANCE", "balance", "Win rates of heroes and cards from every match played.")
+	balance.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	title_row.add_child(balance)
+	var back_btn: Button = frame["back"]
+	title_row.move_child(balance, back_btn.get_index())
 	var content: VBoxContainer = frame["content"]
 	_list = VBoxContainer.new()
 	_list.add_theme_constant_override("separation", 10)

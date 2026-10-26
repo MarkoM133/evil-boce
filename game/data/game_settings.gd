@@ -41,6 +41,16 @@ static func set_map_size(n: int) -> void:
 	save()
 
 
+## Where the web app lives (WebApp opens its pages).
+static func web_app_url() -> String:
+	var u: String = str(_config().get_value("web", "url", "")).strip_edges()
+	return u if not u.is_empty() else WebApp.DEFAULT_URL
+
+
+static func set_web_app_url(u: String) -> void:
+	set_value("web", "url", u.strip_edges())
+
+
 ## Match rules last used for a mode ("local", "online"): Standard with the remembered changes.
 ## Only the changes are stored, so a later Standard still shows through the rest.
 static func match_rules(mode: String) -> MatchSettings:
