@@ -111,9 +111,29 @@ static func _pool(catalog: CardCatalog, heroes: Array[CardDef]) -> Array[CardDef
 	var pool: Array[CardDef] = []
 	for t: String in DECK_TYPES:
 		for c: CardDef in catalog.of_type(t):
-			if colors.has(c.color) and (t != "Evolution" or names.has(c.hero)):
+			if colors.has(c.color) and (t != "Evolution" or names.has(c.hero)) and _for_heroes(catalog, c, names):
 				pool.append(c)
 	return pool
+
+
+## Heroes a card is meant for: its traits that are a hero's name (case does not matter); empty
+## for a card any hero of its colour may take. Such a card goes in a deck only with that hero.
+static func card_heroes(catalog: CardCatalog, c: CardDef) -> PackedStringArray:
+	var out := PackedStringArray()
+	for h: CardDef in catalog.of_type("Hero"):
+		if c.has_trait(h.name):
+			out.append(h.name)
+	return out
+
+
+static func _for_heroes(catalog: CardCatalog, c: CardDef, names: PackedStringArray) -> bool:
+	var only: PackedStringArray = card_heroes(catalog, c)
+	if only.is_empty():
+		return true
+	for n: String in only:
+		if names.has(n):
+			return true
+	return false
 
 
 ## Most cards a deck can hold from this pool (every card at its limit).
@@ -161,6 +181,8 @@ static func check(catalog: CardCatalog, heroes: PackedStringArray, cards: Dictio
 			errors.append("%s: color %s is not a color of the chosen heroes" % [c.name, c.color])
 		if c.type == "Evolution" and not names.has(c.hero):
 			errors.append("%s: Evolution for a hero who isn't in the deck" % c.name)
+		if not _for_heroes(catalog, c, names):
+			errors.append("%s: only for %s, who isn't in the deck" % [c.name, " or ".join(card_heroes(catalog, c))])
 		if n > LIMITS[c.type]:
 			errors.append("%s: %d copies, but %s allows at most %d" % [c.name, n, c.type, LIMITS[c.type]])
 		count += n

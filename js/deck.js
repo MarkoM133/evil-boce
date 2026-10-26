@@ -33,7 +33,20 @@ export function deckPool(db, heroIds) {
     !c.deleted &&
     DECK_TYPES.includes(c.type) &&
     colors.has(c.color) &&
-    (c.type !== 'Evolution' || names.has(c.hero)));
+    (c.type !== 'Evolution' || names.has(c.hero)) &&
+    forHeroes(db, c, names));
+}
+
+function forHeroes(db, card, names) {
+  const only = cardHeroes(db, card);
+  return !only.length || only.some(n => names.has(n));
+}
+
+// Heroji kojima je karta namijenjena: traitovi jednaki imenu nekog heroja (velika i mala slova
+// nisu bitna). [] = karta za sve heroje svoje boje. Takva karta smije u deck samo uz tog heroja.
+export function cardHeroes(db, card) {
+  const names = new Map(heroCards(db).map(h => [h.name.toLowerCase(), h.name]));
+  return (card.traits ?? []).map(t => names.get(String(t).toLowerCase())).filter(Boolean);
 }
 
 export function poolCapacity(pool) {
@@ -79,6 +92,7 @@ export function checkDeck(db, deck) {
     if (c.deleted) warn(`${c.name} was deleted from the database`);
     if (!colors.has(c.color)) err(`${c.name}: color ${c.color} is not a color of the chosen heroes`);
     if (c.type === 'Evolution' && !names.has(c.hero)) err(`${c.name}: Evolution for a hero who isn't in the deck`);
+    if (!forHeroes(db, c, names)) err(`${c.name}: only for ${cardHeroes(db, c).join(' or ')}, who isn't in the deck`);
     if (n > LIMITS[c.type]) err(`${c.name}: ${n} copies, but ${c.type} allows at most ${LIMITS[c.type]}`);
     byType[c.type] = (byType[c.type] ?? 0) + n;
     byColor[c.color] = (byColor[c.color] ?? 0) + n;

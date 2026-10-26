@@ -65,3 +65,26 @@ func test_random_deck_keeps_the_leader_and_the_rules() -> void:
 		for e: String in DeckCode.check(catalog, heroes, JsonUtil.as_dict(d["cards"])):
 			# Only a small pool may leave the deck short; colours and evolutions always fit.
 			assert_string_contains(e, "the deck needs")
+
+
+func test_a_card_with_a_hero_trait_needs_that_hero() -> void:
+	var doc: Dictionary = {"version": 1, "cards": [
+		{"id": "H-1", "name": "Alpha", "type": "Hero", "color": "Red"},
+		{"id": "H-2", "name": "Echo", "type": "Hero", "color": "Red"},
+		{"id": "H-3", "name": "Bravo", "type": "Hero", "color": "Blue"},
+		{"id": "H-4", "name": "Charlie", "type": "Hero", "color": "Green"},
+		{"id": "Q-1", "name": "Alpha Sword", "type": "Equipment", "color": "Red", "traits": ["Sword", "ALPHA"]},
+		{"id": "Q-2", "name": "Any Sword", "type": "Equipment", "color": "Red", "traits": ["Sword"]},
+	]}
+	var cat: CardCatalog = CardCatalog.from_doc(doc)
+	assert_eq(DeckCode.card_heroes(cat, cat.get_card("Q-1")), PackedStringArray(["Alpha"]))
+	assert_true(DeckCode.card_heroes(cat, cat.get_card("Q-2")).is_empty())
+	var without: PackedStringArray = DeckCode.check(cat, PackedStringArray(["H-2", "H-3", "H-4"]), {"Q-1": 1})
+	assert_true(Array(without).any(func(e: String) -> bool: return e.contains("only for Alpha")), str(without))
+	var with_: PackedStringArray = DeckCode.check(cat, PackedStringArray(["H-1", "H-3", "H-4"]), {"Q-1": 1})
+	assert_false(Array(with_).any(func(e: String) -> bool: return e.contains("only for")), str(with_))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var d: Dictionary = DeckCode.random_deck(cat, rng, "H-2")
+	if not JsonUtil.as_strings(d["heroes"]).has("H-1"):
+		assert_false(JsonUtil.as_dict(d["cards"]).has("Q-1"), "no Alpha, no Alpha Sword")

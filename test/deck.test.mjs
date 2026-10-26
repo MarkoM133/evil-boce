@@ -110,3 +110,18 @@ test('slugify za ime filea', () => {
   assert.equal(slugify('Luffy aggro'), 'luffy-aggro');
   assert.equal(slugify('  Čćžšđ Deck #2!! '), 'cczsd-deck-2');
 });
+
+test('karta s traitom imena heroja smije samo uz tog heroja', () => {
+  const d = db();
+  d.cards.push(card('Red-ONLY', 'Equipment', 'Red', 3, { traits: ['Sword', 'alpha'] }));
+  d.cards.push(card('Red-SWORD', 'Equipment', 'Red', 3, { traits: ['Sword'] }));
+  assert.ok(deckPool(d, ['H-1', 'H-2', 'H-3']).some(c => c.id === 'Red-ONLY'));
+  assert.ok(deckPool(d, ['H-1', 'H-2', 'H-3']).some(c => c.id === 'Red-SWORD'));
+  // Bez Alphe nema crvenih heroja, pa uzmi deck s crvenim herojem koji nije Alpha.
+  d.cards.push(hero('H-5', 'Epsilon', 'Red'));
+  const pool = deckPool(d, ['H-5', 'H-2', 'H-3']).map(c => c.id);
+  assert.ok(!pool.includes('Red-ONLY'));
+  assert.ok(pool.includes('Red-SWORD'));
+  const deck = { heroes: ['H-5', 'H-2', 'H-3'], cards: { 'Red-ONLY': 1 } };
+  assert.ok(checkDeck(d, deck).problems.some(p => p.level === 'error' && p.msg.includes('only for Alpha')));
+});
