@@ -10,10 +10,8 @@
       "players.p0.energy": 4,
       "initiative": 0
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
-    {"move": {"type": "choice", "player": 0, "roll": true}},
-    {"move": {"type": "choice", "player": 1, "roll": true}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": true}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": true}},
     {"pass_round": true},
     {"move": {"type": "aim", "player": 0, "dir": [0, -1], "power": 1.0}},
     {"move": {"type": "aim", "player": 1, "dir": [0, 1], "power": 1.0}},
@@ -35,8 +33,7 @@
     {"roll": {"thrower": "p0:TA-001", "results": [
       {"ball": "p0:TA-001", "thrown": true, "end_area": 0, "end_hex": [4, 8]}
     ]}},
-    {"expect": {"heroes.p0:TA-001.hex": [4, 8], "rolled": true, "phase": "roll"}},
-    {"pass_round": true},
+    {"expect": {"heroes.p0:TA-001.hex": [4, 8], "rolled": true, "phase": "postroll"}},
     {"expect": {"phase": "postroll", "to_act": 0}},
     {"move": {"type": "play_card", "player": 0, "card": "TA-049"}},
     {"expect": {"players.p0.energy": 0, "heroes.p0:TA-001.phase_bonus.pwr": 1000}}

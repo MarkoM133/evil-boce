@@ -25,7 +25,7 @@ the record, the physics never runs again), a **save** (resume from the last phas
 
 - **A frame per phase the engine waits in.** `state` is the state at the *start* of that phase (the
   first moment the engine waits for input there, after its own triggers ran); `moves` and `rolls`
-  are what happened during it, in order. Phases nobody acts in (draw, end) fold into the next
+  are what happened during it, in order. Phases nobody acts in (end) fold into the next
   frame; their events are in the state's log. Every frame can be resumed as it is, without
   re-running any trigger.
 - **Cards travel with the record** (`cards`: every card the decks, stages and cores use, as

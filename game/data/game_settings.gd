@@ -90,7 +90,7 @@ const FPS_LIMITS: Array[int] = [0, 60, 120, 144, 240]
 const BUSES: Array[String] = ["Master", "Music", "Effects"]
 ## Rebindable keys: action -> default key.
 const DEFAULT_KEYS: Dictionary[String, Key] = {"pass": KEY_SPACE, "menu": KEY_ESCAPE, "card_zoom": KEY_ALT,
-	"battle_cam": KEY_C}
+	"battle_cam": KEY_C, "hold": KEY_CTRL}
 ## The card-zoom key: held (the card shows while it is down) or pressed (on, then off).
 const ZOOM_MODES: Array[String] = ["hold", "press"]
 
@@ -272,3 +272,9 @@ static func battle_cam_auto() -> bool:
 ## Card and ability text shows on hover (Settings); the big card (right click / key) always works.
 static func hover_text() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "hover_text", true))
+
+
+## Auto-pass (GDD 8): the game passes for a player with nothing playable, after a fixed wait,
+## unless the Hold key is down. Settings → Interface.
+static func auto_pass() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "auto_pass", true))

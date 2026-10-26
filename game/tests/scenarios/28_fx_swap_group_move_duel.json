@@ -17,10 +17,8 @@
       "players.p0.deck": ["TX-011", "TX-010"], "players.p1.deck": ["TX-010", "TX-010"],
       "initiative": 0
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-003"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003"}},
-    {"move": {"type": "choice", "player": 0, "roll": true}},
-    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-003", "roll": true}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003", "roll": false}},
     {"pass_round": true},
     {"move": {"type": "aim", "player": 0, "dir": [0, -1], "power": 0.5}},
     {"roll": {"thrower": "p0:TA-003", "results": [
@@ -31,7 +29,6 @@
       "stage_buffs": {"$size": 1}, "stage_buffs.0.hero": "p0:TA-003", "stage_buffs.0.amount": 2000,
       "heroes.p1:TB-003.turn_bonus": {}
     }},
-    {"pass_round": true},
     {"set": {"active.0": "p0:TA-001"}},
     {"expect": {"phase": "postroll", "to_act": 0}},
     {"move": {"type": "play_card", "player": 0, "card": "TA-055"}},

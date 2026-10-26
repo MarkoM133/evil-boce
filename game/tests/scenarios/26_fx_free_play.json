@@ -15,10 +15,8 @@
       "players.p0.hand": ["TA-024", "TX-010"],
       "initiative": 0
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-010"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003"}},
-    {"move": {"type": "choice", "player": 0, "roll": false}},
-    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-010", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003", "roll": false}},
     {"pass_round": true},
     {"expect": {"phase": "postroll", "to_act": 0, "players.p0.energy": 1}},
     {"move": {"type": "use_ability", "player": 0, "hero": "p0:TA-010", "card": "TA-010", "index": 0}},

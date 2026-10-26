@@ -11,8 +11,8 @@
       "players.p0.energy": 5,
       "initiative": 0
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002"}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002", "roll": false}},
     {"move": {"type": "play_card", "player": 0, "card": "TA-045"}, "error": "playable in the postroll"},
     {"move": {"type": "play_card", "player": 0, "card": "TA-043"}},
     {"expect": {"heroes.p0:TA-001.hp": 9, "players.p0.energy": 3}},
@@ -24,8 +24,6 @@
       "turn_mods.0.kind": "dmg_taken", "turn_mods.0.amount": -1,
       "players.p0.energy": 2
     }},
-    {"move": {"type": "choice", "player": 0, "roll": false}},
-    {"move": {"type": "choice", "player": 1, "roll": false}},
     {"pass_round": true},
     {"pass_round": true},
     {"pass_round": true},

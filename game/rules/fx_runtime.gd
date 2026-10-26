@@ -780,6 +780,8 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			s.turn_mods.append({"kind": "no_claim", "player": who})
 		"ROLL_AGAIN":
 			return engine.roll_again(s, player)
+		"REVERSE_ROLL":
+			return engine.reverse_roll(s, player)
 		"COST_DAMAGE":
 			if me == null:
 				return "no hero to pay"

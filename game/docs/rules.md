@@ -26,10 +26,9 @@ engine is shaped and which gaps it had to fill on its own (see **Assumptions**).
 | `setup_stages` | `place_stage` by `setup_turn` | all stages placed |
 | `setup_cores` | `place_core` by `setup_turn` | all cores placed (hands dealt) |
 | `mulligan` | `mulligan {keep}` | both decided → turn 1 |
-| `draw` | — (automatic) | draw 1, energy = min(turn, 8) |
-| `select` | `select {hero}` (`""` only when none can be activated) | all selected |
-| `preroll` | `pass`, `choice {roll}`, (`play_card`) | round passed and all choices in |
-| `roll` | `aim {dir, power}`, then the sim's `apply_roll`, then `pass` | round passed |
+| `start` | `select {hero, roll}` (`hero ""` only when none can be activated; `roll` false = Stay, refused for a hero in the start zone) | all selected; draw 1 and energy = min(turn, 8) happened on entering |
+| `preroll` | `pass`, (`play_card`) | round passed |
+| `roll` | `aim {dir, power}`, then the sim's `apply_roll`; then a `roll_offer` decision per player with a "Roll Phase:" option (`use_ability`, `play_card` or `pass`) | aims in, balls stopped, offers answered |
 | `postroll` | `pass`, (`play_card`) | round passed |
 | `battle` | per battle: `pass` round, then `damage_to` decisions | last battle done |
 | `end` | — (automatic) | claims, status timers, win check, next turn |
@@ -114,7 +113,14 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    Terrain applies from then until the turn after a claim.
 8. **"Two heroes on a stage, no battle"** means no battle this turn involved any hero
    standing on that stage.
-9. A hero in the start zone can be activated at any time, and a stunned or locked hero
+9. (2026-10-26) The turn has six phases: Start (draw + hero + Roll/Stay in one `select` move, all
+   revealed together), Preroll (cards), Roll (aims and throws only; "Roll Phase:" cards and
+   abilities come as one `roll_offer` per player and stop, initiative first; a roll again brings a
+   new stop and new offers), Postroll, Battle, End. Offers go to every active player with an
+   option, not only to those who rolled. Auto-pass is the client's job (a setting), not a rule.
+10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
+   (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
+11. A hero in the start zone can be activated at any time, and a stunned or locked hero
    cannot; `select ""` is only legal when nothing can be activated.
 - JO1-011 "3 copies at once": the third copy of the card played by the same player in the
   same phase also gives +5 DMG (`IF COPIES 3`).

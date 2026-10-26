@@ -9,10 +9,8 @@
       "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 8],
       "players.p0.deck": [], "players.p0.hand": ["TX-010", "TX-011"]
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002"}},
-    {"move": {"type": "choice", "player": 0, "roll": false}},
-    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002", "roll": false}},
     {"pass_round": true},
     {"pass_round": true},
     {"pass_round": true},

@@ -12,10 +12,8 @@
       "heroes.p1:TB-003.zone": "map", "heroes.p1:TB-003.hex": [8, 2],
       "players.p0.graveyard": ["TX-011"]
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-007"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003"}},
-    {"move": {"type": "choice", "player": 0, "roll": false}},
-    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-007", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003", "roll": false}},
     {"pass_round": true},
     {"pass_round": true},
     {"expect": {

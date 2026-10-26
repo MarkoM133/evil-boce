@@ -19,10 +19,8 @@
       "players.p0.assists": ["TA-035"],
       "initiative": 0
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-008"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
-    {"move": {"type": "choice", "player": 0, "roll": false}},
-    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-008", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": false}},
     {"pass_round": true},
     {"pass_round": true},
     {"expect": {"phase": "battle", "battles": {"$size": 2}, "battles.0.heroes": ["p0:TA-008", "p1:TB-001"], "to_act": 0}},

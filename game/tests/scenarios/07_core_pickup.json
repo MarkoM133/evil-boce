@@ -9,10 +9,8 @@
       "cores.core:p1:2.place": "hero", "cores.core:p1:2.holder": "p0:TA-001",
       "cores.core:p1:3.place": "hero", "cores.core:p1:3.holder": "p0:TA-001"
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
-    {"move": {"type": "choice", "player": 0, "roll": true}},
-    {"move": {"type": "choice", "player": 1, "roll": true}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": true}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": true}},
     {"pass_round": true},
     {"move": {"type": "aim", "player": 0, "dir": [0, -1], "power": 1.0}},
     {"move": {"type": "aim", "player": 1, "dir": [0, 1], "power": 1.0}},
@@ -26,10 +24,8 @@
       "cores.core:p1:1.place": "hero", "cores.core:p1:1.holder": "p0:TA-001", "cores.core:p1:1.face_up": true,
       "cores.core:p1:4.place": "inventory", "cores.core:p1:4.picked_by": "p0:TA-001", "cores.core:p1:4.face_up": false,
       "players.p0.inventory": ["core:p1:4"],
-      "pending": {"$size": 0},
-      "phase": "roll"
+      "phase": "postroll"
     }},
-    {"pass_round": true},
     {"expect": {"phase": "postroll", "pending.0.type": "return_core", "pending.0.player": 0, "pending.0.core": "core:p1:4"}},
     {"move": {"type": "return_core", "player": 0, "core": "core:p1:4", "hex": [2, 12]}, "error": "taken"},
     {"move": {"type": "return_core", "player": 0, "core": "core:p1:4", "hex": [2, 4]}, "error": "within the range"},

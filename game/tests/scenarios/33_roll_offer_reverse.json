@@ -1,0 +1,38 @@
+{
+  "name": "Roll phase (2026-10-26): no card round; a Roll Phase card is offered when the ball stops, roll again brings a new offer, reverse roll puts the hero back",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {"players.p0.hand": ["TA-048", "TX-010"], "players.p0.energy": 4, "initiative": 0}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": true}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": true}},
+    {"expect": {"phase": "preroll", "choices.0": true, "choices.1": true}},
+    {"pass_round": true},
+    {"expect": {"phase": "roll", "roll_snapshot.p0:TA-001.zone": "strip"}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-048"}, "error": "aim first"},
+    {"move": {"type": "aim", "player": 0, "dir": [0, -1], "power": 1.0}},
+    {"move": {"type": "aim", "player": 1, "dir": [0, 1], "power": 1.0}},
+    {"roll": {"thrower": "p0:TA-001", "results": [
+      {"ball": "p0:TA-001", "thrown": true, "end_area": 0, "end_hex": [2, 12]},
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 0, "end_hex": [6, 4]}
+    ]}},
+    {"expect": {
+      "phase": "roll", "rolled": true,
+      "pending": {"$size": 1}, "pending.0.type": "roll_offer", "pending.0.player": 0,
+      "pending.0.cards": ["TA-048"], "pending.0.abilities": {"$size": 0}
+    }},
+    {"move": {"type": "pass", "player": 1}, "error": "waiting for player 0"},
+    {"move": {"type": "play_card", "player": 0, "card": "TX-010"}, "error": "not on offer"},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-048"}},
+    {"expect": {
+      "phase": "roll", "rolled": false, "awaiting_roll": false, "pending": {"$size": 0},
+      "pending_rolls": ["p0:TA-001"], "players.p0.energy": 2
+    }},
+    {"move": {"type": "aim", "player": 0, "dir": [1, -1], "power": 0.5}},
+    {"roll": {"thrower": "p0:TA-001", "results": [
+      {"ball": "p0:TA-001", "thrown": true, "end_area": 0, "end_hex": [4, 8]}
+    ]}},
+    {"expect": {"heroes.p0:TA-001.hex": [4, 8], "phase": "postroll", "pending": {"$size": 0}}}
+  ]
+}

@@ -7,8 +7,8 @@ extends RefCounted
 const PHASE_SETUP_STAGES: String = "setup_stages"
 const PHASE_SETUP_CORES: String = "setup_cores"
 const PHASE_MULLIGAN: String = "mulligan"
-const PHASE_DRAW: String = "draw"
-const PHASE_SELECT: String = "select"
+## Start: draw, energy, then each player picks the hero to activate and Roll or Stay.
+const PHASE_START: String = "start"
 const PHASE_PREROLL: String = "preroll"
 const PHASE_ROLL: String = "roll"
 const PHASE_POSTROLL: String = "postroll"
@@ -52,6 +52,11 @@ var pending: Array[Dictionary] = []
 var only_pass: PackedInt32Array = PackedInt32Array()
 ## Hero ids the sim has to throw next (all rollers at first, one hero after ROLL_AGAIN).
 var pending_rolls: PackedStringArray = PackedStringArray()
+## Where every hero stood as the Roll phase began (REVERSE_ROLL puts one back there):
+## hero id -> {"zone", "hex"}.
+var roll_snapshot: Dictionary[String, Dictionary] = {}
+## The "Roll Phase:" offers after this roll went out already (once per stop).
+var roll_offered: bool = false
 ## "hero|card|index" of once-per-turn abilities already used this turn.
 var abilities_used: PackedStringArray = PackedStringArray()
 ## Effects waiting for a battle win: {"player", "hero", "fx", "ctx"}.
@@ -239,6 +244,8 @@ func reset_turn_data() -> void:
 	pending.clear()
 	only_pass = PackedInt32Array()
 	pending_rolls = PackedStringArray()
+	roll_snapshot.clear()
+	roll_offered = false
 	abilities_used = PackedStringArray()
 	deferred.clear()
 	turn_mods.clear()
@@ -296,6 +303,8 @@ func to_dict() -> Dictionary:
 		"pending": pending.duplicate(true),
 		"only_pass": Array(only_pass),
 		"pending_rolls": Array(pending_rolls),
+		"roll_snapshot": roll_snapshot.duplicate(true),
+		"roll_offered": roll_offered,
 		"abilities_used": Array(abilities_used),
 		"deferred": deferred.duplicate(true),
 		"turn_mods": turn_mods.duplicate(true),
@@ -312,6 +321,11 @@ static func from_dict(d: Dictionary) -> GameState:
 	s.settings = MatchSettings.from_dict(JsonUtil.as_dict(d.get("settings", {})))
 	s.turn = JsonUtil.as_int(d.get("turn", 0))
 	s.phase = str(d.get("phase", PHASE_SETUP_STAGES))
+	# Saves from before 2026-10-26 had Draw and Select phases: they resume at Start, picking
+	# heroes again (their choices came later then).
+	var old_phases: bool = s.phase == "draw" or s.phase == "select"
+	if old_phases:
+		s.phase = PHASE_START
 	s.initiative = JsonUtil.as_int(d.get("initiative", 0))
 	var ps: Dictionary = JsonUtil.as_dict(d.get("players", {}))
 	for k: Variant in ps:
@@ -330,7 +344,7 @@ static func from_dict(d: Dictionary) -> GameState:
 		s.walls.append(WallState.from_dict(JsonUtil.as_dict(w)))
 	s.rng_seed = JsonUtil.as_int(d.get("rng_seed", 0))
 	s.rng_state = JsonUtil.as_int(d.get("rng_state", 0))
-	var act: Dictionary = JsonUtil.as_dict(d.get("active", {}))
+	var act: Dictionary = JsonUtil.as_dict(d.get("active", {})) if not old_phases else {}
 	for k: Variant in act:
 		s.active[str(k).to_int()] = str(act[k])
 	var ch: Dictionary = JsonUtil.as_dict(d.get("choices", {}))
@@ -353,6 +367,10 @@ static func from_dict(d: Dictionary) -> GameState:
 	for v: Variant in JsonUtil.as_array(d.get("only_pass", [])):
 		s.only_pass.append(JsonUtil.as_int(v))
 	s.pending_rolls = JsonUtil.as_strings(d.get("pending_rolls", []))
+	var snap: Dictionary = JsonUtil.as_dict(d.get("roll_snapshot", {}))
+	for k: Variant in snap:
+		s.roll_snapshot[str(k)] = JsonUtil.as_dict(snap[k])
+	s.roll_offered = JsonUtil.as_bool(d.get("roll_offered", false))
 	s.abilities_used = JsonUtil.as_strings(d.get("abilities_used", []))
 	for x: Variant in JsonUtil.as_array(d.get("deferred", [])):
 		s.deferred.append(JsonUtil.as_dict(x))

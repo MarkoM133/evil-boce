@@ -10,11 +10,9 @@
       "walls": [{"id": "wall:1", "hexes": [[5, 8]]}],
       "initiative": 0
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003"}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003", "roll": false}},
     {"move": {"type": "use_ability", "player": 0, "hero": "p0:TA-001", "card": "TA-001", "index": 0}, "error": "cannot be used now"},
-    {"move": {"type": "choice", "player": 0, "roll": false}},
-    {"move": {"type": "choice", "player": 1, "roll": false}},
     {"pass_round": true},
     {"expect": {"phase": "postroll", "to_act": 0}},
     {"move": {"type": "use_ability", "player": 0, "hero": "p0:TA-001", "card": "TA-001", "index": 0}},

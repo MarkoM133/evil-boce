@@ -10,7 +10,6 @@ const MULLIGAN: String = "mulligan"
 ## Select phase: {"hero": id} ("" when no hero can be activated).
 const SELECT: String = "select"
 ## Preroll: {"roll": bool} for the activated hero.
-const CHOICE: String = "choice"
 ## Roll: {"dir": [x, z], "power": 0..1}; the sim does the throw.
 const AIM: String = "aim"
 ## Any card round.

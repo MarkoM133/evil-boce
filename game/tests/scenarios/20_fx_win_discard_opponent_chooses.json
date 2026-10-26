@@ -13,10 +13,8 @@
       "players.p1.energy": 3,
       "initiative": 0
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002"}},
-    {"move": {"type": "choice", "player": 0, "roll": false}},
-    {"move": {"type": "choice", "player": 1, "roll": false}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002", "roll": false}},
     {"pass_round": true},
     {"expect": {"phase": "postroll", "to_act": 0}},
     {"move": {"type": "play_card", "player": 0, "card": "TA-051"}},

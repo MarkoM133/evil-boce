@@ -37,6 +37,7 @@ const VERBS: Dictionary[String, Array] = {
 	"COST": [true, 1],          # COST <ME|OPP> <n> [{Trait}|PHASE]  (passive cost change)
 	"NO_CLAIM": [true, 0],      # NO_CLAIM <ME|OPP>  (no stage claim this turn)
 	"ROLL_AGAIN": [false, 0],   # ROLL_AGAIN  (the activated hero rolls once more)
+	"REVERSE_ROLL": [false, 0], # REVERSE_ROLL  (the activated hero goes back to where the Roll phase found it)
 	"COST_DAMAGE": [false, 1],  # COST_DAMAGE <n>  (paid by SELF before the rest)
 	"CHOOSE": [true, 0],        # CHOOSE <ME|OPP> [ACTION; ACTION] [ACTION; ACTION]  (that player picks a branch)
 	"RECYCLE": [true, 1],       # RECYCLE <ME|OPP> <n> [TOP|BOTTOM|SHUFFLE]  (graveyard top -> deck)

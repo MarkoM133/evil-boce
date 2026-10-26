@@ -50,19 +50,17 @@ func next_move(engine: RulesEngine, s: GameState, slot: int, positions: Dictiona
 		GameState.PHASE_MULLIGAN:
 			if not s.player(slot).mulligan_done:
 				return Move.make(Move.MULLIGAN, slot, {"keep": _keeps_hand(engine, s, slot)})
-		GameState.PHASE_SELECT:
+		GameState.PHASE_START:
 			if not s.active.has(slot):
-				return _select(engine, s, slot)
-		GameState.PHASE_PREROLL:
-			if not s.choices.has(slot) and s.active_hero(slot) != null:
-				return Move.make(Move.CHOICE, slot, {"roll": _wants_roll(engine, s, s.active_hero(slot))})
-			return _card_round(engine, s, slot)
+				var m: Move = _select(engine, s, slot)
+				var h: HeroState = s.hero(m.str_arg("hero"))
+				if h != null:
+					m.data["roll"] = _wants_roll(engine, s, h)
+				return m
 		GameState.PHASE_ROLL:
 			if s.choices.get(slot, false) and not s.aims.has(slot) and s.active_hero(slot) != null:
 				return _aim(engine, s, s.active_hero(slot), positions, tuning)
-			if s.rolled:
-				return _card_round(engine, s, slot)
-		GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE:
+		GameState.PHASE_PREROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE:
 			return _card_round(engine, s, slot)
 	return null
 
@@ -118,6 +116,27 @@ func _try(engine: RulesEngine, s: GameState, m: Move) -> GameState:
 
 func _decide(engine: RulesEngine, s: GameState, slot: int, d: Dictionary) -> Move:
 	match str(d.get("type", "")):
+		RulesEngine.DECISION_ROLL_OFFER:
+			# Hard tries each offered option and keeps one that helps; Easy lets them be.
+			if hard():
+				var options: Array[Move] = []
+				for key: String in JsonUtil.as_strings(d.get("abilities", [])):
+					var parts: PackedStringArray = key.split("|")
+					if parts.size() == 3:
+						options.append(Move.make(Move.USE_ABILITY, slot, {"hero": parts[0], "card": parts[1], "index": parts[2].to_int()}))
+				for cid: String in JsonUtil.as_strings(d.get("cards", [])):
+					options.append(Move.make(Move.PLAY_CARD, slot, {"card": cid}))
+				var base: float = evaluate(engine, s, slot)
+				var best: Move = null
+				var best_v: float = base
+				for m: Move in options:
+					var after: GameState = _try(engine, s, m)
+					if after != null and evaluate(engine, after, slot) > best_v + 0.5:
+						best_v = evaluate(engine, after, slot)
+						best = m
+				if best != null:
+					return best
+			return Move.make(Move.PASS, slot)
 		RulesEngine.DECISION_DAMAGE:
 			var amount: int = JsonUtil.as_int(d.get("amount", 0))
 			var options: Array[Move] = [Move.make(Move.DAMAGE_TO, slot, {"target": "deck"})]

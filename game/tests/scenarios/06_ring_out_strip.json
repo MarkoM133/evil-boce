@@ -9,10 +9,8 @@
       "heroes.p0:TA-001.cores": ["core:p1:1"],
       "cores.core:p1:1.place": "hero", "cores.core:p1:1.holder": "p0:TA-001", "cores.core:p1:1.face_up": true
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
-    {"move": {"type": "choice", "player": 0, "roll": true}},
-    {"move": {"type": "choice", "player": 1, "roll": true}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": true}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": true}},
     {"pass_round": true},
     {"move": {"type": "aim", "player": 0, "dir": [0, 1], "power": 1.0}},
     {"move": {"type": "aim", "player": 1, "dir": [0, 1], "power": 0.5}},
@@ -30,11 +28,10 @@
       "players.p1.inventory": {"$size": 0},
       "heroes.p1:TB-001.zone": "strip",
       "only_pass": {"$has": 0},
-      "phase": "roll"
+      "phase": "postroll"
     }},
-    {"pass_round": true},
     {"expect": {"phase": "postroll", "pending": {"$size": 0}}},
     {"pass_round": true},
-    {"expect": {"phase": "select", "turn": 2, "only_pass": {"$size": 0}}}
+    {"expect": {"phase": "start", "turn": 2, "only_pass": {"$size": 0}}}
   ]
 }

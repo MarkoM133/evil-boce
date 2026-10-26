@@ -37,13 +37,13 @@ func test_frames_follow_phases_and_hold_moves() -> void:
 	assert_true(JsonUtil.as_bool(rec.record.players[1]["bot"]))
 	assert_eq(JsonUtil.as_strings(rec.record.players[0]["heroes"]), PackedStringArray(["TA-001", "TA-002", "TA-003"]))
 	_play_to_select(rec)
-	# mulligan (2 moves) -> select; the automatic draw phase never waits, so it has no frame.
-	assert_eq(rec.state.phase, GameState.PHASE_SELECT)
+	# mulligan (2 moves) -> start (the draw is part of it, so nothing waits before).
+	assert_eq(rec.state.phase, GameState.PHASE_START)
 	assert_eq(JsonUtil.as_array(rec.record.frames[0]["moves"]).size(), 2)
 	var phases := PackedStringArray()
 	for f: Dictionary in rec.record.frames:
 		phases.append(str(f["phase"]))
-	assert_eq(phases, PackedStringArray([GameState.PHASE_MULLIGAN, GameState.PHASE_SELECT]))
+	assert_eq(phases, PackedStringArray([GameState.PHASE_MULLIGAN, GameState.PHASE_START]))
 	assert_eq(rec.apply(Move.make(Move.SELECT, 0, {"hero": "nope"})), "not your hero")
 	assert_eq(JsonUtil.as_array(rec.record.last_frame()["moves"]).size(), 0, "refused moves are not recorded")
 
@@ -51,10 +51,8 @@ func test_frames_follow_phases_and_hold_moves() -> void:
 func test_roll_outcome_is_recorded_with_its_path() -> void:
 	var rec: MatchRecorder = _start()
 	_play_to_select(rec)
-	rec.apply(Move.make(Move.SELECT, 0, {"hero": "p0:TA-001"}))
-	rec.apply(Move.make(Move.SELECT, 1, {"hero": "p1:TB-001"}))
-	rec.apply(Move.make(Move.CHOICE, 0, {"roll": true}))
-	rec.apply(Move.make(Move.CHOICE, 1, {"roll": true}))
+	rec.apply(Move.make(Move.SELECT, 0, {"hero": "p0:TA-001", "roll": true}))
+	rec.apply(Move.make(Move.SELECT, 1, {"hero": "p1:TB-001", "roll": true}))
 	while not rec.state.round_over:
 		rec.apply(Move.make(Move.PASS, rec.state.to_act))
 	rec.apply(Move.make(Move.AIM, 0, {"dir": [0, -1], "power": 1.0}))
@@ -74,7 +72,8 @@ func test_roll_outcome_is_recorded_with_its_path() -> void:
 	r2.end_hex = Vector2i(6, 4)
 	o.add(r2)
 	assert_eq(rec.apply_roll(o), "")
-	var rolls: Array = JsonUtil.as_array(rec.record.last_frame()["rolls"])
+	# The roll lands in the Roll frame; the engine then opens the Postroll frame.
+	var rolls: Array = JsonUtil.as_array(rec.record.frames[rec.record.frame_count() - 2]["rolls"])
 	assert_eq(rolls.size(), 1)
 	var back: RollOutcome = RollOutcome.from_dict(JsonUtil.as_dict(rolls[0]))
 	assert_eq(back.thrower_result().path.size(), 3)
@@ -84,15 +83,15 @@ func test_roll_outcome_is_recorded_with_its_path() -> void:
 func test_json_round_trip_and_resume() -> void:
 	var rec: MatchRecorder = _start()
 	_play_to_select(rec)
-	rec.apply(Move.make(Move.SELECT, 0, {"hero": "p0:TA-001"}))
+	rec.apply(Move.make(Move.SELECT, 0, {"hero": "p0:TA-001", "roll": true}))
 	var json: String = JSON.stringify(rec.record.to_dict())
 	var loaded: MatchRecord = MatchRecord.from_dict(JsonUtil.as_dict(JSON.parse_string(json)))
 	assert_eq(loaded.frame_count(), rec.record.frame_count())
 	assert_eq(loaded.cards.size(), rec.record.cards.size())
 	assert_true(loaded.cards.has("TA-001") and loaded.cards.has("TX-010") and loaded.cards.has("TS-004"))
-	# Resume from the last frame: the state is the start of the select phase, before p0's pick.
+	# Resume from the last frame: the state is the start of the Start phase, before p0's pick.
 	var again: MatchRecorder = MatchRecorder.resume(RulesEngine.new(loaded.catalog()), loaded)
-	assert_eq(again.state.phase, GameState.PHASE_SELECT)
+	assert_eq(again.state.phase, GameState.PHASE_START)
 	assert_false(again.state.active.has(0))
 	assert_eq(again.apply(Move.make(Move.SELECT, 0, {"hero": "p0:TA-002"})), "")
 	assert_eq(again.record.frame_count(), loaded.frame_count())
@@ -104,8 +103,8 @@ func test_json_round_trip_and_resume() -> void:
 func test_continue_from_an_earlier_frame() -> void:
 	var rec: MatchRecorder = _start()
 	_play_to_select(rec)
-	rec.apply(Move.make(Move.SELECT, 0, {"hero": "p0:TA-001"}))
-	rec.apply(Move.make(Move.SELECT, 1, {"hero": "p1:TB-001"}))
+	rec.apply(Move.make(Move.SELECT, 0, {"hero": "p0:TA-001", "roll": true}))
+	rec.apply(Move.make(Move.SELECT, 1, {"hero": "p1:TB-001", "roll": true}))
 	assert_eq(rec.state.phase, GameState.PHASE_PREROLL)
 	var branch: MatchRecorder = MatchRecorder.resume(engine, rec.record, 0)
 	assert_eq(branch.state.phase, GameState.PHASE_MULLIGAN)

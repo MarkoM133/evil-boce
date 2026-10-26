@@ -7,6 +7,8 @@ extends RefCounted
 
 const DECISION_DAMAGE: String = "damage"
 const DECISION_RETURN_CORE: String = "return_core"
+## After the roll: a player with a "Roll Phase:" card or ability may use one (or pass).
+const DECISION_ROLL_OFFER: String = "roll_offer"
 
 var catalog: CardCatalog
 ## Card effects (docs/fx-keywords.md).
@@ -227,13 +229,11 @@ func apply(s: GameState, m: Move) -> String:
 			err = _apply_setup_core(s, m)
 		GameState.PHASE_MULLIGAN:
 			err = _apply_mulligan(s, m)
-		GameState.PHASE_SELECT:
-			err = _apply_select(s, m)
-		GameState.PHASE_PREROLL:
-			err = _apply_preroll(s, m)
+		GameState.PHASE_START:
+			err = _apply_start(s, m)
 		GameState.PHASE_ROLL:
 			err = _apply_roll_phase(s, m)
-		GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE:
+		GameState.PHASE_PREROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE:
 			err = _apply_card_round_move(s, m)
 		_:
 			err = "no moves in phase %s" % s.phase
@@ -302,12 +302,15 @@ func _apply_mulligan(s: GameState, m: Move) -> String:
 	return ""
 
 
-func _apply_select(s: GameState, m: Move) -> String:
+## Start (GDD 8, 2026-10-26): one move picks the hero to activate and whether it rolls
+## (`roll`, default true). A hero in the start zone must roll.
+func _apply_start(s: GameState, m: Move) -> String:
 	if m.type != Move.SELECT:
 		return "select a hero"
 	if s.active.has(m.player):
 		return "already selected"
 	var hid: String = m.str_arg("hero")
+	var roll: bool = m.bool_arg("roll", true)
 	if hid.is_empty():
 		if not selectable_heroes(s, m.player).is_empty():
 			return "you have a hero that can be activated"
@@ -318,7 +321,11 @@ func _apply_select(s: GameState, m: Move) -> String:
 		var why: String = activation_error(s, h)
 		if not why.is_empty():
 			return why
+		if not roll and h.zone == HeroState.ZONE_STRIP:
+			return "a hero in the start zone must roll"
 	s.active[m.player] = hid
+	if not hid.is_empty():
+		s.choices[m.player] = roll
 	return ""
 
 
@@ -340,21 +347,8 @@ func activation_error(s: GameState, h: HeroState) -> String:
 	return ""
 
 
-func _apply_preroll(s: GameState, m: Move) -> String:
-	if m.type == Move.CHOICE:
-		if s.choices.has(m.player):
-			return "already chosen"
-		var h: HeroState = s.active_hero(m.player)
-		if h == null:
-			return "no activated hero"
-		var roll: bool = m.bool_arg("roll", true)
-		if not roll and h.zone == HeroState.ZONE_STRIP:
-			return "a hero in the start zone must roll"
-		s.choices[m.player] = roll
-		return ""
-	return _apply_card_round_move(s, m)
-
-
+## Roll: only aims. The phase has no card round; "Roll Phase:" cards and abilities come as a
+## roll_offer decision when the balls stop.
 func _apply_roll_phase(s: GameState, m: Move) -> String:
 	if m.type == Move.AIM:
 		if s.awaiting_roll:
@@ -371,9 +365,7 @@ func _apply_roll_phase(s: GameState, m: Move) -> String:
 			return "power must be 0..1"
 		s.aims[m.player] = {"dir": [JsonUtil.as_float(dir[0]), JsonUtil.as_float(dir[1])], "power": power}
 		return ""
-	if s.awaiting_roll or not _all_aims_in(s):
-		return "aim first"
-	return _apply_card_round_move(s, m)
+	return "aim first; the Roll phase has no card round"
 
 
 ## Pass or play a card, in turn. Playing cards arrives in step 2b.
@@ -463,9 +455,88 @@ func _apply_decision(s: GameState, m: Move) -> String:
 			if not err.is_empty():
 				s.pending = trial
 				return err
+		DECISION_ROLL_OFFER:
+			var err: String = _answer_roll_offer(s, d, m)
+			if not err.is_empty():
+				return err
 		_:
 			return "unknown decision"
 	_continue(s)
+	return ""
+
+
+## The roll_offer decision: `pass` declines; `use_ability` or `play_card` takes one of the
+## offered options (one per stop). The offer leaves the queue before the effect runs, so a
+## choice the effect asks for comes next.
+func _answer_roll_offer(s: GameState, d: Dictionary, m: Move) -> String:
+	if m.type == Move.PASS:
+		s.pending.pop_front()
+		s.event("roll_offer_declined", {"player": m.player})
+		return ""
+	if m.type == Move.USE_ABILITY:
+		var key: String = "%s|%s|%d" % [m.str_arg("hero"), m.str_arg("card"), JsonUtil.as_int(m.data.get("index", 0))]
+		if not JsonUtil.as_strings(d.get("abilities", [])).has(key):
+			return "that ability is not on offer"
+		var trial: Array[Dictionary] = s.pending.duplicate()
+		s.pending.pop_front()
+		var err: String = fx.use_ability(s, m.player, m.str_arg("hero"), m.str_arg("card"), JsonUtil.as_int(m.data.get("index", 0)))
+		if not err.is_empty():
+			s.pending = trial
+		return err
+	if m.type == Move.PLAY_CARD:
+		if not JsonUtil.as_strings(d.get("cards", [])).has(m.str_arg("card")):
+			return "that card is not on offer"
+		var trial: Array[Dictionary] = s.pending.duplicate()
+		s.pending.pop_front()
+		var err: String = _play_card(s, m)
+		if not err.is_empty():
+			s.pending = trial
+		return err
+	return "use a Roll Phase card or ability, or pass"
+
+
+## After the balls stop: one roll_offer per player (initiative first) who has a "Roll Phase:"
+## ability it may use now or a "Roll Phase:" Action it can pay for the activated hero.
+func _offer_roll_effects(s: GameState) -> void:
+	var slot: int = s.initiative
+	for _n: int in s.players.size():
+		var p: PlayerState = s.player(slot)
+		var h: HeroState = s.active_hero(slot)
+		if p != null and not p.surrendered and h != null and not h.is_ko():
+			var abilities := PackedStringArray()
+			for a: Dictionary in fx.usable_abilities(s, slot):
+				abilities.append(str(a["key"]))
+			var cards := PackedStringArray()
+			var hero_card: CardDef = catalog.get_card(h.card_id)
+			for cid: String in p.hand:
+				var card: CardDef = catalog.get_card(cid)
+				if card == null or not card.is_ready() or _play_phase(card) != "ROLL":
+					continue
+				if hero_card != null and hero_card.color != card.color:
+					continue
+				if card_cost(s, p, card) <= p.energy:
+					cards.append(cid)
+			if not abilities.is_empty() or not cards.is_empty():
+				s.pending.append({"type": DECISION_ROLL_OFFER, "player": slot, "hero": h.id,
+					"abilities": Array(abilities), "cards": Array(cards)})
+		slot = _next_slot(s, slot)
+
+
+## REVERSE_ROLL (GDD 10): the activated hero goes back to where it stood as the Roll phase
+## began. Only that hero moves back; heroes it pushed, cores it picked up and stages it
+## revealed stay as they are.
+func reverse_roll(s: GameState, slot: int) -> String:
+	if s.phase != GameState.PHASE_ROLL or not s.rolled:
+		return "reverse roll only works in the Roll phase after the roll"
+	var h: HeroState = s.active_hero(slot)
+	if h == null or h.is_ko():
+		return "no activated hero to put back"
+	if not s.roll_snapshot.has(h.id):
+		return "nothing to go back to"
+	var before: Dictionary = s.roll_snapshot[h.id]
+	h.zone = str(before.get("zone", h.zone))
+	h.hex = JsonUtil.as_hex(before.get("hex", Hex.to_json(h.hex)))
+	s.event("reverse_roll", {"hero": h.id, "hex": Hex.to_json(h.hex), "zone": h.zone})
 	return ""
 
 
@@ -502,8 +573,8 @@ func apply_roll(s: GameState, o: RollOutcome) -> String:
 	s.awaiting_roll = false
 	s.rolled = true
 	s.pending_rolls = PackedStringArray()
+	s.roll_offered = false
 	s.event("rolled", {"moved": Array(o.moved_ids())})
-	_start_card_round(s)
 	_continue(s)
 	return ""
 
@@ -595,20 +666,18 @@ func _continue(s: GameState) -> void:
 					if not p.mulligan_done:
 						return
 				s.turn = 1
-				_set_phase(s, GameState.PHASE_DRAW)
-			GameState.PHASE_DRAW:
-				_draw_phase(s)
-				_set_phase(s, GameState.PHASE_SELECT)
-			GameState.PHASE_SELECT:
-				if s.active.size() < _active_slots(s).size():
+				_begin_turn(s)
+			GameState.PHASE_START:
+				if s.active.size() < _active_slots(s).size() or not _all_choices_in(s):
 					return
+				# Everyone decided: the heroes and the Roll / Stay choices come out together.
 				s.event("activated", {"heroes": s.active.duplicate()})
+				s.event("choices", {"roll": s.choices.duplicate()})
 				_start_card_round(s)
 				_set_phase(s, GameState.PHASE_PREROLL)
 			GameState.PHASE_PREROLL:
-				if not s.round_over or not _all_choices_in(s):
+				if not s.round_over:
 					return
-				s.event("choices", {"roll": s.choices.duplicate()})
 				if _rollers(s).is_empty():
 					_start_card_round(s)
 					_set_phase(s, GameState.PHASE_POSTROLL)
@@ -623,8 +692,13 @@ func _continue(s: GameState) -> void:
 							s.pending_rolls.append(h.id)
 					s.awaiting_roll = true
 					return
-				if not s.round_over:
-					return
+				# The balls stopped: whoever has a "Roll Phase:" card or ability gets one offer
+				# (a roll again brings a new stop and a new offer); then straight to Postroll.
+				if not s.roll_offered:
+					s.roll_offered = true
+					_offer_roll_effects(s)
+					if not s.pending.is_empty():
+						return
 				_start_card_round(s)
 				_set_phase(s, GameState.PHASE_POSTROLL)
 			GameState.PHASE_POSTROLL:
@@ -657,9 +731,16 @@ func _continue(s: GameState) -> void:
 				_end_phase(s)
 				if s.is_over():
 					return
-				_set_phase(s, GameState.PHASE_DRAW)
+				_begin_turn(s)
 			_:
 				return
+
+
+## A new turn: the draw (cards, energy, turn data) and then the Start phase, whose "Start
+## Phase:" effects fire before anyone picks.
+func _begin_turn(s: GameState) -> void:
+	_draw_phase(s)
+	_set_phase(s, GameState.PHASE_START)
 
 
 ## Every phase change goes through here, so inventory cores get queued for their return.
@@ -669,8 +750,14 @@ func _set_phase(s: GameState, phase: String) -> void:
 	# A hero that left its stage (or whose stage got claimed) loses the reveal bonus for good.
 	s.stage_buffs = s.stage_buffs.filter(func(b: Dictionary) -> bool: return _stage_buff_holds(s, b))
 	_queue_core_returns(s)
+	if phase == GameState.PHASE_ROLL:
+		# Where everyone stands before the balls fly, for REVERSE_ROLL.
+		s.roll_snapshot.clear()
+		for h: HeroState in s.heroes:
+			s.roll_snapshot[h.id] = {"zone": h.zone, "hex": Hex.to_json(h.hex)}
 	match phase:
-		GameState.PHASE_PREROLL, GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE, GameState.PHASE_END:
+		GameState.PHASE_START, GameState.PHASE_PREROLL, GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, \
+				GameState.PHASE_BATTLE, GameState.PHASE_END:
 			fx.fire_phase(s, phase)
 
 
@@ -769,7 +856,7 @@ func other_slot(s: GameState, slot: int) -> int:
 ## At the start of every phase a player with cores in the inventory must put them back.
 func _queue_core_returns(s: GameState) -> void:
 	if s.phase == GameState.PHASE_SETUP_STAGES or s.phase == GameState.PHASE_SETUP_CORES \
-			or s.phase == GameState.PHASE_MULLIGAN or s.phase == GameState.PHASE_DRAW:
+			or s.phase == GameState.PHASE_MULLIGAN:
 		return
 	for p: PlayerState in s.players:
 		for cid: String in p.inventory:
@@ -1536,6 +1623,9 @@ func roll_again(s: GameState, slot: int) -> String:
 	s.aims.erase(slot)
 	s.choices[slot] = true
 	s.pending_rolls = PackedStringArray([h.id])
+	# The other offers of this stop fall away; everyone gets a new one when the ball stops again.
+	s.pending = s.pending.filter(func(d: Dictionary) -> bool: return str(d.get("type", "")) != DECISION_ROLL_OFFER)
+	s.roll_offered = false
 	s.event("roll_again", {"hero": h.id})
 	return ""
 

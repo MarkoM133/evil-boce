@@ -24,7 +24,7 @@
     {"move": {"type": "mulligan", "player": 0, "keep": true}, "error": "already"},
     {"move": {"type": "mulligan", "player": 1, "keep": true}},
     {"expect": {
-      "phase": "select",
+      "phase": "start",
       "turn": 1,
       "players.p0.hand": {"$size": 6},
       "players.p1.hand": {"$size": 6},

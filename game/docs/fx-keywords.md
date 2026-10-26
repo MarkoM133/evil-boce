@@ -22,12 +22,12 @@ Examples: `POSTROLL ONCE OPTIONAL: MOVE SELF 2` (Bucciarati),
 | Word | Action card | Hero, equipment, evolution, assist | Stage |
 |---|---|---|---|
 | `PLAY` | runs as the card is played, in any card round | runs when the card enters play | – |
-| `PREROLL` `ROLL` `POSTROLL` `BATTLE` `END` | may only be played in that phase; runs as played | fires at the start of that phase (or, with `OPTIONAL`, may be used then) | – |
+| `START` `PREROLL` `ROLL` `POSTROLL` `BATTLE` `END` | may only be played in that phase; runs as played | fires at the start of that phase (or, with `OPTIONAL`, may be used then) | – |
 | `PASSIVE` | – | counts while the card is in play (`BUFF`, `DAMAGE_MOD`, `COST`) | counts for heroes standing on the stage |
 | `REVEAL` | – | – | runs when the stage is turned face up |
 
-A `ROLL` effect on an Action may be played after the roll (that is when the Roll card round
-happens). A stage's `PASSIVE` effect uses `EACH_HERO` = the heroes on it.
+A `ROLL` effect (an Action, or an `OPTIONAL` ability) is offered when the balls stop: the engine
+asks each player with one (`roll_offer`), once per stop; the Roll phase has no card round. A stage's `PASSIVE` effect uses `EACH_HERO` = the heroes on it.
 
 ### Flags and conditions
 
@@ -73,7 +73,8 @@ Players: `ME`, `OPP`.
 | `DRAW <p> <n>` / `DISCARD <p> <n>` | | draw; the discarding player picks the card |
 | `COST <p> <n> [{Trait}] [PHASE] [TURN]` | | cards of that player cost ±n (filter by trait or by the card's phase); passive, or this turn |
 | `NO_CLAIM <p>` | | that player claims no stage this turn |
-| `ROLL_AGAIN` | | the activated hero rolls once more, right away (Roll phase, after the roll) |
+| `ROLL_AGAIN` | | the activated hero rolls once more, right away (Roll phase, after the roll); the ball stopping again brings new offers |
+| `REVERSE_ROLL` | | the activated hero goes back to where it stood as the Roll phase began; heroes it pushed, cores it picked up and stages it revealed stay ("reverse the roll", "return this hero to where it was before the roll") |
 | `COST_DAMAGE <n>` | | additional cost: SELF takes n as the card is played (needs more than n HP) |
 | `CHOOSE <p> [A; B] [C; D]` | | that player picks a branch; its actions run |
 | `RECYCLE <p> <n> [TOP|BOTTOM|SHUFFLE]` | | the top n of the graveyard go back into the deck |

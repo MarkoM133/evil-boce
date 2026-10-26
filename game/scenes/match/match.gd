@@ -9,6 +9,8 @@ const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
 const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
 ## Seconds between two bot moves, so a human can follow.
 const BOT_DELAY: float = 0.5
+## Auto-pass waits this long, the same whether a card could have been played or not (GDD 8).
+const AUTO_PASS_DELAY: float = 1.5
 ## Core token radius; a rolling ball picks a core up when it touches it.
 const CORE_RADIUS: float = 0.34
 ## The token is drawn this much bigger than its pick-up radius, so its picture reads.
@@ -79,6 +81,8 @@ var _launching: bool = false
 var _picked: Dictionary[String, String] = {}
 var _pick_order: PackedStringArray = PackedStringArray()
 var _bot_wait: float = 0.0
+## Auto-pass: how long the local player to act has had nothing to play.
+var _idle_pass: float = 0.0
 var _press_on_empty: bool = false
 var _menu: Control
 ## The match log beside the pause menu (its Log button).
@@ -294,7 +298,6 @@ func _build_hud() -> void:
 		if JsonUtil.as_bool(_config.get("autoplay", false)):
 			_set_playing.call_deferred(true)
 	hud.pass_pressed.connect(func(slot: int) -> void: _apply(Move.make(Move.PASS, slot)))
-	hud.choice_pressed.connect(func(slot: int, roll: bool) -> void: _apply(Move.make(Move.CHOICE, slot, {"roll": roll})))
 	hud.keep_pressed.connect(func(slot: int, keep: bool) -> void: _apply(Move.make(Move.MULLIGAN, slot, {"keep": keep})))
 	hud.no_hero_pressed.connect(func(slot: int) -> void: _apply(Move.make(Move.SELECT, slot, {"hero": ""})))
 	hud.card_pressed.connect(func(slot: int, cid: String, hero_id: String) -> void:
@@ -304,9 +307,10 @@ func _build_hud() -> void:
 			_flash_target(hero_id)
 		_apply(Move.make(Move.PLAY_CARD, slot, data)))
 	hud.targeting_changed.connect(_refresh_target_fx)
-	hud.pick_confirmed.connect(func(slot: int, hero_id: String) -> void:
+	hud.pick_confirmed.connect(func(slot: int, hero_id: String, roll: bool) -> void:
 		hud.picks.erase(slot)
-		_apply(Move.make(Move.SELECT, slot, {"hero": hero_id})))
+		hud.pick_rolls.erase(slot)
+		_apply(Move.make(Move.SELECT, slot, {"hero": hero_id, "roll": roll})))
 	hud.battle_cam_pressed.connect(_toggle_battle_cam)
 	hud.battle_resolved.connect(_on_battle_resolved)
 	hud.damage_pressed.connect(func(slot: int, target: String) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target})))
@@ -1170,6 +1174,7 @@ func _process(delta: float) -> void:
 		_run_playback(delta)
 		return
 	_run_bots(delta)
+	_run_auto_pass(delta)
 	var mull: bool = state.phase == GameState.PHASE_MULLIGAN and not state.player(0).mulligan_done
 	if _demo_hand_back and _demo_phases.has(state.phase) and not state.player(0).hand.is_empty() 			and (mull or state.to_act == 0 and not state.round_over and state.pending.is_empty()):
 		_demo_hand_back = false
@@ -1241,6 +1246,24 @@ func _run_playback(delta: float) -> void:
 	if _play_wait >= 1.2:
 		_play_wait = 0.0
 		_show_frame(_frame + 1, true)
+
+
+## Auto-pass (GDD 8): a local player to act with nothing playable is passed for after a fixed
+## wait, so the opponent cannot read "no card" off the speed; the Hold key stops it.
+func _run_auto_pass(delta: float) -> void:
+	if not GameSettings.auto_pass() or _replay != null or net_role == "client" or _menu.visible \
+			or state.is_over() or _runner.is_running() or _launching:
+		_idle_pass = 0.0
+		return
+	var slot: int = state.to_act
+	if not hud.local_slots.has(slot) or bots.has(slot) or not hud.nothing_to_play(slot) \
+			or Input.is_key_pressed(GameSettings.key("hold")):
+		_idle_pass = 0.0
+		return
+	_idle_pass += delta
+	if _idle_pass >= AUTO_PASS_DELAY:
+		_idle_pass = 0.0
+		_apply(Move.make(Move.PASS, slot))
 
 
 func _run_bots(delta: float) -> void:
@@ -1421,7 +1444,7 @@ func _on_hero_clicked(id: String) -> void:
 	var h: HeroState = state.hero(id)
 	if h == null:
 		return
-	if state.phase == GameState.PHASE_SELECT and hud.local_slots.has(h.owner) and not state.active.has(h.owner):
+	if state.phase == GameState.PHASE_START and hud.local_slots.has(h.owner) and not state.active.has(h.owner):
 		# A click only chooses (another click changes it); CONFIRM locks it in.
 		var can: bool = false
 		for x: HeroState in engine.selectable_heroes(state, h.owner):
@@ -1880,7 +1903,7 @@ func demo_pause() -> void:
 ## Screenshot helper (a throwaway match): back to Select with player 1's second hero chosen.
 func demo_pick() -> void:
 	_demo = true
-	state.phase = GameState.PHASE_SELECT
+	state.phase = GameState.PHASE_START
 	state.active.erase(0)
 	var mine: Array[HeroState] = state.heroes_of(0)
 	hud.picks[0] = mine[1].id

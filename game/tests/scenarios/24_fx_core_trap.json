@@ -13,15 +13,13 @@
       "players.p0.hand": ["TA-052"], "players.p0.energy": 1,
       "initiative": 0
     }},
-    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001"}},
-    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001"}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": true}},
     {"move": {"type": "play_card", "player": 0, "card": "TA-052"}},
     {"expect": {"pending.0.type": "choose", "pending.0.kind": "hex", "pending.0.player": 0}},
     {"move": {"type": "choose", "player": 0, "value": [8, 8]}, "error": "offered"},
     {"move": {"type": "choose", "player": 0, "value": [6, 5]}},
     {"expect": {"cores.core:p1:1.hex": [6, 5], "turn_mods.0.kind": "core_trap", "turn_mods.0.amount": 3}},
-    {"move": {"type": "choice", "player": 0, "roll": false}},
-    {"move": {"type": "choice", "player": 1, "roll": true}},
     {"pass_round": true},
     {"move": {"type": "aim", "player": 1, "dir": [0, 1], "power": 0.8}},
     {"roll": {"thrower": "p1:TB-001", "results": [

@@ -110,7 +110,7 @@ func test_lobby_match_moves_and_redaction() -> void:
 	assert_true(client_state.player(1).mulligan_done)
 	assert_eq(host.apply(Move.make(Move.MULLIGAN, 0, {"keep": true})), "")
 	await _settle()
-	assert_eq(client_state.phase, GameState.PHASE_SELECT)
+	assert_eq(client_state.phase, GameState.PHASE_START)
 	# Pause from the client; the host may not be able to move; the client resumes.
 	client.send_pause(true)
 	await _settle(0.4)

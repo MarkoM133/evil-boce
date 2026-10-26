@@ -4,7 +4,7 @@ extends Control
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const KEY_LABELS: Dictionary[String, String] = {"pass": "Pass / end the round", "menu": "Menu / cancel",
-	"card_zoom": "Show a card big", "battle_cam": "Battle camera on / off"}
+	"card_zoom": "Show a card big", "battle_cam": "Battle camera on / off", "hold": "Hold (no auto-pass while down)"}
 
 var _data_path: LineEdit
 var _data_check: Label
@@ -65,6 +65,8 @@ func _ready() -> void:
 	bcam.item_selected.connect(func(i: int) -> void: _store("display", "battle_cam", i == 0))
 	var tips := _option(col, "Card text on hover", ["Shown", "Off"], 0 if GameSettings.hover_text() else 1)
 	tips.item_selected.connect(func(i: int) -> void: _store("display", "hover_text", i == 0))
+	var ap := _option(col, "Auto-pass", ["On (passes when you have nothing to play)", "Off"], 0 if GameSettings.auto_pass() else 1)
+	ap.item_selected.connect(func(i: int) -> void: _store("display", "auto_pass", i == 0))
 	var mode := _option(col, "Window", ["Windowed", "Fullscreen"], 1 if GameSettings.fullscreen() else 0)
 	mode.item_selected.connect(func(i: int) -> void: _store("display", "fullscreen", i == 1))
 	var sizes: Array[String] = []

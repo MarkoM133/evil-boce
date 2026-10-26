@@ -8,11 +8,10 @@ extends Control
 ## clicked; the match scene turns that into moves.
 
 signal pass_pressed(slot: int)
-signal choice_pressed(slot: int, roll: bool)
+## Start: the chosen hero and whether it rolls are locked in (CONFIRM).
+signal pick_confirmed(slot: int, hero_id: String, roll: bool)
 signal keep_pressed(slot: int, keep: bool)
 signal no_hero_pressed(slot: int)
-## Select: the chosen hero is locked in (CONFIRM).
-signal pick_confirmed(slot: int, hero_id: String)
 ## A card from the hand goes on `hero_id` ("" lets the engine pick, when it can only go one way).
 signal card_pressed(slot: int, card_id: String, hero_id: String)
 ## Choosing a hero for a card started, changed or ended (target_heroes empty).
@@ -33,12 +32,10 @@ signal watch_replay_pressed
 ## Setup: the player picked which stage or core to place next.
 signal setup_item_pressed(id: String)
 
-const PHASES: Array[String] = [GameState.PHASE_DRAW, GameState.PHASE_SELECT, GameState.PHASE_PREROLL,
+const PHASES: Array[String] = [GameState.PHASE_START, GameState.PHASE_PREROLL,
 	GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE, GameState.PHASE_END]
-## The phases as the ribbon shows them: Draw and Select read as one Start phase (the rules
-## keep both; Draw needs no input).
-const RIBBON_PHASES: Array[String] = ["start", GameState.PHASE_PREROLL, GameState.PHASE_ROLL,
-	GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE, GameState.PHASE_END]
+## The ribbon shows the six phases as they are.
+const RIBBON_PHASES: Array[String] = PHASES
 const ROSTER_WIDTH: float = 360.0
 const SLICE_HEIGHT: float = 70.0
 const CARD_SIZE := Vector2(128, 178)
@@ -78,6 +75,10 @@ var _hand_drop: float = 0.0
 var _hand_box: Control
 var _hand: Control
 var _hand_title: Label
+var _mulligan_row: HBoxContainer
+## The starting hand flew in already (it is dealt once; a refresh must not replay it).
+var _hand_dealt: bool = false
+var _hand_sig: String = ""
 var _ribbon: HBoxContainer
 var _rosters: Array[VBoxContainer] = []
 var _kicker: Label
@@ -107,6 +108,8 @@ var _called_phase: String = ""
 var target_slot: int = -1
 ## Select: the hero each local player has chosen but not yet confirmed (slot -> hero id).
 var picks: Dictionary = {}
+## Start: whether each local player's pick rolls (slot -> bool; missing = rolls).
+var pick_rolls: Dictionary = {}
 var target_cid: String = ""
 var target_heroes: PackedStringArray = PackedStringArray()
 var _target_why: Dictionary = {}
@@ -146,7 +149,7 @@ func refresh() -> void:
 	if state == null:
 		return
 	# A chosen but unconfirmed hero only lasts the Select phase.
-	if state.phase != GameState.PHASE_SELECT and not picks.is_empty():
+	if state.phase != GameState.PHASE_START and not picks.is_empty():
 		picks.clear()
 	# Choosing a hero for a card ends when the card can no longer be played.
 	if is_targeting() and not (_in_card_round() and state.to_act == target_slot and state.pending.is_empty()
@@ -158,7 +161,8 @@ func refresh() -> void:
 	# A new phase is called out in the middle (not on the first look, e.g. a loaded match).
 	if _ribbon_phase(state.phase) != _ribbon_phase(_called_phase) or _called_phase.is_empty():
 		# Not while a replay rewinds (its log gets shorter).
-		if not _called_phase.is_empty() and PHASES.has(state.phase) and state.log.size() >= _log_seen:
+		# End is quiet (GDD 11): what it did shows through the log's own banners.
+		if not _called_phase.is_empty() and PHASES.has(state.phase) and state.phase != GameState.PHASE_END and state.log.size() >= _log_seen:
 			banner("%s PHASE" % _ribbon_phase(state.phase).to_upper(), Palette.PANEL_SOLID, "TURN %d" % state.turn, "", PHASE_BANNER_TIME)
 		_called_phase = state.phase
 	else:
@@ -420,10 +424,20 @@ func _build() -> void:
 	_hand_title.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_hand_title.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_hand_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hand_title.position = Vector2(-300, -64)
+	_hand_title.position = Vector2(-300, -96)
 	_hand_title.size = Vector2(600, 50)
 	_hand_title.visible = false
 	_hand_box.add_child(_hand_title)
+	# Mulligan: KEEP and NEW HAND sit right under the cards.
+	_mulligan_row = HBoxContainer.new()
+	_mulligan_row.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_mulligan_row.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_mulligan_row.offset_top = HAND_HEIGHT + 28
+	_mulligan_row.offset_bottom = HAND_HEIGHT + 80
+	_mulligan_row.add_theme_constant_override("separation", 16)
+	_mulligan_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_mulligan_row.visible = false
+	_hand_box.add_child(_mulligan_row)
 
 	var dialog_center := CenterContainer.new()
 	dialog_center.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -885,6 +899,38 @@ func _ability_tabs(h: HeroState, active: bool, right: bool) -> Control:
 	return col
 
 
+## The ball stopped and a "Roll Phase:" card or ability is on offer: the card shows big, the
+## options are buttons, "GO ON" declines (a pass).
+func _roll_offer_prompt(d: Dictionary, who: int) -> void:
+	_kicker.text = "ROLL PHASE"
+	_prompt.text = "Your ball stopped"
+	_detail.text = "Use a Roll Phase card or ability now, or go on to Postroll."
+	var cards: PackedStringArray = JsonUtil.as_strings(d.get("cards", []))
+	for key: String in JsonUtil.as_strings(d.get("abilities", [])):
+		var parts: PackedStringArray = key.split("|")
+		if parts.size() != 3:
+			continue
+		var card: CardDef = engine.catalog.get_card(parts[1])
+		var title: String = "%s ability" % parts[1]
+		if card != null:
+			var n: int = 0
+			for i: int in parts[2].to_int():
+				if i < card.effects.size() and card.effects[i].optional and card.effects[i].cond != "WIN":
+					n += 1
+			title = card.ability_name(n) if not card.ability_name(n).is_empty() else "%s: Roll ability" % card.name
+		var b: Button = _action(title.to_upper(), func() -> void: ability_pressed.emit(who, parts[0], parts[1], parts[2].to_int()), &"Gold")
+		if card != null:
+			b.tooltip_text = _card_tip(card.text)
+	for cid: String in cards:
+		var card: CardDef = engine.catalog.get_card(cid)
+		var cost: int = engine.card_cost(state, state.player(who), card) if card != null else 0
+		_action("PLAY %s  ·  %d" % [(card.name if card != null else cid).to_upper(), cost],
+			func() -> void: card_pressed.emit(who, cid, ""), &"Gold")
+	if cards.size() == 1 and _big_cid != cards[0]:
+		_show_big(cards[0])
+	_action("GO ON", func() -> void: pass_pressed.emit(who), &"Primary")
+
+
 ## The ability's name from the card (Card Engine, underlined), else what kind it is.
 func _ability_title(a: Dictionary) -> String:
 	var card: CardDef = a["card"]
@@ -993,7 +1039,7 @@ func _hero_tag(h: HeroState, active: bool, pickable: bool, in_battle: bool) -> U
 
 
 func _pickable(h: HeroState) -> bool:
-	if state.phase != GameState.PHASE_SELECT or not local_slots.has(h.owner) or state.active.has(h.owner):
+	if state.phase != GameState.PHASE_START or not local_slots.has(h.owner) or state.active.has(h.owner):
 		return false
 	for x: HeroState in engine.selectable_heroes(state, h.owner):
 		if x.id == h.id:
@@ -1017,8 +1063,6 @@ func _in_card_round() -> bool:
 	match state.phase:
 		GameState.PHASE_PREROLL, GameState.PHASE_POSTROLL, GameState.PHASE_BATTLE:
 			return not state.round_over
-		GameState.PHASE_ROLL:
-			return state.rolled and not state.round_over
 	return false
 
 
@@ -1027,10 +1071,8 @@ func _needs_input(slot: int) -> bool:
 	match state.phase:
 		GameState.PHASE_MULLIGAN:
 			return not state.player(slot).mulligan_done
-		GameState.PHASE_SELECT:
+		GameState.PHASE_START:
 			return not state.active.has(slot)
-		GameState.PHASE_PREROLL:
-			return not state.choices.has(slot) and state.active_hero(slot) != null
 		GameState.PHASE_ROLL:
 			return state.choices.get(slot, false) and not state.aims.has(slot) and state.active_hero(slot) != null
 	return false
@@ -1038,6 +1080,8 @@ func _needs_input(slot: int) -> bool:
 
 func _refresh_prompt() -> void:
 	_clear(_actions)
+	_clear(_mulligan_row)
+	_mulligan_row.visible = false
 	_clear(_tray)
 	_prompt.text = ""
 	_detail.text = ""
@@ -1067,6 +1111,8 @@ func _refresh_prompt() -> void:
 		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hex":
 			_prompt.text = str(d.get("prompt", "Pick a hex"))
 			_detail.text = "%s: click a highlighted hex." % player_name(who)
+		elif str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
+			_roll_offer_prompt(d, who)
 		return
 	var any_local: bool = false
 	for slot: int in local_slots:
@@ -1079,27 +1125,32 @@ func _refresh_prompt() -> void:
 			GameState.PHASE_MULLIGAN:
 				_prompt.text = "Keep this hand?"
 				_detail.text = ("%s: " % who if many else "") + "a new hand is drawn once."
-				_action("New hand", func() -> void: keep_pressed.emit(slot, false))
-				_action("KEEP", func() -> void: keep_pressed.emit(slot, true), &"Primary")
-			GameState.PHASE_SELECT:
+				_mulligan_row.visible = true
+				_mulligan_button("NEW HAND", func() -> void: keep_pressed.emit(slot, false), &"")
+				_mulligan_button("KEEP THIS HAND", func() -> void: keep_pressed.emit(slot, true), &"Primary")
+			GameState.PHASE_START:
+				# Pick a hero, say whether it rolls or stays, confirm (GDD 8, 2026-10-26).
 				var picked: HeroState = state.hero(str(picks.get(slot, "")))
 				_prompt.text = "Pick a hero"
 				if picked == null:
 					_detail.text = ("%s: " % who if many else "") + "click one of your heroes."
 				else:
-					_detail.text = ("%s: " % who if many else "") + "%s is chosen. Click another to change, or confirm." % hero_name(picked)
-					_action("CONFIRM %s" % hero_name(picked).to_upper(), func() -> void: pick_confirmed.emit(slot, picked.id), &"Primary")
+					var must_roll: bool = picked.zone == HeroState.ZONE_STRIP
+					var rolls: bool = must_roll or pick_rolls.get(slot, true) == true
+					_detail.text = ("%s: " % who if many else "") + "%s %s. Click another hero to change." % [hero_name(picked),
+						"rolls into the arena" if rolls else "stays where it is"]
+					var stay: Button = _action("STAY", func() -> void:
+						pick_rolls[slot] = false
+						refresh(), &"Gold" if not rolls else &"")
+					stay.disabled = must_roll
+					if must_roll:
+						stay.tooltip_text = "A hero in the start zone must roll"
+					_action("ROLL", func() -> void:
+						pick_rolls[slot] = true
+						refresh(), &"Gold" if rolls else &"")
+					_action("CONFIRM %s" % hero_name(picked).to_upper(), func() -> void: pick_confirmed.emit(slot, picked.id, rolls), &"Primary")
 				if engine.selectable_heroes(state, slot).is_empty():
 					_action("No hero can act", func() -> void: no_hero_pressed.emit(slot), &"Primary")
-			GameState.PHASE_PREROLL:
-				var h: HeroState = state.active_hero(slot)
-				_prompt.text = "Roll or Stay?"
-				_detail.text = ("%s: " % who if many else "") + "decide now for %s; the throw itself comes in the Roll phase." % hero_name(h)
-				var stay: Button = _action("STAY", func() -> void: choice_pressed.emit(slot, false))
-				stay.disabled = h.zone == HeroState.ZONE_STRIP
-				if stay.disabled:
-					stay.tooltip_text = "A hero in the start zone must roll"
-				_action("I'LL ROLL", func() -> void: choice_pressed.emit(slot, true), &"Primary")
 			GameState.PHASE_ROLL:
 				_prompt.text = "Throw %s" % hero_name(state.active_hero(slot))
 				_detail.text = ("%s: " % who if many else "") + "drag the lit ball back and let go. Right click cancels."
@@ -1273,6 +1324,10 @@ func _process(delta: float) -> void:
 # --- hand ------------------------------------------------------------------------
 
 func _refresh_hand() -> void:
+	# A new starting hand (mulligan taken) flies in again.
+	if state.phase == GameState.PHASE_MULLIGAN and hand_slot() >= 0 and _hand_sig != ",".join(state.player(hand_slot()).hand):
+		_hand_sig = ",".join(state.player(hand_slot()).hand)
+		_hand_dealt = false
 	_clear(_hand)
 	var mulligan: bool = state.phase == GameState.PHASE_MULLIGAN
 	_hand_title.visible = false
@@ -1280,7 +1335,7 @@ func _refresh_hand() -> void:
 	if slot < 0 or state.turn == 0 and not mulligan:
 		return
 	# No cards are played while heroes are picked and aimed; keep the strip free to grab balls.
-	if state.phase == GameState.PHASE_SELECT or state.phase == GameState.PHASE_ROLL and not state.rolled:
+	if state.phase == GameState.PHASE_START or state.phase == GameState.PHASE_ROLL and not state.rolled:
 		return
 	var p: PlayerState = state.player(slot)
 	if mulligan and not _needs_input(slot):
@@ -1302,9 +1357,22 @@ func _refresh_hand() -> void:
 			card.scale = Vector2.ONE * 1.25
 		card.set_meta("rest_y", card.position.y)
 		_hand.add_child(card)
+		# The starting hand flies in from below, one card after another, and settles (once).
+		if mulligan and not _hand_dealt:
+			var face: Control = card.get_node_or_null("Face") as Control
+			if face != null:
+				face.position.y = 520.0
+				face.modulate.a = 0.0
+				var fly: Tween = face.create_tween().set_parallel()
+				fly.tween_property(face, "position:y", 0.0, 0.45).set_delay(0.12 * i).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+				fly.tween_property(face, "modulate:a", 1.0, 0.2).set_delay(0.12 * i)
 		# The card a hero is being chosen for stays up.
 		if cid == target_cid and slot == target_slot:
 			_lift(card, true, true)
+	if mulligan:
+		_hand_dealt = true
+	else:
+		_hand_dealt = false
 
 
 ## Messages from the engine that still mean "you can play it" (it asks for a choice after).
@@ -1593,6 +1661,9 @@ func _card_click(e: InputEvent, cid: String) -> bool:
 
 ## Hover: the card rises, straightens and grows; a playable one gets a straw edge.
 func _lift(card: Control, up: bool, playable: bool) -> void:
+	# The starting hand stands still: big already, and its buttons are under it.
+	if state != null and state.phase == GameState.PHASE_MULLIGAN:
+		return
 	# The card a hero is being chosen for stays up when the mouse leaves it.
 	if not up and str(card.get_meta("cid", "")) == target_cid:
 		return
@@ -2071,7 +2142,8 @@ static func _short_why(err: String) -> String:
 
 ## The ribbon's name for a rules phase: Draw and Select are both "start".
 static func _ribbon_phase(phase: String) -> String:
-	return "start" if phase == GameState.PHASE_DRAW or phase == GameState.PHASE_SELECT else phase
+	# Old replays still carry draw and select frames.
+	return "start" if phase == "draw" or phase == "select" else phase
 
 
 ## A card's text on hover, unless switched off (Settings → Interface: card text on hover).
@@ -2085,3 +2157,29 @@ static func round_corners(aspect: float = 0.714) -> ShaderMaterial:
 	m.shader = preload("res://ui/round_corners.gdshader")
 	m.set_shader_parameter("aspect", aspect)
 	return m
+
+
+func _mulligan_button(text: String, cb: Callable, kind: StringName) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	if kind != &"":
+		b.theme_type_variation = kind
+	b.add_theme_font_size_override("font_size", 24)
+	b.custom_minimum_size = Vector2(220, 52)
+	b.pressed.connect(cb)
+	_mulligan_row.add_child(b)
+	return b
+
+
+## Auto-pass (GDD 8): true when the local player to act has nothing playable now: no card the
+## engine would accept and no ability on offer. The match passes for them after a short wait.
+func nothing_to_play(slot: int) -> bool:
+	if not _in_card_round() or state.to_act != slot or not state.pending.is_empty():
+		return false
+	if not engine.fx.usable_abilities(state, slot).is_empty():
+		return false
+	for cid: String in state.player(slot).hand:
+		if _play_check(slot, cid).get("ok", false) == true:
+			return false
+	return true

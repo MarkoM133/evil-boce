@@ -5,7 +5,7 @@ extends RefCounted
 ## hand-written `fx` in the web app before it is playable.
 
 const PHASES: Dictionary[String, String] = {
-	"preroll": "PREROLL", "roll": "ROLL", "postroll": "POSTROLL", "battle": "BATTLE", "end": "END",
+	"start": "START", "preroll": "PREROLL", "roll": "ROLL", "postroll": "POSTROLL", "battle": "BATTLE", "end": "END",
 }
 const STAT_WORDS: Dictionary[String, String] = {
 	"power": "PWR", "pwr": "PWR", "[pwr]": "PWR",
@@ -260,6 +260,9 @@ static func _match(low: String) -> Array[Dictionary]:
 	m = _rx("^(?:you )?roll (?:the activated hero|self|him|her|this hero) (?:again|one additional time)(?: when activated)?$").search(low)
 	if m != null:
 		return [_act("ROLL_AGAIN", "", [])]
+	m = _rx("^(?:you may )?(?:reverse (?:the|this) roll|return (?:the activated hero|self|him|her|this hero) to where (?:it|he|she) (?:was|stood) before (?:the|this) roll)$").search(low)
+	if m != null:
+		return [_act("REVERSE_ROLL", "", [])]
 
 	if low == "your opponent must discard a card":
 		return [_act("DISCARD", "OPP", ["1"])]

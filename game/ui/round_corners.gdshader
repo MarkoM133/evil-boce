@@ -10,7 +10,8 @@ void fragment() {
 	vec2 size = vec2(1.0, 1.0 / aspect);
 	vec2 q = abs(p - size * 0.5) - (size * 0.5 - vec2(radius));
 	float d = length(max(q, 0.0)) - radius;
-	vec4 c = texture(TEXTURE, UV) * COLOR;
+	// COLOR already carries the texture sample times modulate.
+	vec4 c = COLOR;
 	c.a *= 1.0 - smoothstep(-0.004, 0.004, d);
 	COLOR = c;
 }
