@@ -603,6 +603,10 @@ td.now { font-weight: 600; }
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+/* Tko smije kartu (prvi tag) ispod imena; zasivljena karta čeka svoju Evolution kartu. */
+.pool-tag { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pool-tag.warn { color: var(--straw); }
+.pool-card.needs .pool-art img { filter: grayscale(1) brightness(.45); }
 /* − i + stoje na slici karte dolje lijevo (broj u decku je dolje desno), pa ispod slike je samo ime */
 /* Na slici karte: − i + dolje lijevo, povećaj u gornjem desnom kutu; isti razmak od ruba, isti tamni okvir. */
 .pool-art-wrap .stepper { position: absolute; left: 6px; bottom: 6px; background: rgba(0, 0, 0, .7); border-radius: 4px; padding: 2px; }

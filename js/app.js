@@ -1,8 +1,9 @@
 import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, thumbName, SIZES, CE_FIELDS, ARCHIVE_DIR, archiveFolder, archivePath,
   CHANGELOG_PATH, changelogEntry, appendChangelog, changesSince, describeChange, publishedPngPaths } from './importer.js';
 import { TYPES, COLOR_NAMES, DECK_TYPES, HERO_TYPES, TERRAINS } from './parse.js';
-import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, LIMITS, DECK_SIZE } from './deck.js';
-import { probeServer, serverStore, folderStore, ConflictError } from './store.js';
+import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, setTraits, cardVerdict, deckEvolutions, heroEvolutions, poolCapacity, tagWarnings, coverage, LIMITS, DECK_SIZE } from './deck.js';
+import { probeServer, serverStore, folderStore, ConflictError, TRAITS_PATH, emptyTraits } from './store.js';
+import { firstTag, tagLabel, hasTrait, traitNames, norm, heroAliases, GENERAL, HEROES, TRAIT } from './tags.js';
 import { BALL_COLORS, DEFAULT_ACCENT, heroDefaultColor, ballColors } from './look.js';
 import { renderTools } from './tools.js';
 import { aggregate, filterMatches, ranked, cardsVersions, RESULTS } from './stats.js';
@@ -300,6 +301,8 @@ async function useStore(store) {
   state.db = await store.readDb();
   state.changelog = await store.readChangelog();
   state.fxProposals = await store.readFxProposals().catch(() => null);
+  state.traits = await store.readTraits().catch(() => emptyTraits());
+  setTraits(state.db, state.traits.traits);
   state.logo = await store.logoUrl();
   state.decks = await store.listDecks();
   state.deck = null;
@@ -314,6 +317,8 @@ async function useStore(store) {
 
 async function reloadDb() {
   state.db = await state.store.readDb();
+  state.traits = await state.store.readTraits().catch(() => emptyTraits());
+  setTraits(state.db, state.traits.traits);
   state.changelog = await state.store.readChangelog();
   state.store.dropImageUrls?.();
 }
@@ -358,6 +363,7 @@ async function assertFresh() {
   const disk = await state.store.readDb();
   if (disk.version !== state.db.version || disk.updated !== state.db.updated) {
     state.db = disk;
+    setTraits(state.db, state.traits?.traits);
     state.analysis = null;
     throw new Error(`cards.json was changed in the meantime (version ${disk.version}). Run Import again.`);
   }
@@ -368,6 +374,7 @@ async function writeDb(db) {
   const old = state.db;
   await fs.writeFile(root(), DB_PATH, JSON.stringify(db, null, 2) + '\n');
   state.db = db;
+  setTraits(state.db, state.traits?.traits);
   const log = appendChangelog(await state.store.readChangelog(), changelogEntry(old, db));
   await fs.writeFile(root(), CHANGELOG_PATH, JSON.stringify(log, null, 2) + '\n');
   state.changelog = log;
@@ -408,6 +415,9 @@ async function runImport() {
   state.analysis.files = files.map(({ path, file }) => ({ path, lastModified: file.lastModified, size: file.size }));
   state.analysis.fileCount = { xml: xmlFiles.length, png: pngFiles.length };
   state.analysis.missingThumbs = await countMissingSizes(state.db);
+  // Pravilo prvog taga: upozorenja na bazi kakva bi bila nakon Objave (ne blokiraju).
+  const preview = setTraits(buildPublish(state.db, state.analysis).db, state.traits?.traits);
+  state.analysis.warnings.push(...tagWarnings(preview));
 }
 
 async function publish() {
@@ -523,7 +533,7 @@ function render() {
 // ---------- adresa: svaki pogled ima svoj #/…, pa gesta ili tipka Natrag vraća korak unatrag ----------
 
 // history nije u izborniku: otvara se klikom na verziju u zaglavlju ili u detalju karte.
-const TAB_SLUG = { import: 'import', browse: 'browse', decks: 'decks', balance: 'balance', tools: 'tools', history: 'history' };
+const TAB_SLUG = { import: 'import', browse: 'browse', decks: 'decks', balance: 'balance', traits: 'traits', coverage: 'coverage', tools: 'tools', history: 'history' };
 const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]));
 // Stare hrvatske adrese (#/uvoz, #/pregled, #/deckovi/novi) i dalje rade.
 const OLD_SLUG_TAB = { uvoz: 'import', pregled: 'browse', deckovi: 'decks' };
@@ -756,9 +766,11 @@ function renderMain() {
     ['browse', 'Browse'],
     ['decks', 'Decks'],
     ['balance', 'Balance'],
+    ['traits', 'Traits'],
+    ['coverage', 'Coverage'],
     ['tools', 'Tools'],
   ];
-  const view = { import: renderImport, browse: renderBrowse, decks: renderDecks, balance: renderBalance, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
+  const view = { import: renderImport, browse: renderBrowse, decks: renderDecks, balance: renderBalance, traits: renderTraits, coverage: renderCoverage, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
@@ -849,6 +861,71 @@ function balanceTable(title, note, rows, kind) {
         h('td', { class: 'num' }, r.picks),
         h('td', { class: 'num' }, r.wins),
         h('td', { class: 'rate' }, rateBar(r.rate, r.picks)))))));
+}
+
+// ---------- Traits i Coverage: pravilo prvog taga (odluka 2026-10-26) ----------
+
+// Kartica Traits: popis traitova (data/traits.json) koje prvi tag karte smije imenovati. Za svaki:
+// opis, heroji koji ga imaju (na svojoj karti ili na Evolution karti) i karte kojima je to prvi tag.
+function renderTraits() {
+  const canEdit = state.store.canImport;
+  const work = (state.traitWork ??= structuredClone(state.traits ?? emptyTraits()));
+  const live = state.db.cards.filter(c => !c.deleted);
+  const holders = t => live.filter(c => (c.type === 'Hero' || c.type === 'Evolution') && hasTrait(c, t));
+  const firstOf = t => live.filter(c => DECK_TYPES.includes(c.type) && norm(c.traits?.[0]) === norm(t));
+  const dirty = JSON.stringify(work) !== JSON.stringify(state.traits ?? emptyTraits());
+  const nameIn = h('input', { placeholder: 'New trait, e.g. Rokushiki', disabled: !canEdit });
+  const add = () => {
+    const n = nameIn.value.trim();
+    if (!n) return;
+    if (work.traits.some(t => norm(t.name) === norm(n))) { toast(`${n} is already on the list.`, 'warn'); return; }
+    work.traits.push({ name: n, description: '' });
+    render();
+  };
+  return h('section', { class: 'panel' },
+    h('h2', {}, 'Traits'),
+    h('p', { class: 'muted' }, 'A card\'s first tag says who may take it: General (any hero of its color), a hero\'s name or alias (Giorno, Giorno & Bucciarati), or a trait from this list (a hero of the card\'s color with that tag, on its card or on an Evolution card in the deck). The game reads the same list.'),
+    h('table', { class: 'balance-table traits-table' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Trait'), h('th', {}, 'Description'), h('th', {}, 'Heroes and Evolutions with it'), h('th', {}, 'Cards with it first'), h('th', {}, ''))),
+      h('tbody', {}, work.traits.map((t, i) => h('tr', {},
+        h('td', {}, h('strong', {}, t.name)),
+        h('td', {}, canEdit ? h('input', { value: t.description ?? '', onchange: e => { t.description = e.target.value; render(); } }) : (t.description ?? '')),
+        h('td', {}, holders(t.name).map((c, j) => [j ? ', ' : null, cardLink(c.id)]).flat().filter(Boolean).concat(holders(t.name).length ? [] : [h('span', { class: 'muted' }, 'nobody yet')])),
+        h('td', { class: 'num' }, firstOf(t.name).length),
+        h('td', {}, canEdit ? h('button', { class: 'ghost', title: `Remove ${t.name} from the list`, onclick: () => { work.traits.splice(i, 1); render(); } }, 'Remove') : null))))),
+    canEdit ? h('div', { class: 'toolbar' }, nameIn, h('button', { onclick: add }, 'Add trait'),
+      h('button', { class: 'primary', disabled: !dirty, onclick: () => guard(saveTraits) }, 'Save'),
+      dirty ? h('button', { class: 'ghost', onclick: () => { state.traitWork = null; render(); } }, 'Undo') : null)
+      : h('p', { class: 'muted' }, 'Open the folder (Import) to edit the list.'));
+}
+
+async function saveTraits() {
+  const next = { ...state.traitWork, version: (state.traits?.version ?? 0) + 1 };
+  await fs.writeFile(root(), TRAITS_PATH, JSON.stringify(next, null, 2) + '\n');
+  state.traits = next;
+  state.traitWork = null;
+  setTraits(state.db, next.traits);
+  toast('Trait list saved.');
+}
+
+// Kartica Coverage: po heroju koliko karata svoje boje smije (i kopija), od toga signature /
+// trait / general, i s koliko parova suigrača ima pun deck od 40; ispod upozorenja o tagovima.
+function renderCoverage() {
+  const rows = coverage(state.db).sort((a, b) => a.cards - b.cards || a.name.localeCompare(b.name));
+  const warns = tagWarnings(state.db);
+  return h('section', { class: 'panel' },
+    h('h2', {}, 'Coverage'),
+    h('p', { class: 'muted' }, 'Cards of its own color each hero may take under the first tag rule, the most copies of them, the kind of card, and with how many pairs of teammates its deck reaches 40. Fewest first.'),
+    h('table', { class: 'balance-table' },
+      h('thead', {}, h('tr', {}, ['Hero', 'Color', 'Cards', 'Copies', 'Signature', 'Trait', 'General', 'Evolution', 'Full decks'].map(x => h('th', {}, x)))),
+      h('tbody', {}, rows.map(r => h('tr', { class: r.cards < 8 ? 'low' : '' },
+        h('td', {}, cardLink(r.id)), h('td', {}, r.color),
+        h('td', { class: 'num' }, r.cards), h('td', { class: 'num' }, r.copies),
+        h('td', { class: 'num' }, r.signature), h('td', { class: 'num' }, r.trait), h('td', { class: 'num' }, r.general), h('td', { class: 'num' }, r.evolution),
+        h('td', { class: 'num' }, `${r.full} / ${r.pairs}`))))),
+    h('h3', {}, `Tag warnings (${warns.length})`),
+    warns.length ? h('ul', { class: 'deck-problems' }, warns.map(w => h('li', { class: 'warn' }, cardLink(w.id), ': ', w.msg)))
+      : h('p', { class: 'muted' }, 'None.'));
 }
 
 // Postotak pobjeda s trakom; s manje od 5 partija je bljeđi (premalo za zaključak).
@@ -1230,9 +1307,15 @@ function renderDetail() {
   const canEdit = state.store.canImport;
   const save = () => h('button', { class: 'primary', type: 'submit' }, 'Save');
   const form = (...kids) => h('form', { class: 'editor', onsubmit: e => { e.preventDefault(); guard(() => saveEdits(c.id, edits)); } }, ...kids);
-  const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'terrain', 'figure', 'heroSfx', 'rev', 'imageHash']
+  const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'terrain', 'figure', 'heroSfx', 'rev', 'imageHash']
     .filter(k => c[k] !== undefined)
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
+  // Pravilo prvog taga: tko smije kartu (deck karte) ili koje traitove s popisa heroj ima.
+  if (DECK_TYPES.includes(c.type)) rows.push(h('tr', {}, h('th', {}, 'who may'), h('td', {}, cardTagLabel(c))));
+  if (c.type === 'Hero') {
+    const own = traitNames(state.traits?.traits).filter(t => hasTrait(c, t));
+    rows.push(h('tr', {}, h('th', {}, 'list traits'), h('td', {}, own.length ? own.join(', ') : '– none from the trait list –')));
+  }
   // Povijest ove karte; verzija otvara cijelu povijest na toj verziji.
   const changes = (state.changelog?.entries ?? []).flatMap(e => e.cards.filter(x => x.id === c.id).map(x => ({ v: e.version, x }))).reverse();
   if (changes.length) {
@@ -1250,6 +1333,9 @@ function renderDetail() {
     h('div', {}, h('table', { class: 'fields' }, rows),
       canEdit ? form(
         h('h3', {}, 'App fields'),
+        c.type === 'Hero' ? h('label', { class: 'field' }, h('span', {}, 'Aliases'),
+          h('input', { value: (c.aliases ?? [c.name]).join(', '), placeholder: c.name, title: 'Other names the first tag of a card may use for this hero, comma separated (the card name always counts)',
+            onchange: e => { const list = e.target.value.split(',').map(s => s.trim()).filter(Boolean); edits.aliases = list.length ? [...new Set([c.name, ...list])] : undefined; } })) : null,
         c.type === 'Stage' ? h('label', { class: 'field' }, h('span', {}, 'Terrain'),
           h('select', { onchange: e => { edits.terrain = e.target.value || undefined; } },
             h('option', { value: '' }, '– not set –'),
@@ -1470,6 +1556,41 @@ function addCard(id, delta) {
     if (n) d.cards[id] = n;
     else delete d.cards[id];
   });
+  if (c.type === 'Evolution' && !state.deck.cards[id]) warnOrphans(c);
+}
+
+// Tko smije kartu (prvi tag): "General", "Signature: Giorno", "Trait: Stand"; Evolution po heroju.
+function cardTagLabel(c) {
+  if (c.type === 'Evolution') return `Evolution of ${c.hero}`;
+  return tagLabel(firstTag(state.db, c, state.traits?.traits));
+}
+
+// Karta traži Evolution koje nema u decku: ponudi da doda obje (prvu od mogućih Evolution karata).
+function offerEvolution(c, needs) {
+  const evo = cardById(needs[0]);
+  if (!evo) return;
+  const go = h('button', { class: 'toast-action', onclick: () => {
+    go.closest('.toast')?.remove();
+    changeDeck(d => {
+      d.cards[evo.id] = Math.max(1, d.cards[evo.id] ?? 0);
+      d.cards[c.id] = Math.min(LIMITS[c.type], (d.cards[c.id] ?? 0) + 1);
+    });
+  } }, 'Add both');
+  toast([`${c.name} requires ${evo.name} in the deck. `, go], 'warn', 9000);
+}
+
+// Zadnja kopija Evolution karte je otišla: karte koje je ona otključavala više nisu legalne.
+function warnOrphans(evo) {
+  const d = state.deck;
+  const evos = deckEvolutions(state.db, d.cards);
+  const orphans = Object.keys(d.cards).map(cardById).filter(x => x && x.type !== 'Evolution' &&
+    !cardVerdict(state.db, x, d.heroes, evos).ok && cardVerdict(state.db, x, d.heroes, [...evos, evo.id]).ok);
+  if (!orphans.length) return;
+  const go = h('button', { class: 'toast-action', onclick: () => {
+    go.closest('.toast')?.remove();
+    changeDeck(x => { for (const o of orphans) delete x.cards[o.id]; });
+  } }, 'Remove them');
+  toast([`Without ${evo.name} these cards are no longer legal: ${orphans.map(o => o.name).join(', ')}. `, go], 'warn', 12000);
 }
 
 function renderDecks() {
@@ -1708,7 +1829,9 @@ function renderPool() {
   const box = $('#pool');
   if (!box) return;
   const d = state.deck;
-  const all = deckPool(state.db, d.heroes);
+  // Pravilo prvog taga: bazen su karte koje heroji smiju, i one koje bi otključala neka njihova
+  // Evolution karta (prikazane zasivljeno dok ta Evolution nije u decku).
+  const all = deckPool(state.db, d.heroes, heroEvolutions(state.db, d.heroes));
   const colorSel = $('#pool-color');
   const colors = [...new Set(all.map(c => c.color))];
   if (state.pool.color && !colors.includes(state.pool.color)) state.pool.color = '';
@@ -1760,17 +1883,25 @@ function deckTraits(d) {
 function poolCard(c, list) {
   const n = state.deck.cards[c.id] ?? 0;
   const max = LIMITS[c.type];
-  return h('div', { class: `pool-card${c.landscape ? ' wide' : ''}${n ? ' in-deck' : ''}${n >= max ? ' maxed' : ''}` },
+  // Karta koju otključava Evolution koja još nije u decku: zasivljena, klik nudi da doda obje.
+  const v = cardVerdict(state.db, c, state.deck.heroes, deckEvolutions(state.db, state.deck.cards));
+  const needs = !v.ok && v.needs.length ? v.needs : null;
+  const add = () => {
+    if (needs) return offerEvolution(c, needs);
+    if (n < max) addCard(c.id, 1);
+  };
+  return h('div', { class: `pool-card${c.landscape ? ' wide' : ''}${n ? ' in-deck' : ''}${n >= max ? ' maxed' : ''}${needs ? ' needs' : ''}` },
     h('div', { class: 'pool-art-wrap' },
       // lijevi klik doda kopiju, desni makne jednu
-      h('button', { class: 'pool-art', title: `${c.name}: click adds one, right-click removes one`, onclick: () => { if (n < max) addCard(c.id, 1); },
+      h('button', { class: 'pool-art', title: needs ? `${c.name}: ${v.why}. Click to add it with the Evolution.` : `${c.name}: click adds one, right-click removes one`, onclick: add,
         oncontextmenu: e => { e.preventDefault(); if (n) addCard(c.id, -1); } }, cardImg(c, { alt: c.name }),
         n ? h('span', { class: 'pool-count' }, `${n}/${max}`) : null),
       zoomButton(c, list),
       h('span', { class: 'stepper' },
         h('button', { class: 'step', title: 'Remove one', 'aria-label': `Remove one ${c.name}`, disabled: !n, onclick: () => addCard(c.id, -1) }, '−'),
-        h('button', { class: 'step', title: 'Add one', 'aria-label': `Add one ${c.name}`, disabled: n >= max, onclick: () => addCard(c.id, 1) }, '+'))),
-    h('span', { class: 'pool-name', title: c.name }, c.name));
+        h('button', { class: 'step', title: 'Add one', 'aria-label': `Add one ${c.name}`, disabled: n >= max, onclick: add }, '+'))),
+    h('span', { class: 'pool-name', title: c.name }, c.name),
+    h('span', { class: `pool-tag${needs ? ' warn' : ''}`, title: needs ? v.why : 'Who may take this card (its first tag)' }, needs ? v.why : cardTagLabel(c)));
 }
 
 function renderDeckPanel() {

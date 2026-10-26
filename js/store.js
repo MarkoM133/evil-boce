@@ -26,6 +26,9 @@ function summary(slug, d) {
 const LOGO_FILES = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'];
 // Kako igra čita tekst karata (piše ga game/tools/fx_proposals.gd), za karticu Effect.
 const FX_PROPOSALS_PATH = 'data/fx-proposals.json';
+// Popis traitova za pravilo prvog taga (kartica Traits; igra ga čita isto).
+export const TRAITS_PATH = 'data/traits.json';
+export const emptyTraits = () => ({ version: 1, traits: [] });
 
 // ---------- server ----------
 
@@ -64,6 +67,10 @@ export function serverStore(info) {
     async readFxProposals() {
       const r = await fetch(FX_PROPOSALS_PATH, { cache: 'no-store' });
       return r.ok ? r.json() : null;
+    },
+    async readTraits() {
+      const r = await fetch(TRAITS_PATH, { cache: 'no-store' }).catch(() => null);
+      return r?.ok ? r.json() : emptyTraits();
     },
     // Datoteka iz data/ (npr. sprites/OP1-001.1a2b3c4d.png).
     async dataUrl(path) {
@@ -125,6 +132,9 @@ export function folderStore(root) {
     },
     async readFxProposals() {
       return readJson(FX_PROPOSALS_PATH);
+    },
+    async readTraits() {
+      return (await readJson(TRAITS_PATH)) ?? emptyTraits();
     },
     async dataUrl(path) {
       const full = `data/${path}`;
