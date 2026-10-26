@@ -379,7 +379,7 @@ func _process(delta: float) -> void:
 		_bot_wait -= delta
 		if _bot_wait <= 0.0:
 			_bot_wait = _bot_delay
-			_pick(who, draft.timeout_pick(who, _rng))
+			_pick(who, Bot.draft_pick(db.catalog, draft, who, _rng))
 		return
 	if _limit <= 0:
 		_clock.text = ""

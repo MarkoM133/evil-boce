@@ -457,3 +457,47 @@ func _card_round(engine: RulesEngine, s: GameState, slot: int) -> Move:
 		if after != null and evaluate(engine, after, slot) > now:
 			return m
 	return Move.make(Move.PASS, slot)
+
+
+# =====================================================================================
+# Draft (GDD 13)
+# =====================================================================================
+
+## A draft pick with some sense, for bots. Heroes: the strongest card, with a nod to colours
+## already drafted (more cards to share between them). Cards: an evolution of a drafted hero
+## first, then a card for one of its own heroes by name, then General, then a trait card;
+## among equals the cost closer to 3 (a curve), and equipment or an assist a little ahead.
+static func draft_pick(catalog: CardCatalog, draft: DraftState, slot: int, rng_: RandomNumberGenerator) -> String:
+	var options: PackedStringArray = draft.options(slot)
+	if options.is_empty():
+		return ""
+	var best: String = ""
+	var best_score: float = -INF
+	for id: String in options:
+		var c: CardDef = catalog.get_card(id)
+		if c == null:
+			continue
+		var score: float = rng_.randf() * 0.5
+		if draft.phase == DraftState.PHASE_HEROES:
+			score += c.hp + c.dmg * 2.0 + c.pwr / 1000.0 + c.rng + c.kb
+			for hid: String in draft.heroes[slot]:
+				var h: CardDef = catalog.get_card(hid)
+				if h != null and h.color == c.color:
+					score += 3.0
+		else:
+			var kind: String = str(FirstTag.kind_of(catalog, c)["kind"])
+			if c.type == "Evolution":
+				score += 10.0
+			elif kind == FirstTag.HEROES:
+				score += 6.0
+			elif kind == FirstTag.GENERAL:
+				score += 4.0
+			else:
+				score += 3.0
+			score -= absf(c.cost - 3.0) * 0.5
+			if c.type == "Equipment" or c.type == "Assist":
+				score += 0.5
+		if score > best_score:
+			best_score = score
+			best = id
+	return best

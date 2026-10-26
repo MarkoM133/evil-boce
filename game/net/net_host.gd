@@ -329,7 +329,7 @@ func _bot_drafts() -> void:
 		var s: Dictionary = seat(draft.waiting_on())
 		if s.is_empty() or not JsonUtil.as_bool(s.get("bot", false)):
 			break
-		draft.pick(draft.waiting_on(), draft.timeout_pick(draft.waiting_on(), rng))
+		draft.pick(draft.waiting_on(), Bot.draft_pick(engine.catalog, draft, draft.waiting_on(), rng))
 
 
 func _send_draft() -> void:
