@@ -83,6 +83,10 @@ func fire_phase(s: GameState, phase: String) -> void:
 			if e.cond == "WIN":
 				s.deferred.append({"player": ctx["player"], "hero": ctx["hero"], "fx": e.line, "ctx": ctx})
 				continue
+			# A hero's own ability that fires by itself ("If Fugo is activated…"): the HUD shows its
+			# name when the card gives one.
+			if card.type == "Hero" or card.type == "Evolution":
+				s.event("triggered", {"hero": ctx["hero"], "card": card.id, "index": card.effects.find(e)})
 			run(s, ctx, e)
 
 

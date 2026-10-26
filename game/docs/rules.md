@@ -118,7 +118,9 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    abilities come as one `roll_offer` per active player and stop, options or none, so nobody can
    read "has a Roll Phase card" off who is asked; the offers of one stop are answered in any
    order; a roll again brings a new stop and new offers), Postroll, Battle, End. Declining an
-   empty offer after a fixed wait is the client's job (auto-pass), not a rule. An offer lists
+   empty offer after a fixed wait is the client's job (auto-pass), not a rule. A hero's own
+   non-optional effect that fires (a Hero or Evolution card) logs `triggered` {hero, card, index}
+   first, so the HUD can show the ability's name. An offer lists
    only cards the first tag lets the activated hero play, and carries `at` (the log size at the
    stop) so a clock keyed on it is not restarted by the other player's answer. The decisions
    an answer asks for (a choice) go to the front of `pending`, before the other offers of the

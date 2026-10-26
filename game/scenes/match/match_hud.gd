@@ -1924,6 +1924,10 @@ func _banner_for(e: Dictionary) -> void:
 			var st: StageState = state.stage(str(e.get("stage", "")))
 			banner("STAGE CLAIMED", Palette.GOLD, player_name(JsonUtil.as_int(e.get("player", 0))).to_upper(),
 				_card_name(st.card_id if st != null else "").to_upper())
+		"triggered":
+			var name: String = _triggered_name(e)
+			if not name.is_empty():
+				banner(name.to_upper(), Palette.GOLD, _hero_label(str(e.get("hero", ""))).to_upper(), "")
 
 
 func _next_banner() -> void:
@@ -2006,6 +2010,9 @@ func _describe(e: Dictionary) -> String:
 			return "%s heals %d (HP %d)" % [hero_l, JsonUtil.as_int(e.get("amount", 0)), JsonUtil.as_int(e.get("hp", 0))]
 		"ability":
 			return "%s uses %s" % [hero_l, _card_name(str(e.get("card", "")))]
+		"triggered":
+			var name: String = _triggered_name(e)
+			return "%s: %s" % [hero_l, name if not name.is_empty() else _card_name(str(e.get("card", "")))]
 		"wall":
 			return "Wall placed"
 		"fx_skipped":
@@ -2281,3 +2288,17 @@ func shown_active(slot: int) -> String:
 	if state.phase == GameState.PHASE_START and not local_slots.has(slot):
 		return ""
 	return state.active.get(slot, "")
+
+
+## The name of an ability that fired by itself ("triggered"): the card names its abilities in
+## order, passives aside. "" when the card gives none.
+func _triggered_name(e: Dictionary) -> String:
+	var card: CardDef = engine.catalog.get_card(str(e.get("card", "")))
+	var index: int = JsonUtil.as_int(e.get("index", -1), -1)
+	if card == null or index < 0 or index >= card.effects.size():
+		return ""
+	var n: int = 0
+	for i: int in index:
+		if card.effects[i].when != "PASSIVE":
+			n += 1
+	return card.ability_name(n)
