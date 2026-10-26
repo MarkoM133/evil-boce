@@ -11,6 +11,7 @@
     {"id": "TF-007", "name": "Hotel Spin", "type": "Action", "color": "Red", "cost": 1, "traits": ["hotel"], "text": "x", "fx": "ROLL: HEAL SELF 0"},
     {"id": "TF-008", "name": "Any Spin", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"], "text": "x", "fx": "ROLL: HEAL SELF 0"},
     {"id": "TF-009", "name": "Sword Slash", "type": "Action", "color": "Red", "cost": 1, "traits": ["General", "Sword"], "text": "x", "fx": "BATTLE: BUFF SELF PWR 1000"},
+    {"id": "TF-010", "name": "Shared Meal", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"], "text": "x", "fx": "PREROLL RANGE: HEAL FRIENDLY 4"},
     {"id": "TA-001", "name": "Alpha", "type": "Hero", "color": "Red", "wt": 2, "traits": ["Haki"],
      "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2},
      "text": "Postroll Phase Once Per Turn: Alpha may move up to 2 spaces."},

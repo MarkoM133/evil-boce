@@ -152,6 +152,9 @@ func usable_abilities(s: GameState, slot: int) -> Array[Dictionary]:
 			var ctx: Dictionary = _ctx_of(src)
 			if not cond_ok(s, ctx, e):
 				continue
+			# Not offered when its first step cannot start (Zoro without a core to deactivate).
+			if not first_error(s, ctx, e).is_empty():
+				continue
 			out.append({"hero": h.id if h != null else "", "card": card.id, "index": i, "effect": e, "key": key})
 	return out
 
@@ -390,11 +393,17 @@ func _per(s: GameState, src: Dictionary, h: HeroState, args: PackedStringArray) 
 # Running an effect
 # =====================================================================================
 
-## Why the effect's first action cannot start now ("" when it can): no target, no hex, no core.
+## Why the effect cannot start now ("" when it can): an action with no target, hex, core or card
+## (Zoro: no core to deactivate, or no Sword Equipment to play). Actions after PICK_CORE work on
+## the picked core, so they are not checked ahead.
 func first_error(s: GameState, ctx: Dictionary, e: FxEffect) -> String:
-	if e.actions.is_empty():
-		return ""
-	return str(_needed_choice(s, ctx, e, e.actions[0], null).get("error", ""))
+	for a: Dictionary in e.actions:
+		var err: String = str(_needed_choice(s, ctx, e, a, null).get("error", ""))
+		if not err.is_empty():
+			return err
+		if str(a["verb"]) == "PICK_CORE":
+			break
+	return ""
 
 
 ## Runs the effect's actions from `start`. `chosen` maps action index -> the player's answer.
