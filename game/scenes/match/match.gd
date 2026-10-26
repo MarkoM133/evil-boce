@@ -393,6 +393,7 @@ func _build_hud() -> void:
 		_apply(Move.make(Move.USE_ABILITY, slot, {"hero": hero_id, "card": card_id, "index": index})))
 	hud.hero_clicked.connect(_on_hero_clicked)
 	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
+	hud.ball_choice_made.connect(func(_id: String) -> void: _refresh_target_fx())
 	hud.menu_pressed.connect(_toggle_menu)
 	hud.rematch_pressed.connect(_rematch)
 	hud.new_match_pressed.connect(func() -> void:
@@ -1400,6 +1401,9 @@ func _process(delta: float) -> void:
 		_run_playback(delta)
 		return
 	_run_phase_hold(delta)
+	# Roll / Stay under a hovered ball: gone once the mouse leaves the ball and the buttons.
+	if _hovered.is_empty() or state.phase != GameState.PHASE_START:
+		hud.hide_ball_choice(state.phase != GameState.PHASE_START)
 	_run_bots(delta)
 	_run_auto_pass(delta)
 	_run_clock(delta)
@@ -1824,6 +1828,7 @@ func _set_hover(id: String, refresh_hud: bool) -> void:
 	if id == _hovered:
 		return
 	_hovered = id
+	_update_ball_choice()
 	if hud.is_targeting():
 		_refresh_target_fx()
 	for hid: String in _views:
@@ -2454,3 +2459,28 @@ func demo_terrain() -> void:
 	_sync()
 	cam.pitch = deg_to_rad(40.0)
 	cam.focus(arena.hex_center(Hex.offset_to_axial(11, 10)), 22.0)
+
+
+## Start: hovering one of your heroes that can be picked shows Roll / Stay under its ball.
+func _update_ball_choice() -> void:
+	if state == null or state.phase != GameState.PHASE_START or _hovered.is_empty() or not _bodies.has(_hovered):
+		hud.hide_ball_choice()
+		return
+	var h: HeroState = state.hero(_hovered)
+	if h == null or not hud.local_slots.has(h.owner) or state.active.has(h.owner):
+		hud.hide_ball_choice()
+		return
+	var can: bool = false
+	for x: HeroState in engine.selectable_heroes(state, h.owner):
+		can = can or x.id == h.id
+	if not can:
+		hud.hide_ball_choice()
+		return
+	hud.show_ball_choice(h.id, cam.camera.unproject_position(_bodies[h.id].global_position) + Vector2(0, 34))
+
+
+## Screenshot helper: Start, one hero picked, the mouse over another of your balls.
+func demo_start_hover() -> void:
+	demo_pick()
+	var mine: Array[HeroState] = state.heroes_of(0)
+	_set_hover(mine[2].id, true)

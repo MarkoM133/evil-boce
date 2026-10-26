@@ -10,6 +10,8 @@ extends Control
 signal pass_pressed(slot: int)
 ## Start: the chosen hero and whether it rolls are locked in (CONFIRM).
 signal pick_confirmed(slot: int, hero_id: String, roll: bool)
+## A Roll / Stay under a hovered ball picked that hero (Start).
+signal ball_choice_made(hero_id: String)
 signal keep_pressed(slot: int, keep: bool)
 signal no_hero_pressed(slot: int)
 ## A card from the hand goes on `hero_id` ("" lets the engine pick, when it can only go one way).
@@ -122,6 +124,8 @@ var target_slot: int = -1
 var picks: Dictionary = {}
 ## Start: whether each local player's pick rolls (slot -> bool; missing = rolls).
 var pick_rolls: Dictionary = {}
+var _ball_choice: HBoxContainer
+var _choice_hero: String = ""
 var target_cid: String = ""
 var target_heroes: PackedStringArray = PackedStringArray()
 var _target_why: Dictionary = {}
@@ -1172,25 +1176,38 @@ func _refresh_prompt() -> void:
 				_mulligan_button("NEW HAND", func() -> void: keep_pressed.emit(slot, false), &"")
 				_mulligan_button("KEEP THIS HAND", func() -> void: keep_pressed.emit(slot, true), &"Primary")
 			GameState.PHASE_START:
-				# Pick a hero, say whether it rolls or stays, confirm (GDD 8, 2026-10-26).
+				# Pick a hero, say whether it rolls or stays, confirm (GDD 8, 2026-10-26). Everything
+				# for it sits in one block bottom right, by the CONFIRM button (Marko 2026-10-26).
 				var picked: HeroState = state.hero(str(picks.get(slot, "")))
-				_prompt.text = "Pick a hero"
+				_prompt.text = ""
+				_detail.text = ""
 				if picked == null:
-					_detail.text = ("%s: " % who if many else "") + "click one of your heroes."
+					_start_card(("%s · " % who.to_upper() if many else "") + "START · PICK A HERO", "Pick a hero",
+						"Click one of your heroes, on the table or on the left. Hover a ball to say Roll or Stay.")
 				else:
 					var must_roll: bool = picked.zone == HeroState.ZONE_STRIP
 					var rolls: bool = must_roll or pick_rolls.get(slot, true) == true
-					_detail.text = ("%s: " % who if many else "") + "%s %s. Click another hero to change." % [hero_name(picked),
-						"rolls into the arena" if rolls else "stays where it is"]
-					var stay: Button = _action("STAY", func() -> void:
-						pick_rolls[slot] = false
-						refresh(), &"Gold" if not rolls else &"")
-					stay.disabled = must_roll
-					if must_roll:
-						stay.tooltip_text = "A hero in the start zone must roll"
-					_action("ROLL", func() -> void:
-						pick_rolls[slot] = true
-						refresh(), &"Gold" if rolls else &"")
+					_start_card(("%s · " % who.to_upper() if many else "") + "START · PICK A HERO",
+						"%s %s" % [hero_name(picked), "rolls into the arena" if rolls else "stays where it is"],
+						"Click another hero to change." + (" In the start zone a hero must roll." if must_roll else ""))
+					var row := HBoxContainer.new()
+					row.add_theme_constant_override("separation", 6)
+					row.size_flags_horizontal = Control.SIZE_FILL
+					_actions.add_child(row)
+					for roll_choice: bool in [true, false]:
+						var b := Button.new()
+						b.text = "ROLL" if roll_choice else "STAY"
+						b.focus_mode = Control.FOCUS_NONE
+						b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+						b.theme_type_variation = &"Gold" if rolls == roll_choice else &""
+						b.disabled = must_roll and not roll_choice
+						if b.disabled:
+							b.tooltip_text = "A hero in the start zone must roll"
+						var want: bool = roll_choice
+						b.pressed.connect(func() -> void:
+							pick_rolls[slot] = want
+							refresh())
+						row.add_child(b)
 					_action("CONFIRM %s" % hero_name(picked).to_upper(), func() -> void: pick_confirmed.emit(slot, picked.id, rolls), &"Primary")
 				if engine.selectable_heroes(state, slot).is_empty():
 					_action("No hero can act", func() -> void: no_hero_pressed.emit(slot), &"Primary")
@@ -2313,3 +2330,88 @@ func _triggered_name(e: Dictionary) -> String:
 		if card.effects[i].when != "PASSIVE":
 			n += 1
 	return card.ability_name(n)
+
+
+## The Start block's text, above its Roll / Stay and CONFIRM (bottom right): a gold kicker, a
+## title and a line, on a dark card with a gold edge.
+func _start_card(kicker: String, title: String, line: String) -> void:
+	var card := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.08, 0.067, 0.06, 0.92)
+	sb.border_color = Palette.GOLD
+	sb.border_width_left = 4
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	card.add_theme_stylebox_override("panel", sb)
+	card.custom_minimum_size = Vector2(290, 0)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 2)
+	card.add_child(col)
+	col.add_child(UiTheme.label(kicker, 13, Palette.GOLD))
+	var t: Label = UiTheme.label(title, 24)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.custom_minimum_size = Vector2(266, 0)
+	col.add_child(t)
+	var d := Label.new()
+	d.text = line
+	d.add_theme_color_override("font_color", Color("b9b4ab"))
+	d.add_theme_font_size_override("font_size", 13)
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.custom_minimum_size = Vector2(266, 0)
+	col.add_child(d)
+	_actions.add_child(card)
+
+
+## Start: Roll / Stay right under a hovered ball of yours (Marko 2026-10-26). A click picks that
+## hero and says whether it rolls; CONFIRM still locks it in.
+func show_ball_choice(hero_id: String, at: Vector2) -> void:
+	var h: HeroState = state.hero(hero_id) if state != null else null
+	if h == null:
+		hide_ball_choice(true)
+		return
+	if _ball_choice == null:
+		_ball_choice = HBoxContainer.new()
+		_ball_choice.add_theme_constant_override("separation", 4)
+		add_child(_ball_choice)
+		for roll_choice: bool in [true, false]:
+			var b := Button.new()
+			b.text = "ROLL" if roll_choice else "STAY"
+			b.focus_mode = Control.FOCUS_NONE
+			b.custom_minimum_size = Vector2(68, 30)
+			b.add_theme_font_size_override("font_size", 16)
+			var want: bool = roll_choice
+			b.pressed.connect(func() -> void:
+				var hero: HeroState = state.hero(_choice_hero)
+				if hero == null:
+					return
+				picks[hero.owner] = hero.id
+				pick_rolls[hero.owner] = want
+				hide_ball_choice(true)
+				ball_choice_made.emit(hero.id)
+				refresh())
+			_ball_choice.add_child(b)
+	_choice_hero = hero_id
+	var must_roll: bool = h.zone == HeroState.ZONE_STRIP
+	var picked: bool = str(picks.get(h.owner, "")) == hero_id
+	var rolls: bool = must_roll or not picked or pick_rolls.get(h.owner, true) == true
+	var roll_b: Button = _ball_choice.get_child(0)
+	var stay_b: Button = _ball_choice.get_child(1)
+	roll_b.theme_type_variation = &"Gold" if picked and rolls else &""
+	stay_b.theme_type_variation = &"Gold" if picked and not rolls else &""
+	stay_b.disabled = must_roll
+	stay_b.tooltip_text = "A hero in the start zone must roll" if must_roll else ""
+	_ball_choice.reset_size()
+	_ball_choice.position = at - Vector2(_ball_choice.size.x * 0.5, 0)
+	_ball_choice.visible = true
+
+
+## Hides the ball's Roll / Stay, unless the mouse is on them (it may be on its way there).
+func hide_ball_choice(force: bool = false) -> void:
+	if _ball_choice == null or not _ball_choice.visible:
+		return
+	if not force and _ball_choice.get_global_rect().grow(6).has_point(get_global_mouse_position()):
+		return
+	_ball_choice.visible = false
