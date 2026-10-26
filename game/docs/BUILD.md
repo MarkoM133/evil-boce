@@ -42,6 +42,11 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
 
 - **Online smoke test** (headless; host, guest and the match scene in both roles over
   127.0.0.1): `godot_console --headless --path game -s res://tools/net_smoke.gd`
+- **Soak** (headless; Hard bots play both sides of the real match scene in every mode and
+  it prints results, errors and stalls; exit code 1 on any problem):
+  `godot_console --headless --fixed-fps 60 --path game -s res://tools/soak.gd -- --games=3`
+  Options: `--modes=standard,fast,chaos,bo3,draft,physics`, `--seed=1`, `--max-minutes=40`,
+  `--stall-minutes=3` (game time). A Standard game takes about 15 s.
 
 - **Throw ranges** (headless, prints a table):
   `godot_console --headless --path game --fixed-fps 120 -s res://tools/measure_throws.gd`
