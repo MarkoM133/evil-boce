@@ -1,5 +1,6 @@
 extends GutTest
-## Settings that change how input reads: rebound keys. Works on an in-memory config.
+## Settings that change how input reads (rebound keys) and the remembered match rules. Works on
+## an in-memory config.
 
 
 func before_each() -> void:
@@ -34,3 +35,20 @@ func test_display_defaults() -> void:
 	GameSettings.set_value("display", "quality", "ultra")
 	assert_eq(GameSettings.quality(), "medium", "unknown values fall back")
 	assert_almost_eq(GameSettings.volume("Music"), 0.8, 0.001)
+
+
+func test_match_rules_start_as_standard() -> void:
+	assert_eq(GameSettings.match_rules("local").to_dict(), MatchSettings.standard().to_dict())
+
+
+func test_match_rules_keep_only_the_changes() -> void:
+	var s: MatchSettings = MatchSettings.standard()
+	s.start_hand = 6
+	s.map_size = 15
+	GameSettings.set_match_rules("local", s)
+	assert_eq(GameSettings._config().get_value("match_rules", "local"), {"start_hand": 6, "map_size": 15})
+	var back: MatchSettings = GameSettings.match_rules("local")
+	assert_eq(back.start_hand, 6)
+	assert_eq(back.map_size, 15)
+	assert_eq(back.range_delta, MatchSettings.standard().range_delta)
+	assert_eq(GameSettings.match_rules("online").start_hand, MatchSettings.standard().start_hand)

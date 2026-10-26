@@ -168,7 +168,8 @@ func public_seats() -> Array:
 	var out: Array = []
 	for s: Dictionary in seats:
 		out.append({"slot": s["slot"], "name": s["name"], "ready": s["ready"], "bot": s["bot"], "connected": s["connected"],
-			"has_deck": not JsonUtil.as_dict(s["deck"]).is_empty()})
+			"has_deck": not JsonUtil.as_dict(s["deck"]).is_empty(),
+			"shown": JsonUtil.as_dict(JsonUtil.as_dict(s["deck"]).get("shown", {}))})
 	return out
 
 

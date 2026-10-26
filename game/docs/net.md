@@ -23,7 +23,7 @@ without a scene; nothing else changes.
 | guest | `hello` | name, game_version, cards_version, net_version | right after the link is up; also on reconnect |
 | host | `welcome` / `reject` | slot, players, settings / reason | answer to hello |
 | guest | `deck`, `ready` | engine deck dict / bool | lobby |
-| host | `lobby` | players [{slot, name, ready, bot, connected, has_deck}], settings, again | any lobby change; `again` = the host took everyone back after a match |
+| host | `lobby` | players [{slot, name, ready, bot, connected, has_deck, shown}], settings, again | any lobby change; `again` = the host took everyone back after a match; `shown` = the seat's picks as the lobby shows them to the others (deck name, heroes, stages, cores; "" = random) |
 | host | `start` | settings, players (record header), seed, cards_version | the host pressed Start, or a reconnect into a running match |
 | guest | `move` | Move dict | the player did something |
 | host | `state` | redacted GameState dict | after every accepted move or roll, to each guest separately |

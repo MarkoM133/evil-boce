@@ -41,6 +41,27 @@ static func set_map_size(n: int) -> void:
 	save()
 
 
+## Match rules last used for a mode ("local", "online"): Standard with the remembered changes.
+## Only the changes are stored, so a later Standard still shows through the rest.
+static func match_rules(mode: String) -> MatchSettings:
+	var d: Dictionary = MatchSettings.standard().to_dict()
+	d.merge(JsonUtil.as_dict(_config().get_value("match_rules", mode, {})), true)
+	var s: MatchSettings = MatchSettings.from_dict(d)
+	if not MAP_SIZES.has(s.map_size):
+		s.map_size = MatchSettings.standard().map_size
+	return s
+
+
+static func set_match_rules(mode: String, s: MatchSettings) -> void:
+	var std: Dictionary = MatchSettings.standard().to_dict()
+	var diff: Dictionary = {}
+	var now: Dictionary = s.to_dict()
+	for k: Variant in now:
+		if now[k] != std.get(k):
+			diff[k] = now[k]
+	set_value("match_rules", mode, diff)
+
+
 static func save() -> void:
 	if not in_memory:
 		_config().save(PATH)

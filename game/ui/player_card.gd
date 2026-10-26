@@ -21,6 +21,11 @@ var header_extra: HBoxContainer
 var _title: String = ""
 var _body: VBoxContainer
 var _popup: PopupPanel
+var _sb: StyleBoxFlat
+var _chip: UiShape
+## Someone else's side, only shown (online lobby): {deck_name, heroes, stages, cores}, ids "" for random.
+var _shown: Dictionary = {}
+var _view_only: bool = false
 
 
 func setup(db_: CardDb, decks_: Array[Dictionary], title: String, team_: int, deck_name: String, start: Loadout) -> void:
@@ -33,17 +38,18 @@ func setup(db_: CardDb, decks_: Array[Dictionary], title: String, team_: int, de
 	for i: int in decks.size():
 		if str(decks[i]["name"]) == deck_name:
 			deck_index = i + 1
-	var sb: StyleBoxFlat = UiTheme.box(Palette.PANEL_SOLID, 0, Color(0, 0, 0, 0), 22, 18)
-	sb.border_color = Palette.team(team)
-	sb.border_width_top = 4
-	add_theme_stylebox_override("panel", sb)
+	_sb = UiTheme.box(Palette.PANEL_SOLID, 0, Color(0, 0, 0, 0), 22, 18)
+	_sb.border_color = Palette.team(team)
+	_sb.border_width_top = 4
+	add_theme_stylebox_override("panel", _sb)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 12)
 	add_child(col)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
 	col.add_child(head)
-	head.add_child(UiShape.chip(_title.to_upper(), Palette.team(team), Palette.FG, 22, 34.0, 18.0))
+	_chip = UiShape.chip(_title.to_upper(), Palette.team(team), Palette.FG, 22, 34.0, 18.0)
+	head.add_child(_chip)
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(gap)
@@ -59,9 +65,54 @@ func setup(db_: CardDb, decks_: Array[Dictionary], title: String, team_: int, de
 	_rebuild()
 
 
+## A new name and team colour in the header (online: your seat is known after joining).
+func set_header(title: String, team_: int) -> void:
+	if title == _title and team_ == team:
+		return
+	_title = title
+	team = team_
+	_sb.border_color = Palette.team(team)
+	queue_redraw()
+	var head: Node = _chip.get_parent()
+	var chip: UiShape = UiShape.chip(_title.to_upper(), Palette.team(team), Palette.FG, 22, 34.0, 18.0)
+	head.add_child(chip)
+	head.move_child(chip, 0)
+	_chip.queue_free()
+	_chip = chip
+
+
+## Shows another player's picks without letting anyone change them: `picks_` is
+## {deck_name, heroes, stages, cores} with "" (or no heroes) for random.
+func show_only(picks_: Dictionary) -> void:
+	if _view_only and picks_ == _shown:
+		return
+	_view_only = true
+	_shown = picks_
+	loadout = Loadout.new()
+	var st: PackedStringArray = JsonUtil.as_strings(picks_.get("stages", []))
+	var co: PackedStringArray = JsonUtil.as_strings(picks_.get("cores", []))
+	for i: int in mini(st.size(), Loadout.STAGES):
+		loadout.stages[i] = st[i]
+	for i: int in mini(co.size(), loadout.cores.size()):
+		loadout.cores[i] = co[i]
+	_rebuild()
+
+
+## This side's picks as the other players see them (see `show_only`).
+func picks() -> Dictionary:
+	var d: Dictionary = saved_deck()
+	return {"deck_name": str(d.get("name", "")), "heroes": JsonUtil.as_strings(d.get("heroes", [])),
+		"stages": Array(loadout.stages), "cores": Array(loadout.cores)}
+
+
 ## The saved deck picked, or {} for a random one.
 func saved_deck() -> Dictionary:
 	return decks[deck_index - 1] if deck_index > 0 and deck_index <= decks.size() else {}
+
+
+func _shown_deck_name() -> String:
+	var n: String = str(_shown.get("deck_name", ""))
+	return n if not n.is_empty() else "Random deck"
 
 
 func deck_name() -> String:
@@ -92,13 +143,14 @@ func _rebuild() -> void:
 	prev.add_theme_font_size_override("font_size", 26)
 	prev.tooltip_text = "Previous deck"
 	prev.pressed.connect(func() -> void: _flip(-1))
-	deck_row.add_child(prev)
+	if not _view_only:
+		deck_row.add_child(prev)
 	var name_box := VBoxContainer.new()
 	name_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_box.add_theme_constant_override("separation", 0)
 	deck_row.add_child(name_box)
 	name_box.add_child(UiTheme.label("DECK", 13, Palette.GOLD))
-	var name_l: Label = UiTheme.label(deck_name().to_upper(), 28)
+	var name_l: Label = UiTheme.label(_shown_deck_name().to_upper() if _view_only else deck_name().to_upper(), 28)
 	name_l.clip_text = true
 	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_box.add_child(name_l)
@@ -107,11 +159,12 @@ func _rebuild() -> void:
 	next.add_theme_font_size_override("font_size", 26)
 	next.tooltip_text = "Next deck"
 	next.pressed.connect(func() -> void: _flip(1))
-	deck_row.add_child(next)
+	if not _view_only:
+		deck_row.add_child(next)
 	var heroes := HBoxContainer.new()
 	heroes.add_theme_constant_override("separation", 6)
 	_body.add_child(heroes)
-	var ids: PackedStringArray = JsonUtil.as_strings(saved_deck().get("heroes", []))
+	var ids: PackedStringArray = JsonUtil.as_strings((_shown if _view_only else saved_deck()).get("heroes", []))
 	for i: int in DeckCode.HERO_COUNT:
 		heroes.add_child(_hero_tile(ids[i] if i < ids.size() else ""))
 
@@ -152,9 +205,12 @@ func _rebuild() -> void:
 	all_random.pressed.connect(func() -> void:
 		loadout = Loadout.random()
 		_changed())
-	cores.add_child(all_random)
+	if not _view_only:
+		cores.add_child(all_random)
+	else:
+		all_random.free()
 
-	var probs: PackedStringArray = problems()
+	var probs: PackedStringArray = problems() if not _view_only else PackedStringArray()
 	if not probs.is_empty():
 		var warn := Label.new()
 		warn.text = "Fix: " + "; ".join(probs)
@@ -197,7 +253,7 @@ func _hero_tile(id: String) -> Control:
 
 
 func _stage_tile(slot: int) -> Control:
-	return card_tile(db, loadout.stages[slot], Vector2(186, 108), func() -> void: _pick_stage(slot))
+	return card_tile(db, loadout.stages[slot], Vector2(186, 108), Callable() if _view_only else func() -> void: _pick_stage(slot))
 
 
 ## A card as a slanted picture tile (the art part of its image) with its name, and for a stage
@@ -213,7 +269,8 @@ static func card_tile(db_: CardDb, id: String, tile: Vector2, on_click: Callable
 		s.art_region = Rect2(0.08, 0.09, 0.84, 0.42) if s.art.get_height() > s.art.get_width() else HeroSlice.region_for(s.art)
 	s.art_fallback = Palette.SURFACE_2
 	s.art_tint = Color(0.35, 0.35, 0.35) if used else Color(0.85, 0.85, 0.85)
-	s.mouse_default_cursor_shape = Control.CURSOR_FORBIDDEN if used else Control.CURSOR_POINTING_HAND
+	var clickable: bool = on_click.is_valid() and not used
+	s.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if clickable else Control.CURSOR_FORBIDDEN if used else Control.CURSOR_ARROW
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_END
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -234,14 +291,14 @@ static func card_tile(db_: CardDb, id: String, tile: Vector2, on_click: Callable
 		col.add_child(UiTheme.label("?  RANDOM", 22, Palette.DIM))
 		s.tooltip_text = "Random"
 	s.mouse_entered.connect(func() -> void:
-		if not used:
+		if clickable:
 			s.outline = Palette.GOLD
 			s.queue_redraw())
 	s.mouse_exited.connect(func() -> void:
 		s.outline = Color(0, 0, 0, 0)
 		s.queue_redraw())
 	s.gui_input.connect(func(e: InputEvent) -> void:
-		if not used and e is InputEventMouseButton:
+		if clickable and e is InputEventMouseButton:
 			var mb := e as InputEventMouseButton
 			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 				on_click.call())
@@ -266,7 +323,10 @@ func _core_button(slot: int) -> Button:
 	d.position = Vector2(2, 2)
 	b.add_child(d)
 	b.tooltip_text = ("%s core: %s\n%s" % [kind, card.name, card.text]) if card != null else "%s core: random" % kind
-	b.pressed.connect(func() -> void: _pick_core(slot))
+	if not _view_only:
+		b.pressed.connect(func() -> void: _pick_core(slot))
+	else:
+		b.mouse_default_cursor_shape = Control.CURSOR_ARROW
 	return b
 
 
