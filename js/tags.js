@@ -1,6 +1,7 @@
 // Pravilo prvog taga (odluka 2026-10-26): prvi tag karte kaže tko je smije u deck
 // (i u igri): General = svaki heroj boje karte; alias heroja ("Giorno", "Giorno & Bucciarati") =
-// samo ti heroji; trait s popisa (data/traits.json) = heroj boje karte koji ima taj trait, sam ili
+// samo ti heroji (ime iza "&" koje još nije heroj se preskače: "Shanks & Roger" je Shanksova dok
+// Roger ne dođe); trait s popisa (data/traits.json) = heroj boje karte koji ima taj trait, sam ili
 // kroz Evolution kartu u decku. Sve ostalo je nevažeće. Usporedba bez velikih slova i rubnih razmaka.
 // Isto pravilo ima igra (game/rules/first_tag.gd); zajednički testovi: game/tests/fixtures/first_tag_cases.json.
 // Bez I/O, isto za app i testove.
@@ -33,7 +34,12 @@ export function firstTag(db, card, traits) {
   const parts = tag.split(HERO_JOIN).map(norm).filter(Boolean);
   const heroes = heroesOf(db);
   const named = parts.map(p => heroes.find(h => heroAliases(h).includes(p)));
-  if (parts.length && named.every(Boolean)) return { kind: HEROES, tag, heroes: [...new Set(named.map(h => h.name))] };
+  // "Shanks & Roger": ime koje još nije heroj se preskače, pa je karta Shanksova dok Roger ne dođe
+  // (tagWarnings ga i dalje navede). Tag bez "&" mora biti heroj ili trait kakav jest.
+  const found = named.filter(Boolean);
+  if (parts.length && (found.length === parts.length || (parts.length > 1 && found.length))) {
+    return { kind: HEROES, tag, heroes: [...new Set(found.map(h => h.name))], unknown: parts.filter((p, i) => !named[i]) };
+  }
   const trait = traitNames(traits).find(t => norm(t) === norm(tag));
   if (trait) return { kind: TRAIT, tag, trait };
   return { kind: INVALID, tag };

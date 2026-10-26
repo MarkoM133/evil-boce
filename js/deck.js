@@ -195,6 +195,8 @@ export function tagWarnings(db) {
     const k = firstTag(db, c, traits);
     if (k.kind === INVALID) {
       out.push({ id: c.id, msg: k.tag ? `first tag "${k.tag}" is not General, a hero alias or a trait from the list` : 'no tags: the first tag says who may take the card' });
+    } else if (k.kind === HEROES && k.unknown?.length) {
+      out.push({ id: c.id, msg: `first tag "${k.tag}": ${k.unknown.map(u => `"${u}"`).join(', ')} is no hero yet, so the card counts for ${k.heroes.join(' and ')} only` });
     } else if (k.kind === TRAIT) {
       const holders = live.filter(x => (x.type === 'Hero' || x.type === 'Evolution') && x.color === c.color && hasTrait(x, k.trait));
       if (!holders.length) out.push({ id: c.id, msg: `first tag ${k.trait}: no ${c.color} hero or Evolution has it, so nobody can take the card` });

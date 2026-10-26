@@ -150,7 +150,8 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    limit, a player with nothing legal skips, every deck filled to `deck_size` (20) at the end.
 9f. (2026-10-26) The first tag rule (`FirstTag`, shared with the web app through
    tests/fixtures/first_tag_cases.json) locks a card to who may play it: General (any hero of
-   its colour), a hero alias (the name follows the hero through evolutions) or a trait read off
+   its colour), a hero alias (the name follows the hero through evolutions; a name after "&"
+   that is no hero yet is skipped, so "Shanks & Roger" is Shanks's until Roger comes) or a trait read off
    the hero's current card (the last evolution, else the base). `_play` refuses the others
    ("only for X", "Requires T"); equipment whose tag the hero no longer fits falls into the
    graveyard when an evolution comes or goes (`_drop_unfit_equipment`). A record carries the
@@ -166,9 +167,9 @@ g. (2026-10-26) A grid knockback stopped by a wall or a hero costs `wall_damage`
 - Stage reveal bonuses last while the hero stays on that stage and it is unclaimed.
 - Stage-002 (Elbaph): "players in combat" are the players with a hero on the stage when it is
   revealed; the higher top-card cost gives their heroes there +2000 Power.
-- Standard (`MatchSettings.standard()`): map 23×23, `range_delta = -1` (never below 2), until the
-  cards carry the lower ranges; then `range_delta` goes back to 0. `MatchSettings.new()` keeps
-  the cards as printed (map 17) for the scenario tests. Throw distances at full power are
+- Standard (`MatchSettings.standard()`): map 23×23, physics knockback, cards as printed
+  (`range_delta` 0; it was -1 until the cards carried the lower ranges, 2026-10-26).
+  `MatchSettings.new()` keeps the cards as printed (map 17) for the scenario tests. Throw distances at full power are
   22 / 18 / 15 / 11 hexes for WT 1–4.
 - Claim by Stay needs two Stays in a row: the same activated hero stays on the same stage at
   the end of two consecutive turns (`StageState.stay_hero / stay_turn`, event `stage_stay`).

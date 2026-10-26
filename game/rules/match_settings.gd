@@ -42,12 +42,11 @@ var mode: String = "standard"
 
 
 ## The Standard mode (GDD 13). `new()` keeps the cards as printed, which the scenario tests use.
-## range_delta -1 stands in until the cards themselves carry the lower ranges; then it goes
-## back to 0 (see the card change list in docs/private).
+## The cards carry the lower hero ranges since 2026-10-26 (cards v11), so Standard plays them as
+## printed.
 static func standard() -> MatchSettings:
 	var s := MatchSettings.new()
 	s.map_size = 23
-	s.range_delta = -1
 	s.knockback = "physics"
 	return s
 

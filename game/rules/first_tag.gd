@@ -2,7 +2,8 @@ class_name FirstTag
 extends RefCounted
 ## The first tag rule (GDD 10, 2026-10-26): a card's first tag says who may
 ## take it. "General": any hero of the card's colour. A hero alias ("Giorno", "Giorno &
-## Bucciarati"): only those heroes. A trait from the trait list (data/traits.json): a hero of the
+## Bucciarati"): only those heroes; a name after "&" that is no hero yet is skipped ("Shanks &
+## Roger" is Shanks's until Roger comes). A trait from the trait list (data/traits.json): a hero of the
 ## card's colour that has the trait, on its own card or on an Evolution card in the deck.
 ## Anything else is not valid. Case and edge spaces do not count. The web app has the same rule
 ## (js/tags.js); both run the cases in tests/fixtures/first_tag_cases.json.
@@ -36,23 +37,26 @@ static func kind_of(catalog: CardCatalog, card: CardDef) -> Dictionary:
 		return {"kind": GENERAL, "tag": tag}
 	var heroes: Array[CardDef] = catalog.of_type("Hero")
 	var named := PackedStringArray()
-	var all_found: bool = true
+	var unknown := PackedStringArray()
+	var parts: int = 0
 	for part: String in tag.split(HERO_JOIN, false):
 		var p: String = norm(part)
 		if p.is_empty():
 			continue
+		parts += 1
 		var found: CardDef = null
 		for h: CardDef in heroes:
 			if aliases_of(h).has(p):
 				found = h
 				break
 		if found == null:
-			all_found = false
-			break
-		if not named.has(found.name):
+			unknown.append(p)
+		elif not named.has(found.name):
 			named.append(found.name)
-	if all_found and not named.is_empty():
-		return {"kind": HEROES, "tag": tag, "heroes": named}
+	# "Shanks & Roger": a name that is no hero yet is skipped, so the card is Shanks's until Roger
+	# comes. A tag without "&" must be a hero or a trait as it is.
+	if not named.is_empty() and (unknown.is_empty() or parts > 1):
+		return {"kind": HEROES, "tag": tag, "heroes": named, "unknown": unknown}
 	for t: String in catalog.trait_names:
 		if norm(t) == norm(tag):
 			return {"kind": TRAIT, "tag": tag, "trait": t}
