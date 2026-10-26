@@ -41,3 +41,19 @@ static func _decks() -> Array:
 		{"heroes": ["TA-001", "TA-002", "TA-003"], "cards": {"TX-010": 40}, "stages": ["TS-001", "TS-002", "TS-003"], "cores": cores},
 		{"heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-010": 40}, "stages": ["TS-004", "TS-005", "TS-006"], "cores": cores},
 	]
+
+
+func test_a_smaller_deck_is_drawn_from_the_full_one() -> void:
+	var engine := RulesEngine.new(catalog)
+	var settings := MatchSettings.new()
+	settings.manual_setup = false
+	settings.deck_size = 20
+	var s: GameState = engine.start_match(settings, _decks(), 3)
+	# The starting hand is already drawn from it.
+	for p: PlayerState in s.players:
+		assert_eq(p.deck.size() + p.hand.size(), 20)
+	var again: GameState = engine.start_match(settings, _decks(), 3)
+	assert_eq(again.players[0].deck, s.players[0].deck, "the same seed draws the same twenty")
+	settings.deck_size = 40
+	var full: PlayerState = engine.start_match(settings, _decks(), 3).players[0]
+	assert_eq(full.deck.size() + full.hand.size(), 40)

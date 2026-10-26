@@ -36,6 +36,7 @@ const COLUMNS: Array = [
 			["stages_to_win", "Stages to win", "Stages a player must hold at once to win.", [2, 3, 4]],
 		]],
 		["CARDS & ENERGY", [
+			["deck_size", "Deck", "Cards played from each deck: a smaller deck is drawn at random from the full one.", [20, 25, 30, 40]],
 			["start_hand", "Starting hand", "Cards drawn at the start, and again after a mulligan.", [3, 4, 5, 6, 7]],
 			["max_energy", "Most energy", "Energy grows by one each turn up to this.", [5, 6, 7, 8, 9, 10, 12]],
 			["assist_limit", "Assists", "How many assists one player can have out.", [1, 2, 3, 4, 5]],

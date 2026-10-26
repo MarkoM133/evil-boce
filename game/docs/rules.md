@@ -124,6 +124,8 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    or a random hero that stays when it may, a missed roll, a random legal placement, damage to
    the deck, the gentlest choice). The match scene keeps the clocks locally and as the host;
    guests only show them. `timer_seconds` 0 = off.
+   `deck_size` below the deck's cards (the Fast mode, GDD 13) plays the first that many of the
+   shuffled deck: a random draw with the same copies and limits.
 10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
 11. A hero in the start zone can be activated at any time, and a stunned or locked hero
