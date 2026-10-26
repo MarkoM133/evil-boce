@@ -99,19 +99,19 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    activated hero, the other activated hero, then the rest in initiative order.
 3. **Second tie:** (confirmed 2026-10-26) each hero flies straight towards its own strip (team 0 → +z, team 1 → −z)
    for the other side's highest KB.
-4. **Setup** places stages then cores alternately, starting with the initiative player,
+4. **Setup** (confirmed 2026-10-26) places stages then cores alternately, starting with the initiative player,
    which is rolled before setup. `manual_setup = false` places everything at random with the
    same constraints (cores in the opponent's half, ≥ 3 from other cores and stage edges,
    never on a stage). If something still does not fit, the gap shrinks for the rest and the
    log says `setup_gap_relaxed`.
-5. **Overflow cores** (a hero already holding three) come back within that hero's range, or
+5. **Overflow cores** (confirmed 2026-10-26) (a hero already holding three) come back within that hero's range, or
    anywhere in the owner's half if the hero is gone. Inventory cores are queued at the next
    phase change; until they are placed the owner can do nothing else.
-6. **Core pick-up order** within one roll follows the order of results in the outcome
+6. **Core pick-up order** (confirmed 2026-10-26) within one roll follows the order of results in the outcome
    (thrower first); the sim will stamp exact times later if that ever matters.
-7. **Stage reveal** happens when a hero's centre hex ends inside the stage's 7 hexes.
+7. **Stage reveal** (confirmed 2026-10-26) happens when a hero's centre hex ends inside the stage's 7 hexes.
    Terrain applies from then until the turn after a claim.
-8. **"Two heroes on a stage, no battle"** means no battle this turn involved any hero
+8. **"Two heroes on a stage, no battle"** (confirmed 2026-10-26) means no battle this turn involved any hero
    standing on that stage.
 9. (2026-10-26) The turn has six phases: Start (draw + hero + Roll/Stay in one `select` move, all
    revealed together), Preroll (cards), Roll (aims and throws only; "Roll Phase:" cards and

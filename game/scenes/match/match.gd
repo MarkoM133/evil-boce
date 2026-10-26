@@ -230,6 +230,24 @@ func _ready() -> void:
 	_build_balls()
 	_build_hud()
 	_sync()
+	if state.turn == 0 and _replay == null and resume_from == null and not _demo:
+		_show_initiative()
+
+
+
+## A new match: both players roll two dice on screen; the higher total starts (the engine has
+## drawn it already, the dice only show it). Bots wait until the dice are gone.
+func _show_initiative() -> void:
+	var dice := InitiativeDice.new()
+	var names := PackedStringArray()
+	var colors: Array[Color] = []
+	for p: PlayerState in state.players:
+		names.append(hud.player_name(p.slot))
+		colors.append(Palette.team(state.team_of(p.slot)))
+	hud.get_parent().add_child(dice)
+	dice.setup(state.rng_seed, state.initiative, names, colors)
+	_bot_wait = 4.0
+	dice.finished.connect(func() -> void: _bot_wait = BOT_DELAY)
 
 
 # --- scene ------------------------------------------------------------------
@@ -2184,3 +2202,8 @@ func demo_kb_hit() -> void:
 	_sync()
 	engine.knockback(state, h, Hex.direction_towards(other.hex, h.hex) + 3, 3)
 	_sync()
+
+
+## Screenshot helper: the dice that pick who starts (a real match shows them on its own).
+func demo_dice() -> void:
+	_show_initiative()
