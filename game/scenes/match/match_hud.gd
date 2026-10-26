@@ -1879,6 +1879,8 @@ func _scan_log() -> void:
 			if card != null:
 				var terrain: String = Terrain.name_of(card.terrain) if card.terrain != Terrain.Type.NONE else ""
 				toast("Stage revealed · %s%s" % [card.name, (" · " + terrain) if not terrain.is_empty() else ""])
+		elif t == "roll_retry":
+			toast(_describe(e))
 		elif t == "stage_buff":
 			# A stage's bonus is easy to miss on the table: say it.
 			toast(_describe(e))
@@ -2000,6 +2002,8 @@ func _describe(e: Dictionary) -> String:
 		"stage_revealed":
 			var st: StageState = state.stage(str(e.get("stage", "")))
 			return "Stage revealed: %s" % _card_name(st.card_id if st != null else "")
+		"roll_retry":
+			return "%s did not leave the start strip: throw again" % hero_l
 		"stage_buff":
 			var sb: StageState = state.stage(str(e.get("stage", "")))
 			var stat: String = {"pwr": "Power", "dmg": "DMG", "kb": "KB", "rng": "Range", "hp": "HP"}.get(str(e.get("stat", "")), str(e.get("stat", "")))

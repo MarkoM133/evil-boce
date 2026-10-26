@@ -38,6 +38,8 @@ var net_client: NetClient
 var _ball_tick: float = 0.0
 ## Last HP drawn per hero, and the heroes shown as KO, so _sync can animate what changed.
 var _hp: Dictionary[String, int] = {}
+## Balls hopping to a new hex by a rule move: they stay closed until they land.
+var _sliding: Dictionary[String, bool] = {}
 var _ko_shown: Dictionary[String, bool] = {}
 ## True while a redraw must not animate (a replay jumping frames).
 var _quiet: bool = false
@@ -757,6 +759,8 @@ func _sync_hero(h: HeroState) -> void:
 			v.close_now()
 			b.place(target)
 			v.settle()
+	if _sliding.has(h.id):
+		return
 	var open: bool = _shows_figure(h)
 	if open and not v.is_open() and v.state != BallView.State.OPENING:
 		v.open()
@@ -786,6 +790,13 @@ func _shows_figure(h: HeroState) -> bool:
 ## longer the farther it goes) and squashes on landing.
 func _slide(b: BallBody, target: Vector3, v: BallView) -> void:
 	b.freeze = true
+	# An open ball (a figure on a stage) closes first, so the figure does not tumble off its
+	# centre, and opens again on landing if it should.
+	_sliding[b.ball_id] = true
+	var wait: float = 0.0
+	if v != null and (v.is_open() or v.state == BallView.State.OPENING):
+		v.close(true)
+		wait = BallView.CLOSE_TIME_FAST
 	var from: Vector3 = b.global_position
 	var to := Vector3(target.x, from.y, target.z)
 	var dist: float = Vector2(to.x - from.x, to.z - from.z).length()
@@ -794,6 +805,8 @@ func _slide(b: BallBody, target: Vector3, v: BallView) -> void:
 	var height: float = clampf(0.45 + 0.3 * steps, 0.45, 1.8)
 	var time: float = clampf(0.45 + 0.12 * steps, 0.45, 1.0) * GameSettings.anim_scale()
 	var t: Tween = create_tween()
+	if wait > 0.0:
+		t.tween_interval(wait)
 	t.tween_method(func(k: float) -> void:
 		var p: Vector3 = from.lerp(to, k)
 		p.y += sin(k * PI) * height
@@ -804,7 +817,11 @@ func _slide(b: BallBody, target: Vector3, v: BallView) -> void:
 		b.place(target)
 		if v != null:
 			v.land()
-			v.settle())
+			v.settle()
+		_sliding.erase(b.ball_id)
+		var h: HeroState = state.hero(b.ball_id) if state != null else null
+		if v != null and h != null and _shows_figure(h) and not v.is_open():
+			v.open())
 
 
 ## Hit-stop: the world freezes for a blink when damage lands (Settings → Effects).

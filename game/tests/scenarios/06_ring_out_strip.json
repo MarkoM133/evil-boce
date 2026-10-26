@@ -1,5 +1,5 @@
 {
-  "name": "Rolling onto any start strip is a ring-out; cores scatter, the player may only pass",
+  "name": "Rolling onto any start strip is a ring-out; cores scatter, the player may only pass. A throw that never leaves its own strip is thrown again.",
   "steps": [
     {"setup": {"seed": 1}},
     {"move": {"type": "mulligan", "player": 0, "keep": true}},
@@ -28,8 +28,14 @@
       "players.p1.inventory": {"$size": 0},
       "heroes.p1:TB-001.zone": "strip",
       "only_pass": {"$has": 0},
-      "phase": "postroll"
+      "phase": "roll",
+      "rolled": false
     }},
+    {"move": {"type": "aim", "player": 1, "dir": [0, -1], "power": 0.8}},
+    {"roll": {"thrower": "p1:TB-001", "results": [
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 0, "strip_entered": -1, "end_hex": [4, 3]}
+    ]}},
+    {"expect": {"heroes.p1:TB-001.zone": "map", "heroes.p1:TB-001.hex": [4, 3], "heroes.p0:TA-001.zone": "strip", "phase": "postroll"}},
     {"expect": {"phase": "postroll", "pending": {"$size": 0}}},
     {"pass_round": true},
     {"expect": {"phase": "start", "turn": 2, "only_pass": {"$size": 0}}}

@@ -643,6 +643,25 @@ func apply_roll(s: GameState, o: RollOutcome) -> String:
 		if h == null or h.is_ko():
 			continue
 		_apply_result(s, h, r)
+	# A thrown hero that never left its start strip (too weak a throw) throws again, as if
+	# nothing happened (Marko 2026-10-26): it may not stay there. The others keep where they
+	# stopped and are not thrown again.
+	var stuck: Array[HeroState] = []
+	for r: RollResult in o.results:
+		var h: HeroState = s.hero(r.ball_id)
+		if h != null and r.thrown and not h.is_ko() and r.end_area == BallWorld.Area.STRIP and not r.ring_out \
+				and r.strip_entered < 0 and h.zone == HeroState.ZONE_STRIP and s.active.get(h.owner, "") == h.id:
+			stuck.append(h)
+	if not stuck.is_empty():
+		for slot: int in s.aims.keys():
+			s.aims[slot] = {"skip": true}
+		for h: HeroState in stuck:
+			s.aims.erase(h.owner)
+			s.event("roll_retry", {"hero": h.id})
+		s.awaiting_roll = false
+		s.pending_rolls = PackedStringArray()
+		_continue(s)
+		return ""
 	s.awaiting_roll = false
 	s.rolled = true
 	s.pending_rolls = PackedStringArray()
