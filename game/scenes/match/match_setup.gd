@@ -302,3 +302,8 @@ func demo_swap() -> void:
 	var p: SideboardPanel = SideboardPanel.open_swap(self, db, JsonUtil.as_strings(d["heroes"]), JsonUtil.as_dict(d["cards"]), side, JsonUtil.as_dict(d["cards"]), func(_x: Dictionary) -> void: pass)
 	p._swap(str(JsonUtil.as_dict(d["cards"]).keys()[0]), str(side.keys()[0]))
 	p._fill()
+
+
+## Screenshot helper: the Buff core picker of player 1 is open.
+func demo_core_pick() -> void:
+	_cards[0].call("_pick_core", 0)

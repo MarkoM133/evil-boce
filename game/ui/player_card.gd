@@ -8,6 +8,8 @@ extends PanelContainer
 signal changed
 
 const KIND_COLORS: Dictionary[String, Color] = {"Buff": Color("23b14d"), "Major": Color("f4b62a"), "Debuff": Color("e3120b")}
+## A core's value colour in its picker tile, by family (as the core icons: Power gold, Damage red, Knockback blue).
+const CORE_FAMILY_COLORS: Dictionary[String, Color] = {"Power": Color("f4c22f"), "Damage": Color("ff5a4a"), "Knockback": Color("4aa3ff")}
 
 var db: CardDb
 var decks: Array[Dictionary] = []
@@ -431,9 +433,26 @@ static func card_tile(db_: CardDb, id: String, tile: Vector2, on_click: Callable
 	s.art_w = tile.x
 	s.set_mirrored(false)
 	s.art = db_.thumb(id) if card != null else null
+	# A core is a hex token in the middle of a white card: the tile shows that token whole,
+	# on the dark tile, not the top of the picture.
+	var core_pic: Texture2D = s.art if card != null and card.type == "Core" else null
+	if core_pic != null:
+		s.art = null
 	if s.art != null:
 		s.art_region = Rect2(0.08, 0.09, 0.84, 0.42) if s.art.get_height() > s.art.get_width() else HeroSlice.region_for(s.art)
 	s.art_fallback = Palette.SURFACE_2
+	if core_pic != null:
+		# Its value big, in its family's colour (Power gold, Damage red, Knockback blue).
+		var family: String = card.core_family()
+		var value: String = card.name.split(" ")[0]
+		var tint: Color = CORE_FAMILY_COLORS[family] if CORE_FAMILY_COLORS.has(family) else Palette.FG
+		var big: Label = UiTheme.label(value, 40, tint)
+		big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		big.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		big.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		big.offset_bottom = -22
+		big.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		s.add_child(big)
 	s.art_tint = Color(0.35, 0.35, 0.35) if used else Color(0.85, 0.85, 0.85)
 	var clickable: bool = on_click.is_valid() and not used
 	s.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if clickable else Control.CURSOR_FORBIDDEN if used else Control.CURSOR_ARROW
@@ -446,7 +465,9 @@ static func card_tile(db_: CardDb, id: String, tile: Vector2, on_click: Callable
 			var chip: UiShape = UiShape.chip(Terrain.name_of(card.terrain).to_upper(), Palette.GOLD, Color.BLACK, 13, 20.0, 8.0)
 			chip.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 			col.add_child(chip)
-		var name_l: Label = UiTheme.label(card.name, 19)
+		if core_pic != null:
+			col.alignment = BoxContainer.ALIGNMENT_END
+		var name_l: Label = UiTheme.label(card.core_family().to_upper() if core_pic != null else card.name, 15 if core_pic != null else 19)
 		name_l.add_theme_color_override("font_outline_color", Color.BLACK)
 		name_l.add_theme_constant_override("outline_size", 6)
 		name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
