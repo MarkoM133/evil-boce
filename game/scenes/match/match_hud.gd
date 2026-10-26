@@ -705,6 +705,13 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 	info.horizontal_alignment = align
 	info.tooltip_text = "Graveyard: " + (", ".join(_card_names(p.graveyard)) if not p.graveyard.is_empty() else "empty")
 	info.mouse_filter = Control.MOUSE_FILTER_PASS
+	# A click shows the cards (open_graveyard).
+	info.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var gslot: int = slot
+	info.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
+				and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			open_graveyard(gslot))
 	var pad := MarginContainer.new()
 	pad.add_theme_constant_override("margin_right" if right else "margin_left", 18)
 	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -727,6 +734,7 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	s.art_region = HeroSlice.region_for(s.art)
 	s.art_fallback = hero_color.darkened(0.3)
 	s.bg = Color("222222") if h.id == hover_hero else Palette.PANEL_SOLID
+	s.color_edge = hero_color
 	if ko:
 		s.art_tint = Color(0.35, 0.35, 0.35)
 		s.modulate.a = 0.6
@@ -2548,8 +2556,12 @@ func _refresh_piles() -> void:
 	var top: String = p.graveyard[p.graveyard.size() - 1] if not p.graveyard.is_empty() else ""
 	var grave: Control = _pile(top, "GRAVE %d" % p.graveyard.size(), false)
 	grave.tooltip_text = "Graveyard: " + (", ".join(_card_names(p.graveyard)) if not p.graveyard.is_empty() else "empty")
-	if not top.is_empty():
-		grave.gui_input.connect(func(e: InputEvent) -> void: _card_click(e, top))
+	var who: int = slot
+	grave.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	grave.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
+				and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			open_graveyard(who))
 	_grave_spot.add_child(grave)
 	_piles.add_child(_pile("", "DECK %d" % p.deck.size(), true))
 
@@ -2591,3 +2603,67 @@ func _pile(cid: String, count: String, face_down: bool) -> Control:
 	tab.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(tab)
 	return box
+
+
+## Whether the mouse is on the Roll / Stay under a ball.
+func ball_choice_has_mouse() -> bool:
+	return _ball_choice != null and _ball_choice.visible \
+			and _ball_choice.get_global_rect().grow(8).has_point(get_global_mouse_position())
+
+
+## A player's graveyard laid out as cards over the table (Marko 2026-10-26): the latest first;
+## hover a card for its text, a click anywhere else closes it.
+func open_graveyard(slot: int) -> void:
+	var p: PlayerState = state.player(slot) if state != null else null
+	if p == null:
+		return
+	var overlay := Control.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(overlay)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.7)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(dim)
+	overlay.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
+			overlay.queue_free())
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(center)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 14)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.add_child(col)
+	var title: Label = UiTheme.label("%s · GRAVEYARD  %d" % [player_name(slot).to_upper(), p.graveyard.size()], 34)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(title)
+	if p.graveyard.is_empty():
+		var none: Label = UiTheme.label("No cards yet", 22, Palette.DIM)
+		none.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(none)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(minf(size.x - 120.0, 1180.0), minf(size.y - 220.0, 640.0))
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.visible = not p.graveyard.is_empty()
+	col.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = maxi(1, int((scroll.custom_minimum_size.x + 12.0) / 172.0))
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	scroll.add_child(grid)
+	for i: int in range(p.graveyard.size() - 1, -1, -1):
+		var cid: String = p.graveyard[i]
+		var card: CardDef = engine.catalog.get_card(cid)
+		var tex: Texture2D = db.large(cid) if db != null and db.large(cid) != null else (db.thumb(cid) if db != null else null)
+		var pic := TextureRect.new()
+		pic.custom_minimum_size = Vector2(160, 224)
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pic.texture = tex
+		pic.mouse_filter = Control.MOUSE_FILTER_PASS
+		if card != null:
+			pic.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
+		grid.add_child(pic)

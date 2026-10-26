@@ -1402,9 +1402,8 @@ func _process(delta: float) -> void:
 		_run_playback(delta)
 		return
 	_run_phase_hold(delta)
-	# Roll / Stay under a hovered ball: gone once the mouse leaves the ball and the buttons.
-	if _hovered.is_empty() or state.phase != GameState.PHASE_START:
-		hud.hide_ball_choice(state.phase != GameState.PHASE_START)
+	# Roll / Stay under the hovered or the picked ball (it follows the camera).
+	_update_ball_choice()
 	_run_bots(delta)
 	_run_auto_pass(delta)
 	_run_clock(delta)
@@ -2464,22 +2463,38 @@ func demo_terrain() -> void:
 	cam.focus(arena.hex_center(Hex.offset_to_axial(11, 10)), 22.0)
 
 
-## Start: hovering one of your heroes that can be picked shows Roll / Stay under its ball.
+## Start: Roll / Stay under a ball of yours that can be picked: the hovered one, else the one
+## picked (they stay there once chosen, Marko 2026-10-26). While the mouse is on the buttons
+## they keep their ball.
 func _update_ball_choice() -> void:
-	if state == null or state.phase != GameState.PHASE_START or _hovered.is_empty() or not _bodies.has(_hovered):
+	if state == null or state.phase != GameState.PHASE_START:
+		hud.hide_ball_choice(true)
+		return
+	if hud.ball_choice_has_mouse():
+		return
+	var id: String = _hovered if _choice_ok(_hovered) else ""
+	if id.is_empty():
+		for slot: int in hud.local_slots:
+			var picked: String = str(hud.picks.get(slot, ""))
+			if _choice_ok(picked):
+				id = picked
+	if id.is_empty():
 		hud.hide_ball_choice()
 		return
-	var h: HeroState = state.hero(_hovered)
+	hud.show_ball_choice(id, cam.camera.unproject_position(_bodies[id].global_position) + Vector2(0, 34))
+
+
+## A local hero that may be picked in Start now (its owner has not confirmed yet).
+func _choice_ok(id: String) -> bool:
+	if id.is_empty() or not _bodies.has(id):
+		return false
+	var h: HeroState = state.hero(id)
 	if h == null or not hud.local_slots.has(h.owner) or state.active.has(h.owner):
-		hud.hide_ball_choice()
-		return
-	var can: bool = false
+		return false
 	for x: HeroState in engine.selectable_heroes(state, h.owner):
-		can = can or x.id == h.id
-	if not can:
-		hud.hide_ball_choice()
-		return
-	hud.show_ball_choice(h.id, cam.camera.unproject_position(_bodies[h.id].global_position) + Vector2(0, 34))
+		if x.id == h.id:
+			return true
+	return false
 
 
 ## Screenshot helper: Start, one hero picked, the mouse over another of your balls.
@@ -2528,3 +2543,9 @@ func demo_deal() -> void:
 	hud.local_slots = PackedInt32Array([0])
 	bots.erase(0)
 	_sync()
+
+
+## Screenshot helper: player 1's graveyard opened.
+func demo_grave() -> void:
+	demo_piles()
+	hud.open_graveyard(0)

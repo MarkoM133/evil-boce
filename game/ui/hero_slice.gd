@@ -21,6 +21,8 @@ var art_fallback: Color = Palette.SURFACE_2
 var outline: Color = Color(0, 0, 0, 0)
 var outline_width: float = 3.0
 var stripe: Color = Color(0, 0, 0, 0)
+## The hero's card colour as a band on the slanted edge away from the art (Marko 2026-10-26).
+var color_edge: Color = Color(0, 0, 0, 0)
 ## Where the text goes (margins keep it off the art and the cut).
 var content: MarginContainer
 
@@ -86,6 +88,12 @@ func _draw() -> void:
 		var sx: float = (w - aw - CUT - 6.0) if mirrored else aw + 2.0
 		draw_colored_polygon(PackedVector2Array([Vector2(sx + CUT, 0), Vector2(sx + CUT + 6, 0), Vector2(sx + 6, h),
 			Vector2(sx, h)]), stripe)
+	if color_edge.a > 0.0:
+		var e: float = 7.0
+		if mirrored:
+			draw_colored_polygon(PackedVector2Array([Vector2(CUT, 0), Vector2(CUT + e, 0), Vector2(e, h), Vector2(0, h)]), color_edge)
+		else:
+			draw_colored_polygon(PackedVector2Array([Vector2(w - e, 0), Vector2(w, 0), Vector2(w - CUT, h), Vector2(w - CUT - e, h)]), color_edge)
 	if outline.a > 0.0:
 		var loop: PackedVector2Array = body.duplicate()
 		loop.append(body[0])

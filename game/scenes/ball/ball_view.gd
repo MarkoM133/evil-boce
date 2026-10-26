@@ -76,7 +76,9 @@ func configure(hero_color: Color, accent: Color, team_color: Color,
 	_style = style
 	_team_color = team_color
 	_top_mat.albedo_color = hero_color
-	_bottom_mat.albedo_color = accent
+	# The lower half is always the hero's card colour (Marko 2026-10-26), so a ball tells its
+	# colour at a glance; the card's own accent shows only without one.
+	_bottom_mat.albedo_color = Palette.hero(style) if not style.is_empty() else accent
 	_seam_mat.albedo_color = team_color
 	_seam_mat.emission = team_color
 	_socket_mat.albedo_color = team_color
