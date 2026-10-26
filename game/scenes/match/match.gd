@@ -795,6 +795,9 @@ func _sync_hero(h: HeroState) -> void:
 func _shows_figure(h: HeroState) -> bool:
 	if not h.is_on_map():
 		return false
+	# Locked in a tied battle: it is in a fight, so it stands as a figure (Marko 2026-10-26).
+	if h.tie_turns > 0:
+		return true
 	for st: StageState in state.stages:
 		if st.placed and st.covers(h.hex):
 			return true
@@ -903,6 +906,24 @@ func _rebuild_tokens() -> void:
 			body.add_child(_hex_prism(tuning.hex_size * 0.92, 1.2, Color("5a5049"), Color("6d625a")))
 			body.position = arena.hex_center(a) + Vector3(0, 0.6, 0)
 			_tokens.add_child(body)
+	# A tied, locked pair: LOCKED over the middle of their link (_lock_links).
+	for a: HeroState in state.heroes:
+		if a.tie_turns <= 0 or not a.is_on_map():
+			continue
+		for lid: String in a.locked_with:
+			var b: HeroState = state.hero(lid)
+			if b == null or not b.is_on_map() or b.id < a.id:
+				continue
+			var tag := Label3D.new()
+			tag.text = "LOCKED · TIE"
+			tag.font_size = 48
+			tag.pixel_size = 0.016
+			tag.outline_size = 12
+			tag.modulate = Palette.ACCENT.lightened(0.25)
+			tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			tag.no_depth_test = true
+			tag.position = arena.hex_center(a.hex).lerp(arena.hex_center(b.hex), 0.5) + Vector3(0, 1.6, 0)
+			_tokens.add_child(tag)
 	for st: StageState in state.stages:
 		if st.is_claimed():
 			var flag := MeshInstance3D.new()
@@ -1090,6 +1111,7 @@ func _draw_marks() -> void:
 			any = true
 	if state.phase == GameState.PHASE_BATTLE or state.phase == GameState.PHASE_POSTROLL:
 		any = _battle_arrows() or any
+	any = _lock_links() or any
 	if not any:
 		_marks.surface_add_vertex(Vector3.ZERO)
 		_marks.surface_add_vertex(Vector3.ZERO)
@@ -1818,6 +1840,8 @@ func _on_hero_clicked(id: String) -> void:
 			hud.picks[h.owner] = id
 			hud.refresh()
 			_refresh_target_fx()
+		elif h.tie_turns > 0:
+			hud.toast("%s is locked in a tied battle: it cannot be picked, and it fights that battle again this turn." % hud.hero_name(h))
 		return
 	if h.is_on_map():
 		cam.focus(arena.hex_center(h.hex), 14.0)
@@ -2557,4 +2581,46 @@ func demo_tie() -> void:
 	var a: HeroState = state.heroes_of(0)[0]
 	var b: HeroState = state.heroes_of(1)[0]
 	state.event("battle_locked", {"heroes": [a.id, b.id], "turns": 1})
+	_sync()
+
+
+## Heroes locked in a tied battle (GDD 10): a thick dashed red link between them, the whole
+## turn, so it is clear they are tied up and will fight again.
+func _lock_links() -> bool:
+	var drew: bool = false
+	for a: HeroState in state.heroes:
+		if a.tie_turns <= 0 or not a.is_on_map() or not _bodies.has(a.id):
+			continue
+		for lid: String in a.locked_with:
+			var b: HeroState = state.hero(lid)
+			# Each pair once.
+			if b == null or not b.is_on_map() or b.id < a.id or not _bodies.has(b.id):
+				continue
+			var from: Vector3 = arena.hex_center(a.hex) + Vector3(0, 0.07, 0)
+			var to: Vector3 = arena.hex_center(b.hex) + Vector3(0, 0.07, 0)
+			var n: int = 9
+			for i: int in n:
+				if i % 2 == 1:
+					continue
+				var p0: Vector3 = from.lerp(to, float(i) / n)
+				var p1: Vector3 = from.lerp(to, float(i + 1) / n)
+				MeshKit.ribbon(_marks, PackedVector3Array([p0, p1]), 0.18, Palette.ACCENT)
+			drew = true
+	return drew
+
+
+## Screenshot helper: two heroes locked in a tied battle, Start of the next turn.
+func demo_locked() -> void:
+	_demo = true
+	var a: HeroState = state.heroes_of(0)[0]
+	var b: HeroState = state.heroes_of(1)[0]
+	a.zone = HeroState.ZONE_MAP
+	a.hex = Hex.offset_to_axial(10, 11)
+	b.zone = HeroState.ZONE_MAP
+	b.hex = Hex.offset_to_axial(12, 11)
+	a.tie_turns = 1
+	b.tie_turns = 1
+	a.locked_with = PackedStringArray([b.id])
+	b.locked_with = PackedStringArray([a.id])
+	state.phase = GameState.PHASE_START
 	_sync()
