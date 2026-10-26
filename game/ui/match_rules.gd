@@ -13,6 +13,7 @@ const MAP_INFO: Dictionary[int, Array] = {
 	15: ["SMALL", "Heroes meet fast. Short, rough matches."],
 	17: ["MEDIUM", "A step between the two."],
 	23: ["LARGE", "Room to move and to place stages. The Standard map."],
+	MatchSettings.MAP_RANDOM: ["ANY", "Drawn when the match starts. Chaos plays this way."],
 }
 ## The panel: columns of [section, rows]; a row is [setting, name, what it does, the values offered].
 const COLUMNS: Array = [
@@ -51,6 +52,9 @@ var editable: bool = true
 var _map_tile: PanelContainer
 var _map_box: StyleBoxFlat
 var _map_preview: MapPreview
+var _map_question: Label
+var _mode_row: HBoxContainer
+var _mode_line: Label
 var _map_size: Label
 var _map_word: Label
 var _rules_tile: PanelContainer
@@ -131,6 +135,12 @@ func _build() -> void:
 	_map_preview = MapPreview.new()
 	_map_preview.custom_minimum_size = Vector2(112, 112)
 	mrow.add_child(_map_preview)
+	_map_question = UiTheme.label("?", 72, Palette.DIM)
+	_map_question.custom_minimum_size = Vector2(112, 112)
+	_map_question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_map_question.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_map_question.visible = false
+	mrow.add_child(_map_question)
 	var mcol := VBoxContainer.new()
 	mcol.alignment = BoxContainer.ALIGNMENT_CENTER
 	mcol.add_theme_constant_override("separation", 0)
@@ -200,10 +210,14 @@ func _refresh() -> void:
 	if _map_tile == null:
 		return
 	var n: int = settings.map_size
-	_map_preview.map_size = n
-	_map_size.text = "%d × %d" % [n, n]
+	var random_map: bool = n == MatchSettings.MAP_RANDOM
+	_map_preview.visible = not random_map
+	_map_question.visible = random_map
+	if not random_map:
+		_map_preview.map_size = n
+	_map_size.text = "RANDOM" if random_map else "%d × %d" % [n, n]
 	var info: Array = MAP_INFO[n] if MAP_INFO.has(n) else ["", ""]
-	_map_word.text = str(info[0]) + ("  ·  STANDARD" if n == MatchSettings.standard().map_size else "")
+	_map_word.text = ("DRAWN AT THE START" if random_map else str(info[0])) + ("  ·  STANDARD" if n == MatchSettings.standard().map_size else "")
 	_map_tile.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if editable else Control.CURSOR_ARROW
 	_map_tile.tooltip_text = "Pick the map" if editable else "The host picks the map"
 	_rules_tile.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -212,8 +226,10 @@ func _refresh() -> void:
 		c.queue_free()
 	_rules_chip.add_child(UiTheme.label("MATCH RULES", 15, Palette.GOLD))
 	var diff: PackedStringArray = changes()
-	_rules_chip.add_child(UiShape.chip("STANDARD" if diff.is_empty() else "CUSTOM · %d" % diff.size(),
-		Palette.SURFACE_2 if diff.is_empty() else Palette.ACCENT, Palette.FG, 13, 22.0, 10.0))
+	var custom: bool = settings.mode == "custom"
+	_rules_chip.add_child(UiShape.chip(("CUSTOM · %d" % diff.size()) if custom else settings.mode.to_upper(),
+		Palette.ACCENT if custom else (Palette.SURFACE_2 if settings.mode == "standard" else Palette.GOLD),
+		Palette.FG, 13, 22.0, 10.0))
 	_rules_line.text = "Hero range %s  ·  stages and cores %s  ·  first to %d stages" % [
 		value_text("range_delta", settings.range_delta).to_lower(),
 		"placed by the players" if settings.manual_setup else "placed at random", settings.stages_to_win]
@@ -225,6 +241,7 @@ func _refresh() -> void:
 
 
 func _changed() -> void:
+	settings.mode = settings.mode_of()
 	_refresh()
 	changed.emit()
 
@@ -318,6 +335,7 @@ func open_map_picker() -> void:
 	col.add_child(row)
 	for n: int in GameSettings.MAP_SIZES:
 		row.add_child(_map_choice(n))
+	row.add_child(_map_choice(MatchSettings.MAP_RANDOM))
 
 
 func _map_choice(n: int) -> Control:
@@ -333,15 +351,22 @@ func _map_choice(n: int) -> Control:
 	col.add_theme_constant_override("separation", 6)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tile.add_child(col)
-	var pic := MapPreview.new()
-	pic.map_size = n
-	pic.custom_minimum_size = Vector2(298, 298)
-	col.add_child(pic)
+	if n == MatchSettings.MAP_RANDOM:
+		var q: Label = UiTheme.label("?", 160, Palette.DIM)
+		q.custom_minimum_size = Vector2(298, 298)
+		q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		col.add_child(q)
+	else:
+		var pic := MapPreview.new()
+		pic.map_size = n
+		pic.custom_minimum_size = Vector2(298, 298)
+		col.add_child(pic)
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 8)
 	name_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(name_row)
-	name_row.add_child(UiTheme.label("%d × %d" % [n, n], 36))
+	name_row.add_child(UiTheme.label("RANDOM" if n == MatchSettings.MAP_RANDOM else "%d × %d" % [n, n], 36))
 	var info: Array = MAP_INFO[n] if MAP_INFO.has(n) else ["", ""]
 	var word: UiShape = UiShape.chip(str(info[0]), Palette.GOLD, Color.BLACK, 13, 22.0, 9.0)
 	word.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -371,6 +396,14 @@ func _map_choice(n: int) -> Control:
 func open_rules() -> void:
 	var col: VBoxContainer = _overlay("Match rules",
 		"Everything a match can change. Straw values differ from Standard." if editable else "The host sets these. Straw values differ from Standard.", 1180.0)
+	# The modes (GDD 13) as presets: one click sets every rule and the map.
+	_mode_row = HBoxContainer.new()
+	_mode_row.add_theme_constant_override("separation", 8)
+	col.add_child(_mode_row)
+	_mode_line = Label.new()
+	_mode_line.add_theme_color_override("font_color", Palette.MUTED)
+	_mode_line.add_theme_font_size_override("font_size", 14)
+	col.add_child(_mode_line)
 	_rules_body = HBoxContainer.new()
 	_rules_body.add_theme_constant_override("separation", 40)
 	col.add_child(_rules_body)
@@ -381,22 +414,6 @@ func open_rules() -> void:
 	_rules_foot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rules_foot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	foot.add_child(_rules_foot)
-	if editable:
-		var reset := Button.new()
-		reset.text = "BACK TO STANDARD"
-		reset.theme_type_variation = &"Ghost"
-		reset.add_theme_font_size_override("font_size", 18)
-		reset.tooltip_text = "Every rule as in Standard (the map stays)"
-		reset.pressed.connect(func() -> void:
-			var map: int = settings.map_size
-			var std: MatchSettings = MatchSettings.standard()
-			for column: Array in COLUMNS:
-				for section: Array in column:
-					for r: Array in section[1]:
-						settings.set(str(r[0]), std.get(str(r[0])))
-			settings.map_size = map
-			_changed())
-		foot.add_child(reset)
 	var done := Button.new()
 	done.text = "DONE" if editable else "CLOSE"
 	done.theme_type_variation = &"Primary"
@@ -408,6 +425,23 @@ func open_rules() -> void:
 
 
 func _fill_rules() -> void:
+	for c: Node in _mode_row.get_children():
+		c.queue_free()
+	_mode_row.add_child(UiTheme.label("MODE", 15, Palette.GOLD))
+	for name: String in MatchSettings.MODES:
+		if name == "custom" and settings.mode != "custom":
+			continue
+		var b := Button.new()
+		b.text = name.to_upper()
+		b.add_theme_font_size_override("font_size", 18)
+		b.theme_type_variation = &"Gold" if name == settings.mode else &""
+		b.disabled = not editable or name == "custom"
+		b.tooltip_text = str(MatchSettings.MODE_LINES.get(name, ""))
+		b.pressed.connect(func() -> void:
+			settings = MatchSettings.preset(name)
+			_changed())
+		_mode_row.add_child(b)
+	_mode_line.text = str(MatchSettings.MODE_LINES.get(settings.mode, ""))
 	for c: Node in _rules_body.get_children():
 		c.queue_free()
 	for column: Array in COLUMNS:
@@ -424,7 +458,7 @@ func _fill_rules() -> void:
 			gap.custom_minimum_size = Vector2(0, 8)
 			colv.add_child(gap)
 	var diff: PackedStringArray = changes()
-	_rules_foot.text = "STANDARD RULES" if diff.is_empty() else "CUSTOM  ·  %d CHANGED" % diff.size()
+	_rules_foot.text = settings.mode.to_upper() + ("  ·  %d CHANGED FROM STANDARD" % diff.size() if not diff.is_empty() else "")
 	_rules_foot.add_theme_color_override("font_color", Palette.MUTED if diff.is_empty() else Palette.GOLD)
 
 

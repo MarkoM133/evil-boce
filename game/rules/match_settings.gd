@@ -32,6 +32,8 @@ var max_tie_turns: int = 2
 ## `range_min`, unless the card's own range is already lower.
 var range_delta: int = 0
 var range_min: int = 2
+## The game mode these settings came from ("standard", "fast", "chaos") or "custom".
+var mode: String = "standard"
 
 
 ## The Standard mode (GDD 13). `new()` keeps the cards as printed, which the scenario tests use.
@@ -42,6 +44,56 @@ static func standard() -> MatchSettings:
 	s.map_size = 23
 	s.range_delta = -1
 	return s
+
+
+## The game modes (GDD 13) as presets of these settings; "custom" is any other mix. The mode
+## name travels with the settings (lobby, record) and the map is not part of it: a preset
+## brings its map, changing the map afterwards keeps the name.
+const MODES: Array[String] = ["standard", "fast", "chaos", "custom"]
+const MODE_LINES: Dictionary[String, String] = {
+	"standard": "The rules as written: a 23 × 23 map, three stages to win, no timer.",
+	"fast": "30 seconds a move, 20 cards, two stages to win, a 17 × 17 map.",
+	"chaos": "Random heroes and decks, random stages and cores dropped on a random map.",
+	"custom": "Your own mix of rules.",
+}
+## Map size 0 stands for "drawn when the match starts" (resolve_map).
+const MAP_RANDOM: int = 0
+
+
+static func preset(name: String) -> MatchSettings:
+	var s: MatchSettings = standard()
+	match name:
+		"fast":
+			s.timer_seconds = 30
+			s.deck_size = 20
+			s.stages_to_win = 2
+			s.map_size = 17
+		"chaos":
+			s.manual_setup = false
+			s.map_size = MAP_RANDOM
+	s.mode = name if MODES.has(name) else "custom"
+	return s
+
+
+## The preset these settings match (the map and the name aside), else "custom".
+func mode_of() -> String:
+	var mine: Dictionary = to_dict()
+	for name: String in ["standard", "fast", "chaos"]:
+		var p: Dictionary = preset(name).to_dict()
+		var same: bool = true
+		for k: Variant in mine:
+			if k != "map_size" and k != "mode" and mine[k] != p.get(k):
+				same = false
+				break
+		if same:
+			return name
+	return "custom"
+
+
+## A random map picked for MAP_RANDOM, out of `sizes`; done once, just before the match.
+func resolve_map(rng: RandomNumberGenerator, sizes: Array[int]) -> void:
+	if map_size == MAP_RANDOM and not sizes.is_empty():
+		map_size = sizes[rng.randi_range(0, sizes.size() - 1)]
 
 
 ## A hero card's range after `range_delta`.
@@ -83,6 +135,7 @@ func to_dict() -> Dictionary:
 		"max_tie_turns": max_tie_turns,
 		"range_delta": range_delta,
 		"range_min": range_min,
+		"mode": mode,
 	}
 
 
@@ -108,4 +161,5 @@ static func from_dict(d: Dictionary) -> MatchSettings:
 	s.max_tie_turns = JsonUtil.as_int(d.get("max_tie_turns", s.max_tie_turns), s.max_tie_turns)
 	s.range_delta = JsonUtil.as_int(d.get("range_delta", s.range_delta), s.range_delta)
 	s.range_min = JsonUtil.as_int(d.get("range_min", s.range_min), s.range_min)
+	s.mode = str(d.get("mode", s.mode))
 	return s

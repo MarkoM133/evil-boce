@@ -78,7 +78,10 @@ func _ready() -> void:
 	_rules.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(_rules)
 	_rules.setup(GameSettings.match_rules("local"), true)
-	_rules.changed.connect(func() -> void: GameSettings.set_match_rules("local", _rules.settings))
+	_rules.changed.connect(func() -> void:
+		GameSettings.set_match_rules("local", _rules.settings)
+		_lock_cards())
+	_lock_cards()
 	_start_btn = Button.new()
 	_start_btn.text = "START MATCH"
 	_start_btn.theme_type_variation = &"Primary"
@@ -87,6 +90,14 @@ func _ready() -> void:
 	_start_btn.pressed.connect(_start)
 	bottom.add_child(_start_btn)
 	_check()
+
+
+## Chaos (GDD 13): both sides play random decks, stages and cores.
+func _lock_cards() -> void:
+	var chaos: bool = _rules.settings.mode == "chaos"
+	for card: PlayerCard in _cards:
+		if card.set_locked_random(chaos):
+			_check()
 
 
 ## Problems of both sides; any one keeps START MATCH off.
@@ -106,6 +117,7 @@ func _start() -> void:
 	rng.randomize()
 	var settings: MatchSettings = MatchSettings.from_dict(_rules.settings.to_dict())
 	GameSettings.set_match_rules("local", settings)
+	settings.resolve_map(rng, GameSettings.MAP_SIZES)
 	GameSettings.set_map_size(settings.map_size)
 	var bot: bool = _opponent < 2
 	var level: String = "hard" if _opponent == 1 else "easy"
@@ -153,3 +165,9 @@ func demo_leader() -> void:
 func demo_leader_pick() -> void:
 	_cards[1].deck_index = 0
 	_cards[1]._pick_leader()
+
+
+## Screenshot helper: the Chaos mode (everything random, the map drawn at the start).
+func demo_chaos() -> void:
+	_rules.settings = MatchSettings.preset("chaos")
+	_rules._changed()

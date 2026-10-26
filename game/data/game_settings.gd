@@ -57,7 +57,7 @@ static func match_rules(mode: String) -> MatchSettings:
 	var d: Dictionary = MatchSettings.standard().to_dict()
 	d.merge(JsonUtil.as_dict(_config().get_value("match_rules", mode, {})), true)
 	var s: MatchSettings = MatchSettings.from_dict(d)
-	if not MAP_SIZES.has(s.map_size):
+	if s.map_size != MatchSettings.MAP_RANDOM and not MAP_SIZES.has(s.map_size):
 		s.map_size = MatchSettings.standard().map_size
 	return s
 

@@ -296,6 +296,8 @@ func _my_addresses() -> PackedStringArray:
 func _start() -> void:
 	if host == null:
 		return
+	# A random map is drawn now, so everyone starts on the same one (the START message carries it).
+	host.settings.resolve_map(_rng, GameSettings.MAP_SIZES)
 	var err: String = host.start(_rng.randi())
 	if not err.is_empty():
 		_status.text = err
@@ -410,7 +412,10 @@ func _refresh() -> void:
 		_tags(_opp, other, false)
 	if host == null:
 		_rules.set_settings(MatchSettings.from_dict(client.settings if client != null else {}))
-	else:
+	# Chaos (GDD 13): everyone plays random decks, stages and cores; a locked card is sent again.
+	if _card.set_locked_random(_rules.settings.mode == "chaos"):
+		_send_deck()
+	if host != null:
 		var why: String = host.can_start()
 		_start_btn.disabled = not why.is_empty()
 		_start_btn.tooltip_text = why
