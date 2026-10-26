@@ -410,7 +410,7 @@ func _build_hud() -> void:
 		get_tree().change_scene_to_file(MATCH_SCENE))
 	hud.setup_item_pressed.connect(func(id: String) -> void:
 		_setup_pick = id
-		_range_key = ""
+		_range_key = "-"
 		hud.setup_pick = _setup_item()
 		hud.refresh())
 	hud.new_match = net_role.is_empty()
@@ -713,7 +713,8 @@ func _sync() -> void:
 	for h: HeroState in state.heroes:
 		_sync_hero(h)
 	_rebuild_tokens()
-	_range_key = ""
+	# Not "": an empty highlight must still clear the last one (the setup zones stayed lit).
+	_range_key = "-"
 	_draw_marks()
 	_update_battle_cam()
 	_refresh_target_fx()
@@ -1437,7 +1438,8 @@ func _show_frame(i: int, animate: bool) -> void:
 	hud.state = state
 	if _streaming():
 		net_host.stream_state(state)
-	_range_key = ""
+	# Not "": an empty highlight must still clear the last one (the setup zones stayed lit).
+	_range_key = "-"
 	_quiet = not animate or to != from + 1
 	_sync()
 	_quiet = false
@@ -2192,7 +2194,8 @@ func demo_battle() -> void:
 	state.battles = [{"heroes": [mine[0].id, theirs[0].id], "resolved": false, "winner_team": -1, "tie": false},
 		{"heroes": [mine[1].id, theirs[1].id], "resolved": false, "winner_team": -1, "tie": false}]
 	state.battle_index = 0
-	_range_key = ""
+	# Not "": an empty highlight must still clear the last one (the setup zones stayed lit).
+	_range_key = "-"
 	_sync()
 
 

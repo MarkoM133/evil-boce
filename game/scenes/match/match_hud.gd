@@ -130,8 +130,14 @@ var picks: Dictionary = {}
 ## Start: whether each local player's pick rolls (slot -> bool; missing = rolls).
 var pick_rolls: Dictionary = {}
 var _piles: VBoxContainer
+var _prompt_card: PanelContainer
+## The graveyard pile, left of the hand.
+var _grave_spot: Control
 var _ball_choice: HBoxContainer
 var _choice_hero: String = ""
+var _choice_left_at: int = 0
+## How long Roll / Stay under a ball stays after the mouse leaves the ball.
+const CHOICE_GRACE: float = 0.6
 var target_cid: String = ""
 var target_heroes: PackedStringArray = PackedStringArray()
 var _target_why: Dictionary = {}
@@ -200,6 +206,7 @@ func refresh() -> void:
 	# The hand first: a freshly dealt starting hand says when its buttons may come.
 	_refresh_hand()
 	_refresh_prompt()
+	_prompt_card.visible = not (_prompt.text.is_empty() and _detail.text.is_empty())
 	_refresh_piles()
 	_refresh_dialog()
 	_refresh_over()
@@ -393,20 +400,35 @@ func _build() -> void:
 	add_child(prompt_col)
 	_clock = UiTheme.label("", 22, Palette.GOLD)
 	prompt_col.add_child(_clock)
-	_kicker = UiTheme.label("", 15, Palette.GOLD)
-	prompt_col.add_child(_kicker)
-	_prompt = UiTheme.label("", 28)
+	# What the game asks for sits in a card above the buttons, bottom right (Marko 2026-10-26),
+	# like the Start block: one place to look, and room by the hand for the graveyard.
+	_prompt_card = PanelContainer.new()
+	var pc_sb := StyleBoxFlat.new()
+	pc_sb.bg_color = Color(0.08, 0.067, 0.06, 0.92)
+	pc_sb.border_color = Palette.GOLD
+	pc_sb.border_width_left = 4
+	pc_sb.content_margin_left = 12
+	pc_sb.content_margin_right = 12
+	pc_sb.content_margin_top = 8
+	pc_sb.content_margin_bottom = 8
+	_prompt_card.add_theme_stylebox_override("panel", pc_sb)
+	_prompt_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pcol := VBoxContainer.new()
+	pcol.add_theme_constant_override("separation", 2)
+	pcol.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_prompt_card.add_child(pcol)
+	_kicker = UiTheme.label("", 13, Palette.GOLD)
+	pcol.add_child(_kicker)
+	_prompt = UiTheme.label("", 24)
 	_prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_prompt.custom_minimum_size = Vector2(270, 0)
-	_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	_prompt.add_theme_constant_override("outline_size", 6)
-	prompt_col.add_child(_prompt)
+	_prompt.custom_minimum_size = Vector2(266, 0)
+	pcol.add_child(_prompt)
 	_detail = Label.new()
 	_detail.add_theme_color_override("font_color", Color("b9b4ab"))
 	_detail.add_theme_font_size_override("font_size", 14)
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_detail.custom_minimum_size = Vector2(270, 0)
-	prompt_col.add_child(_detail)
+	_detail.custom_minimum_size = Vector2(266, 0)
+	pcol.add_child(_detail)
 
 	# Bottom right: the buttons; the main one is red and big.
 	var right := VBoxContainer.new()
@@ -418,6 +440,7 @@ func _build() -> void:
 	right.add_theme_constant_override("separation", 6)
 	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(right)
+	right.add_child(_prompt_card)
 	_actions = VBoxContainer.new()
 	_actions.alignment = BoxContainer.ALIGNMENT_END
 	_actions.add_theme_constant_override("separation", 8)
@@ -450,8 +473,8 @@ func _build() -> void:
 	_tray.add_theme_constant_override("separation", 8)
 	add_child(_tray)
 
-	# The deck and the graveyard of the player whose hand shows: two small piles right of the
-	# hand, the graveyard above the deck (Marko 2026-10-26).
+	# The deck and the graveyard of the player whose hand shows: the graveyard left of the hand,
+	# the deck right of it (Marko 2026-10-26).
 	_piles = VBoxContainer.new()
 	_piles.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_piles.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -459,6 +482,11 @@ func _build() -> void:
 	_piles.add_theme_constant_override("separation", 18)
 	_piles.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_piles)
+	_grave_spot = Control.new()
+	_grave_spot.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_grave_spot.position = Vector2(-HAND_WIDTH * 0.5 - 76.0, -94.0)
+	_grave_spot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_grave_spot)
 	# The hand: a fan of cards at the bottom; it slides down when the mouse is over the table.
 	_hand_box = Control.new()
 	_hand_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -2430,6 +2458,7 @@ func show_ball_choice(hero_id: String, at: Vector2) -> void:
 				ball_choice_made.emit(hero.id)
 				refresh())
 			_ball_choice.add_child(b)
+	_choice_left_at = 0
 	_choice_hero = hero_id
 	var must_roll: bool = h.zone == HeroState.ZONE_STRIP
 	var picked: bool = str(picks.get(h.owner, "")) == hero_id
@@ -2445,12 +2474,21 @@ func show_ball_choice(hero_id: String, at: Vector2) -> void:
 	_ball_choice.visible = true
 
 
-## Hides the ball's Roll / Stay, unless the mouse is on them (it may be on its way there).
+## Hides the ball's Roll / Stay, unless the mouse is on them or was off them for less than
+## CHOICE_GRACE seconds (it is on its way from the ball to them).
 func hide_ball_choice(force: bool = false) -> void:
 	if _ball_choice == null or not _ball_choice.visible:
 		return
-	if not force and _ball_choice.get_global_rect().grow(6).has_point(get_global_mouse_position()):
-		return
+	if not force:
+		if _ball_choice.get_global_rect().grow(16).has_point(get_global_mouse_position()):
+			_choice_left_at = 0
+			return
+		var now: int = Time.get_ticks_msec()
+		if _choice_left_at == 0:
+			_choice_left_at = now
+		if now - _choice_left_at < int(CHOICE_GRACE * 1000.0):
+			return
+	_choice_left_at = 0
 	_ball_choice.visible = false
 
 
@@ -2492,17 +2530,19 @@ func _equip_mini(cid: String) -> Control:
 	return box
 
 
-## The piles right of the hand: graveyard (its top card, faded; hover lists it, right click
-## shows it big) above the deck (a stack), each with its count.
+## The piles by the hand: the graveyard left (its top card, faded; hover lists it, right click
+## shows it big), the deck right (a stack), each with its count.
 func _refresh_piles() -> void:
 	if _piles == null or state == null:
 		return
 	_clear(_piles)
+	_clear(_grave_spot)
 	var slot: int = hand_slot()
 	if slot < 0 and not local_slots.is_empty():
 		slot = local_slots[0]
 	var p: PlayerState = state.player(slot) if slot >= 0 else null
 	_piles.visible = p != null
+	_grave_spot.visible = p != null
 	if not _piles.visible:
 		return
 	var top: String = p.graveyard[p.graveyard.size() - 1] if not p.graveyard.is_empty() else ""
@@ -2510,7 +2550,7 @@ func _refresh_piles() -> void:
 	grave.tooltip_text = "Graveyard: " + (", ".join(_card_names(p.graveyard)) if not p.graveyard.is_empty() else "empty")
 	if not top.is_empty():
 		grave.gui_input.connect(func(e: InputEvent) -> void: _card_click(e, top))
-	_piles.add_child(grave)
+	_grave_spot.add_child(grave)
 	_piles.add_child(_pile("", "DECK %d" % p.deck.size(), true))
 
 
