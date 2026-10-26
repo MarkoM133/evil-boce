@@ -357,6 +357,11 @@ func _apply_roll_phase(s: GameState, m: Move) -> String:
 			return "you are not rolling"
 		if s.aims.has(m.player):
 			return "already aimed"
+		# A missed roll (the timer ran out, GDD 8): the hero is not thrown and stays where it is.
+		if JsonUtil.as_bool(m.data.get("skip", false)):
+			s.aims[m.player] = {"skip": true}
+			s.event("roll_missed", {"player": m.player})
+			return ""
 		var dir: Array = JsonUtil.as_array(m.data.get("dir", []))
 		if dir.size() != 2:
 			return "dir must be [x, z]"

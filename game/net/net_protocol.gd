@@ -29,6 +29,7 @@ const RESUMED: String = "resumed"      # {}
 const PLAYER: String = "player"        # {slot, name, connected}  (someone came or went)
 const OVER: String = "over"            # {summary, record: the full MatchRecord, nothing is hidden now}
 const PING: String = "ping"            # {} every few seconds, so a dead link shows up
+const CLOCK: String = "clock"          # {clocks: {slot: seconds left}}  (the move timer restarted for someone)
 
 const PLACEHOLDER_CARD: String = "?"
 ## Packets longer than this go out gzipped, behind a 0x01 byte (JSON always starts with "{").

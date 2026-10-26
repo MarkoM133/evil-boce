@@ -87,6 +87,8 @@ var _hand_sig: String = ""
 var _ribbon: HBoxContainer
 var _rosters: Array[VBoxContainer] = []
 var _kicker: Label
+## The move timer over the prompt (set_clock).
+var _clock: Label
 var _prompt: Label
 var _detail: Label
 var _actions: VBoxContainer
@@ -373,6 +375,8 @@ func _build() -> void:
 	prompt_col.add_theme_constant_override("separation", 4)
 	prompt_col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(prompt_col)
+	_clock = UiTheme.label("", 22, Palette.GOLD)
+	prompt_col.add_child(_clock)
 	_kicker = UiTheme.label("", 15, Palette.GOLD)
 	prompt_col.add_child(_kicker)
 	_prompt = UiTheme.label("", 28)
@@ -2247,6 +2251,18 @@ func can_play(slot: int) -> bool:
 		if _play_check(slot, cid, true).get("ok", false) == true:
 			return true
 	return false
+
+
+## The move timer: `seconds` left for `who` ("" = you); below zero hides it. Your last five
+## seconds go red.
+func set_clock(seconds: int, who: String) -> void:
+	var text: String = ""
+	if seconds >= 0:
+		text = ("TIME  %d" % seconds) if who.is_empty() else "%s  ·  %d" % [who.to_upper(), seconds]
+	if text == _clock.text:
+		return
+	_clock.text = text
+	_clock.add_theme_color_override("font_color", Palette.ACCENT_HOVER if seconds >= 0 and seconds <= 5 and who.is_empty() else Palette.GOLD)
 
 
 ## The hero `slot` activated, as this screen may show it: in the Start phase the others' picks

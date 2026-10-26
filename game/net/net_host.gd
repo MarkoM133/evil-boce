@@ -228,6 +228,11 @@ func _send_states() -> void:
 	state_changed.emit()
 
 
+## The move timer, to every guest: seconds left per slot (the host keeps the time, GDD 8).
+func send_clocks(clocks: Dictionary) -> void:
+	link.broadcast({"t": NetProtocol.CLOCK, "clocks": clocks})
+
+
 # --- messages ---------------------------------------------------------------------------------
 
 func _on_message(peer: int, msg: Dictionary) -> void:

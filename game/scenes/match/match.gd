@@ -87,6 +87,9 @@ var _idle_pass: float = 0.0
 ## Auto-pass: the state it last looked at and how long to wait there (-1: something to play).
 var _pass_key: String = ""
 var _pass_wait: float = -1.0
+## The move timer: slot -> {"key": what the player is asked, "left": seconds} (see _run_clock).
+var _clocks: Dictionary = {}
+var _clock_rng := RandomNumberGenerator.new()
 var _press_on_empty: bool = false
 var _menu: Control
 ## The match log beside the pause menu (its Log button).
@@ -148,6 +151,7 @@ func _ready() -> void:
 		net_client.state_received.connect(func(_s: GameState) -> void: _on_net_state())
 		net_client.move_refused.connect(func(_m: Dictionary, why: String) -> void: hud.toast(why, Palette.FG))
 		net_client.balls_received.connect(_on_net_balls)
+		net_client.clocks_received.connect(_on_net_clocks)
 		net_client.paused_changed.connect(_on_net_pause)
 		net_client.player_changed.connect(func(_slot: int, name: String, on: bool) -> void:
 			hud.toast("%s %s" % [name, "is back" if on else "dropped; waiting…"]))
@@ -1092,7 +1096,7 @@ func _launch_roll() -> void:
 	hud.refresh()
 	for slot: int in state.aims:
 		var h: HeroState = state.active_hero(slot)
-		if h != null:
+		if h != null and not JsonUtil.as_bool(state.aims[slot].get("skip", false)):
 			_views[h.id].close(true)
 	get_tree().create_timer(BallView.CLOSE_TIME_FAST + 0.05).timeout.connect(_throw_all)
 
@@ -1111,6 +1115,8 @@ func _throw_all() -> void:
 		if h == null or h.is_ko():
 			continue
 		var aim: Dictionary = state.aims[s]
+		if JsonUtil.as_bool(aim.get("skip", false)):
+			continue
 		var dir: Array = JsonUtil.as_array(aim.get("dir", []))
 		throws.append({
 			"ball": _bodies[h.id],
@@ -1186,6 +1192,7 @@ func _process(delta: float) -> void:
 		return
 	_run_bots(delta)
 	_run_auto_pass(delta)
+	_run_clock(delta)
 	var mull: bool = state.phase == GameState.PHASE_MULLIGAN and not state.player(0).mulligan_done
 	if _demo_hand_back and _demo_phases.has(state.phase) and not state.player(0).hand.is_empty() 			and (mull or state.to_act == 0 and not state.round_over and state.pending.is_empty()):
 		_demo_hand_back = false
@@ -1306,6 +1313,94 @@ func _run_auto_pass(delta: float) -> void:
 		_idle_pass = 0.0
 		_pass_key = ""
 		_apply(Move.make(Move.PASS, slot))
+
+
+# --- the move timer -----------------------------------------------------------------------
+
+## The move timer (GDD 8, 2026-10-26): a clock per player the game waits for, restarted
+## whenever what is asked of them changes; when it runs out the safe move is made for them
+## (MatchClock). The scene keeps the time in a local match and as the host; a guest only
+## counts down what the host sent (CLOCK). Bots are never timed. A local pause menu and an
+## online pause freeze the clocks; so does a rolling ball.
+func _run_clock(delta: float) -> void:
+	var limit: int = state.settings.timer_seconds
+	if limit <= 0 or _replay != null or state.is_over():
+		if not _clocks.is_empty():
+			_clocks.clear()
+		hud.set_clock(-1, "")
+		return
+	var frozen: bool = _runner.is_running() or _launching \
+			or (net_role == "host" and net_host.paused) or (net_role == "client" and not hud.net_paused.is_empty()) \
+			or (net_role.is_empty() and _menu.visible)
+	if net_role != "client":
+		var waited: PackedInt32Array = MatchClock.waiting_on(engine, state)
+		var changed: bool = false
+		for slot: int in _clocks.keys():
+			if not waited.has(slot) or bots.has(slot):
+				_clocks.erase(slot)
+				changed = true
+		for slot: int in waited:
+			if bots.has(slot):
+				continue
+			var key: String = MatchClock.wait_key(engine, state, slot)
+			if not _clocks.has(slot) or str(_clocks[slot]["key"]) != key:
+				_clocks[slot] = {"key": key, "left": float(limit)}
+				changed = true
+		if changed and net_role == "host":
+			net_host.send_clocks(_clock_seconds())
+	if not frozen:
+		for slot: int in _clocks:
+			var c: Dictionary = _clocks[slot]
+			c["left"] = JsonUtil.as_float(c["left"]) - delta
+			if JsonUtil.as_float(c["left"]) > 0.0 or net_role == "client":
+				continue
+			# Not again until the wait changes (a refused move must not spin).
+			c["left"] = float(limit)
+			var hint: Dictionary = {"hero": str(hud.picks.get(slot, "")), "roll": JsonUtil.as_bool(hud.pick_rolls.get(slot, true), true)}
+			var m: Move = MatchClock.timeout_move(engine, state, slot, _clock_rng, hint)
+			if m != null:
+				if hud.local_slots.has(slot):
+					_sling.cancel()
+					hud.picks.erase(slot)
+					hud.pick_rolls.erase(slot)
+				hud.toast("%s: time is up" % hud.player_name(slot), Palette.GOLD)
+				_apply(m)
+				return
+	_show_clock()
+
+
+## Seconds left per slot, whole, for the guests and the HUD.
+func _clock_seconds() -> Dictionary:
+	var out: Dictionary = {}
+	for slot: int in _clocks:
+		out[str(slot)] = ceili(JsonUtil.as_float(_clocks[slot]["left"]))
+	return out
+
+
+## A guest hears the host's clocks whenever one restarts and counts down from there.
+func _on_net_clocks(clocks: Dictionary) -> void:
+	_clocks.clear()
+	for key: Variant in clocks:
+		_clocks[str(key).to_int()] = {"key": "", "left": JsonUtil.as_float(clocks[key])}
+
+
+## Your own clock when the game waits for you (the shortest, with two players here), else the
+## one the other side is on.
+func _show_clock() -> void:
+	var mine: int = -1
+	var theirs: int = -1
+	var who: String = ""
+	for slot: int in _clocks:
+		var left: int = maxi(0, ceili(JsonUtil.as_float(_clocks[slot]["left"])))
+		if hud.local_slots.has(slot) and not bots.has(slot):
+			mine = left if mine < 0 else mini(mine, left)
+		elif theirs < 0 or left < theirs:
+			theirs = left
+			who = hud.player_name(slot)
+	if mine >= 0:
+		hud.set_clock(mine, "")
+	else:
+		hud.set_clock(theirs, who)
 
 
 func _run_bots(delta: float) -> void:
@@ -1989,3 +2084,8 @@ func _on_battle_resolved(index: int, winner_team: int) -> void:
 		var h: HeroState = state.hero(hid)
 		if h != null and state.team_of(h.owner) == winner_team:
 			_flash_target(hid, 1.1)
+
+
+## Screenshot helper: the move timer at three seconds, so the clock and the safe moves show.
+func demo_timer() -> void:
+	state.settings.timer_seconds = 3

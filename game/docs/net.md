@@ -32,6 +32,7 @@ without a scene; nothing else changes.
 | host | `roll` | RollOutcome dict | the roll ended; the paths are for drawing |
 | guest | `pause` / `resume` | – | anyone may pause; the pauser or the host resumes |
 | host | `paused` / `resumed` | by, name | |
+| host | `clock` | clocks {slot: seconds left} | the move timer restarted for someone (`timer_seconds` > 0); guests count down from it and show it, the host makes the safe move when it runs out |
 | host | `player` | slot, name, connected | a guest dropped or came back |
 | host | `over` | summary, record | the match ended; `record` is the full MatchRecord (nothing is hidden any more) |
 

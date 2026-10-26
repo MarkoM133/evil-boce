@@ -28,7 +28,7 @@ engine is shaped and which gaps it had to fill on its own (see **Assumptions**).
 | `mulligan` | `mulligan {keep}` | both decided → turn 1 |
 | `start` | `select {hero, roll}` (`hero ""` only when none can be activated; `roll` false = Stay, refused for a hero in the start zone) | all selected; draw 1 and energy = min(turn, 8) happened on entering |
 | `preroll` | `pass`, (`play_card`) | round passed |
-| `roll` | `aim {dir, power}`, then the sim's `apply_roll`; then a `roll_offer` decision per player with a "Roll Phase:" option (`use_ability`, `play_card` or `pass`) | aims in, balls stopped, offers answered |
+| `roll` | `aim {dir, power}` (or `aim {skip: true}`: a missed roll, the hero stays put), then the sim's `apply_roll`; then a `roll_offer` decision per player with a "Roll Phase:" option (`use_ability`, `play_card` or `pass`) | aims in, balls stopped, offers answered |
 | `postroll` | `pass`, (`play_card`) | round passed |
 | `battle` | per battle: `pass` round, then `damage_to` decisions | last battle done |
 | `end` | — (automatic) | claims, status timers, win check, next turn |
@@ -119,6 +119,11 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    read "has a Roll Phase card" off who is asked; the offers of one stop are answered in any
    order; a roll again brings a new stop and new offers), Postroll, Battle, End. Declining an
    empty offer after a fixed wait is the client's job (auto-pass), not a rule.
+9b. (2026-10-26) The move timer is not a rule: `MatchClock` (rules/) only says whom the game waits
+   for, what for (`wait_key`) and the safe move when the time runs out (pass, keep, the marked
+   or a random hero that stays when it may, a missed roll, a random legal placement, damage to
+   the deck, the gentlest choice). The match scene keeps the clocks locally and as the host;
+   guests only show them. `timer_seconds` 0 = off.
 10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
 11. A hero in the start zone can be activated at any time, and a stunned or locked hero

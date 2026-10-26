@@ -9,6 +9,8 @@ signal rejected(reason: String)
 signal lobby_changed(players: Array, settings: Dictionary)
 signal match_started(info: Dictionary)
 signal state_received(state: GameState)
+## The host's move timer: seconds left per slot, sent whenever one restarts.
+signal clocks_received(clocks: Dictionary)
 signal move_refused(move: Dictionary, reason: String)
 signal balls_received(positions: Dictionary)
 signal roll_received(outcome: RollOutcome)
@@ -98,6 +100,8 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 		NetProtocol.STATE:
 			state = GameState.from_dict(JsonUtil.as_dict(msg.get("state", {})))
 			state_received.emit(state)
+		NetProtocol.CLOCK:
+			clocks_received.emit(JsonUtil.as_dict(msg.get("clocks", {})))
 		NetProtocol.REFUSED:
 			move_refused.emit(JsonUtil.as_dict(msg.get("move", {})), str(msg.get("reason", "")))
 		NetProtocol.BALLS:

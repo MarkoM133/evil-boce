@@ -24,7 +24,10 @@ const COLUMNS: Array = [
 			["wall_damage", "Wall damage", "Damage for every knockback step a wall or another hero blocks.", [0, 1, 2, 3, 4]],
 		]],
 		["BATTLE", [
-			["max_tie_turns", "Tied battles", "Turns a tied battle may repeat before both heroes are knocked back.", [1, 2, 3, 4]],
+				["max_tie_turns", "Tied battles", "Turns a tied battle may repeat before both heroes are knocked back.", [1, 2, 3, 4]],
+		]],
+		["TIME", [
+			["timer_seconds", "Move timer", "Seconds for each move. When it runs out the game makes the safe move: pass, keep, stay, a missed roll.", [0, 15, 20, 30, 45, 60, 90]],
 		]],
 	],
 	[
@@ -89,6 +92,9 @@ static func value_text(key: String, v: Variant) -> String:
 			return "AS PRINTED" if d == 0 else "%+d" % d
 		"manual_setup":
 			return "BY THE PLAYERS" if JsonUtil.as_bool(v) else "AT RANDOM"
+		"timer_seconds":
+			var t: int = JsonUtil.as_int(v)
+			return "OFF" if t <= 0 else "%d S" % t
 	return str(v)
 
 
