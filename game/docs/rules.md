@@ -142,7 +142,7 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    four packs of ten from the copy pool of both players' colours (evolutions only of drafted
    heroes), picks in turn, the rest to the other, no card of the other's colour or over its
    limit, a player with nothing legal skips, every deck filled to `deck_size` (20) at the end.
-f. (2026-10-26) The first tag rule (`FirstTag`, shared with the web app through
+9f. (2026-10-26) The first tag rule (`FirstTag`, shared with the web app through
    tests/fixtures/first_tag_cases.json) locks a card to who may play it: General (any hero of
    its colour), a hero alias (the name follows the hero through evolutions) or a trait read off
    the hero's current card (the last evolution, else the base). `_play` refuses the others
