@@ -121,7 +121,9 @@ func test_lobby_match_moves_and_redaction() -> void:
 	assert_false(host.paused)
 	assert_eq(host.apply(Move.make(Move.SELECT, 0, {"hero": "p0:TA-001"})), "")
 	await _settle(0.4)
-	assert_eq(str(client_state.active.get(0, "")), "p0:TA-001")
+	# The host's Start pick stays hidden from the guest until both have picked (GDD 8).
+	assert_eq(str(client_state.active.get(0, "")), "")
+	assert_true(host.state().active.has(0))
 
 
 func test_reconnect_keeps_the_seat_and_pauses_meanwhile() -> void:

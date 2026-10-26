@@ -70,6 +70,15 @@ static func redact(state_dict: Dictionary, slot: int) -> Dictionary:
 		if str(key).to_int() != slot:
 			aims[key] = {}
 	d["aims"] = aims
+	# Start: the others' hero and Roll / Stay stay secret until everyone has picked (GDD 8);
+	# then the engine moves on to Preroll and everything shows.
+	if str(d.get("phase", "")) == GameState.PHASE_START:
+		for field: String in ["active", "choices"]:
+			var picks: Dictionary = JsonUtil.as_dict(d.get(field, {}))
+			for key: Variant in picks.keys():
+				if str(key).to_int() != slot:
+					picks.erase(key)
+			d[field] = picks
 	var cores: Dictionary = JsonUtil.as_dict(d.get("cores", {}))
 	for key: Variant in cores:
 		var c: Dictionary = JsonUtil.as_dict(cores[key])
@@ -83,6 +92,10 @@ static func redact(state_dict: Dictionary, slot: int) -> Dictionary:
 		var dec: Dictionary = JsonUtil.as_dict(pending[i])
 		if JsonUtil.as_int(dec.get("player", -1), -1) != slot and str(dec.get("kind", "")) == "card":
 			dec["options"] = _blank(JsonUtil.as_array(dec.get("options", [])).size())
+			pending[i] = dec
+		# A roll offer lists cards from the hand of whoever it is for.
+		if JsonUtil.as_int(dec.get("player", -1), -1) != slot and dec.has("cards"):
+			dec["cards"] = _blank(JsonUtil.as_array(dec.get("cards", [])).size())
 			pending[i] = dec
 	d["pending"] = pending
 	return d

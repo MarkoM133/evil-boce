@@ -44,6 +44,8 @@ const HAND_HEIGHT: float = 210.0
 const BANNER_TIME: float = 0.8
 ## Phase call-outs stay a little longer, to be read.
 const PHASE_BANNER_TIME: float = 1.4
+## Start comes every turn and needs no reading: a short call-out.
+const START_BANNER_TIME: float = 0.6
 ## BATTLE! stays long enough to read both sides' Power.
 const BATTLE_BANNER_TIME: float = 1.6
 ## How far a hovered hand card rises.
@@ -163,7 +165,7 @@ func refresh() -> void:
 		# Not while a replay rewinds (its log gets shorter).
 		# End is quiet (GDD 11): what it did shows through the log's own banners.
 		if not _called_phase.is_empty() and PHASES.has(state.phase) and state.phase != GameState.PHASE_END and state.log.size() >= _log_seen:
-			banner("%s PHASE" % _ribbon_phase(state.phase).to_upper(), Palette.PANEL_SOLID, "TURN %d" % state.turn, "", PHASE_BANNER_TIME)
+			banner("%s PHASE" % _ribbon_phase(state.phase).to_upper(), Palette.PANEL_SOLID, "TURN %d" % state.turn, "", START_BANNER_TIME if state.phase == GameState.PHASE_START else PHASE_BANNER_TIME)
 		_called_phase = state.phase
 	else:
 		_called_phase = state.phase
@@ -634,7 +636,7 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	var card: CardDef = engine.stat_card(h)
 	var hero_color: Color = Palette.hero(card.color if card != null else "")
 	var expanded: bool = _is_expanded(h)
-	var active: bool = state.active.get(h.owner, "") == h.id
+	var active: bool = shown_active(h.owner) == h.id
 	var ko: bool = h.is_ko()
 	var pickable: bool = _pickable(h)
 	var in_battle: bool = _in_battle(h)
@@ -1054,7 +1056,7 @@ func _in_battle(h: HeroState) -> bool:
 
 
 func _is_expanded(h: HeroState) -> bool:
-	return h.id == hover_hero or state.active.get(h.owner, "") == h.id or _in_battle(h)
+	return h.id == hover_hero or shown_active(h.owner) == h.id or _in_battle(h)
 
 
 # --- prompt and actions -------------------------------------------------------------
@@ -1312,7 +1314,7 @@ func _process(delta: float) -> void:
 		return
 	# Up while the mouse is near the bottom of the screen (or a hero is being picked for a
 	# card), else only the tops of the cards show.
-	var up: bool = get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0 or is_targeting()
+	var up: bool = (get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0 and state.phase != GameState.PHASE_START) or is_targeting()
 	if _aim_line != null and (is_targeting() or _aim_line.get_meta("drawn", false)):
 		_aim_line.set_meta("drawn", is_targeting())
 		_aim_line.queue_redraw()
@@ -1334,8 +1336,9 @@ func _refresh_hand() -> void:
 	var slot: int = hand_slot()
 	if slot < 0 or state.turn == 0 and not mulligan:
 		return
-	# No cards are played while heroes are picked and aimed; keep the strip free to grab balls.
-	if state.phase == GameState.PHASE_START or state.phase == GameState.PHASE_ROLL and not state.rolled:
+	# No cards are played while balls are aimed; keep the strip free to grab them. In Start the
+	# hand shows (Roll or Stay is decided there) but stays low, so the balls can be clicked.
+	if state.phase == GameState.PHASE_ROLL and not state.rolled:
 		return
 	var p: PlayerState = state.player(slot)
 	if mulligan and not _needs_input(slot):
@@ -1382,7 +1385,7 @@ const PLAY_ASKS: Array[String] = ["choose an assist to replace"]
 ## Whether `slot` may play `cid` now, asked of the engine itself: the move is tried on a copy of
 ## the state, once for each hero the card could go on. {"ok", "why" (the engine's reason when
 ## not), "heroes" (ids it can go on), "why_by" (hero id -> why not, for the others)}.
-func _play_check(slot: int, cid: String) -> Dictionary:
+func _play_check(slot: int, cid: String, as_turn: bool = false) -> Dictionary:
 	var heroes := PackedStringArray()
 	var why: String = ""
 	var why_by: Dictionary = {}
@@ -1393,6 +1396,9 @@ func _play_check(slot: int, cid: String) -> Dictionary:
 		targets.append("")
 	for hid: String in targets:
 		var copy: GameState = GameState.from_dict(state.to_dict())
+		if as_turn:
+			# Asked for a player whose turn it is not (auto-pass looks at everyone).
+			copy.to_act = slot
 		var err: String = engine.apply(copy, Move.make(Move.PLAY_CARD, slot, {"card": cid, "hero": hid}))
 		for ask: String in PLAY_ASKS:
 			if err.begins_with(ask):
@@ -2177,9 +2183,23 @@ func _mulligan_button(text: String, cb: Callable, kind: StringName) -> Button:
 func nothing_to_play(slot: int) -> bool:
 	if not _in_card_round() or state.to_act != slot or not state.pending.is_empty():
 		return false
+	return not can_play(slot)
+
+
+## Whether `slot` has a card it could play or an ability it could use in this card round, its
+## turn or not. Only meaningful where its hand is known (not the opponent's, for a guest).
+func can_play(slot: int) -> bool:
 	if not engine.fx.usable_abilities(state, slot).is_empty():
-		return false
+		return true
 	for cid: String in state.player(slot).hand:
-		if _play_check(slot, cid).get("ok", false) == true:
-			return false
-	return true
+		if _play_check(slot, cid, true).get("ok", false) == true:
+			return true
+	return false
+
+
+## The hero `slot` activated, as this screen may show it: in the Start phase the others' picks
+## stay hidden until everyone has confirmed (they come out together, GDD 8).
+func shown_active(slot: int) -> String:
+	if state.phase == GameState.PHASE_START and not local_slots.has(slot):
+		return ""
+	return state.active.get(slot, "")

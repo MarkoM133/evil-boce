@@ -83,6 +83,9 @@ var _pick_order: PackedStringArray = PackedStringArray()
 var _bot_wait: float = 0.0
 ## Auto-pass: how long the local player to act has had nothing to play.
 var _idle_pass: float = 0.0
+## Auto-pass: the state it last looked at and how long to wait there (-1: something to play).
+var _pass_key: String = ""
+var _pass_wait: float = -1.0
 var _press_on_empty: bool = false
 var _menu: Control
 ## The match log beside the pause menu (its Log button).
@@ -984,7 +987,8 @@ func _refresh_range() -> void:
 	var key: String = ""
 	var ids := PackedStringArray()
 	for slot: int in state.active:
-		ids.append(str(state.active[slot]))
+		if not hud.shown_active(slot).is_empty():
+			ids.append(hud.shown_active(slot))
 	if not _hovered.is_empty():
 		ids.append(_hovered)
 	for id: String in ids:
@@ -1249,20 +1253,40 @@ func _run_playback(delta: float) -> void:
 
 
 ## Auto-pass (GDD 8): a local player to act with nothing playable is passed for after a fixed
-## wait, so the opponent cannot read "no card" off the speed; the Hold key stops it.
+## wait, so the opponent cannot read "no card" off the speed; the Hold key stops it. When nobody
+## at all could play (the host and a local match know every hand), the round goes at once.
 func _run_auto_pass(delta: float) -> void:
-	if not GameSettings.auto_pass() or _replay != null or net_role == "client" or _menu.visible \
+	if not GameSettings.auto_pass() or _replay != null or _menu.visible \
 			or state.is_over() or _runner.is_running() or _launching:
 		_idle_pass = 0.0
 		return
 	var slot: int = state.to_act
-	if not hud.local_slots.has(slot) or bots.has(slot) or not hud.nothing_to_play(slot) \
-			or Input.is_key_pressed(GameSettings.key("hold")):
+	if not hud.local_slots.has(slot) or bots.has(slot) or Input.is_key_pressed(GameSettings.key("hold")):
+		_idle_pass = 0.0
+		return
+	# What can be played changes only when the state does: worked out once per state.
+	var key: String = "%d|%s|%d|%d|%d|%d|%d" % [state.turn, state.phase, state.battle_index, slot,
+		state.passed.size(), state.log.size(), state.pending.size()]
+	if key != _pass_key:
+		_pass_key = key
+		_pass_wait = -1.0
+		if hud.nothing_to_play(slot):
+			_pass_wait = AUTO_PASS_DELAY
+			if net_role != "client":
+				var anyone: bool = false
+				for p: PlayerState in state.players:
+					var other: int = p.slot
+					if other != slot and not p.surrendered and hud.can_play(other):
+						anyone = true
+				if not anyone:
+					_pass_wait = 0.25
+	if _pass_wait < 0.0:
 		_idle_pass = 0.0
 		return
 	_idle_pass += delta
-	if _idle_pass >= AUTO_PASS_DELAY:
+	if _idle_pass >= _pass_wait:
 		_idle_pass = 0.0
+		_pass_key = ""
 		_apply(Move.make(Move.PASS, slot))
 
 
