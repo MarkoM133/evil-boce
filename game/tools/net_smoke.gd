@@ -30,6 +30,19 @@ func _initialize() -> void:
 	call_deferred("_go")
 
 
+## Watching a replay together: the host streams a record's frames; the guest gets them with the
+## hands open and goes back to the lobby when the stream ends.
+func _stream(rec: MatchRecord) -> void:
+	host.stream_start(rec)
+	host.stream_state(rec.state_at(0))
+	await create_timer(0.4).timeout
+	_check(client.replay_stream, "guest knows it is a replay stream")
+	_check(client.state != null and client.state.turn == rec.state_at(0).turn, "guest got the streamed frame")
+	_check(client.state != null and not client.state.player(0).hand.is_empty() and client.state.player(0).hand[0] != NetProtocol.PLACEHOLDER_CARD, "a streamed replay shows the hands")
+	host.stream_end()
+	await create_timer(0.4).timeout
+	_check(not client.started and not client.replay_stream, "guest is back in the lobby after the stream")
+
 ## Draft mode (GDD 13): back to the lobby, the host opens a draft, both pick (the guest over
 ## the link) until the host starts the match with the drafted decks.
 func _draft(rng: RandomNumberGenerator) -> void:
@@ -126,8 +139,10 @@ func _go() -> void:
 	await create_timer(0.6).timeout
 	_check(host.recorder.record.frame_count() > before, "the match moved on (%d → %d frames)" % [before, host.recorder.record.frame_count()])
 	_check(client.state.phase == host.state().phase, "client is in the host's phase (%s)" % client.state.phase)
+	var rec_for_stream: MatchRecord = host.recorder.record
 	scene.queue_free()
 	await create_timer(0.2).timeout
+	await _stream(rec_for_stream)
 	await _draft(rng)
 	print("net smoke: %d failures" % fails)
 	quit(1 if fails > 0 else 0)

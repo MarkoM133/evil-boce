@@ -25,7 +25,7 @@ without a scene; nothing else changes.
 | guest | `deck`, `ready` | engine deck dict / bool | lobby |
 | guest | `draft_pick` | id | Draft mode: the guest takes a hero or a card from the pack; refused with `refused` |
 | host | `lobby` | players [{slot, name, ready, bot, connected, has_deck, shown}], settings, again | any lobby change; `again` = the host took everyone back after a match; `shown` = the seat's picks as the lobby shows them to the others (deck name, heroes, stages, cores; "" = random) |
-| host | `start` | settings, players (record header), seed, cards_version | the host pressed Start, or a reconnect into a running match |
+| host | `start` | settings, players (record header), seed, cards_version | the host pressed Start, or a reconnect into a running match  `replay`: the host is streaming a replay to watch together (hands open, nobody moves; the host's controls drive it, the end sends `lobby` with `again`) |
 | guest | `move` | Move dict | the player did something |
 | host | `state` | redacted GameState dict | after every accepted move or roll, to each guest separately |
 | host | `refused` | move, reason | the engine (or the seat check) said no |
@@ -57,6 +57,11 @@ join again" (the host never sends cards or images; Syncthing is required, GDD 2)
 - A guest who drops **in a match** keeps the seat (`connected = false`); the host pauses the
   match. A `hello` with the same name takes the seat back and gets `start` + the current
   `state`. In the lobby a dropped guest's seat is removed.
+- Watching a replay together: the host picks a replay from the lobby (WATCH A REPLAY TOGETHER),
+  plays it and streams every frame (`start` with `replay`, then `state` with the hands open and
+  `roll` for the paths); guests only watch, the host's controls drive it, Exit takes everyone
+  back to the lobby (`lobby` with `again`). Spectators (`hello` with `spectate`, the lobby's
+  WATCH) see a live match with both hands hidden and hold no seat.
 - Pause: anyone; resume: the one who paused, or the host. While paused the host refuses moves
   with "paused".
 

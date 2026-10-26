@@ -37,6 +37,8 @@ var state: GameState
 var started: bool = false
 ## Only watching (joined with spectate): slot -1, no moves.
 var spectating: bool = false
+## The host is streaming a replay (START with `replay`): watch only, hands open.
+var replay_stream: bool = false
 var _spectate: bool = false
 var paused: bool = false
 
@@ -104,6 +106,7 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 				slot = slot_now
 			if started and JsonUtil.as_bool(msg.get("again", false)):
 				started = false
+				replay_stream = false
 				paused = false
 				state = null
 				back_in_lobby.emit()
@@ -111,6 +114,7 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 		NetProtocol.START:
 			started = true
 			settings = JsonUtil.as_dict(msg.get("settings", {}))
+			replay_stream = JsonUtil.as_bool(msg.get("replay", false))
 			match_started.emit(msg)
 		NetProtocol.STATE:
 			state = GameState.from_dict(JsonUtil.as_dict(msg.get("state", {})))

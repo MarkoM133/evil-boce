@@ -11,6 +11,7 @@ extends Control
 const MENU_SCENE: String = "res://scenes/menu/play_menu.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const DRAFT_SCENE: String = "res://scenes/match/draft.tscn"
+const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
 
 var db: CardDb
 var decks: Array[Dictionary] = []
@@ -27,6 +28,7 @@ var _card: PlayerCard
 var _opp: PlayerCard
 var _wait: PanelContainer
 var _series: Label
+var _replay_btn: Button
 var _wait_host: Control
 var _address_label: Label
 var _bot_row: HBoxContainer
@@ -161,6 +163,16 @@ func _build() -> void:
 	bottom.add_child(_rules)
 	_rules.setup(GameSettings.match_rules("online"), false)
 	_rules.changed.connect(_push_settings)
+	_replay_btn = Button.new()
+	_replay_btn.text = "WATCH A REPLAY\nTOGETHER"
+	_replay_btn.add_theme_font_size_override("font_size", 16)
+	_replay_btn.tooltip_text = "Pick one of your replays; everyone at the table watches it with you (you hold the controls)"
+	_replay_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_replay_btn.pressed.connect(func() -> void:
+		if host != null:
+			ReplaysMenu.for_host = host
+			get_tree().change_scene_to_file(REPLAYS_SCENE))
+	bottom.add_child(_replay_btn)
 	_ready_btn = Button.new()
 	_ready_btn.text = "READY"
 	_ready_btn.toggle_mode = true
@@ -255,6 +267,7 @@ func _enter_room(as_host: bool) -> void:
 	_wait_host.visible = as_host
 	_rules.set_editable(as_host)
 	_start_btn.visible = as_host
+	_replay_btn.visible = as_host
 	_ready_btn.visible = not as_host and not _watching()
 	_ready_btn.set_pressed_no_signal(false)
 	_ready_btn.text = "READY"

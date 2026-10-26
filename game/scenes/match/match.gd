@@ -135,9 +135,10 @@ func _ready() -> void:
 	net_role = str(net.get("role", ""))
 	if net_role == "host":
 		net_host = net["node"]
-		engine = net_host.engine
-		recorder = net_host.recorder
-		settings = net_host.settings
+		if _replay == null:
+			engine = net_host.engine
+			recorder = net_host.recorder
+			settings = net_host.settings
 		for s: Dictionary in net_host.seats:
 			if JsonUtil.as_bool(s.get("bot", false)):
 				bot_slots.append(JsonUtil.as_int(s["slot"]))
@@ -168,12 +169,12 @@ func _ready() -> void:
 				ReplayStore.save_replay(record)
 			hud.refresh())
 		net_client.back_in_lobby.connect(func() -> void: get_tree().change_scene_to_file(LOBBY_SCENE))
-	if net_role != "":
-		pass
-	elif _replay != null:
+	if _replay != null:
 		_frame = clampi(JsonUtil.as_int(_config.get("frame", 0)), 0, _replay.frame_count() - 1)
 		state = _replay.state_at(_frame)
 		bot_slots = []
+	elif net_role != "":
+		pass
 	elif resume_from != null:
 		recorder = MatchRecorder.resume(engine, resume_from, JsonUtil.as_int(_config.get("frame", -1), -1))
 	else:
@@ -232,7 +233,23 @@ func _ready() -> void:
 	_sync()
 	if state.turn == 0 and _replay == null and resume_from == null and not _demo:
 		_show_initiative()
+	if _streaming():
+		net_host.stream_start(_replay)
+		net_host.stream_state(state)
 
+
+
+## The host watching a replay with its table: every frame goes out (NetHost.stream_*).
+func _streaming() -> bool:
+	return net_role == "host" and _replay != null
+
+
+func _exit_replay() -> void:
+	if _streaming():
+		net_host.stream_end()
+		get_tree().change_scene_to_file(LOBBY_SCENE)
+		return
+	get_tree().change_scene_to_file(REPLAYS_SCENE)
 
 
 ## A new match: both players roll two dice on screen; the higher total starts (the engine has
@@ -301,17 +318,22 @@ func _build_hud() -> void:
 	layer.add_child(hud)
 	var local := PackedInt32Array()
 	if net_role == "host":
-		local.append(net_host.host_slot)
+		if _replay == null:
+			local.append(net_host.host_slot)
 	elif net_role == "client":
 		# A spectator (slot -1) plays nobody.
 		if net_client.slot >= 0:
 			local.append(net_client.slot)
-		hud.spectating = net_client.spectating
+		hud.spectating = net_client.spectating or net_client.replay_stream
+		if net_client.replay_stream:
+			# A replay the host streams: the balls follow the recorded paths, no prompts, no end screen.
+			hud.replay = true
+			net_client.roll_received.connect(func(o: RollOutcome) -> void: _play_roll(o))
 	else:
 		for p: PlayerState in state.players:
 			if not bots.has(p.slot) and _replay == null:
 				local.append(p.slot)
-	hud.replay = _replay != null
+	hud.replay = _replay != null or (net_role == "client" and net_client.replay_stream)
 	hud.setup(engine, state, db, local)
 	if _replay != null:
 		_replay_bar = ReplayBar.new()
@@ -324,7 +346,7 @@ func _build_hud() -> void:
 		_replay_bar.continue_pressed.connect(func() -> void:
 			MatchLaunch.config = MatchLaunch.from_record(_replay, _frame)
 			get_tree().change_scene_to_file(MATCH_SCENE))
-		_replay_bar.exit_pressed.connect(func() -> void: get_tree().change_scene_to_file(REPLAYS_SCENE))
+		_replay_bar.exit_pressed.connect(_exit_replay)
 		_replay_bar.show_frame(_frame, _replay.frame_count(), state.turn, state.phase)
 		if JsonUtil.as_bool(_config.get("autoplay", false)):
 			_set_playing.call_deferred(true)
@@ -1322,10 +1344,14 @@ func _show_frame(i: int, animate: bool) -> void:
 		if not rolls.is_empty():
 			_replay_busy = true
 			for r: Variant in rolls:
+				if _streaming():
+					net_host.stream_roll(RollOutcome.from_dict(JsonUtil.as_dict(r)))
 				await _play_roll(RollOutcome.from_dict(JsonUtil.as_dict(r)))
 			_replay_busy = false
 	state = _replay.state_at(_frame)
 	hud.state = state
+	if _streaming():
+		net_host.stream_state(state)
 	_range_key = ""
 	_quiet = not animate or to != from + 1
 	_sync()

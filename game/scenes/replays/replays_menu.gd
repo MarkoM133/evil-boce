@@ -1,3 +1,4 @@
+class_name ReplaysMenu
 extends Control
 ## Replays (GDD 2) in the menus' look: every match this player played, newest first, each with
 ## both sides' heroes as art slices and how it ended. Watch it phase by phase, carry on from
@@ -5,6 +6,9 @@ extends Control
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
+const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
+## Set by the lobby: the host picks a replay to watch together, streamed to the table.
+static var for_host: NetHost
 const RESULTS: Dictionary = {"ko": "all heroes KO", "stages": "stages claimed", "deckout": "deck-out",
 	"surrender": "surrender", "draw": "draw"}
 
@@ -17,7 +21,7 @@ func _ready() -> void:
 	db = CardDb.load_from(GameSettings.data_path())
 	var frame: Dictionary = MenuScreen.build(self, db, "Replays",
 		"Saved on this computer. Watch a match phase by phase, or carry on from where it stopped.",
-		func() -> void: get_tree().change_scene_to_file(MENU_SCENE), 1300.0)
+		_back, 1300.0)
 	# Balance (web app) sums up every match, beside the single replays here.
 	var title_row: HBoxContainer = frame["title_row"]
 	var balance: Button = WebApp.link("BALANCE", "balance", "Win rates of heroes and cards from every match played.")
@@ -32,6 +36,12 @@ func _ready() -> void:
 	_empty = UiTheme.label("NO REPLAYS YET. EVERY MATCH IS SAVED HERE WHEN IT ENDS.", 22, Palette.DIM)
 	content.add_child(_empty)
 	_fill()
+
+
+func _back() -> void:
+	var to_lobby: bool = for_host != null
+	for_host = null
+	get_tree().change_scene_to_file(LOBBY_SCENE if to_lobby else MENU_SCENE)
 
 
 func _fill() -> void:
@@ -148,6 +158,9 @@ func _open(path: String, watch: bool) -> void:
 	if record == null or record.frame_count() == 0:
 		return
 	MatchLaunch.config = MatchLaunch.from_record(record, 0 if watch else -1, watch)
+	if for_host != null and watch:
+		MatchLaunch.config["net"] = {"role": "host", "node": for_host}
+	for_host = null
 	get_tree().change_scene_to_file(MATCH_SCENE)
 
 

@@ -45,6 +45,8 @@ var draft: DraftState
 var _draft_seed: int = 0
 ## Spectators (GDD 2): peers that only watch; they get every state as nobody (all hands hidden).
 var watchers: Array[int] = []
+## Watching a replay together (GDD 2): the host plays it and streams every frame; nobody moves.
+var streaming: bool = false
 var game_version: String = ""
 var cards_version: int = 0
 ## Seats: [{slot, name, peer (0 = host, -1 = bot), ready, bot, bot_level, deck, connected}]
@@ -350,6 +352,35 @@ func _finish_draft() -> void:
 		s["deck"] = deck
 	draft = null
 	start(_draft_seed + 1)
+
+
+## Watching a replay together: the host's match scene plays a record and sends every frame
+## (STATE, with the hands open: the match is over) and every roll (ROLL, for the paths) to all
+## guests, who show them like a spectator would. START carries `replay`; the end takes everyone
+## back to the lobby.
+func stream_start(record: MatchRecord) -> void:
+	streaming = true
+	started = true
+	link.broadcast({"t": NetProtocol.START, "settings": record.settings, "players": record.players,
+		"seed": record.seed, "cards_version": cards_version, "replay": true})
+
+
+func stream_state(s: GameState) -> void:
+	if streaming:
+		link.broadcast({"t": NetProtocol.STATE, "state": s.to_dict()})
+
+
+func stream_roll(o: RollOutcome) -> void:
+	if streaming:
+		link.broadcast({"t": NetProtocol.ROLL, "outcome": o.to_dict()})
+
+
+func stream_end() -> void:
+	if not streaming:
+		return
+	streaming = false
+	started = false
+	_lobby(true)
 
 
 ## A spectator: slot -1, the lobby and every state with both hands hidden, never a move.
