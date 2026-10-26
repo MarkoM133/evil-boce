@@ -347,6 +347,8 @@ func _build_hud() -> void:
 			MatchLaunch.config = MatchLaunch.from_record(_replay, _frame)
 			get_tree().change_scene_to_file(MATCH_SCENE))
 		_replay_bar.exit_pressed.connect(_exit_replay)
+		if _streaming():
+			_replay_bar.hide_continue()
 		_replay_bar.show_frame(_frame, _replay.frame_count(), state.turn, state.phase)
 		if JsonUtil.as_bool(_config.get("autoplay", false)):
 			_set_playing.call_deferred(true)
@@ -564,7 +566,7 @@ func _rematch() -> void:
 		return
 	# A series (Best of 3): back to the setup for the next game's stages and cores; a finished
 	# series leaves the setup to start a new one.
-	if net_role == "" and MatchSeries.current != null:
+	if _local_series():
 		if MatchSeries.current.is_over():
 			MatchSeries.current = null
 		get_tree().change_scene_to_file(SETUP_SCENE)
@@ -584,7 +586,7 @@ func _refresh_series() -> void:
 		s = net_host.series
 	elif net_role == "client":
 		s = MatchSeries.from_dict(net_client.series) if not net_client.series.is_empty() else null
-	else:
+	elif _local_series():
 		s = MatchSeries.current
 	if s == null or s.games == 0:
 		hud.series_text = ""
@@ -672,7 +674,7 @@ func _after_change() -> void:
 		ReplayStore.save_replay(recorder.record)
 		ReplayStore.write_stats(recorder.record, db.root_dir)
 		hud.end_summary = recorder.record.summary()
-		if net_role == "" and MatchSeries.current != null and not MatchSeries.current.is_over():
+		if _local_series() and not MatchSeries.current.is_over():
 			MatchSeries.current.record(state.winner)
 	elif net_role == "" and recorder.record.frame_count() != _saved_frames:
 		# Only local matches can be continued; an online one needs everyone at the table.
@@ -2268,3 +2270,9 @@ func demo_kb_wall() -> void:
 	_sync()
 	engine.knockback(state, h, 5, 4)
 	_sync()
+
+
+## A local game of a Best of 3: started from the setup as part of the series (a continued or
+## replayed match is not, even while a series is open).
+func _local_series() -> bool:
+	return net_role == "" and MatchSeries.current != null and JsonUtil.as_bool(_config.get("series", false))

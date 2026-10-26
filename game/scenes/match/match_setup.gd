@@ -175,6 +175,7 @@ func _start() -> void:
 		"bots": PackedInt32Array([1]) if bot else PackedInt32Array(),
 		"bot_level": level,
 		"seed": rng.randi(),
+		"series": series != null,
 	}
 	get_tree().change_scene_to_file(MATCH_SCENE)
 

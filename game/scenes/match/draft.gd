@@ -58,6 +58,10 @@ func _ready() -> void:
 			if slot < names.size():
 				names[slot] = str(s.get("name", names[slot]))
 		host.draft_changed.connect(_on_host_draft)
+		# The draft called off (a player left, or the match could not start): back to the lobby.
+		host.lobby_changed.connect(func() -> void:
+			if host.draft == null and not host.started and get_tree().current_scene == self:
+				get_tree().change_scene_to_file(LOBBY_SCENE))
 		host.match_started.connect(func() -> void:
 			MatchLaunch.config = {"net": {"role": "host", "node": host}, "settings": host.settings, "decks": [], "bots": PackedInt32Array(), "seed": 0}
 			get_tree().change_scene_to_file(MATCH_SCENE))
@@ -79,6 +83,9 @@ func _ready() -> void:
 				MatchLaunch.config = {"net": {"role": "client", "node": client}, "settings": MatchSettings.from_dict(client.settings), "decks": [], "bots": PackedInt32Array(), "seed": 0}
 				get_tree().change_scene_to_file(MATCH_SCENE))
 		client.disconnected.connect(func(_why: String) -> void: get_tree().change_scene_to_file(LOBBY_SCENE))
+		client.back_in_lobby.connect(func() -> void:
+			if get_tree().current_scene == self:
+				get_tree().change_scene_to_file(LOBBY_SCENE))
 	elif not local.is_empty():
 		_take_local()
 	else:

@@ -102,7 +102,8 @@ func _row(r: Dictionary) -> Control:
 	watch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	watch.pressed.connect(func() -> void: _open(path, true))
 	row.add_child(watch)
-	if not JsonUtil.as_bool(r["finished"]):
+	# Picking a replay for the table only watches; a local continue would leave the table waiting.
+	if not JsonUtil.as_bool(r["finished"]) and for_host == null:
 		var go := Button.new()
 		go.text = "CONTINUE"
 		go.tooltip_text = "Carry on from the last phase"

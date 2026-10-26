@@ -101,6 +101,7 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 		NetProtocol.LOBBY:
 			players = JsonUtil.as_array(msg.get("players", []))
 			settings = JsonUtil.as_dict(msg.get("settings", {}))
+			series = JsonUtil.as_dict(msg.get("series", {}))
 			var slot_now: int = _my_slot()
 			if slot_now >= 0:
 				slot = slot_now
@@ -110,9 +111,14 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 				paused = false
 				state = null
 				back_in_lobby.emit()
+			elif not draft.is_empty() and JsonUtil.as_bool(msg.get("again", false)):
+				# The draft was called off (a player left).
+				draft = {}
+				back_in_lobby.emit()
 			lobby_changed.emit(players, settings)
 		NetProtocol.START:
 			started = true
+			draft = {}
 			settings = JsonUtil.as_dict(msg.get("settings", {}))
 			replay_stream = JsonUtil.as_bool(msg.get("replay", false))
 			match_started.emit(msg)

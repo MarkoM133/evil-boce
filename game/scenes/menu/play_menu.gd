@@ -20,6 +20,8 @@ var db: CardDb
 
 
 func _ready() -> void:
+	# Back at Play, a local Best of 3 that was left unfinished is over.
+	MatchSeries.current = null
 	db = CardDb.load_from(GameSettings.data_path())
 	var frame: Dictionary = MenuScreen.build(self, db, "Play", "Pick how you want to play.", _back, 1180.0)
 	var content: VBoxContainer = frame["content"]

@@ -15,6 +15,7 @@ const SPEEDS: Array[float] = [1.0, 2.0, 4.0]
 var _label: Label
 var _play: Button
 var _speed: Button
+var _continue: Button
 var _speed_i: int = 0
 
 
@@ -45,7 +46,7 @@ func _init() -> void:
 	_label.add_theme_font_override("font", UiTheme.display_bold())
 	_label.add_theme_font_size_override("font_size", 18)
 	row.add_child(_label)
-	_button(row, "Continue from here", "Start a new match from this phase (the replay stays as it is)",
+	_continue = _button(row, "Continue from here", "Start a new match from this phase (the replay stays as it is)",
 		func() -> void: continue_pressed.emit())
 	_button(row, "Exit", "Back to the replay list", func() -> void: exit_pressed.emit())
 
@@ -73,3 +74,9 @@ func _button(parent: Control, text: String, tip: String, cb: Callable) -> Button
 	b.pressed.connect(cb)
 	parent.add_child(b)
 	return b
+
+
+## Without "Continue from here" (a replay the host watches with its table: "continue online"
+## is not there yet, and a local match would leave the table waiting).
+func hide_continue() -> void:
+	_continue.visible = false

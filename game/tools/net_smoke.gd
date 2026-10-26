@@ -39,9 +39,19 @@ func _stream(rec: MatchRecord) -> void:
 	_check(client.replay_stream, "guest knows it is a replay stream")
 	_check(client.state != null and client.state.turn == rec.state_at(0).turn, "guest got the streamed frame")
 	_check(client.state != null and not client.state.player(0).hand.is_empty() and client.state.player(0).hand[0] != NetProtocol.PLACEHOLDER_CARD, "a streamed replay shows the hands")
+	# Someone coming in while it plays gets the replay and the frame it is on.
+	var late := NetClient.new("Late", "0.1.0", db.version)
+	root.add_child(late)
+	late.connect_to("127.0.0.1", PORT, true)
+	await create_timer(0.8).timeout
+	_check(late.replay_stream and late.state != null and late.state.turn == rec.state_at(0).turn, "a late watcher joins the replay")
+	late.link.close()
+	late.queue_free()
+	await create_timer(0.2).timeout
 	host.stream_end()
 	await create_timer(0.4).timeout
 	_check(not client.started and not client.replay_stream, "guest is back in the lobby after the stream")
+	_check(not host.paused and host.seats.size() == 2, "the table is not paused after the stream")
 
 ## Draft mode (GDD 13): back to the lobby, the host opens a draft, both pick (the guest over
 ## the link) until the host starts the match with the drafted decks.
@@ -71,6 +81,19 @@ func _draft(rng: RandomNumberGenerator) -> void:
 	for p: PlayerState in host.state().players:
 		_check(p.deck.size() + p.hand.size() == 20, "seat %d plays its 20 drafted cards" % p.slot)
 	_check(client.state != null and client.state.heroes.size() == 6, "the guest sees six drafted heroes")
+
+## A player leaving mid-draft calls the draft off: the host is back in the lobby, alone.
+func _draft_left() -> void:
+	host.back_to_lobby()
+	await create_timer(0.3).timeout
+	client.send_ready(true)
+	await create_timer(0.4).timeout
+	_check(host.start_draft(22) == "", "a second draft opens: " + host.can_start())
+	await create_timer(0.3).timeout
+	client.link.close()
+	await create_timer(0.8).timeout
+	_check(host.draft == null and host.seats.size() == 1 and not host.started, "the draft is off when the guest leaves")
+
 
 func _go() -> void:
 	db = CardDb.load_from(GameSettings.data_path())
@@ -144,5 +167,6 @@ func _go() -> void:
 	await create_timer(0.2).timeout
 	await _stream(rec_for_stream)
 	await _draft(rng)
+	await _draft_left()
 	print("net smoke: %d failures" % fails)
 	quit(1 if fails > 0 else 0)

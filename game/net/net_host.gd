@@ -47,6 +47,9 @@ var _draft_seed: int = 0
 var watchers: Array[int] = []
 ## Watching a replay together (GDD 2): the host plays it and streams every frame; nobody moves.
 var streaming: bool = false
+## The streamed replay and its last frame, for whoever comes in while it plays.
+var _stream_record: MatchRecord
+var _stream_state: Dictionary = {}
 var game_version: String = ""
 var cards_version: int = 0
 ## Seats: [{slot, name, peer (0 = host, -1 = bot), ready, bot, bot_level, deck, connected}]
@@ -351,7 +354,8 @@ func _finish_draft() -> void:
 		deck["cards"] = drafted[slot]["cards"]
 		s["deck"] = deck
 	draft = null
-	start(_draft_seed + 1)
+	if not start(_draft_seed + 1).is_empty():
+		_lobby(true)
 
 
 ## Watching a replay together: the host's match scene plays a record and sends every frame
@@ -361,13 +365,20 @@ func _finish_draft() -> void:
 func stream_start(record: MatchRecord) -> void:
 	streaming = true
 	started = true
-	link.broadcast({"t": NetProtocol.START, "settings": record.settings, "players": record.players,
-		"seed": record.seed, "cards_version": cards_version, "replay": true})
+	_stream_record = record
+	_stream_state = {}
+	link.broadcast(_stream_start_message())
+
+
+func _stream_start_message() -> Dictionary:
+	return {"t": NetProtocol.START, "settings": _stream_record.settings, "players": _stream_record.players,
+		"seed": _stream_record.seed, "cards_version": cards_version, "replay": true}
 
 
 func stream_state(s: GameState) -> void:
 	if streaming:
-		link.broadcast({"t": NetProtocol.STATE, "state": s.to_dict()})
+		_stream_state = s.to_dict()
+		link.broadcast({"t": NetProtocol.STATE, "state": _stream_state})
 
 
 func stream_roll(o: RollOutcome) -> void:
@@ -380,7 +391,24 @@ func stream_end() -> void:
 		return
 	streaming = false
 	started = false
+	_stream_record = null
+	_stream_state = {}
+	if paused:
+		set_paused(false, host_slot)
+	# Seats of players who left while the replay played go now, as in the lobby.
+	for s: Dictionary in seats.duplicate():
+		if not JsonUtil.as_bool(s.get("connected", true)) and not JsonUtil.as_bool(s.get("bot", false)):
+			seats.erase(s)
+	for i: int in seats.size():
+		seats[i]["slot"] = i
 	_lobby(true)
+
+
+## Someone coming in while a replay plays: the replay START and the frame it is on.
+func _send_stream(peer: int) -> void:
+	link.send(peer, _stream_start_message())
+	if not _stream_state.is_empty():
+		link.send(peer, {"t": NetProtocol.STATE, "state": _stream_state})
 
 
 ## A spectator: slot -1, the lobby and every state with both hands hidden, never a move.
@@ -388,7 +416,9 @@ func _welcome_watcher(peer: int, name: String) -> void:
 	if not watchers.has(peer):
 		watchers.append(peer)
 	link.send(peer, {"t": NetProtocol.WELCOME, "slot": -1, "name": name, "players": public_seats(), "settings": settings.to_dict()})
-	if started:
+	if streaming:
+		_send_stream(peer)
+	elif started:
 		link.send(peer, {"t": NetProtocol.START, "settings": settings.to_dict(), "players": recorder.record.players,
 			"seed": recorder.record.seed, "cards_version": cards_version})
 		link.send(peer, {"t": NetProtocol.STATE, "state": NetProtocol.redact(recorder.state.to_dict(), -1)})
@@ -489,8 +519,11 @@ func _on_hello(peer: int, msg: Dictionary) -> void:
 	s["peer"] = peer
 	s["connected"] = true
 	var slot: int = JsonUtil.as_int(s["slot"])
-	link.send(peer, {"t": NetProtocol.WELCOME, "slot": slot, "name": name, "players": public_seats(), "settings": settings.to_dict()})
-	if started:
+	link.send(peer, {"t": NetProtocol.WELCOME, "slot": slot, "name": name, "players": public_seats(), "settings": settings.to_dict(),
+		"series": series.to_dict() if series != null else {}})
+	if streaming:
+		_send_stream(peer)
+	elif started:
 		link.send(peer, {"t": NetProtocol.START, "settings": settings.to_dict(), "players": recorder.record.players,
 			"seed": recorder.record.seed, "cards_version": cards_version})
 		link.send(peer, {"t": NetProtocol.STATE, "state": NetProtocol.redact(recorder.state.to_dict(), slot)})
@@ -513,6 +546,9 @@ func _on_peer_left(peer: int) -> void:
 	s["connected"] = false
 	s["peer"] = -2
 	var slot: int = JsonUtil.as_int(s["slot"])
+	if streaming:
+		# Nobody plays a replay: no pause; the seat goes when the replay ends (stream_end).
+		return
 	if started:
 		link.broadcast({"t": NetProtocol.PLAYER, "slot": slot, "name": s["name"], "connected": false})
 		player_changed.emit(slot, false)
@@ -521,7 +557,15 @@ func _on_peer_left(peer: int) -> void:
 		seats.erase(s)
 		for i: int in seats.size():
 			seats[i]["slot"] = i
-		_lobby()
+		# A player who leaves between the games of a series ends it: a newcomer starts afresh.
+		if series != null and not series.is_over():
+			series = null
+		if draft != null:
+			# A player left mid-draft: the draft is off and everyone goes back to the lobby.
+			draft = null
+			_lobby(true)
+		else:
+			_lobby()
 
 
 func _process(delta: float) -> void:
