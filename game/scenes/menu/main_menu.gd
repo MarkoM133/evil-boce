@@ -17,7 +17,7 @@ const DECKS_SCENE: String = "res://scenes/decks/decks_menu.tscn"
 
 ## [label, action, what it is]
 const ENTRIES: Array = [
-	["PLAY", "play", "Vs the bot, two players here, online or practice"],
+	["PLAY", "play", "Local, online or practice"],
 	["REPLAYS", "replays", "Watch past matches, continue from any phase"],
 	["DECKS", "decks", "Your decks, deck codes"],
 	["SETTINGS", "settings", "Shared folder, display, sound, keys"],

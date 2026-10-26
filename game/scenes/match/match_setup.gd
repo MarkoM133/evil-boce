@@ -17,8 +17,8 @@ var db: CardDb
 var decks: Array[Dictionary] = []
 var _cards: Array[PlayerCard] = []
 var _opponent: int = 0
-## Set by the Play screen before opening this one: 0 bot (easy), 2 a second player here.
-static var preset_opponent: int = 0
+## Who plays the second seat, kept between visits while the game runs: 0 bot Easy, 1 Hard, 2 a second player here.
+static var last_opponent: int = 0
 var _map_i: int = 0
 var _range_i: int = 1
 var _manual: bool = true
@@ -27,7 +27,7 @@ var _start_btn: Button
 
 
 func _ready() -> void:
-	_opponent = preset_opponent
+	_opponent = last_opponent
 	db = CardDb.load_from(GameSettings.data_path())
 	decks = DeckStore.load_all(db.root_dir)
 	_map_i = maxi(0, GameSettings.MAP_SIZES.find(GameSettings.map_size()))
@@ -67,7 +67,9 @@ func _ready() -> void:
 		b.button_group = group
 		b.button_pressed = i == _opponent
 		b.add_theme_font_size_override("font_size", 15)
-		b.pressed.connect(func() -> void: _opponent = i)
+		b.pressed.connect(func() -> void:
+			_opponent = i
+			last_opponent = i)
 		_cards[1].header_extra.add_child(b)
 
 	# Match settings: chips that cycle through their values.

@@ -1,19 +1,18 @@
 extends Control
-## Play (GDD 7): everything that starts a game, on one screen of big tiles. Vs the bot and two
-## players on this computer open the match setup with that opponent; Online opens the lobby;
-## Practice opens the sandbox.
+## Play (GDD 7): everything that starts a game, on one screen of big tiles. Local play opens
+## the match setup (the bot or a second player there is picked on it), Online play the lobby,
+## Practice the sandbox.
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
 const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
 const SANDBOX_SCENE: String = "res://scenes/sandbox/sandbox.tscn"
-const TILE := Vector2(268, 420)
+const TILE := Vector2(330, 440)
 
 ## [title, what it is, action, art from: "hero" or "stage"]
 const MODES: Array = [
-	["VS BOT", "Against the computer, Easy or Hard", "bot", "hero"],
-	["TWO PLAYERS", "Both of you on this computer", "local", "hero"],
-	["ONLINE", "Host a match or join one over Tailscale", "online", "stage"],
+	["LOCAL PLAY", "Against the bot, or two players on this computer", "local", "hero"],
+	["ONLINE PLAY", "Host a match or join one over Tailscale", "online", "hero"],
 	["PRACTICE", "Throw balls around, try terrain", "practice", "stage"],
 ]
 
@@ -96,11 +95,7 @@ func _tile(title: String, line: String, art_id: String, main: bool) -> Control:
 
 func _go(action: String) -> void:
 	match action:
-		"bot":
-			MatchSetup.preset_opponent = 0
-			get_tree().change_scene_to_file(SETUP_SCENE)
 		"local":
-			MatchSetup.preset_opponent = 2
 			get_tree().change_scene_to_file(SETUP_SCENE)
 		"online":
 			get_tree().change_scene_to_file(LOBBY_SCENE)
