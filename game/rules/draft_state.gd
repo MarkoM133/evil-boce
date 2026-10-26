@@ -305,6 +305,18 @@ func to_dict() -> Dictionary:
 		"rng_state": rng_state}
 
 
+## What the guests and watchers get (DRAFT): the open pack only, the others stay face down
+## and the random fill at the end cannot be predicted (no rng_state).
+func public_dict() -> Dictionary:
+	var d: Dictionary = to_dict()
+	var ps: Array = []
+	for i: int in packs.size():
+		ps.append(Array(packs[i]) if i == pack_index else [])
+	d["packs"] = ps
+	d["rng_state"] = 0
+	return d
+
+
 static func from_dict(d: Dictionary, catalog_: CardCatalog) -> DraftState:
 	var s := DraftState.new()
 	s.catalog = catalog_

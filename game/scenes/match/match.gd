@@ -857,6 +857,7 @@ func _rebuild_tokens() -> void:
 			body.collision_layer = BallBody.LAYER_GROUND
 			body.collision_mask = 0
 			body.add_to_group("walls")
+			body.set_meta("wall", w.id)
 			var shape := CollisionShape3D.new()
 			var cyl := CylinderShape3D.new()
 			cyl.radius = tuning.hex_size * 0.92
@@ -1432,7 +1433,9 @@ func _run_auto_pass(delta: float) -> void:
 			_pass_wait = AUTO_PASS_DELAY
 		elif hud.nothing_to_play(slot):
 			_pass_wait = AUTO_PASS_DELAY
-			if net_role != "client":
+			# Only when both hands are on this screen: online, a quick pass would tell the guest
+			# the host had nothing to play.
+			if net_role == "":
 				var anyone: bool = false
 				for p: PlayerState in state.players:
 					var other: int = p.slot

@@ -30,6 +30,15 @@ func _series_deck(slot: int, deck: Dictionary) -> Dictionary:
 	return out
 
 
+## Why a deck a guest sent may not play, "" when it may (DeckCode.check, as the builder; a
+## drafted match replaces the heroes and cards anyway).
+func _deck_error(deck: Dictionary) -> String:
+	if deck.is_empty() or settings.mode == "draft":
+		return ""
+	var errors: PackedStringArray = DeckCode.check(engine.catalog, JsonUtil.as_strings(deck.get("heroes", [])), JsonUtil.as_dict(deck.get("cards", {})))
+	return "" if errors.is_empty() else "deck refused: " + errors[0]
+
+
 ## Seats at the table: 1v1 until 2v2 comes (step 4).
 const MAX_SEATS: int = 2
 
@@ -336,7 +345,7 @@ func _bot_drafts() -> void:
 
 
 func _send_draft() -> void:
-	link.broadcast({"t": NetProtocol.DRAFT, "draft": draft.to_dict()})
+	link.broadcast({"t": NetProtocol.DRAFT, "draft": draft.public_dict()})
 	draft_changed.emit()
 	if draft.phase == DraftState.PHASE_DONE:
 		_finish_draft()
@@ -451,7 +460,15 @@ func _on_message(peer: int, msg: Dictionary) -> void:
 		NetProtocol.DECK:
 			if started:
 				return
-			s["deck"] = _series_deck(JsonUtil.as_int(s.get("slot", -1)), JsonUtil.as_dict(msg.get("deck", {})))
+			var deck: Dictionary = JsonUtil.as_dict(msg.get("deck", {}))
+			var bad: String = _deck_error(deck)
+			if not bad.is_empty():
+				# A deck the rules refuse never sits at the table; the guest hears why.
+				link.send(peer, {"t": NetProtocol.REFUSED, "move": {"t": NetProtocol.DECK}, "reason": bad})
+				s["deck"] = {}
+				_lobby()
+				return
+			s["deck"] = _series_deck(JsonUtil.as_int(s.get("slot", -1)), deck)
 			_lobby()
 		NetProtocol.READY:
 			if started:

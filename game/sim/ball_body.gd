@@ -26,6 +26,8 @@ var tuning: PhysicsTuning
 
 var _cylinder: CylinderShape3D
 var _result: RollResult
+## Walls hit in this roll, each once (RollResult.walls_hit).
+var _walls_seen: PackedStringArray = PackedStringArray()
 var _entered_map: bool = false
 var _last_map_hex: Vector2i = Vector2i.ZERO
 var _slow_frames: int = 0
@@ -167,6 +169,7 @@ func _physics_process(delta: float) -> void:
 
 func _begin(thrown: bool, power: float) -> void:
 	var pos: Vector3 = global_position
+	_walls_seen = PackedStringArray()
 	_result = RollResult.new()
 	_result.ball_id = ball_id
 	_result.thrown = thrown
@@ -264,4 +267,9 @@ func _on_body_entered(body: Node) -> void:
 		if not _result.collisions.has(other.ball_id):
 			_result.collisions.append(other.ball_id)
 	elif body.is_in_group("walls"):
-		_result.walls_hit += 1
+		# One hit per wall (GDD 10): a wall is several bodies, one per hex, that share a "wall"
+		# meta; a seam, a scrape or a bounce back into the same wall is still one hit.
+		var key: String = str(body.get_meta("wall")) if body.has_meta("wall") else str(body.get_instance_id())
+		if not _walls_seen.has(key):
+			_walls_seen.append(key)
+			_result.walls_hit += 1

@@ -510,6 +510,8 @@ func _answer_roll_offer(s: GameState, index: int, m: Move) -> String:
 		var err: String = fx.use_ability(s, m.player, m.str_arg("hero"), m.str_arg("card"), JsonUtil.as_int(m.data.get("index", 0)))
 		if not err.is_empty():
 			s.pending = trial
+		else:
+			_decisions_first(s, trial.size() - 1)
 		return err
 	if m.type == Move.PLAY_CARD:
 		if not JsonUtil.as_strings(d.get("cards", [])).has(m.str_arg("card")):
@@ -519,8 +521,20 @@ func _answer_roll_offer(s: GameState, index: int, m: Move) -> String:
 		var err: String = _play_card(s, m)
 		if not err.is_empty():
 			s.pending = trial
+		else:
+			_decisions_first(s, trial.size() - 1)
 		return err
 	return "use a Roll Phase card or ability, or pass"
+
+
+## The decisions an answered offer added (past the `kept` older ones) go to the front, so the
+## player who answered gets its choice now instead of behind the other offers of the stop.
+func _decisions_first(s: GameState, kept: int) -> void:
+	if s.pending.size() <= kept:
+		return
+	var added: Array[Dictionary] = s.pending.slice(kept)
+	var rest: Array[Dictionary] = s.pending.slice(0, kept)
+	s.pending = added + rest
 
 
 ## After the balls stop: one roll_offer per active player (initiative first) with the "Roll
@@ -544,9 +558,11 @@ func _offer_roll_effects(s: GameState) -> void:
 					continue
 				if hero_card != null and hero_card.color != card.color:
 					continue
+				if hero_card != null and not JsonUtil.as_bool(FirstTag.play_verdict(catalog, card, hero_card, stat_card(h))["ok"]):
+					continue
 				if card_cost(s, p, card) <= p.energy:
 					cards.append(cid)
-			s.pending.append({"type": DECISION_ROLL_OFFER, "player": slot, "hero": h.id,
+			s.pending.append({"type": DECISION_ROLL_OFFER, "player": slot, "hero": h.id, "at": s.log.size(),
 				"abilities": Array(abilities), "cards": Array(cards)})
 		slot = _next_slot(s, slot)
 

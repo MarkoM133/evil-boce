@@ -366,6 +366,9 @@ func _wire_client() -> void:
 	client.welcomed.connect(func(_slot: int) -> void:
 		_status.text = "Watching. The match starts when the host presses START." if client.spectating else "Connected. Pick a deck and press Ready."
 		_enter_room(false))
+	client.move_refused.connect(func(move: Dictionary, why: String) -> void:
+		if str(move.get("t", "")) == NetProtocol.DECK:
+			_status.text = why)
 	client.rejected.connect(func(why: String) -> void:
 		_status.text = "Rejected: " + why
 		_drop_client())

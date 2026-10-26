@@ -118,7 +118,11 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    abilities come as one `roll_offer` per active player and stop, options or none, so nobody can
    read "has a Roll Phase card" off who is asked; the offers of one stop are answered in any
    order; a roll again brings a new stop and new offers), Postroll, Battle, End. Declining an
-   empty offer after a fixed wait is the client's job (auto-pass), not a rule.
+   empty offer after a fixed wait is the client's job (auto-pass), not a rule. An offer lists
+   only cards the first tag lets the activated hero play, and carries `at` (the log size at the
+   stop) so a clock keyed on it is not restarted by the other player's answer. The decisions
+   an answer asks for (a choice) go to the front of `pending`, before the other offers of the
+   stop, so the answering player is not kept waiting.
 9b. (2026-10-26) The move timer is not a rule: `MatchClock` (rules/) only says whom the game waits
    for, what for (`wait_key`) and the safe move when the time runs out (pass, keep, the marked
    or a random hero that stays when it may, a missed roll, a random legal placement, damage to
@@ -131,7 +135,8 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    and every move is refused with "waiting for the knockback" until the scene runs the sim
    (hit along the hex direction, power = steps / full-power hexes of the WT) and brings the
    `RollOutcome` to `apply_knockback`. The outcome lands every moved ball as a roll does
-   (cores, stages, ring-outs); a knocked hero takes `wall_damage` once per ball it hit. The
+   (cores, stages, ring-outs); a knocked hero takes `wall_damage` once per ball and once per wall
+   it hit (a wall is one body per hex sharing a "wall" meta: a seam or a scrape is one hit). The
 9d. (2026-10-26) `series_wins` > 1 is a series (`MatchSeries`, not a rule: the scene and the host
    keep it); `first_initiative` names who starts (the last loser), -1 draws lots as before.
    A seat may bring a sideboard (up to 10 cards its heroes may take, each under its limit;

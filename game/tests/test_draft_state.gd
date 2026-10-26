@@ -87,3 +87,21 @@ func test_the_same_seed_drafts_the_same_packs_and_the_dict_round_trips() -> void
 	assert_eq(back.current_pack(), a.current_pack())
 	assert_eq(back.waiting_on(), a.waiting_on())
 	assert_eq(back.to_dict(), a.to_dict())
+
+
+func test_the_public_dict_shows_the_open_pack_only() -> void:
+	var d: DraftState = DraftState.start(catalog, 11)
+	while d.phase == DraftState.PHASE_HEROES:
+		var slot: int = d.waiting_on()
+		d.pick(slot, d.options(slot)[0])
+	var pub: Dictionary = d.public_dict()
+	var packs: Array = JsonUtil.as_array(pub["packs"])
+	assert_eq(packs.size(), d.packs.size())
+	for i: int in packs.size():
+		if i == d.pack_index:
+			assert_eq(JsonUtil.as_strings(packs[i]), d.current_pack(), "the open pack is there")
+		else:
+			assert_true(JsonUtil.as_array(packs[i]).is_empty(), "pack %d stays face down" % i)
+	assert_eq(JsonUtil.as_int(pub["rng_state"]), 0, "no rng state goes out")
+	var seen: DraftState = DraftState.from_dict(pub, catalog)
+	assert_eq(seen.options(seen.waiting_on()), d.options(d.waiting_on()), "a guest sees the same picks")

@@ -159,3 +159,17 @@ func test_store_round_trip() -> void:
 	var stats: String = ReplayStore.write_stats(rec.record, ProjectSettings.globalize_path("user://"))
 	assert_true(FileAccess.file_exists(stats))
 	DirAccess.remove_absolute(stats)
+
+
+func test_the_record_keeps_every_hero_a_first_tag_names() -> void:
+	# "Alpha & Hotel" on TF-006: Hotel (TA-005) is in no deck, but a resumed match must still
+	# read the tag as a hero tag, so the record carries Hotel too.
+	var decks: Array = _decks()
+	decks[0]["cards"] = {"TX-010": 19, "TF-006": 1}
+	var settings := MatchSettings.new()
+	settings.manual_setup = false
+	var rec: MatchRecorder = MatchRecorder.start(engine, settings, decks, 7, [{"name": "A"}, {"name": "B"}], "0.1.0")
+	var back: CardCatalog = rec.record.catalog()
+	assert_not_null(back.hero_named("Hotel"), "Hotel travels with the record")
+	var k: Dictionary = FirstTag.kind_of(back, back.get_card("TF-006"))
+	assert_eq(str(k["kind"]), FirstTag.HEROES)

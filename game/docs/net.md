@@ -22,7 +22,7 @@ without a scene; nothing else changes.
 |---|---|---|---|
 | guest | `hello` | name, game_version, cards_version, net_version, spectate | right after the link is up; also on reconnect. `spectate`: only watch; the host answers slot -1, sends every state with both hands hidden and takes no moves |
 | host | `welcome` / `reject` | slot, players, settings / reason | answer to hello |
-| guest | `deck`, `ready` | engine deck dict / bool | lobby |
+| guest | `deck`, `ready` | engine deck dict / bool | lobby; a deck `DeckCode.check` refuses (outside Draft) is dropped and answered with `refused` ({move: {t: deck}}) |
 | guest | `draft_pick` | id | Draft mode: the guest takes a hero or a card from the pack; refused with `refused` |
 | host | `lobby` | players [{slot, name, ready, bot, connected, has_deck, shown}], settings, again | any lobby change; `again` = the host took everyone back after a match; `shown` = the seat's picks as the lobby shows them to the others (deck name, heroes, stages, cores; "" = random) |
 | host | `start` | settings, players (record header), seed, cards_version | the host pressed Start, or a reconnect into a running match  `replay`: the host is streaming a replay to watch together (hands open, nobody moves; the host's controls drive it, the end sends `lobby` with `again`) |
@@ -34,7 +34,7 @@ without a scene; nothing else changes.
 | guest | `pause` / `resume` | – | anyone may pause; the pauser or the host resumes |
 | host | `paused` / `resumed` | by, name | |
 | host | `clock` | clocks {slot: seconds left} | the move timer restarted for someone (`timer_seconds` > 0); guests count down from it and show it, the host makes the safe move when it runs out |
-| host | `draft` | draft (DraftState dict) | the Draft mode moved on: heroes picked, a pack dealt or picked from; when it is done the host starts the match with the drafted decks |
+| host | `draft` | draft (DraftState dict) | the open pack only, the other packs empty and no `rng_state` (`DraftState.public_dict`); the Draft mode moved on: heroes picked, a pack dealt or picked from; when it is done the host starts the match with the drafted decks |
 | host | `player` | slot, name, connected | a guest dropped or came back |
 | host | `over` | summary, record | the match ended; `record` is the full MatchRecord (nothing is hidden any more) |
 

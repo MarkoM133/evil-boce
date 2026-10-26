@@ -32,7 +32,10 @@ static func wait_key(engine: RulesEngine, s: GameState, slot: int) -> String:
 	if not s.pending.is_empty():
 		var d: Dictionary = s.pending[0]
 		if str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
-			return "offer|%d|%d" % [s.turn, s.log.size()] if engine.roll_offer_index(s, slot) >= 0 else ""
+			# Keyed on the stop the offer came from, not the log: the other player answering
+			# its own offer does not restart this one.
+			var own: int = engine.roll_offer_index(s, slot)
+			return "offer|%d|%d" % [s.turn, JsonUtil.as_int(s.pending[own].get("at", 0))] if own >= 0 else ""
 		if JsonUtil.as_int(d.get("player", -1), -1) != slot:
 			return ""
 		return "decision|%s|%d|%d" % [str(d.get("type", "")), s.log.size(), s.pending.size()]

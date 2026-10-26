@@ -114,6 +114,10 @@ func _go() -> void:
 		waited += 0.1
 	await create_timer(0.5).timeout
 	_check(client.slot == 1, "client got seat 1 (got %d)" % client.slot)
+	# A deck the rules refuse never sits at the table.
+	client.send_deck({"heroes": ["TA-001"], "cards": {"TX-010": 40}})
+	await create_timer(0.3).timeout
+	_check(JsonUtil.as_dict(host.seat(1).get("deck", {})).is_empty(), "a bad deck is refused")
 	client.send_deck(MatchLaunch.engine_deck(db.catalog, DeckCode.random_deck(db.catalog, rng), "Guest", rng))
 	client.send_ready(true)
 	await create_timer(0.4).timeout

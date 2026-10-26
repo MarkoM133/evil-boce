@@ -31,7 +31,11 @@ func _deck(a: bool) -> Dictionary:
 	var cores: Array = ["CR0-001", "CR0-002", "CR0-003", "CR0-004", "CR0-005", "CR0-006"]
 	if a:
 		return {"name": "A", "heroes": ["TA-001", "TA-002", "TA-003"], "cards": {"TX-010": 40}, "stages": ["TS-001", "TS-002", "TS-003"], "cores": cores}
-	return {"name": "B", "heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-011": 40}, "stages": ["TS-004", "TS-005", "TS-006"], "cores": cores}
+	# The guest deck passes the host check (DeckCode.check), as a real one would.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	var b: Dictionary = DeckCode.random_deck(catalog, rng, "TB-001")
+	return {"name": "B", "heroes": b["heroes"], "cards": b["cards"], "stages": ["TS-004", "TS-005", "TS-006"], "cores": cores}
 
 
 func _start_host() -> void:

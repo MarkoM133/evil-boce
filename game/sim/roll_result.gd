@@ -22,7 +22,7 @@ var ring_out_reason: String = ""
 var strip_entered: int = -1
 ## Ids of balls this one hit, in order.
 var collisions: PackedStringArray = PackedStringArray()
-## Walls (static bodies in the "walls" group) this ball ran into.
+## Walls (static bodies in the "walls" group) this ball ran into, each counted once.
 var walls_hit: int = 0
 ## Filled in step 2.
 var cores_picked: PackedStringArray = PackedStringArray()
