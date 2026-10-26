@@ -2484,3 +2484,14 @@ func demo_start_hover() -> void:
 	demo_pick()
 	var mine: Array[HeroState] = state.heroes_of(0)
 	_set_hover(mine[2].id, true)
+
+
+## Screenshot helper: player 1's first hero carries two equipment cards.
+func demo_equip() -> void:
+	_demo = true
+	var h: HeroState = state.heroes_of(0)[0]
+	for c: CardDef in engine.catalog.of_type("Equipment"):
+		if h.equipment.size() < 2:
+			h.equipment.append(c.id)
+	hud.hover_hero = h.id
+	_sync()

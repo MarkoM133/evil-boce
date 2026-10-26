@@ -770,8 +770,14 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		extra.text = "Knocked out"
 		extra.add_theme_color_override("font_color", Palette.MUTED)
 	elif not h.equipment.is_empty():
-		extra.text = "Equip: " + ", ".join(_card_names(h.equipment))
-		extra.add_theme_color_override("font_color", Palette.MUTED)
+		# Equipment as mini cards after the core slots, empty slots dashed (Marko 2026-10-26):
+		# hover = its text, right click = the big card.
+		var gap := Control.new()
+		gap.custom_minimum_size = Vector2(6, 0)
+		gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bottom.add_child(gap)
+		for i: int in state.settings.equipment_limit:
+			bottom.add_child(_equip_mini(h.equipment[i] if i < h.equipment.size() else ""))
 	extra.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
 	bottom.add_child(extra)
 	if expanded and not ko:
@@ -2415,3 +2421,41 @@ func hide_ball_choice(force: bool = false) -> void:
 	if not force and _ball_choice.get_global_rect().grow(6).has_point(get_global_mouse_position()):
 		return
 	_ball_choice.visible = false
+
+
+## One equipment slot in a hero panel: the card's picture, small, or a dashed empty slot.
+func _equip_mini(cid: String) -> Control:
+	var box := PanelContainer.new()
+	box.custom_minimum_size = Vector2(22, 30)
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0, 0, 0, 0)
+	sb.set_corner_radius_all(3)
+	sb.set_border_width_all(1)
+	sb.border_color = Color(Palette.MUTED, 0.6)
+	if cid.is_empty():
+		sb.border_blend = false
+		box.add_theme_stylebox_override("panel", sb)
+		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.modulate.a = 0.5
+		return box
+	sb.border_color = Color(1, 1, 1, 0.5)
+	box.add_theme_stylebox_override("panel", sb)
+	var card: CardDef = engine.catalog.get_card(cid)
+	var tex: Texture2D = db.thumb(cid) if db != null else null
+	if tex != null:
+		var pic := TextureRect.new()
+		pic.texture = tex
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(pic)
+	else:
+		var l: Label = UiTheme.label((card.name if card != null else cid).left(2).to_upper(), 11)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(l)
+	if card != null:
+		box.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
+	box.mouse_entered.connect(func() -> void: _hovered(cid))
+	box.gui_input.connect(func(e: InputEvent) -> void: _card_click(e, cid))
+	return box
