@@ -635,6 +635,7 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 				return "that hex is taken"
 			me.hex = hex
 			s.event("moved", {"hero": me.id, "hex": Hex.to_json(hex), "by": "fx"})
+			engine.arrive(s, me)
 		"MOVE_ID":
 			var who: HeroState = s.hero(args[0])
 			if who == null or answer == null:
@@ -643,6 +644,7 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			if to != who.hex:
 				who.hex = to
 				s.event("moved", {"hero": who.id, "hex": Hex.to_json(to), "by": "fx"})
+				engine.arrive(s, who)
 		"RECYCLE":
 			var p: PlayerState = s.player(player if target == "ME" else engine.other_slot(s, player))
 			var mode: String = args[1] if args.size() > 1 else "TOP"
@@ -693,6 +695,8 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 				me.hex = a_hex
 				return "they do not fit each other's place"
 			s.event("swapped", {"hero": me.id, "with": other.id})
+			engine.arrive(s, me)
+			engine.arrive(s, other)
 		"DUEL_TOP":
 			var st: StageState = s.stage(str(ctx.get("stage", "")))
 			if st == null:

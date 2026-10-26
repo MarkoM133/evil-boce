@@ -671,6 +671,21 @@ func apply_roll(s: GameState, o: RollOutcome) -> String:
 	return ""
 
 
+## A hero stopped on a hex (a roll, a knockback, an effect's move or swap): a face-down stage
+## under it turns face up (GDD 6; Marko 2026-10-26: not only after a roll).
+func arrive(s: GameState, h: HeroState) -> void:
+	if h == null or not h.is_on_map():
+		return
+	var st: StageState = s.stage_at(h.hex)
+	if st != null and st.placed and not st.revealed:
+		st.revealed = true
+		# A wind blows in a direction drawn now and kept (GDD 6, 2026-10-26); it goes into the
+		# state and the replay with the stage.
+		st.wind_dir = s.random_int(6)
+		s.event("stage_revealed", {"stage": st.id, "by": h.id, "wind": st.wind_dir})
+		fx.on_reveal(s, st, h)
+
+
 func _apply_result(s: GameState, h: HeroState, r: RollResult) -> void:
 	for cid: String in r.cores_picked:
 		var c: CoreState = s.core(cid)
@@ -683,14 +698,7 @@ func _apply_result(s: GameState, h: HeroState, r: RollResult) -> void:
 		h.zone = HeroState.ZONE_MAP
 		h.hex = r.end_hex
 		s.event("moved", {"hero": h.id, "hex": Hex.to_json(h.hex)})
-		var st: StageState = s.stage_at(h.hex)
-		if st != null and not st.revealed:
-			st.revealed = true
-			# A wind blows in a direction drawn now and kept (GDD 6, 2026-10-26); it goes into the
-			# state and the replay with the stage.
-			st.wind_dir = s.random_int(6)
-			s.event("stage_revealed", {"stage": st.id, "by": h.id, "wind": st.wind_dir})
-			fx.on_reveal(s, st, h)
+		arrive(s, h)
 	# end_area STRIP without entering the map: a weak throw, the hero stays in its zone.
 
 
@@ -1328,6 +1336,7 @@ func knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 		left -= 1
 	h.hex = pos
 	s.event("knockback", {"hero": h.id, "from": Hex.to_json(start), "to": Hex.to_json(pos), "steps": steps - left})
+	arrive(s, h)
 	if left > 0:
 		# Blocked by a wall or a hero: wall_damage once (GDD 10, 2026-10-26), not per step short.
 		hero_damage(s, h, s.settings.wall_damage)
