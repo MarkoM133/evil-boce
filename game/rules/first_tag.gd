@@ -132,3 +132,27 @@ static func evolutions_in(catalog: CardCatalog, ids: Array) -> Array[CardDef]:
 		if c != null and c.type == "Evolution":
 			out.append(c)
 	return out
+
+
+## May `card` be played for the hero whose base card is `base` and whose current card (the
+## last evolution, else the base) is `current`? The hero's name follows it through evolutions;
+## a trait is read off the current card only (GDD 10). {ok, why}.
+static func play_verdict(catalog: CardCatalog, card: CardDef, base: CardDef, current: CardDef) -> Dictionary:
+	if card.type == "Evolution":
+		return _ok()
+	var k: Dictionary = kind_of(catalog, card)
+	match str(k["kind"]):
+		GENERAL:
+			return _ok()
+		HEROES:
+			var only: PackedStringArray = k["heroes"]
+			if base != null and only.has(base.name):
+				return _ok()
+			return _no("only for %s" % " or ".join(only))
+		TRAIT:
+			var t: String = k["trait"]
+			if current != null and has_trait(current, t):
+				return _ok()
+			return _no("Requires %s" % t)
+	var tag: String = str(k.get("tag", ""))
+	return _no(("first tag \"%s\" is not General, a hero or a known trait" % tag) if not tag.is_empty() else "the card has no tags")

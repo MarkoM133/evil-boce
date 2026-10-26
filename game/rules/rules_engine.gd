@@ -1563,6 +1563,18 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 				same_colour.append(h)
 		if same_colour.is_empty():
 			return "no %s hero to play this for" % card.color
+	# The first tag (GDD 10): the card goes only to a hero it names, or whose current traits fit.
+	var fit: Array[HeroState] = []
+	var unfit: String = ""
+	for h: HeroState in same_colour:
+		var v: Dictionary = FirstTag.play_verdict(catalog, card, catalog.get_card(h.card_id), stat_card(h))
+		if JsonUtil.as_bool(v["ok"]):
+			fit.append(h)
+		else:
+			unfit = str(v["why"])
+	if fit.is_empty():
+		return unfit
+	same_colour = fit
 	var target: HeroState = null
 	if wanted.is_empty():
 		if same_colour.size() == 1:
@@ -1597,6 +1609,7 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 			target.evolutions.append(cid)
 			target.hp = maxi(max_hp(s, target) - damage, 0)
 			s.event("evolved", {"card": cid, "hero": target.id, "level": card.evo})
+			_drop_unfit_equipment(s, target)
 		"Assist":
 			if p.assists.has(cid):
 				return "that assist is already in play"
@@ -1729,6 +1742,20 @@ func remove_evolution(s: GameState, h: HeroState) -> void:
 	s.player(h.owner).graveyard.append(cid)
 	clamp_hp(s, h)
 	s.event("evolution_removed", {"card": cid, "hero": h.id})
+	_drop_unfit_equipment(s, h)
+
+
+## Equipment whose first tag the hero no longer satisfies (an evolution came or went) falls
+## into the graveyard (GDD 10, 2026-10-26).
+func _drop_unfit_equipment(s: GameState, h: HeroState) -> void:
+	for cid: String in h.equipment.duplicate():
+		var c: CardDef = catalog.get_card(cid)
+		if c == null:
+			continue
+		var v: Dictionary = FirstTag.play_verdict(catalog, c, catalog.get_card(h.card_id), stat_card(h))
+		if not JsonUtil.as_bool(v["ok"]):
+			remove_equipment(s, h, cid)
+			s.event("equipment_unfit", {"card": cid, "hero": h.id, "why": str(v["why"])})
 
 
 ## Takes one equipment off (card to the graveyard); HP only drops to the new max.

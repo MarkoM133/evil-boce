@@ -22,6 +22,8 @@ var seed: int = 0
 ## cards.json records of every card the match uses, so a replay rebuilds its own catalog and
 ## still plays correctly after the cards change.
 var cards: Dictionary = {}
+## The trait list the first tag rule read (data/traits.json), so a replay plays by the same one.
+var traits: Array = []
 ## {"index", "turn", "phase", "state": GameState dict, "moves": [Move dicts], "rolls": [RollOutcome dicts]}
 var frames: Array[Dictionary] = []
 var finished: bool = false
@@ -56,7 +58,7 @@ func catalog() -> CardCatalog:
 	var list: Array = []
 	for k: Variant in cards:
 		list.append(cards[k])
-	return CardCatalog.from_doc({"version": cards_version, "cards": list})
+	return CardCatalog.from_doc({"version": cards_version, "cards": list, "traits": traits})
 
 
 ## Short description for lists: players, heroes, outcome.
@@ -165,6 +167,7 @@ func to_dict() -> Dictionary:
 		"decks": decks.duplicate(true),
 		"seed": seed,
 		"cards": cards.duplicate(true),
+		"traits": traits.duplicate(),
 		"frames": frames.duplicate(true),
 		"finished": finished,
 		"winner": winner,
@@ -208,6 +211,7 @@ static func from_dict(d: Dictionary) -> MatchRecord:
 	r.decks = JsonUtil.as_array(d.get("decks", []))
 	r.seed = JsonUtil.as_int(d.get("seed", 0))
 	r.cards = JsonUtil.as_dict(d.get("cards", {}))
+	r.traits = JsonUtil.as_array(d.get("traits", []))
 	for f: Variant in JsonUtil.as_array(d.get("frames", [])):
 		r.frames.append(JsonUtil.as_dict(f))
 	r.finished = JsonUtil.as_bool(d.get("finished", false))

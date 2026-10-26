@@ -38,6 +38,7 @@ static func start(engine_: RulesEngine, settings: MatchSettings, decks: Array, s
 			"stages": Array(JsonUtil.as_strings(d.get("stages", []))),
 		})
 	r.cards = _used_cards(engine_.catalog, decks)
+	r.traits = Array(engine_.catalog.trait_names)
 	rec.record = r
 	rec._open_frame()
 	return rec

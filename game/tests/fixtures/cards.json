@@ -1,7 +1,13 @@
 {
   "version": 1,
+  "traits": [{"name": "Haki"}, {"name": "Sword"}, {"name": "Gear Second"}],
   "cards": [
-    {"id": "TA-001", "name": "Alpha", "type": "Hero", "color": "Red", "wt": 2,
+    {"id": "TF-001", "name": "Alpha Only", "type": "Action", "color": "Red", "cost": 1, "traits": ["alpha"], "text": "x", "fx": "PREROLL: HEAL SELF 0"},
+    {"id": "TF-002", "name": "Gear Punch", "type": "Action", "color": "Red", "cost": 1, "traits": ["Gear Second"], "text": "x", "fx": "PREROLL: HEAL SELF 0"},
+    {"id": "TF-003", "name": "Gear Armor", "type": "Equipment", "color": "Red", "cost": 1, "traits": ["Gear Second"], "bonus": {"pwr": 1000}, "text": ""},
+    {"id": "TF-004", "name": "Red Will", "type": "Action", "color": "Red", "cost": 1, "traits": ["Haki"], "text": "x", "fx": "PREROLL: HEAL SELF 0"},
+    {"id": "TF-005", "name": "Unmake", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"], "text": "", "fx": "PREROLL: REMOVE_EVO SELF"},
+    {"id": "TA-001", "name": "Alpha", "type": "Hero", "color": "Red", "wt": 2, "traits": ["Haki"],
      "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2},
      "text": "Postroll Phase Once Per Turn: Alpha may move up to 2 spaces."},
     {"id": "TA-002", "name": "Bravo", "type": "Hero", "color": "Blue", "wt": 3,
@@ -26,7 +32,7 @@
      "stats": {"hp": 10, "dmg": 2, "pwr": 1500, "rng": 3, "kb": 1},
      "text": "All friendly Heroes in Juliet's Range have +1000 Power."},
 
-    {"id": "TA-012", "name": "Alpha, Awakened", "type": "Evolution", "color": "Red", "cost": 3,
+    {"id": "TA-012", "name": "Alpha, Awakened", "type": "Evolution", "color": "Red", "cost": 3, "traits": ["Haki", "Gear Second"],
      "evo": 1, "hero": "Alpha", "stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2}, "text": ""},
     {"id": "TA-013", "name": "Alpha, Ascended", "type": "Evolution", "color": "Red", "cost": 5,
      "evo": 2, "hero": "Alpha", "stats": {"hp": 14, "dmg": 5, "pwr": 4000, "rng": 3, "kb": 3}, "text": ""},

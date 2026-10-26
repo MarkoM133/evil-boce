@@ -142,8 +142,13 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    four packs of ten from the copy pool of both players' colours (evolutions only of drafted
    heroes), picks in turn, the rest to the other, no card of the other's colour or over its
    limit, a player with nothing legal skips, every deck filled to `deck_size` (20) at the end.
-   The host runs it online (`start_draft`, `draft_pick`); `scenes/match/draft.gd` shows it (local:
-   bots pick at random, the setup's stages and cores go with the drafted decks).
+f. (2026-10-26) The first tag rule (`FirstTag`, shared with the web app through
+   tests/fixtures/first_tag_cases.json) locks a card to who may play it: General (any hero of
+   its colour), a hero alias (the name follows the hero through evolutions) or a trait read off
+   the hero's current card (the last evolution, else the base). `_play` refuses the others
+   ("only for X", "Requires T"); equipment whose tag the hero no longer fits falls into the
+   graveyard when an evolution comes or goes (`_drop_unfit_equipment`). A record carries the
+   trait list it played by. `{Sword}` effects count equipment cards, never a hero's trait.
 10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
 11. A hero in the start zone can be activated at any time, and a stunned or locked hero

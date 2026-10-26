@@ -1,0 +1,43 @@
+{
+  "name": "First tag (2026-10-26): a card plays only for a hero it names or whose current traits fit; an evolution's trait comes and goes with it, and equipment that no longer fits falls off",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "players.p0.hand": ["TF-001", "TF-002", "TF-003", "TF-004", "TA-012", "TF-005", "TX-010"],
+      "players.p0.energy": 20, "initiative": 0,
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 10],
+      "heroes.p1:TB-001.zone": "map", "heroes.p1:TB-001.hex": [6, 4]
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": false}},
+    {"expect": {"phase": "preroll", "to_act": 0}},
+    {"move": {"type": "play_card", "player": 0, "card": "TF-002"}, "error": "Requires Gear Second"},
+    {"move": {"type": "play_card", "player": 0, "card": "TF-003"}, "error": "Requires Gear Second"},
+    {"move": {"type": "play_card", "player": 0, "card": "TF-004"}},
+    {"expect": {"players.p0.hand": {"$size": 6}}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-012"}},
+    {"expect": {"heroes.p0:TA-001.evolutions": ["TA-012"]}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TF-003"}},
+    {"expect": {"heroes.p0:TA-001.equipment": ["TF-003"]}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TF-002"}},
+    {"expect": {"players.p0.hand": {"$size": 3}}},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TF-005"}},
+    {"expect": {
+      "heroes.p0:TA-001.evolutions": {"$size": 0},
+      "heroes.p0:TA-001.equipment": {"$size": 0},
+      "players.p0.graveyard": {"$size": 5}
+    }},
+    {"move": {"type": "pass", "player": 1}},
+    {"move": {"type": "play_card", "player": 0, "card": "TF-001"}},
+    {"expect": {"players.p0.hand": ["TX-010"]}},
+    {"move": {"type": "pass", "player": 1}},
+    {"set": {"players.p1.hand": ["TF-001"], "players.p1.energy": 9, "to_act": 1}},
+    {"move": {"type": "play_card", "player": 1, "card": "TF-001"}, "error": "only for Alpha"}
+  ]
+}
