@@ -21,6 +21,8 @@ const CORE_RADIUS: float = 0.34
 const CORE_LOOK: float = 1.3
 ## How strongly a revealed stage's art shows on its hexes.
 const STAGE_ART_ALPHA: float = 0.6
+## Terrain labels by revealed stages.
+const TERRAIN_TAG_COLORS: Dictionary = {Terrain.Type.ICE: Color("bfe9ff"), Terrain.Type.MUD: Color("c89a6a"), Terrain.Type.RAMP: Color("f4c22f"), Terrain.Type.WIND: Color("c8fff4")}
 ## Battle camera: its tilt (the opening view's) and how long it stays after the last battle.
 const BATTLE_CAM_PITCH: float = 34.0
 const BATTLE_CAM_HOLD: float = 1.8
@@ -948,7 +950,8 @@ func _stage_art(st: StageState) -> Node3D:
 			var p1: Vector2 = c2 + Hex.corner(i + 1, tuning.hex_size)
 			for p: Vector2 in [c2, p1, p0]:
 				stt.set_uv(region.position + region.size * ((p - lo) / span))
-				stt.add_vertex(Vector3(p.x, 0.0, p.y))
+				# Draped over a Ramp hill, so the hill shows through the picture.
+				stt.add_vertex(Vector3(p.x, arena.height_at(Vector3(p.x, 0, p.y)), p.y))
 	var mi := MeshInstance3D.new()
 	mi.mesh = stt.commit()
 	mi.position.y = 0.02
@@ -961,6 +964,29 @@ func _stage_art(st: StageState) -> Node3D:
 	mat.roughness = 0.9
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	mi.material_override = mat
+	# The terrain shows on the picture (Marko 2026-10-26: it was felt, not seen): ice is pale
+	# and shiny, mud dark and dull; a label by the stage names it.
+	var kind: Terrain.Type = world.terrain.at(st.center) if world != null and world.terrain != null else Terrain.Type.NONE
+	match kind:
+		Terrain.Type.ICE:
+			mat.albedo_color = Color(0.82, 0.95, 1.15, STAGE_ART_ALPHA)
+			mat.roughness = 0.12
+			mat.metallic = 0.35
+		Terrain.Type.MUD:
+			mat.albedo_color = Color(0.72, 0.55, 0.38, STAGE_ART_ALPHA + 0.15)
+			mat.roughness = 1.0
+	if kind != Terrain.Type.NONE:
+		var tag := Label3D.new()
+		tag.text = Terrain.name_of(kind).to_upper()
+		tag.font_size = 44
+		tag.pixel_size = 0.012
+		tag.outline_size = 10
+		tag.modulate = TERRAIN_TAG_COLORS.get(kind, Color.WHITE)
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.no_depth_test = true
+		var edge: Vector2 = arena.map.to_world(st.center) + Vector2(0, tuning.hex_size * 2.4)
+		tag.position = Vector3(edge.x, 0.35, edge.y) - mi.position
+		mi.add_child(tag)
 	return mi
 
 
@@ -2411,3 +2437,20 @@ func demo_claims() -> void:
 	mine[1].stay_hero = h.id
 	mine[1].stay_turn = state.turn
 	_sync()
+
+
+## Screenshot helper: four stages face up, one of each terrain (Ice, Ramp, Wind, Mud).
+func demo_terrain() -> void:
+	_demo = true
+	var ids: Array[String] = ["Stage-001", "Stage-002", "Stage-003", "Stage-004"]
+	var spots: Array[Vector2i] = [Vector2i(6, 9), Vector2i(11, 8), Vector2i(16, 9), Vector2i(11, 13)]
+	for i: int in mini(4, state.stages.size()):
+		var st: StageState = state.stages[i]
+		st.card_id = ids[i]
+		st.placed = true
+		st.revealed = true
+		st.wind_dir = 1
+		st.center = Hex.offset_to_axial(spots[i].x, spots[i].y)
+	_sync()
+	cam.pitch = deg_to_rad(40.0)
+	cam.focus(arena.hex_center(Hex.offset_to_axial(11, 10)), 22.0)

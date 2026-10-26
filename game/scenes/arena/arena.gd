@@ -176,7 +176,7 @@ func _add_arrow(a: Vector2i, dir: int) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = _chevron_mesh()
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var base: Vector3 = hex_center(a) + Vector3(0, 0.02, 0)
+	var base: Vector3 = hex_center(a) + Vector3(0, 0.08, 0)
 	mi.position = base
 	mi.scale = Vector3.ONE * map.hex_size
 	# The chevron points along +x; turn it to the wind (x, z).
@@ -229,6 +229,9 @@ static func _chevron_mesh() -> ArrayMesh:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_color = Color(0.85, 1.0, 0.98, 0.9)
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# Over a revealed stage's picture too (it lies on the same hexes).
+	mat.no_depth_test = true
+	mat.render_priority = 2
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_chevron.surface_set_material(0, mat)
 	return _chevron
