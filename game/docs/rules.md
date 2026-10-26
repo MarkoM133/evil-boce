@@ -164,6 +164,10 @@ g. (2026-10-26) A grid knockback stopped by a wall or a hero costs `wall_damage`
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
 11. A hero in the start zone can be activated at any time, and a stunned or locked hero
    cannot; `select ""` is only legal when nothing can be activated.
+12. (2026-10-26) A hero in its start zone reaches no hex (`reaches_hex` false, as `in_range`):
+   a [Range] effect from there has no target. An Action whose first effect has nothing to work
+   on (no hex for a wall, no core or hero in reach) is not played: it stays in the hand, costs
+   nothing, and the hand shows why (`_play_blocker`).
 - JO1-011 "3 copies at once": the third copy of the card played by the same player in the
   same phase also gives +5 DMG (`IF COPIES 3`).
 - Stage reveal bonuses last while the hero stays on that stage and it is unclaimed.

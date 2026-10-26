@@ -1649,6 +1649,11 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 			var extra: int = _cost_damage(card)
 			if extra > 0 and target.hp <= extra:
 				return "cannot pay %d damage" % extra
+			# An Action whose effect has nothing to work on (no hex for its wall, no core in reach)
+			# is not played: it stays in the hand and costs nothing.
+			var blocked: String = _play_blocker(s, slot, target, card)
+			if not blocked.is_empty():
+				return blocked
 			_take_from_hand(p, cid)
 			for key: String in card.bonus:
 				target.add_bonus(target.phase_bonus, key, card.bonus[key])
@@ -1658,6 +1663,18 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 			return "%s cards cannot be played" % card.type
 	p.energy -= cost
 	_run_play_effects(s, slot, target, card)
+	return ""
+
+
+## Why the first effect an Action runs as it is played cannot start ("" when it can).
+func _play_blocker(s: GameState, slot: int, target: HeroState, card: CardDef) -> String:
+	var ctx: Dictionary = {"player": slot, "hero": target.id if target != null else "", "card": card.id, "stage": ""}
+	for e: FxEffect in card.effects:
+		if e.when == "PASSIVE" or e.when == "REVEAL" or e.cond == "WIN":
+			continue
+		if not fx.cond_ok(s, ctx, e):
+			continue
+		return fx.first_error(s, ctx, e)
 	return ""
 
 
@@ -1809,7 +1826,11 @@ func in_range(s: GameState, a: HeroState, b: HeroState) -> bool:
 	return gap <= stat(s, a, "rng")
 
 
+## A hex in `a`'s range. A hero in its start zone reaches nothing (GDD 6: it does not act on the
+## map until it enters it).
 func reaches_hex(s: GameState, a: HeroState, cell: Vector2i) -> bool:
+	if not a.is_on_map():
+		return false
 	var gap: int = Hex.distance(a.hex, cell) - (1 if a.big else 0)
 	return gap >= 1 and gap <= stat(s, a, "rng")
 

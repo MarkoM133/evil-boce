@@ -1,0 +1,19 @@
+{
+  "name": "a hero still in its start zone reaches no hex: a [Range] wall has nowhere to go (GDD 6)",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p1:TB-003.zone": "map", "heroes.p1:TB-003.hex": [8, 2],
+      "players.p0.hand": ["TA-046"],
+      "players.p0.energy": 5,
+      "initiative": 0
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": true}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003", "roll": false}},
+    {"expect": {"phase": "preroll", "heroes.p0:TA-001.zone": "strip"}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-046"}, "error": "no room for a wall"},
+    {"expect": {"walls": {"$size": 0}, "players.p0.energy": 5, "players.p0.hand": ["TA-046"]}}
+  ]
+}

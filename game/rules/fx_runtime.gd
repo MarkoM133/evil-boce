@@ -390,6 +390,13 @@ func _per(s: GameState, src: Dictionary, h: HeroState, args: PackedStringArray) 
 # Running an effect
 # =====================================================================================
 
+## Why the effect's first action cannot start now ("" when it can): no target, no hex, no core.
+func first_error(s: GameState, ctx: Dictionary, e: FxEffect) -> String:
+	if e.actions.is_empty():
+		return ""
+	return str(_needed_choice(s, ctx, e, e.actions[0], null).get("error", ""))
+
+
 ## Runs the effect's actions from `start`. `chosen` maps action index -> the player's answer.
 ## Returns "" when done or waiting on a choice, or an error (nothing changed) for a bad target.
 func run(s: GameState, ctx: Dictionary, e: FxEffect, start: int = 0, chosen: Dictionary = {}) -> String:
