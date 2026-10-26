@@ -125,3 +125,11 @@ test('karta s traitom imena heroja smije samo uz tog heroja', () => {
   const deck = { heroes: ['H-5', 'H-2', 'H-3'], cards: { 'Red-ONLY': 1 } };
   assert.ok(checkDeck(d, deck).problems.some(p => p.level === 'error' && p.msg.includes('only for Alpha')));
 });
+
+test('trait s prvom riječi imena heroja vrijedi kao puno ime', () => {
+  const d = db();
+  d.cards.push(hero('H-6', 'Zeta Prime', 'Red'));
+  d.cards.push(card('Red-Z', 'Action', 'Red', 1, { traits: ['zeta'] }));
+  assert.ok(!deckPool(d, ['H-1', 'H-2', 'H-3']).some(c => c.id === 'Red-Z'));
+  assert.ok(deckPool(d, ['H-6', 'H-2', 'H-3']).some(c => c.id === 'Red-Z'));
+});

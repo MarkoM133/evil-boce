@@ -42,10 +42,15 @@ function forHeroes(db, card, names) {
   return !only.length || only.some(n => names.has(n));
 }
 
-// Heroji kojima je karta namijenjena: traitovi jednaki imenu nekog heroja (velika i mala slova
-// nisu bitna). [] = karta za sve heroje svoje boje. Takva karta smije u deck samo uz tog heroja.
+// Heroji kojima je karta namijenjena: traitovi jednaki punom imenu nekog heroja ili prvoj riječi
+// imena (Giorno = Giorno Giovanna; velika i mala slova nisu bitna). [] = karta za sve heroje
+// svoje boje. Takva karta smije u deck samo uz tog heroja.
 export function cardHeroes(db, card) {
-  const names = new Map(heroCards(db).map(h => [h.name.toLowerCase(), h.name]));
+  const names = new Map();
+  for (const h of heroCards(db)) {
+    names.set(h.name.toLowerCase(), h.name);
+    names.set(h.name.split(' ')[0].toLowerCase(), h.name);
+  }
   return (card.traits ?? []).map(t => names.get(String(t).toLowerCase())).filter(Boolean);
 }
 

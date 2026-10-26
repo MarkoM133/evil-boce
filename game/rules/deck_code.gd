@@ -116,12 +116,13 @@ static func _pool(catalog: CardCatalog, heroes: Array[CardDef]) -> Array[CardDef
 	return pool
 
 
-## Heroes a card is meant for: its traits that are a hero's name (case does not matter); empty
-## for a card any hero of its colour may take. Such a card goes in a deck only with that hero.
+## Heroes a card is meant for: its traits that are a hero's full name or the first word of it
+## (Giorno = Giorno Giovanna; case does not matter); empty for a card any hero of its colour may
+## take. Such a card goes in a deck only with that hero.
 static func card_heroes(catalog: CardCatalog, c: CardDef) -> PackedStringArray:
 	var out := PackedStringArray()
 	for h: CardDef in catalog.of_type("Hero"):
-		if c.has_trait(h.name):
+		if c.has_trait(h.name) or c.has_trait(h.name.get_slice(" ", 0)):
 			out.append(h.name)
 	return out
 

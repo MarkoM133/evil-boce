@@ -79,6 +79,10 @@ func test_a_card_with_a_hero_trait_needs_that_hero() -> void:
 	var cat: CardCatalog = CardCatalog.from_doc(doc)
 	assert_eq(DeckCode.card_heroes(cat, cat.get_card("Q-1")), PackedStringArray(["Alpha"]))
 	assert_true(DeckCode.card_heroes(cat, cat.get_card("Q-2")).is_empty())
+	var cat2: CardCatalog = CardCatalog.from_doc({"version": 1, "cards": [
+		{"id": "H-9", "name": "Zeta Prime", "type": "Hero", "color": "Red"},
+		{"id": "A-9", "name": "Zeta Punch", "type": "Action", "color": "Red", "traits": ["zeta"]}]})
+	assert_eq(DeckCode.card_heroes(cat2, cat2.get_card("A-9")), PackedStringArray(["Zeta Prime"]), "first word counts")
 	var without: PackedStringArray = DeckCode.check(cat, PackedStringArray(["H-2", "H-3", "H-4"]), {"Q-1": 1})
 	assert_true(Array(without).any(func(e: String) -> bool: return e.contains("only for Alpha")), str(without))
 	var with_: PackedStringArray = DeckCode.check(cat, PackedStringArray(["H-1", "H-3", "H-4"]), {"Q-1": 1})
