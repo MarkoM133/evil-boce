@@ -80,7 +80,9 @@ func start_match(settings: MatchSettings, decks: Array, seed: int) -> GameState:
 		# a random draw from the full deck with the same copies and limits.
 		if settings.deck_size > 0 and p.deck.size() > settings.deck_size:
 			p.deck = p.deck.slice(0, settings.deck_size)
-	s.initiative = s.random_int(s.players.size())
+	# A series hands the first move to the last loser (MatchSeries); otherwise lots are drawn.
+	var first: int = settings.first_initiative
+	s.initiative = first if first >= 0 and first < s.players.size() else s.random_int(s.players.size())
 	s.setup_turn = s.initiative
 	s.event("match_start", {"initiative": s.initiative})
 	s.phase = GameState.PHASE_SETUP_STAGES

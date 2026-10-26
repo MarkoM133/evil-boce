@@ -11,6 +11,18 @@ signal state_changed
 signal paused_changed(paused: bool, by: int)
 signal player_changed(slot: int, connected: bool)
 
+## In a series the deck of game one stays: only the stages and cores of a new deck are taken.
+func _series_deck(slot: int, deck: Dictionary) -> Dictionary:
+	if series == null or series.is_over() or series.games == 0 or deck.is_empty() or slot < 0 or slot >= series.decks.size():
+		return deck
+	var fixed: Dictionary = JsonUtil.as_dict(series.decks[slot])
+	var out: Dictionary = deck.duplicate(true)
+	out["deck_name"] = fixed.get("name", "")
+	out["heroes"] = fixed.get("heroes", [])
+	out["cards"] = fixed.get("cards", {})
+	return out
+
+
 ## Seats at the table: 1v1 until 2v2 comes (step 4).
 const MAX_SEATS: int = 2
 
@@ -18,6 +30,9 @@ var link: NetLink
 var engine: RulesEngine
 var recorder: MatchRecorder
 var settings: MatchSettings = MatchSettings.standard()
+## The series (Best of 3) this table plays, null for single games; the decks of game one stay.
+var series: MatchSeries
+var _series_filed: bool = false
 var game_version: String = ""
 var cards_version: int = 0
 ## Seats: [{slot, name, peer (0 = host, -1 = bot), ready, bot, bot_level, deck, connected}]
@@ -67,7 +82,7 @@ func seat(slot: int) -> Dictionary:
 
 ## The host's own deck and readiness.
 func set_my_deck(deck: Dictionary) -> void:
-	seat(host_slot)["deck"] = deck
+	seat(host_slot)["deck"] = _series_deck(host_slot, deck)
 	_lobby()
 
 
@@ -149,6 +164,18 @@ func start(seed: int) -> String:
 	for s: Dictionary in seats:
 		decks.append(JsonUtil.as_dict(s["deck"]))
 		players.append({"name": s["name"], "bot": s["bot"], "bot_level": s["bot_level"], "deck_name": JsonUtil.as_dict(s["deck"]).get("deck_name", "")})
+	# A series (GDD 13): game one fixes the decks, every game hands the first move to the last loser.
+	if settings.series_wins > 1:
+		if series == null or series.is_over():
+			series = MatchSeries.new(settings.series_wins)
+			for d: Variant in decks:
+				var dd: Dictionary = JsonUtil.as_dict(d)
+				series.decks.append({"name": str(dd.get("deck_name", "")), "heroes": dd.get("heroes", []), "cards": dd.get("cards", {})})
+		settings.first_initiative = series.next_initiative()
+	else:
+		series = null
+		settings.first_initiative = -1
+	_series_filed = false
 	recorder = MatchRecorder.start(engine, settings, decks, seed, players, game_version)
 	started = true
 	link.broadcast({"t": NetProtocol.START, "settings": settings.to_dict(), "players": recorder.record.players,
@@ -159,7 +186,8 @@ func start(seed: int) -> String:
 
 
 func _lobby(again: bool = false) -> void:
-	var msg: Dictionary = {"t": NetProtocol.LOBBY, "players": public_seats(), "settings": settings.to_dict(), "again": again}
+	var msg: Dictionary = {"t": NetProtocol.LOBBY, "players": public_seats(), "settings": settings.to_dict(), "again": again,
+		"series": series.to_dict() if series != null else {}}
 	link.broadcast(msg)
 	lobby_changed.emit()
 
@@ -232,7 +260,11 @@ func _send_states() -> void:
 		if p > 0 and JsonUtil.as_bool(s.get("connected", false)):
 			link.send(p, {"t": NetProtocol.STATE, "state": NetProtocol.redact(full, JsonUtil.as_int(s["slot"]))})
 	if recorder.state.is_over():
-		link.broadcast({"t": NetProtocol.OVER, "summary": recorder.record.summary(), "record": recorder.record.to_dict()})
+		if series != null and not _series_filed:
+			_series_filed = true
+			series.record(recorder.state.winner)
+		link.broadcast({"t": NetProtocol.OVER, "summary": recorder.record.summary(), "record": recorder.record.to_dict(),
+			"series": series.to_dict() if series != null else {}})
 	state_changed.emit()
 
 
@@ -257,7 +289,7 @@ func _on_message(peer: int, msg: Dictionary) -> void:
 		NetProtocol.DECK:
 			if started:
 				return
-			s["deck"] = JsonUtil.as_dict(msg.get("deck", {}))
+			s["deck"] = _series_deck(JsonUtil.as_int(s.get("slot", -1)), JsonUtil.as_dict(msg.get("deck", {})))
 			_lobby()
 		NetProtocol.READY:
 			if started:

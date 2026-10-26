@@ -28,6 +28,8 @@ var cards_version: int = 0
 var slot: int = -1
 var players: Array = []
 var settings: Dictionary = {}
+## The host's series (Best of 3) as last sent (LOBBY, OVER); {} for single games.
+var series: Dictionary = {}
 var state: GameState
 var started: bool = false
 var paused: bool = false
@@ -78,6 +80,7 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 			my_name = str(msg.get("name", my_name))
 			players = JsonUtil.as_array(msg.get("players", []))
 			settings = JsonUtil.as_dict(msg.get("settings", {}))
+			series = JsonUtil.as_dict(msg.get("series", {}))
 			welcomed.emit(slot)
 		NetProtocol.REJECT:
 			rejected.emit(str(msg.get("reason", "")))
@@ -118,6 +121,7 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 			player_changed.emit(JsonUtil.as_int(msg.get("slot", -1), -1), str(msg.get("name", "")), JsonUtil.as_bool(msg.get("connected", false)))
 		NetProtocol.OVER:
 			var rec: Dictionary = JsonUtil.as_dict(msg.get("record", {}))
+			series = JsonUtil.as_dict(msg.get("series", {}))
 			match_over.emit(JsonUtil.as_dict(msg.get("summary", {})), MatchRecord.from_dict(rec) if not rec.is_empty() else null)
 
 

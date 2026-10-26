@@ -43,6 +43,9 @@ const COLUMNS: Array = [
 			["max_energy", "Most energy", "Energy grows by one each turn up to this.", [5, 6, 7, 8, 9, 10, 12]],
 			["assist_limit", "Assists", "How many assists one player can have out.", [1, 2, 3, 4, 5]],
 		]],
+		["SERIES", [
+			["series_wins", "Series", "Wins that take the match. The loser starts the next game; stages and cores are picked again, the decks stay.", [1, 2, 3]],
+		]],
 	],
 ]
 
@@ -100,6 +103,9 @@ static func value_text(key: String, v: Variant) -> String:
 			return "BY THE PLAYERS" if JsonUtil.as_bool(v) else "AT RANDOM"
 		"knockback":
 			return str(v).to_upper()
+		"series_wins":
+			var w: int = JsonUtil.as_int(v)
+			return "ONE GAME" if w <= 1 else "BEST OF %d" % (w * 2 - 1)
 		"timer_seconds":
 			var t: int = JsonUtil.as_int(v)
 			return "OFF" if t <= 0 else "%d S" % t

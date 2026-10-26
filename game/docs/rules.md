@@ -125,14 +125,15 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    the deck, the gentlest choice). The match scene keeps the clocks locally and as the host;
    guests only show them. `timer_seconds` 0 = off.
    `deck_size` below the deck's cards (the Fast mode, GDD 13) plays the first that many of the
-c. (2026-10-26) Knockback mode `knockback`: "grid" (hex by hex, as above), "physics" (every
+9c. (2026-10-26) Knockback mode `knockback`: "grid" (hex by hex, as above), "physics" (every
    knockback) or "mixed" (only a `LAUNCH` effect). A physics knockback is not applied by the
    engine: it waits in `GameState.pending_knockbacks` ({hero, dir, steps}), `_continue` stops
    and every move is refused with "waiting for the knockback" until the scene runs the sim
    (hit along the hex direction, power = steps / full-power hexes of the WT) and brings the
    `RollOutcome` to `apply_knockback`. The outcome lands every moved ball as a roll does
    (cores, stages, ring-outs); a knocked hero takes `wall_damage` once per ball it hit. The
-   sim has no walls, so a physics knockback rolls through a wall hex (assumption).
+9d. (2026-10-26) `series_wins` > 1 is a series (`MatchSeries`, not a rule: the scene and the host
+   keep it); `first_initiative` names who starts (the last loser), -1 draws lots as before.
 10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
 11. A hero in the start zone can be activated at any time, and a stunned or locked hero

@@ -25,6 +25,7 @@ var _room: Control
 var _card: PlayerCard
 var _opp: PlayerCard
 var _wait: PanelContainer
+var _series: Label
 var _wait_host: Control
 var _address_label: Label
 var _bot_row: HBoxContainer
@@ -122,6 +123,9 @@ func _build() -> void:
 	_room.add_theme_constant_override("separation", 14)
 	_room.visible = false
 	content.add_child(_room)
+	_series = UiTheme.label("", 18, Palette.GOLD)
+	_series.visible = false
+	_room.add_child(_series)
 	var vs_row := HBoxContainer.new()
 	vs_row.add_theme_constant_override("separation", 18)
 	_room.add_child(vs_row)
@@ -410,6 +414,17 @@ func _refresh() -> void:
 		_opp.set_header(str(other.get("name", "")), JsonUtil.as_int(other.get("slot", 1)))
 		_opp.show_only(JsonUtil.as_dict(other.get("shown", {})))
 		_tags(_opp, other, false)
+	# A series (Best of 3): the decks of game one stay, stages and cores are picked again.
+	var sd: Dictionary = host.series.to_dict() if host != null and host.series != null else (client.series if client != null else {})
+	var series: MatchSeries = MatchSeries.from_dict(sd) if not sd.is_empty() else null
+	var in_series: bool = series != null and series.games > 0 and not series.is_over()
+	_series.visible = in_series
+	if in_series:
+		_series.text = "SERIES %s  ·  GAME %d NEXT  ·  THE DECKS STAY, PICK YOUR STAGES AND CORES" % [series.score(), series.games + 1]
+		if my_slot >= 0 and my_slot < series.decks.size() and not _card.deck_fixed():
+			_card.set_fixed_deck(JsonUtil.as_dict(series.decks[my_slot]))
+			_send_deck()
+	_rules.set_editable(host != null and not in_series)
 	if host == null:
 		_rules.set_settings(MatchSettings.from_dict(client.settings if client != null else {}))
 	# Chaos (GDD 13): everyone plays random decks, stages and cores; a locked card is sent again.
@@ -419,7 +434,7 @@ func _refresh() -> void:
 		var why: String = host.can_start()
 		_start_btn.disabled = not why.is_empty()
 		_start_btn.tooltip_text = why
-		_start_btn.text = "START MATCH" if why.is_empty() else why.to_upper()
+		_start_btn.text = (("START GAME %d" % (series.games + 1)) if in_series else "START MATCH") if why.is_empty() else why.to_upper()
 		_start_btn.add_theme_font_size_override("font_size", 40 if why.is_empty() else 22)
 
 

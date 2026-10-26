@@ -519,12 +519,41 @@ func _rematch() -> void:
 		net_host.back_to_lobby()
 		get_tree().change_scene_to_file(LOBBY_SCENE)
 		return
+	# A series (Best of 3): back to the setup for the next game's stages and cores; a finished
+	# series leaves the setup to start a new one.
+	if net_role == "" and MatchSeries.current != null:
+		if MatchSeries.current.is_over():
+			MatchSeries.current = null
+		get_tree().change_scene_to_file(SETUP_SCENE)
+		return
 	var settings: MatchSettings = _config["settings"]
 	var c: Dictionary = _config.duplicate()
 	c["settings"] = MatchSettings.from_dict(settings.to_dict())
 	c["seed"] = randi()
 	MatchLaunch.config = c
 	get_tree().change_scene_to_file(MATCH_SCENE)
+
+
+## The end screen's series line (Best of 3) and what its first button does next.
+func _refresh_series() -> void:
+	var s: MatchSeries = null
+	if net_role == "host":
+		s = net_host.series
+	elif net_role == "client":
+		s = MatchSeries.from_dict(net_client.series) if not net_client.series.is_empty() else null
+	else:
+		s = MatchSeries.current
+	if s == null or s.games == 0:
+		hud.series_text = ""
+		return
+	var line: String = "SERIES %s" % s.score()
+	if s.is_over():
+		line += ("  ·  %s TAKES THE SERIES" % hud.player_name(s.winner()).to_upper()) if s.winner() >= 0 else "  ·  A DRAWN SERIES"
+	else:
+		line += "  ·  GAME %d NEXT" % (s.games + 1)
+	hud.series_text = line
+	if net_role == "":
+		hud.rematch_text = "New series" if s.is_over() else "Next game"
 
 
 # --- moves ------------------------------------------------------------------
@@ -600,6 +629,8 @@ func _after_change() -> void:
 		ReplayStore.save_replay(recorder.record)
 		ReplayStore.write_stats(recorder.record, db.root_dir)
 		hud.end_summary = recorder.record.summary()
+		if net_role == "" and MatchSeries.current != null and not MatchSeries.current.is_over():
+			MatchSeries.current.record(state.winner)
 	elif net_role == "" and recorder.record.frame_count() != _saved_frames:
 		# Only local matches can be continued; an online one needs everyone at the table.
 		_saved_frames = recorder.record.frame_count()
@@ -623,6 +654,8 @@ func _sync() -> void:
 	_refresh_target_fx()
 	hud.rolling = _runner.is_running() or _launching
 	hud.setup_pick = _setup_item()
+	if state.is_over():
+		_refresh_series()
 	hud.refresh()
 	if _replay != null or net_role == "client":
 		# Watching, or a guest: nothing moves by itself; balls follow what the host sends.

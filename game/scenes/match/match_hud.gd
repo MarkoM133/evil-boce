@@ -74,6 +74,8 @@ var new_match: bool = true
 var setup_pick: String = ""
 ## The match summary (MatchRecord.summary) shown on the end screen; set by the match scene.
 var end_summary: Dictionary = {}
+## The series line on the end screen ("SERIES 1–0 · GAME 2 NEXT"), set by the match scene.
+var series_text: String = ""
 
 ## How far the hand is lowered (0 = up); it drops when the mouse is over the table (GDD 11).
 var _hand_drop: float = 0.0
@@ -2064,6 +2066,8 @@ func _refresh_over() -> void:
 				s.art_tint = Color(0.35, 0.35, 0.35)
 			s.tooltip_text = hero_name(h)
 			strips.add_child(s)
+	if not series_text.is_empty():
+		_over_box.add_child(UiTheme.label(series_text, 26, Palette.GOLD))
 	if not end_summary.is_empty():
 		_over_box.add_child(_stats_table())
 	if rematch_text.is_empty():

@@ -25,6 +25,8 @@ var header_extra: HBoxContainer
 var _title: String = ""
 ## Chaos: deck, stages and cores are random and cannot be changed (set_locked_random).
 var _locked: bool = false
+## A series (Best of 3): the deck of game one stays; only stages and cores are picked again.
+var _deck_locked: bool = false
 var _body: VBoxContainer
 var _popup: PopupPanel
 var _sb: StyleBoxFlat
@@ -111,6 +113,20 @@ func picks() -> Dictionary:
 		"stages": Array(loadout.stages), "cores": Array(loadout.cores)}
 
 
+## A series (Best of 3, GDD 13): this deck ({name, heroes, cards}) is played again; stages and
+## cores are still the player's to pick.
+func set_fixed_deck(d: Dictionary) -> void:
+	_deck_locked = true
+	deck_index = 0
+	built = d
+	leader = ""
+	_rebuild()
+
+
+func deck_fixed() -> bool:
+	return _deck_locked
+
+
 ## Chaos (GDD 13): everything random, nothing to pick. Says whether that changed anything.
 func set_locked_random(on: bool) -> bool:
 	if on == _locked:
@@ -164,7 +180,8 @@ func _rebuild() -> void:
 	prev.tooltip_text = "Previous deck"
 	prev.pressed.connect(func() -> void: _flip(-1))
 	var fixed: bool = _view_only or _locked
-	if not fixed:
+	var deck_fixed_: bool = fixed or _deck_locked
+	if not deck_fixed_:
 		deck_row.add_child(prev)
 	var name_box := VBoxContainer.new()
 	name_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -176,7 +193,7 @@ func _rebuild() -> void:
 	caption.add_child(UiTheme.label("DECK", 13, Palette.GOLD))
 	if not _view_only:
 		var builder: Button = WebApp.link("DECK BUILDER", "decks/new", "Build or change decks in the web app; saved decks show here.")
-		builder.visible = not _locked
+		builder.visible = not _locked and not _deck_locked
 		builder.add_theme_font_size_override("font_size", 12)
 		builder.add_theme_constant_override("h_separation", 2)
 		builder.custom_minimum_size = Vector2(0, 18)
@@ -189,7 +206,11 @@ func _rebuild() -> void:
 		var chaos: Label = UiTheme.label("CHAOS  ·  ALL RANDOM", 12, Palette.GOLD)
 		chaos.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		caption.add_child(chaos)
-	if deck_index == 0 and not fixed:
+	if _deck_locked:
+		var same: Label = UiTheme.label("SERIES  ·  THE DECK STAYS", 12, Palette.GOLD)
+		same.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		caption.add_child(same)
+	if deck_index == 0 and not deck_fixed_:
 		var roll := Button.new()
 		roll.text = "REROLL" if not built.is_empty() else "BUILD"
 		roll.add_theme_font_size_override("font_size", 18)
@@ -202,7 +223,7 @@ func _rebuild() -> void:
 	next.add_theme_font_size_override("font_size", 26)
 	next.tooltip_text = "Next deck"
 	next.pressed.connect(func() -> void: _flip(1))
-	if not fixed:
+	if not deck_fixed_:
 		deck_row.add_child(next)
 	var heroes := HBoxContainer.new()
 	heroes.add_theme_constant_override("separation", 6)
@@ -210,9 +231,9 @@ func _rebuild() -> void:
 	var ids: PackedStringArray = JsonUtil.as_strings((_shown if _view_only else saved_deck()).get("heroes", []))
 	for i: int in DeckCode.HERO_COUNT:
 		var id: String = ids[i] if i < ids.size() else ""
-		if i == 0 and deck_index == 0 and not fixed and id.is_empty():
+		if i == 0 and deck_index == 0 and not deck_fixed_ and id.is_empty():
 			id = leader
-		heroes.add_child(_hero_tile(id, i == 0 and deck_index == 0 and not fixed))
+		heroes.add_child(_hero_tile(id, i == 0 and deck_index == 0 and not deck_fixed_))
 
 	# Stages.
 	_body.add_child(UiTheme.label("STAGES", 13, Palette.GOLD))

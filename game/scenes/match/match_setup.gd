@@ -17,6 +17,7 @@ var _opponent: int = 0
 ## Who plays the second seat, kept between visits while the game runs: 0 bot Easy, 1 Hard, 2 a second player here.
 static var last_opponent: int = 0
 var _rules: MatchRules
+var _in_series: bool = false
 var _problems: Label
 var _start_btn: Button
 
@@ -25,7 +26,14 @@ func _ready() -> void:
 	_opponent = last_opponent
 	db = CardDb.load_from(GameSettings.data_path())
 	decks = DeckStore.load_all(db.root_dir)
-	var frame: Dictionary = MenuScreen.build(self, db, "New match", "Decks, stages and cores, then start.",
+	# A series (Best of 3): the next game keeps the decks and the opponent, only stages and cores change.
+	var series: MatchSeries = MatchSeries.current
+	_in_series = series != null and series.games > 0 and not series.is_over()
+	if _in_series:
+		_opponent = series.opponent
+	var title: String = ("Game %d" % (series.games + 1)) if _in_series else "New match"
+	var subtitle: String = ("Series %s. The decks stay; pick your stages and cores." % series.score()) if _in_series else "Decks, stages and cores, then start."
+	var frame: Dictionary = MenuScreen.build(self, db, title, subtitle,
 		func() -> void: get_tree().change_scene_to_file(MENU_SCENE), 1300.0)
 	var content: VBoxContainer = frame["content"]
 	if not db.is_ok():
@@ -45,6 +53,8 @@ func _ready() -> void:
 			Loadout.remembered("p%d" % (slot + 1)))
 		card.changed.connect(_check)
 		_cards.append(card)
+		if _in_series and slot < series.decks.size():
+			card.set_fixed_deck(JsonUtil.as_dict(series.decks[slot]))
 		if slot == 0:
 			var vs: Label = UiTheme.label("VS", 64, Palette.ACCENT)
 			vs.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -59,6 +69,7 @@ func _ready() -> void:
 		b.toggle_mode = true
 		b.button_group = group
 		b.button_pressed = i == _opponent
+		b.disabled = _in_series
 		b.add_theme_font_size_override("font_size", 15)
 		b.pressed.connect(func() -> void:
 			_opponent = i
@@ -77,13 +88,13 @@ func _ready() -> void:
 	_rules = MatchRules.new()
 	_rules.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(_rules)
-	_rules.setup(GameSettings.match_rules("local"), true)
+	_rules.setup(GameSettings.match_rules("local"), not _in_series)
 	_rules.changed.connect(func() -> void:
 		GameSettings.set_match_rules("local", _rules.settings)
 		_lock_cards())
 	_lock_cards()
 	_start_btn = Button.new()
-	_start_btn.text = "START MATCH"
+	_start_btn.text = ("START GAME %d" % (series.games + 1)) if _in_series else "START MATCH"
 	_start_btn.theme_type_variation = &"Primary"
 	_start_btn.add_theme_font_size_override("font_size", 40)
 	_start_btn.custom_minimum_size = Vector2(380, 0)
@@ -119,6 +130,15 @@ func _start() -> void:
 	GameSettings.set_match_rules("local", settings)
 	settings.resolve_map(rng, GameSettings.MAP_SIZES)
 	GameSettings.set_map_size(settings.map_size)
+	var series: MatchSeries = MatchSeries.current
+	if _in_series:
+		settings.first_initiative = series.next_initiative()
+	else:
+		settings.first_initiative = -1
+		series = MatchSeries.new(settings.series_wins) if settings.series_wins > 1 else null
+		if series != null:
+			series.opponent = _opponent
+		MatchSeries.current = series
 	var bot: bool = _opponent < 2
 	var level: String = "hard" if _opponent == 1 else "easy"
 	var engine_decks: Array = []
@@ -126,6 +146,8 @@ func _start() -> void:
 		var card: PlayerCard = _cards[slot]
 		var saved: Dictionary = card.saved_deck()
 		var deck: Dictionary = DeckCode.random_deck(db.catalog, rng) if saved.is_empty() else saved
+		if series != null and not _in_series:
+			series.decks.append({"name": str(deck.get("name", "")), "heroes": deck.get("heroes", []), "cards": deck.get("cards", {})})
 		var who: String = ("Bot (%s)" % level.capitalize()) if bot and slot == 1 else "Player %d" % (slot + 1)
 		card.loadout.remember("p%d" % (slot + 1))
 		GameSettings.set_last_deck("p%d" % (slot + 1), "" if saved.is_empty() else str(saved["name"]))
@@ -171,3 +193,17 @@ func demo_leader_pick() -> void:
 func demo_chaos() -> void:
 	_rules.settings = MatchSettings.preset("chaos")
 	_rules._changed()
+
+
+## Screenshot helper: game two of a Best of 3, the bot one up; the decks of game one stay.
+func demo_series() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2
+	var s := MatchSeries.new(2)
+	for _i: int in 2:
+		var d: Dictionary = DeckCode.random_deck(db.catalog, rng)
+		s.decks.append({"name": str(d["name"]), "heroes": d["heroes"], "cards": d["cards"]})
+	s.opponent = 1
+	s.record(1)
+	MatchSeries.current = s
+	get_tree().reload_current_scene()

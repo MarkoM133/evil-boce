@@ -32,6 +32,10 @@ var max_tie_turns: int = 2
 ## `range_min`, unless the card's own range is already lower.
 var range_delta: int = 0
 var range_min: int = 2
+## Wins that take the series (Best of 3 = 2); 1 is a single game. See MatchSeries.
+var series_wins: int = 1
+## Who starts (a series: the loser of the last game); -1 draws lots.
+var first_initiative: int = -1
 ## The game mode these settings came from ("standard", "fast", "chaos") or "custom".
 var mode: String = "standard"
 
@@ -49,11 +53,12 @@ static func standard() -> MatchSettings:
 ## The game modes (GDD 13) as presets of these settings; "custom" is any other mix. The mode
 ## name travels with the settings (lobby, record) and the map is not part of it: a preset
 ## brings its map, changing the map afterwards keeps the name.
-const MODES: Array[String] = ["standard", "fast", "chaos", "custom"]
+const MODES: Array[String] = ["standard", "fast", "chaos", "bo3", "custom"]
 const MODE_LINES: Dictionary[String, String] = {
 	"standard": "The rules as written: a 23 × 23 map, three stages to win, no timer.",
 	"fast": "30 seconds a move, 20 cards, two stages to win, a 17 × 17 map.",
 	"chaos": "Random heroes and decks, random stages and cores dropped on a random map.",
+	"bo3": "Best of 3: first to two wins. The loser starts the next game; stages and cores are picked again.",
 	"custom": "Your own mix of rules.",
 }
 ## Map size 0 stands for "drawn when the match starts" (resolve_map).
@@ -71,6 +76,8 @@ static func preset(name: String) -> MatchSettings:
 		"chaos":
 			s.manual_setup = false
 			s.map_size = MAP_RANDOM
+		"bo3":
+			s.series_wins = 2
 	s.mode = name if MODES.has(name) else "custom"
 	return s
 
@@ -78,11 +85,11 @@ static func preset(name: String) -> MatchSettings:
 ## The preset these settings match (the map and the name aside), else "custom".
 func mode_of() -> String:
 	var mine: Dictionary = to_dict()
-	for name: String in ["standard", "fast", "chaos"]:
+	for name: String in ["standard", "fast", "chaos", "bo3"]:
 		var p: Dictionary = preset(name).to_dict()
 		var same: bool = true
 		for k: Variant in mine:
-			if k != "map_size" and k != "mode" and mine[k] != p.get(k):
+			if k != "map_size" and k != "mode" and k != "first_initiative" and mine[k] != p.get(k):
 				same = false
 				break
 		if same:
@@ -135,6 +142,8 @@ func to_dict() -> Dictionary:
 		"max_tie_turns": max_tie_turns,
 		"range_delta": range_delta,
 		"range_min": range_min,
+		"series_wins": series_wins,
+		"first_initiative": first_initiative,
 		"mode": mode,
 	}
 
@@ -161,5 +170,7 @@ static func from_dict(d: Dictionary) -> MatchSettings:
 	s.max_tie_turns = JsonUtil.as_int(d.get("max_tie_turns", s.max_tie_turns), s.max_tie_turns)
 	s.range_delta = JsonUtil.as_int(d.get("range_delta", s.range_delta), s.range_delta)
 	s.range_min = JsonUtil.as_int(d.get("range_min", s.range_min), s.range_min)
+	s.series_wins = JsonUtil.as_int(d.get("series_wins", s.series_wins), s.series_wins)
+	s.first_initiative = JsonUtil.as_int(d.get("first_initiative", s.first_initiative), s.first_initiative)
 	s.mode = str(d.get("mode", s.mode))
 	return s
