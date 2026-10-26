@@ -2495,3 +2495,19 @@ func demo_equip() -> void:
 			h.equipment.append(c.id)
 	hud.hover_hero = h.id
 	_sync()
+
+
+## Screenshot helper: a Preroll card round with a hand, a graveyard and the deck piles.
+func demo_piles() -> void:
+	_demo = true
+	state.phase = GameState.PHASE_PREROLL
+	state.to_act = 0
+	var p: PlayerState = state.player(0)
+	while p.hand.size() < 7 and not p.deck.is_empty():
+		p.hand.append(p.deck[0])
+		p.deck.remove_at(0)
+	for i: int in 3:
+		p.graveyard.append(p.deck[0])
+		p.deck.remove_at(0)
+	hud.local_slots = PackedInt32Array([0])
+	_sync()

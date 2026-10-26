@@ -44,6 +44,8 @@ const SLICE_HEIGHT: float = 70.0
 const CARD_SIZE := Vector2(128, 178)
 ## Height of the hand strip; the cards stick out of the bottom of the screen a little.
 const HAND_HEIGHT: float = 210.0
+## The hand's width; the deck and the graveyard stand right of it (Marko 2026-10-26).
+const HAND_WIDTH: float = 760.0
 const BANNER_TIME: float = 0.8
 ## Phase call-outs stay a little longer, to be read.
 const PHASE_BANNER_TIME: float = 3.0
@@ -124,6 +126,7 @@ var target_slot: int = -1
 var picks: Dictionary = {}
 ## Start: whether each local player's pick rolls (slot -> bool; missing = rolls).
 var pick_rolls: Dictionary = {}
+var _piles: VBoxContainer
 var _ball_choice: HBoxContainer
 var _choice_hero: String = ""
 var target_cid: String = ""
@@ -193,6 +196,7 @@ func refresh() -> void:
 			_fill_roster(_rosters[slot], slot)
 	_refresh_prompt()
 	_refresh_hand()
+	_refresh_piles()
 	_refresh_dialog()
 	_refresh_over()
 
@@ -442,11 +446,20 @@ func _build() -> void:
 	_tray.add_theme_constant_override("separation", 8)
 	add_child(_tray)
 
+	# The deck and the graveyard of the player whose hand shows: two small piles right of the
+	# hand, the graveyard above the deck (Marko 2026-10-26).
+	_piles = VBoxContainer.new()
+	_piles.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_piles.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_piles.position = Vector2(HAND_WIDTH * 0.5 + 14.0, -16.0)
+	_piles.add_theme_constant_override("separation", 18)
+	_piles.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_piles)
 	# The hand: a fan of cards at the bottom; it slides down when the mouse is over the table.
 	_hand_box = Control.new()
 	_hand_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_hand_box.position = Vector2(-450, -HAND_HEIGHT)
-	_hand_box.size = Vector2(900, HAND_HEIGHT)
+	_hand_box.position = Vector2(-HAND_WIDTH * 0.5, -HAND_HEIGHT)
+	_hand_box.size = Vector2(HAND_WIDTH, HAND_HEIGHT)
 	_hand_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_hand_box)
 	_hand = Control.new()
@@ -648,6 +661,10 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 		if battle_cam and not _in_battle(h):
 			continue
 		col.add_child(_hero_slice(h, right))
+	# Your own deck and graveyard stand as piles by the hand (_refresh_piles); the counts here
+	# are for the other side (and for two players at one screen).
+	if local_slots.size() == 1 and local_slots[0] == slot:
+		return
 	# Under the heroes: what the player holds; the graveyard's cards on hover.
 	var info := Label.new()
 	info.add_theme_color_override("font_color", Palette.MUTED)
@@ -1412,7 +1429,7 @@ func _refresh_hand() -> void:
 	_hand_title.visible = mulligan
 	var my_round: bool = _in_card_round() and state.to_act == slot and state.pending.is_empty()
 	var n: int = p.hand.size()
-	var step: float = minf(176.0 if mulligan else 96.0, 860.0 / maxf(float(n), 1.0))
+	var step: float = minf(176.0 if mulligan else 96.0, (HAND_WIDTH - 40.0) / maxf(float(n), 1.0))
 	for i: int in n:
 		var cid: String = p.hand[i]
 		var check: Dictionary = _play_check(slot, cid) if my_round else {}
@@ -2458,4 +2475,65 @@ func _equip_mini(cid: String) -> Control:
 		box.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
 	box.mouse_entered.connect(func() -> void: _hovered(cid))
 	box.gui_input.connect(func(e: InputEvent) -> void: _card_click(e, cid))
+	return box
+
+
+## The piles right of the hand: graveyard (its top card, faded; hover lists it, right click
+## shows it big) above the deck (a stack), each with its count.
+func _refresh_piles() -> void:
+	if _piles == null or state == null:
+		return
+	_clear(_piles)
+	var slot: int = hand_slot()
+	if slot < 0 and not local_slots.is_empty():
+		slot = local_slots[0]
+	var p: PlayerState = state.player(slot) if slot >= 0 else null
+	_piles.visible = p != null
+	if not _piles.visible:
+		return
+	var top: String = p.graveyard[p.graveyard.size() - 1] if not p.graveyard.is_empty() else ""
+	var grave: Control = _pile(top, "GRAVE %d" % p.graveyard.size(), false)
+	grave.tooltip_text = "Graveyard: " + (", ".join(_card_names(p.graveyard)) if not p.graveyard.is_empty() else "empty")
+	if not top.is_empty():
+		grave.gui_input.connect(func(e: InputEvent) -> void: _card_click(e, top))
+	_piles.add_child(grave)
+	_piles.add_child(_pile("", "DECK %d" % p.deck.size(), true))
+
+
+## One pile: a face-down stack (deck) or the top card faded (graveyard; an empty slot when none),
+## its count on a dark tab under it.
+func _pile(cid: String, count: String, face_down: bool) -> Control:
+	var box := Control.new()
+	box.custom_minimum_size = Vector2(56, 78)
+	box.mouse_filter = Control.MOUSE_FILTER_STOP
+	var layers: int = 3 if face_down else 1
+	for i: int in layers:
+		var k: int = layers - 1 - i
+		var card := Panel.new()
+		var sb := StyleBoxFlat.new()
+		sb.set_corner_radius_all(5)
+		sb.set_border_width_all(2)
+		sb.border_color = Color("141110")
+		sb.bg_color = Palette.ACCENT.darkened(0.15 * k) if face_down else Color(0.42, 0.37, 0.33, 0.45 if cid.is_empty() else 0.9)
+		card.add_theme_stylebox_override("panel", sb)
+		card.position = Vector2(2.0 * k, -2.0 * k)
+		card.size = Vector2(56, 78)
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(card)
+	if not face_down and not cid.is_empty():
+		var tex: Texture2D = db.thumb(cid) if db != null else null
+		if tex != null:
+			var pic := TextureRect.new()
+			pic.texture = tex
+			pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			pic.position = Vector2(3, 3)
+			pic.size = Vector2(50, 72)
+			pic.modulate = Color(1, 1, 1, 0.7)
+			pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			box.add_child(pic)
+	var tab: UiShape = UiShape.chip(count, Color("141110"), Palette.FG, 12, 18.0, 6.0)
+	tab.position = Vector2(-4, 66)
+	tab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(tab)
 	return box
