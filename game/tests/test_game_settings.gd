@@ -46,7 +46,8 @@ func test_match_rules_keep_only_the_changes() -> void:
 	s.start_hand = 6
 	s.map_size = 15
 	GameSettings.set_match_rules("local", s)
-	assert_eq(GameSettings._config().get_value("match_rules", "local"), {"start_hand": 6, "map_size": 15})
+	var stored: Dictionary = JsonUtil.as_dict(GameSettings._config().get_value("match_rules", "local"))
+	assert_eq(stored, {"start_hand": 6, "map_size": 15})
 	var back: MatchSettings = GameSettings.match_rules("local")
 	assert_eq(back.start_hand, 6)
 	assert_eq(back.map_size, 15)
