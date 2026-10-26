@@ -12,6 +12,9 @@ const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
 const BOT_DELAY: float = 0.5
 ## Auto-pass waits this long, the same whether a card could have been played or not (GDD 8).
 const AUTO_PASS_DELAY: float = 1.5
+## A new phase holds the table this long (Marko 2026-10-26: it went by too fast to notice):
+## bots and auto-pass wait, the clock stands. The player may still move at once.
+const PHASE_HOLD: float = 3.0
 ## Core token radius; a rolling ball picks a core up when it touches it.
 const CORE_RADIUS: float = 0.34
 ## The token is drawn this much bigger than its pick-up radius, so its picture reads.
@@ -40,6 +43,8 @@ var _ball_tick: float = 0.0
 var _hp: Dictionary[String, int] = {}
 ## Balls hopping to a new hex by a rule move: they stay closed until they land.
 var _sliding: Dictionary[String, bool] = {}
+var _phase_hold: float = 0.0
+var _held_phase: String = ""
 var _ko_shown: Dictionary[String, bool] = {}
 ## True while a redraw must not animate (a replay jumping frames).
 var _quiet: bool = false
@@ -1339,6 +1344,7 @@ func _process(delta: float) -> void:
 	if _replay != null:
 		_run_playback(delta)
 		return
+	_run_phase_hold(delta)
 	_run_bots(delta)
 	_run_auto_pass(delta)
 	_run_clock(delta)
@@ -1426,7 +1432,9 @@ func _run_playback(delta: float) -> void:
 ## when the balls stop, and the wait is what hides who had something (GDD 8, 2026-10-26).
 func _run_auto_pass(delta: float) -> void:
 	if not GameSettings.auto_pass() or _replay != null or _menu.visible \
-			or state.is_over() or _runner.is_running() or _launching:
+			or state.is_over() or _runner.is_running() or _launching or _phase_hold > 0.0 \
+			or state.phase == GameState.PHASE_BATTLE:
+		# Battle is never passed for the player (Marko 2026-10-26): it is the big moment.
 		_idle_pass = 0.0
 		return
 	var slot: int = state.to_act
@@ -1484,7 +1492,7 @@ func _run_clock(delta: float) -> void:
 			_clocks.clear()
 		hud.set_clock(-1, "")
 		return
-	var frozen: bool = _runner.is_running() or _launching \
+	var frozen: bool = _runner.is_running() or _launching or _phase_hold > 0.0 \
 			or (net_role == "host" and net_host.paused) or (net_role == "client" and not hud.net_paused.is_empty()) \
 			or (net_role.is_empty() and _menu.visible)
 	if net_role != "client":
@@ -1559,7 +1567,7 @@ func _show_clock() -> void:
 
 
 func _run_bots(delta: float) -> void:
-	if bots.is_empty() or state.is_over() or _runner.is_running() or _launching or _menu.visible:
+	if bots.is_empty() or state.is_over() or _runner.is_running() or _launching or _menu.visible or _phase_hold > 0.0:
 		return
 	_bot_wait -= delta
 	if _bot_wait > 0.0:
@@ -2296,3 +2304,13 @@ func demo_kb_wall() -> void:
 ## replayed match is not, even while a series is open).
 func _local_series() -> bool:
 	return net_role == "" and MatchSeries.current != null and JsonUtil.as_bool(_config.get("series", false))
+
+
+## Starts the hold when a new phase (or turn) begins; dev and demo matches do not wait.
+func _run_phase_hold(delta: float) -> void:
+	var key: String = "%d|%s" % [state.turn, state.phase]
+	if key != _held_phase:
+		_held_phase = key
+		_phase_hold = 0.0 if _demo or state.turn == 0 else PHASE_HOLD
+	elif _phase_hold > 0.0:
+		_phase_hold = maxf(0.0, _phase_hold - delta)

@@ -44,9 +44,9 @@ const CARD_SIZE := Vector2(128, 178)
 const HAND_HEIGHT: float = 210.0
 const BANNER_TIME: float = 0.8
 ## Phase call-outs stay a little longer, to be read.
-const PHASE_BANNER_TIME: float = 1.4
-## Start comes every turn and needs no reading: a short call-out.
-const START_BANNER_TIME: float = 0.6
+const PHASE_BANNER_TIME: float = 3.0
+## Start too: every phase is called out long enough to notice (Marko 2026-10-26).
+const START_BANNER_TIME: float = 3.0
 ## BATTLE! stays long enough to read both sides' Power.
 const BATTLE_BANNER_TIME: float = 1.6
 ## How far a hovered hand card rises.
