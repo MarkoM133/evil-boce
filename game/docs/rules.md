@@ -129,8 +129,9 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    the deck, the gentlest choice). The match scene keeps the clocks locally and as the host;
    guests only show them. `timer_seconds` 0 = off.
    `deck_size` below the deck's cards (the Fast mode, GDD 13) plays the first that many of the
-9c. (2026-10-26) Knockback mode `knockback`: "grid" (hex by hex, as above), "physics" (every
-   knockback) or "mixed" (only a `LAUNCH` effect). A physics knockback is not applied by the
+9c. (2026-10-26) Knockback mode `knockback`: "physics" (the game, 2026-10-26: every
+   knockback is a real hit; the word on the cards stays Knockback) or "grid" (hex by hex, as
+   above: the engine on its own, as in the scenario tests; not offered in MATCH RULES). A physics knockback is not applied by the
    engine: it waits in `GameState.pending_knockbacks` ({hero, dir, steps}), `_continue` stops
    and every move is refused with "waiting for the knockback" until the scene runs the sim
    (hit along the hex direction, power = steps / full-power hexes of the WT) and brings the

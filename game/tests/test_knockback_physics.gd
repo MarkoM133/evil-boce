@@ -1,5 +1,5 @@
 extends GutTest
-## Physics knockback (GDD 10, 2026-10-26): in the "physics" mode, or for a Launch in "mixed",
+## Physics knockback (GDD 10, 2026-10-26): in the "physics" mode (the game),
 ## a knockback waits for the sim; its outcome lands the balls the way a roll does, and the
 ## knocked hero takes wall damage once per ball it hit.
 
@@ -63,19 +63,9 @@ func test_no_hit_no_damage_and_a_ring_out_counts() -> void:
 	assert_false(hero.is_on_map(), "off the table is a ring-out")
 
 
-func test_grid_stays_grid_and_mixed_only_launches() -> void:
+func test_the_grid_mode_moves_the_hero_itself() -> void:
 	state.settings.knockback = "grid"
 	engine.knockback(state, hero, 0, 2)
 	assert_true(state.pending_knockbacks.is_empty())
 	assert_ne(hero.hex, Vector2i(4, 10), "moved on the grid")
-	state.settings.knockback = "mixed"
-	var at: Vector2i = hero.hex
-	engine.knockback(state, hero, 0, 1)
-	assert_true(state.pending_knockbacks.is_empty(), "a plain knockback stays on the grid in mixed")
-	assert_ne(hero.hex, at)
-	engine.knockback(state, hero, 0, 1, true)
-	assert_eq(state.pending_knockbacks.size(), 1, "a Launch goes to the sim")
-	var e: FxEffect = FxEffect.parse_line("BATTLE LAUNCH IF WIN: KNOCKBACK ENEMY 3")
-	assert_not_null(e)
-	assert_true(e.launch)
-	assert_eq(e.to_fx(), "BATTLE LAUNCH IF WIN: KNOCKBACK ENEMY 3")
+	assert_null(FxEffect.parse_line("BATTLE LAUNCH IF WIN: KNOCKBACK ENEMY 3"), "LAUNCH is no keyword")

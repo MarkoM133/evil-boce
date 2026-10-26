@@ -1276,13 +1276,13 @@ func _lost_active(s: GameState, h: HeroState) -> void:
 
 ## Grid knockback: `steps` hexes in direction `dir`. A wall or hero stops it, with
 ## wall_damage once when blocked; leaving the map is a ring-out.
-## Knockback (GDD 10). In the "physics" mode, or for a Launch in "mixed", the hero is not moved
-## here: the knockback waits in `pending_knockbacks` for the sim (apply_knockback). Otherwise
-## it goes hex by hex, stopped by walls and heroes.
-func knockback(s: GameState, h: HeroState, dir: int, steps: int, launch: bool = false) -> void:
+## Knockback (GDD 10). In the "physics" mode (the game) the hero is not moved here: the
+## knockback waits in `pending_knockbacks` for the sim (apply_knockback). On the grid it goes
+## hex by hex, stopped by walls and heroes.
+func knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 	if steps <= 0 or not h.is_on_map() or h.has_status("immune_kb"):
 		return
-	if s.settings.knockback == "physics" or (s.settings.knockback == "mixed" and launch):
+	if s.settings.knockback == "physics":
 		s.pending_knockbacks.append({"hero": h.id, "dir": dir, "steps": steps})
 		s.event("knockback_launched", {"hero": h.id, "dir": dir, "steps": steps})
 		return

@@ -28,6 +28,8 @@ func test_bots_finish_matches() -> void:
 	for seed_: int in [3, 11, 29]:
 		var engine := RulesEngine.new(catalog)
 		var settings: MatchSettings = MatchSettings.standard()
+		# No sim here: the engine moves the knocked heroes itself.
+		settings.knockback = "grid"
 		settings.manual_setup = true
 		var s: GameState = engine.start_match(settings, _decks(), seed_)
 		var bots: Array[Bot] = [Bot.new(seed_, Bot.Level.EASY), Bot.new(seed_ + 1, Bot.Level.HARD)]

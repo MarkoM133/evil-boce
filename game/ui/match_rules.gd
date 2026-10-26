@@ -26,7 +26,6 @@ const COLUMNS: Array = [
 		]],
 		["BATTLE", [
 				["max_tie_turns", "Tied battles", "Turns a tied battle may repeat before both heroes are knocked back.", [1, 2, 3, 4]],
-			["knockback", "Knockback", "Grid: hex by hex, stopped by walls and heroes. Physics: a real hit that bounces. Mixed: physics only for Launch cards.", ["grid", "physics", "mixed"]],
 		]],
 		["TIME", [
 			["timer_seconds", "Move timer", "Seconds for each move. When it runs out the game makes the safe move: pass, keep, stay, a missed roll.", [0, 15, 20, 30, 45, 60, 90]],
@@ -101,8 +100,6 @@ static func value_text(key: String, v: Variant) -> String:
 			return "AS PRINTED" if d == 0 else "%+d" % d
 		"manual_setup":
 			return "BY THE PLAYERS" if JsonUtil.as_bool(v) else "AT RANDOM"
-		"knockback":
-			return str(v).to_upper()
 		"series_wins":
 			var w: int = JsonUtil.as_int(v)
 			return "ONE GAME" if w <= 1 else "BEST OF %d" % (w * 2 - 1)

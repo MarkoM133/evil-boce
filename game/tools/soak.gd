@@ -2,9 +2,9 @@ extends SceneTree
 ## Long bot matches to hunt errors: Hard bots play both sides of the real match scene (physics,
 ## timers, effects) in every game mode and the tool reports errors, stalls and results.
 ## godot_console --headless --fixed-fps 60 --path game -s res://tools/soak.gd --
-##     [--modes=standard,fast,chaos,bo3,draft,physics] [--games=2] [--seed=1]
+##     [--modes=standard,fast,chaos,bo3,draft,grid] [--games=2] [--seed=1]
 ##     [--max-minutes=40] [--stall-minutes=3]
-## "physics" is Standard with the physical knockback. A Best of 3 counts as one game. Minutes
+## "grid" is Standard with the engine's own hex-by-hex knockback (no sim). A Best of 3 counts as one game. Minutes
 ## are game time (60 frames a second); with --fixed-fps the tool runs faster than that.
 ## Nothing is saved (dev matches). Exit code 1 when anything went wrong.
 
@@ -46,7 +46,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var opts: Dictionary[String, String] = {
-		"modes": "standard,fast,chaos,bo3,draft,physics",
+		"modes": "standard,fast,chaos,bo3,draft,grid",
 		"games": "2",
 		"seed": "1",
 		"max-minutes": "40",
@@ -78,9 +78,9 @@ func _run() -> void:
 
 
 func _settings(mode: String) -> MatchSettings:
-	var s: MatchSettings = MatchSettings.preset("standard" if mode == "physics" else mode)
-	if mode == "physics":
-		s.knockback = "physics"
+	var s: MatchSettings = MatchSettings.preset("standard" if mode == "grid" else mode)
+	if mode == "grid":
+		s.knockback = "grid"
 		s.mode = "custom"
 	s.resolve_map(_rng, GameSettings.MAP_SIZES)
 	return s

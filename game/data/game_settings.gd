@@ -69,6 +69,8 @@ static func match_rules(mode: String) -> MatchSettings:
 	var s: MatchSettings = MatchSettings.from_dict(d)
 	if s.map_size != MatchSettings.MAP_RANDOM and not MAP_SIZES.has(s.map_size):
 		s.map_size = MatchSettings.standard().map_size
+	# The knockback is always physical (2026-10-26); older saved rules may still say grid.
+	s.knockback = "physics"
 	return s
 
 

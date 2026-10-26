@@ -10,7 +10,8 @@ var max_energy: int = 8
 var core_slots: int = 3
 var equipment_limit: int = 3
 var assist_limit: int = 3
-## "grid", "physics" or "mixed".
+## "physics" (the game, 2026-10-26: a real hit) or "grid" (hex by hex: the engine on its
+## own, as in the scenario tests). `new()` keeps the grid; `standard()` plays physics.
 var knockback: String = "grid"
 ## Damage per knockback step a hero could not take (wall, hero).
 var wall_damage: int = 2
@@ -47,6 +48,7 @@ static func standard() -> MatchSettings:
 	var s := MatchSettings.new()
 	s.map_size = 23
 	s.range_delta = -1
+	s.knockback = "physics"
 	return s
 
 

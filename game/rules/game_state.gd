@@ -57,7 +57,7 @@ var pending_rolls: PackedStringArray = PackedStringArray()
 var roll_snapshot: Dictionary[String, Dictionary] = {}
 ## The "Roll Phase:" offers after this roll went out already (once per stop).
 var roll_offered: bool = false
-## Knockbacks waiting for the physics (knockback "physics", or a Launch in "mixed"), [{hero,
+## Knockbacks waiting for the physics (knockback "physics"), [{hero,
 ## dir, steps}]: the engine stops until apply_knockback brings the sim's outcome (GDD 10).
 var pending_knockbacks: Array[Dictionary] = []
 ## "hero|card|index" of once-per-turn abilities already used this turn.
