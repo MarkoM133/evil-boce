@@ -60,6 +60,10 @@ func _run_scenario(path: String) -> void:
 			var o: RollOutcome = RollOutcome.from_dict(JsonUtil.as_dict(step["roll"]))
 			var err: String = engine.apply_roll(state, o)
 			assert_eq(err, "", "%s: roll refused: %s" % [tag, err])
+			# Every player gets a roll offer when the balls stop; the empty ones are declined here
+			# the way the client does, unless the step keeps them ({"offers": true, "roll": ...}).
+			if not JsonUtil.as_bool(step.get("offers", false)):
+				_decline_empty_offers()
 		elif step.has("pass_round"):
 			var n: int = 0
 			var phase: String = state.phase
@@ -75,6 +79,15 @@ func _run_scenario(path: String) -> void:
 			_expect(JsonUtil.as_dict(step["expect"]), tag)
 		else:
 			fail_test("%s: unknown step %s" % [tag, JSON.stringify(step)])
+
+
+## Declines the pending roll offers that have nothing on them (any order is fine).
+func _decline_empty_offers() -> void:
+	for d: Dictionary in state.pending.duplicate():
+		if str(d.get("type", "")) != RulesEngine.DECISION_ROLL_OFFER:
+			continue
+		if JsonUtil.as_array(d.get("cards", [])).is_empty() and JsonUtil.as_array(d.get("abilities", [])).is_empty():
+			assert_eq(engine.apply(state, Move.make(Move.PASS, JsonUtil.as_int(d.get("player", 0)))), "", "declining an empty roll offer")
 
 
 func _setup(opts: Dictionary) -> void:

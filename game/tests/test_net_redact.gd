@@ -37,10 +37,11 @@ func test_the_others_start_pick_is_hidden_until_all_picked() -> void:
 
 func test_a_roll_offer_hides_the_others_cards() -> void:
 	state.pending.append({"type": RulesEngine.DECISION_ROLL_OFFER, "player": 0, "hero": "p0:TA-001",
-		"abilities": [], "cards": ["TA-048"]})
+		"abilities": ["p0:TA-001|TA-001|0"], "cards": ["TA-048"]})
 	var for_guest: Dictionary = NetProtocol.redact(state.to_dict(), 1)
 	var offer: Dictionary = JsonUtil.as_dict(JsonUtil.as_array(for_guest["pending"])[0])
-	assert_eq(JsonUtil.as_strings(offer["cards"]), PackedStringArray([NetProtocol.PLACEHOLDER_CARD]))
+	assert_true(JsonUtil.as_strings(offer["cards"]).is_empty(), "the guest sees an empty offer")
+	assert_true(JsonUtil.as_strings(offer["abilities"]).is_empty())
 	var for_host: Dictionary = NetProtocol.redact(state.to_dict(), 0)
 	offer = JsonUtil.as_dict(JsonUtil.as_array(for_host["pending"])[0])
 	assert_eq(JsonUtil.as_strings(offer["cards"]), PackedStringArray(["TA-048"]))

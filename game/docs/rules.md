@@ -115,9 +115,10 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    standing on that stage.
 9. (2026-10-26) The turn has six phases: Start (draw + hero + Roll/Stay in one `select` move, all
    revealed together), Preroll (cards), Roll (aims and throws only; "Roll Phase:" cards and
-   abilities come as one `roll_offer` per player and stop, initiative first; a roll again brings a
-   new stop and new offers), Postroll, Battle, End. Offers go to every active player with an
-   option, not only to those who rolled. Auto-pass is the client's job (a setting), not a rule.
+   abilities come as one `roll_offer` per active player and stop, options or none, so nobody can
+   read "has a Roll Phase card" off who is asked; the offers of one stop are answered in any
+   order; a roll again brings a new stop and new offers), Postroll, Battle, End. Declining an
+   empty offer after a fixed wait is the client's job (auto-pass), not a rule.
 10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
 11. A hero in the start zone can be activated at any time, and a stunned or locked hero

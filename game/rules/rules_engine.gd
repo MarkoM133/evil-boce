@@ -405,6 +405,11 @@ func _apply_card_round_move(s: GameState, m: Move) -> String:
 func _apply_decision(s: GameState, m: Move) -> String:
 	var d: Dictionary = s.pending[0]
 	var who: int = JsonUtil.as_int(d.get("player", -1), -1)
+	# The roll offers of one stop wait together: each player answers its own, in any order.
+	var offer: int = roll_offer_index(s, m.player) if str(d.get("type", "")) == DECISION_ROLL_OFFER else -1
+	if offer >= 0:
+		d = s.pending[offer]
+		who = m.player
 	if m.player != who:
 		return "waiting for player %d" % who
 	match str(d.get("type", "")):
@@ -456,7 +461,7 @@ func _apply_decision(s: GameState, m: Move) -> String:
 				s.pending = trial
 				return err
 		DECISION_ROLL_OFFER:
-			var err: String = _answer_roll_offer(s, d, m)
+			var err: String = _answer_roll_offer(s, offer, m)
 			if not err.is_empty():
 				return err
 		_:
@@ -465,12 +470,22 @@ func _apply_decision(s: GameState, m: Move) -> String:
 	return ""
 
 
-## The roll_offer decision: `pass` declines; `use_ability` or `play_card` takes one of the
-## offered options (one per stop). The offer leaves the queue before the effect runs, so a
-## choice the effect asks for comes next.
-func _answer_roll_offer(s: GameState, d: Dictionary, m: Move) -> String:
+## Where the pending roll offer of `slot` sits, -1 when it has none (answered, or not asked).
+func roll_offer_index(s: GameState, slot: int) -> int:
+	for i: int in s.pending.size():
+		var q: Dictionary = s.pending[i]
+		if str(q.get("type", "")) == DECISION_ROLL_OFFER and JsonUtil.as_int(q.get("player", -1), -1) == slot:
+			return i
+	return -1
+
+
+## The roll_offer decision at `index`: `pass` declines; `use_ability` or `play_card` takes one
+## of the offered options (one per stop). The offer leaves the queue before the effect runs,
+## so a choice the effect asks for comes next.
+func _answer_roll_offer(s: GameState, index: int, m: Move) -> String:
+	var d: Dictionary = s.pending[index]
 	if m.type == Move.PASS:
-		s.pending.pop_front()
+		s.pending.remove_at(index)
 		s.event("roll_offer_declined", {"player": m.player})
 		return ""
 	if m.type == Move.USE_ABILITY:
@@ -478,7 +493,7 @@ func _answer_roll_offer(s: GameState, d: Dictionary, m: Move) -> String:
 		if not JsonUtil.as_strings(d.get("abilities", [])).has(key):
 			return "that ability is not on offer"
 		var trial: Array[Dictionary] = s.pending.duplicate()
-		s.pending.pop_front()
+		s.pending.remove_at(index)
 		var err: String = fx.use_ability(s, m.player, m.str_arg("hero"), m.str_arg("card"), JsonUtil.as_int(m.data.get("index", 0)))
 		if not err.is_empty():
 			s.pending = trial
@@ -487,7 +502,7 @@ func _answer_roll_offer(s: GameState, d: Dictionary, m: Move) -> String:
 		if not JsonUtil.as_strings(d.get("cards", [])).has(m.str_arg("card")):
 			return "that card is not on offer"
 		var trial: Array[Dictionary] = s.pending.duplicate()
-		s.pending.pop_front()
+		s.pending.remove_at(index)
 		var err: String = _play_card(s, m)
 		if not err.is_empty():
 			s.pending = trial
@@ -495,8 +510,10 @@ func _answer_roll_offer(s: GameState, d: Dictionary, m: Move) -> String:
 	return "use a Roll Phase card or ability, or pass"
 
 
-## After the balls stop: one roll_offer per player (initiative first) who has a "Roll Phase:"
-## ability it may use now or a "Roll Phase:" Action it can pay for the activated hero.
+## After the balls stop: one roll_offer per active player (initiative first) with the "Roll
+## Phase:" abilities it may use now and the "Roll Phase:" Actions it can pay for the activated
+## hero. Every player gets one, options or none, so nobody can read "has a Roll Phase card" off
+## who is asked (GDD 8, 2026-10-26); the offers of one stop are answered in any order.
 func _offer_roll_effects(s: GameState) -> void:
 	var slot: int = s.initiative
 	for _n: int in s.players.size():
@@ -516,9 +533,8 @@ func _offer_roll_effects(s: GameState) -> void:
 					continue
 				if card_cost(s, p, card) <= p.energy:
 					cards.append(cid)
-			if not abilities.is_empty() or not cards.is_empty():
-				s.pending.append({"type": DECISION_ROLL_OFFER, "player": slot, "hero": h.id,
-					"abilities": Array(abilities), "cards": Array(cards)})
+			s.pending.append({"type": DECISION_ROLL_OFFER, "player": slot, "hero": h.id,
+				"abilities": Array(abilities), "cards": Array(cards)})
 		slot = _next_slot(s, slot)
 
 

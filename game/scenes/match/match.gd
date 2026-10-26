@@ -1261,14 +1261,23 @@ func _run_playback(delta: float) -> void:
 
 ## Auto-pass (GDD 8): a local player to act with nothing playable is passed for after a fixed
 ## wait, so the opponent cannot read "no card" off the speed; the Hold key stops it. When nobody
-## at all could play (the host and a local match know every hand), the round goes at once.
+## at all could play (the host and a local match know every hand), the round goes at once. An
+## empty roll offer is declined the same way, always after the full wait: every player is asked
+## when the balls stop, and the wait is what hides who had something (GDD 8, 2026-10-26).
 func _run_auto_pass(delta: float) -> void:
 	if not GameSettings.auto_pass() or _replay != null or _menu.visible \
 			or state.is_over() or _runner.is_running() or _launching:
 		_idle_pass = 0.0
 		return
 	var slot: int = state.to_act
-	if not hud.local_slots.has(slot) or bots.has(slot) or Input.is_key_pressed(GameSettings.key("hold")):
+	var offer: bool = not state.pending.is_empty() and str(state.pending[0].get("type", "")) == RulesEngine.DECISION_ROLL_OFFER
+	if offer:
+		slot = -1
+		for local: int in hud.local_slots:
+			if not bots.has(local) and MatchHud.empty_offer(hud.own_roll_offer(local)):
+				slot = local
+				break
+	if slot < 0 or not hud.local_slots.has(slot) or bots.has(slot) or Input.is_key_pressed(GameSettings.key("hold")):
 		_idle_pass = 0.0
 		return
 	# What can be played changes only when the state does: worked out once per state.
@@ -1277,7 +1286,9 @@ func _run_auto_pass(delta: float) -> void:
 	if key != _pass_key:
 		_pass_key = key
 		_pass_wait = -1.0
-		if hud.nothing_to_play(slot):
+		if offer:
+			_pass_wait = AUTO_PASS_DELAY
+		elif hud.nothing_to_play(slot):
 			_pass_wait = AUTO_PASS_DELAY
 			if net_role != "client":
 				var anyone: bool = false

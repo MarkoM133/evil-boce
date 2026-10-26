@@ -927,6 +927,9 @@ func _roll_offer_prompt(d: Dictionary, who: int) -> void:
 	_prompt.text = "Your ball stopped"
 	_detail.text = "Use a Roll Phase card or ability now, or go on to Postroll."
 	var cards: PackedStringArray = JsonUtil.as_strings(d.get("cards", []))
+	if cards.is_empty() and JsonUtil.as_strings(d.get("abilities", [])).is_empty():
+		# Everyone is asked, so the other side cannot tell an empty offer from a full one.
+		_detail.text = "Nothing to use now; on to Postroll in a moment." if GameSettings.auto_pass() else "Nothing to use now."
 	for key: String in JsonUtil.as_strings(d.get("abilities", [])):
 		var parts: PackedStringArray = key.split("|")
 		if parts.size() != 3:
@@ -1123,6 +1126,13 @@ func _refresh_prompt() -> void:
 		return
 	if not state.pending.is_empty():
 		var d: Dictionary = state.pending[0]
+		# Roll offers of one stop wait together: a local player answers its own, wherever it sits.
+		if str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
+			for slot: int in local_slots:
+				var own: int = engine.roll_offer_index(state, slot)
+				if own >= 0:
+					d = state.pending[own]
+					break
 		var who: int = JsonUtil.as_int(d.get("player", -1), -1)
 		if not local_slots.has(who):
 			_prompt.text = "%s is deciding…" % player_name(who)
@@ -2219,6 +2229,17 @@ func nothing_to_play(slot: int) -> bool:
 
 ## Whether `slot` has a card it could play or an ability it could use in this card round, its
 ## turn or not. Only meaningful where its hand is known (not the opponent's, for a guest).
+## The roll offer of `slot` still waiting, or {} (answered, or the balls are still rolling).
+func own_roll_offer(slot: int) -> Dictionary:
+	var i: int = engine.roll_offer_index(state, slot)
+	return state.pending[i] if i >= 0 else {}
+
+
+## An offer with nothing on it: the player only waits it out (or goes on by hand).
+static func empty_offer(d: Dictionary) -> bool:
+	return not d.is_empty() and JsonUtil.as_strings(d.get("cards", [])).is_empty() and JsonUtil.as_strings(d.get("abilities", [])).is_empty()
+
+
 func can_play(slot: int) -> bool:
 	if not engine.fx.usable_abilities(state, slot).is_empty():
 		return true

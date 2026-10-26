@@ -72,7 +72,9 @@ func test_roll_outcome_is_recorded_with_its_path() -> void:
 	r2.end_hex = Vector2i(6, 4)
 	o.add(r2)
 	assert_eq(rec.apply_roll(o), "")
-	# The roll lands in the Roll frame; the engine then opens the Postroll frame.
+	# Both roll offers declined: the roll lands in the Roll frame, then the Postroll frame opens.
+	assert_eq(rec.apply(Move.make(Move.PASS, 0)), "")
+	assert_eq(rec.apply(Move.make(Move.PASS, 1)), "")
 	var rolls: Array = JsonUtil.as_array(rec.record.frames[rec.record.frame_count() - 2]["rolls"])
 	assert_eq(rolls.size(), 1)
 	var back: RollOutcome = RollOutcome.from_dict(JsonUtil.as_dict(rolls[0]))

@@ -75,7 +75,9 @@ func test_reverse_roll_puts_only_the_hero_back_and_keeps_its_cores() -> void:
 	assert_eq(h.zone, HeroState.ZONE_MAP)
 	assert_true(h.cores.has(core.id), "the core stays")
 	assert_eq(state.hero("p1:TB-001").hex, Vector2i(6, 4), "the other hero stays where it rolled")
-	assert_eq(state.phase, GameState.PHASE_POSTROLL, "the offer answered, on to Postroll")
+	assert_eq(state.phase, GameState.PHASE_ROLL, "the other player's (empty) offer still waits")
+	assert_eq(engine.apply(state, Move.make(Move.PASS, 1)), "")
+	assert_eq(state.phase, GameState.PHASE_POSTROLL, "both offers answered, on to Postroll")
 
 
 func test_reverse_roll_only_after_the_roll() -> void:

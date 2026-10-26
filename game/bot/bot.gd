@@ -40,6 +40,10 @@ func next_move(engine: RulesEngine, s: GameState, slot: int, positions: Dictiona
 		return null
 	if not s.pending.is_empty():
 		var d: Dictionary = s.pending[0]
+		# Roll offers of one stop wait together: the bot answers its own whenever it sits.
+		if str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
+			var i: int = engine.roll_offer_index(s, slot)
+			return _decide(engine, s, slot, s.pending[i]) if i >= 0 else null
 		if JsonUtil.as_int(d.get("player", -1), -1) != slot:
 			return null
 		return _decide(engine, s, slot, d)

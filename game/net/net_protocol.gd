@@ -93,9 +93,11 @@ static func redact(state_dict: Dictionary, slot: int) -> Dictionary:
 		if JsonUtil.as_int(dec.get("player", -1), -1) != slot and str(dec.get("kind", "")) == "card":
 			dec["options"] = _blank(JsonUtil.as_array(dec.get("options", [])).size())
 			pending[i] = dec
-		# A roll offer lists cards from the hand of whoever it is for.
-		if JsonUtil.as_int(dec.get("player", -1), -1) != slot and dec.has("cards"):
-			dec["cards"] = _blank(JsonUtil.as_array(dec.get("cards", [])).size())
+		# A roll offer lists cards from the hand of whoever it is for; the others see an empty
+		# offer, not even how much is on it (everyone gets one, GDD 8).
+		if JsonUtil.as_int(dec.get("player", -1), -1) != slot and str(dec.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
+			dec["cards"] = []
+			dec["abilities"] = []
 			pending[i] = dec
 	d["pending"] = pending
 	return d
