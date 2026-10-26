@@ -2549,3 +2549,12 @@ func demo_deal() -> void:
 func demo_grave() -> void:
 	demo_piles()
 	hud.open_graveyard(0)
+
+
+## Screenshot helper: the call-out of a tied battle.
+func demo_tie() -> void:
+	_demo = true
+	var a: HeroState = state.heroes_of(0)[0]
+	var b: HeroState = state.heroes_of(1)[0]
+	state.event("battle_locked", {"heroes": [a.id, b.id], "turns": 1})
+	_sync()

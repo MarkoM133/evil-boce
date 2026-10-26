@@ -56,7 +56,7 @@ const BATTLE_BANNER_TIME: float = 1.6
 ## How far a hovered hand card rises.
 const LIFT: float = 56.0
 ## Log events that get a banner (the rest only go to the log).
-const BANNER_EVENTS: Array[String] = ["battle", "ring_out", "ko", "stage_claimed"]
+const BANNER_EVENTS: Array[String] = ["battle", "battle_locked", "battle_tie_break", "ring_out", "ko", "stage_claimed", "triggered"]
 
 var engine: RulesEngine
 var state: GameState
@@ -2023,6 +2023,13 @@ func _banner_for(e: Dictionary) -> void:
 			var name: String = _triggered_name(e)
 			if not name.is_empty():
 				banner(name.to_upper(), Palette.GOLD, _hero_label(str(e.get("hero", ""))).to_upper(), "")
+		"battle_locked":
+			# A tie (GDD 10): nobody is hurt, the heroes stay locked and fight again next turn.
+			banner("TIE!", Palette.GOLD, _heroes_line(e).to_upper(), "SAME POWER · FIGHT AGAIN NEXT TURN", BATTLE_BANNER_TIME)
+			toast("Tie: %s. Nobody takes damage; they stay locked and fight this battle again next turn." % _heroes_line(e))
+		"battle_tie_break":
+			banner("TIE AGAIN!", Palette.ACCENT, _heroes_line(e).to_upper(), "BOTH KNOCKED BACK", BATTLE_BANNER_TIME)
+			toast("Second tie: %s. Both heroes are knocked back towards their own side." % _heroes_line(e))
 
 
 func _next_banner() -> void:
@@ -2127,7 +2134,9 @@ func _describe(e: Dictionary) -> String:
 		"discard":
 			return "%s discards %s" % [player_name(JsonUtil.as_int(e.get("player", 0))), _card_name(str(e.get("card", "")))]
 		"battle_locked":
-			return "Battle tied, heroes locked"
+			return "Tie: %s, locked, fight again next turn" % _heroes_line(e)
+		"battle_tie_break":
+			return "Second tie: %s, both knocked back" % _heroes_line(e)
 		"turn_end":
 			return "— end of turn %d —" % JsonUtil.as_int(e.get("turn", 0))
 		"match_end":
@@ -2667,3 +2676,11 @@ func open_graveyard(slot: int) -> void:
 		if card != null:
 			pic.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
 		grid.add_child(pic)
+
+
+## "Zoro vs Shanks" for an event's "heroes".
+func _heroes_line(e: Dictionary) -> String:
+	var names := PackedStringArray()
+	for id: String in JsonUtil.as_strings(e.get("heroes", [])):
+		names.append(_hero_label(id))
+	return " vs ".join(names)
