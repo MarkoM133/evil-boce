@@ -133,6 +133,11 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    `RollOutcome` to `apply_knockback`. The outcome lands every moved ball as a roll does
    (cores, stages, ring-outs); a knocked hero takes `wall_damage` once per ball it hit. The
 9d. (2026-10-26) `series_wins` > 1 is a series (`MatchSeries`, not a rule: the scene and the host
+   keep it); `first_initiative` names who starts (the last loser), -1 draws lots as before.
+   A seat may bring a sideboard (up to 10 cards its heroes may take, each under its limit;
+   `MatchSeries.sideboard_error`) and swap up to 5 cards a break between games
+   (`swap_error` / `set_cards`: only the break's deck and sideboard, the deck still legal);
+   the swaps stay. Online the deck carries `sideboard`; the host checks swaps in `_series_deck`.
 9e. (2026-10-26) The Draft mode is `DraftState` (rules/), pure: heroes A B B A A B with none shared,
    four packs of ten from the copy pool of both players' colours (evolutions only of drafted
    heroes), picks in turn, the rest to the other, no card of the other's colour or over its
