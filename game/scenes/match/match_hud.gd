@@ -89,6 +89,9 @@ var _hand_box: Control
 var _hand: Control
 var _hand_title: Label
 var _mulligan_row: HBoxContainer
+## When the dealt starting hand has settled (msec), and the last time its buttons faded in.
+var _mulligan_ready_at: int = 0
+var _mulligan_faded_in: int = -1
 ## The starting hand flew in already (it is dealt once; a refresh must not replay it).
 var _hand_dealt: bool = false
 var _hand_sig: String = ""
@@ -194,8 +197,9 @@ func refresh() -> void:
 	for slot: int in state.players.size():
 		if slot < _rosters.size():
 			_fill_roster(_rosters[slot], slot)
-	_refresh_prompt()
+	# The hand first: a freshly dealt starting hand says when its buttons may come.
 	_refresh_hand()
+	_refresh_prompt()
 	_refresh_piles()
 	_refresh_dialog()
 	_refresh_over()
@@ -1195,7 +1199,15 @@ func _refresh_prompt() -> void:
 			GameState.PHASE_MULLIGAN:
 				_prompt.text = "Keep this hand?"
 				_detail.text = ("%s: " % who if many else "") + "a new hand is drawn once."
-				_mulligan_row.visible = true
+				# The buttons come once the dealt cards have settled (Marko 2026-10-26).
+				var wait_ms: int = _mulligan_ready_at - Time.get_ticks_msec()
+				_mulligan_row.visible = wait_ms <= 0
+				if wait_ms > 0:
+					get_tree().create_timer(wait_ms / 1000.0).timeout.connect(refresh, CONNECT_ONE_SHOT)
+				elif _mulligan_faded_in < _mulligan_ready_at:
+					_mulligan_faded_in = _mulligan_ready_at
+					_mulligan_row.modulate.a = 0.0
+					_mulligan_row.create_tween().tween_property(_mulligan_row, "modulate:a", 1.0, 0.25)
 				_mulligan_button("NEW HAND", func() -> void: keep_pressed.emit(slot, false), &"")
 				_mulligan_button("KEEP THIS HAND", func() -> void: keep_pressed.emit(slot, true), &"Primary")
 			GameState.PHASE_START:
@@ -1455,6 +1467,8 @@ func _refresh_hand() -> void:
 		# The card a hero is being chosen for stays up.
 		if cid == target_cid and slot == target_slot:
 			_lift(card, true, true)
+	if mulligan and not _hand_dealt:
+		_mulligan_ready_at = Time.get_ticks_msec() + int((0.12 * maxf(float(n) - 1.0, 0.0) + 0.45 + 0.15) * 1000.0)
 	if mulligan:
 		_hand_dealt = true
 	else:

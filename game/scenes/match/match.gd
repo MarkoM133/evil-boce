@@ -2511,3 +2511,17 @@ func demo_piles() -> void:
 		p.deck.remove_at(0)
 	hud.local_slots = PackedInt32Array([0])
 	_sync()
+
+
+## Screenshot helper: the starting hand being dealt (Mulligan) right now.
+func demo_deal() -> void:
+	_demo = true
+	state.phase = GameState.PHASE_MULLIGAN
+	var p: PlayerState = state.player(0)
+	while p.hand.size() < 5 and not p.deck.is_empty():
+		p.hand.append(p.deck[0])
+		p.deck.remove_at(0)
+	p.mulligan_done = false
+	hud.local_slots = PackedInt32Array([0])
+	bots.erase(0)
+	_sync()
