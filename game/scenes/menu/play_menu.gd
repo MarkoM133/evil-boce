@@ -13,7 +13,7 @@ const TILE := Vector2(330, 440)
 const MODES: Array = [
 	["LOCAL PLAY", "Against the bot, or two players on this computer", "local", "hero"],
 	["ONLINE PLAY", "Host a match or join one over Tailscale", "online", "hero"],
-	["PRACTICE", "Throw balls around, try terrain", "practice", "stage"],
+	["PRACTICE", "Throw balls around and try terrain. Nothing counts, nothing is saved.", "practice", "stage"],
 ]
 
 var db: CardDb
@@ -23,6 +23,10 @@ func _ready() -> void:
 	db = CardDb.load_from(GameSettings.data_path())
 	var frame: Dictionary = MenuScreen.build(self, db, "Play", "Pick how you want to play.", _back, 1180.0)
 	var content: VBoxContainer = frame["content"]
+	# The tiles sit a little lower, nearer the middle of the screen.
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 70)
+	content.add_child(gap)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -86,6 +90,9 @@ func _tile(title: String, line: String, art_id: String, main: bool) -> Control:
 	l.text = line
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.add_theme_font_size_override("font_size", 14)
+	# Room for two lines on every tile, so the titles line up.
+	l.custom_minimum_size = Vector2(0, 40)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	l.add_theme_color_override("font_color", Color("e6e1d8"))
 	l.add_theme_color_override("font_outline_color", Color.BLACK)
 	l.add_theme_constant_override("outline_size", 6)
