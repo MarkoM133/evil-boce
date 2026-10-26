@@ -16,6 +16,8 @@ var stay_hero: String = ""
 var stay_turn: int = -1
 ## After a claim the terrain lingers through this turn, then goes.
 var terrain_until_turn: int = -1
+## Wind stages: the direction drawn when the stage was revealed (a Hex.DIRECTIONS index), -1 before.
+var wind_dir: int = -1
 
 
 func footprint() -> Array[Vector2i]:
@@ -42,6 +44,7 @@ func to_dict() -> Dictionary:
 		"stay_hero": stay_hero,
 		"stay_turn": stay_turn,
 		"terrain_until_turn": terrain_until_turn,
+		"wind_dir": wind_dir,
 	}
 
 
@@ -53,6 +56,7 @@ static func from_dict(d: Dictionary) -> StageState:
 	s.placed = JsonUtil.as_bool(d.get("placed", false))
 	s.center = JsonUtil.as_hex(d.get("center", null))
 	s.revealed = JsonUtil.as_bool(d.get("revealed", false))
+	s.wind_dir = JsonUtil.as_int(d.get("wind_dir", -1), -1)
 	s.claimed_by = JsonUtil.as_int(d.get("claimed_by", -1), -1)
 	s.stay_hero = str(d.get("stay_hero", ""))
 	s.stay_turn = JsonUtil.as_int(d.get("stay_turn", -1), -1)

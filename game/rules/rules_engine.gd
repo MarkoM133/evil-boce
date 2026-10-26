@@ -650,7 +650,10 @@ func _apply_result(s: GameState, h: HeroState, r: RollResult) -> void:
 		var st: StageState = s.stage_at(h.hex)
 		if st != null and not st.revealed:
 			st.revealed = true
-			s.event("stage_revealed", {"stage": st.id, "by": h.id})
+			# A wind blows in a direction drawn now and kept (GDD 6, 2026-10-26); it goes into the
+			# state and the replay with the stage.
+			st.wind_dir = s.random_int(6)
+			s.event("stage_revealed", {"stage": st.id, "by": h.id, "wind": st.wind_dir})
 			fx.on_reveal(s, st, h)
 	# end_area STRIP without entering the map: a weak throw, the hero stays in its zone.
 
@@ -1255,7 +1258,7 @@ func _lost_active(s: GameState, h: HeroState) -> void:
 
 
 ## Grid knockback: `steps` hexes in direction `dir`. A wall or hero stops it, with
-## wall_damage per step not taken; leaving the map is a ring-out.
+## wall_damage once when blocked; leaving the map is a ring-out.
 ## Knockback (GDD 10). In the "physics" mode, or for a Launch in "mixed", the hero is not moved
 ## here: the knockback waits in `pending_knockbacks` for the sim (apply_knockback). Otherwise
 ## it goes hex by hex, stopped by walls and heroes.
@@ -1290,7 +1293,8 @@ func knockback(s: GameState, h: HeroState, dir: int, steps: int, launch: bool = 
 	h.hex = pos
 	s.event("knockback", {"hero": h.id, "from": Hex.to_json(start), "to": Hex.to_json(pos), "steps": steps - left})
 	if left > 0:
-		hero_damage(s, h, left * s.settings.wall_damage)
+		# Blocked by a wall or a hero: wall_damage once (GDD 10, 2026-10-26), not per step short.
+		hero_damage(s, h, s.settings.wall_damage)
 
 
 # =====================================================================================
@@ -1804,5 +1808,5 @@ func terrain(s: GameState) -> TerrainMap:
 		var card: CardDef = catalog.get_card(st.card_id)
 		if card == null or card.terrain == Terrain.Type.NONE:
 			continue
-		tm.set_patch(st.center, card.terrain, s.map())
+		tm.set_patch(st.center, card.terrain, s.map(), maxi(0, st.wind_dir))
 	return tm

@@ -22,7 +22,7 @@ const COLUMNS: Array = [
 			["range_delta", "Hero range", "Added to every hero's printed range. Lowered, it never drops below 2.", [-2, -1, 0, 1]],
 			["core_slots", "Cores per hero", "How many cores one hero can hold.", [1, 2, 3, 4]],
 			["equipment_limit", "Equipment per hero", "How many equipment cards one hero can wear.", [1, 2, 3, 4, 5]],
-			["wall_damage", "Wall damage", "Damage for every knockback step a wall or another hero blocks.", [0, 1, 2, 3, 4]],
+			["wall_damage", "Wall damage", "Damage a knocked-back hero takes when a wall or another hero stops it (once per hit).", [0, 1, 2, 3, 4]],
 		]],
 		["BATTLE", [
 				["max_tie_turns", "Tied battles", "Turns a tied battle may repeat before both heroes are knocked back.", [1, 2, 3, 4]],

@@ -61,3 +61,32 @@ func test_ramp_and_wind_parse_and_keep_their_centre_and_direction() -> void:
 	tm.set_patch(c, Terrain.Type.NONE, map)
 	assert_false(tm.has(Terrain.Type.RAMP))
 	assert_eq(tm.center_of(c), c)
+
+
+## Wind (GDD 6, 2026-10-26): the direction is drawn when the stage is revealed, kept with the
+## stage, and the terrain map blows that way.
+func test_a_revealed_wind_stage_keeps_its_drawn_direction() -> void:
+	var catalog := CardCatalog.from_json_text(FileAccess.get_file_as_string("res://tests/fixtures/cards.json"))
+	var engine := RulesEngine.new(catalog)
+	var settings := MatchSettings.new()
+	settings.manual_setup = false
+	var cards: Dictionary = {"TX-010": 40}
+	var s: GameState = engine.start_match(settings, [
+		{"heroes": ["TA-001"], "cards": cards, "stages": ["TS-001", "TS-002", "TS-003"], "cores": []},
+		{"heroes": ["TB-001"], "cards": cards, "stages": ["TS-004", "TS-005", "TS-006"], "cores": []},
+	], 2)
+	var st: StageState = s.stages[0]
+	catalog.get_card(st.card_id).terrain = Terrain.Type.WIND
+	assert_eq(st.wind_dir, -1, "no direction before the reveal")
+	var h: HeroState = s.hero("p0:TA-001")
+	h.zone = HeroState.ZONE_MAP
+	var r := RollResult.new()
+	r.ball_id = h.id
+	r.end_area = BallWorld.Area.MAP
+	r.end_hex = st.center
+	engine._apply_result(s, h, r)
+	assert_true(st.revealed)
+	assert_true(st.wind_dir >= 0 and st.wind_dir < 6, "a direction out of six")
+	assert_eq(engine.terrain(s).dir_of(st.center), st.wind_dir, "the terrain blows that way")
+	var back: GameState = GameState.from_dict(s.to_dict())
+	assert_eq(back.stages[0].wind_dir, st.wind_dir, "kept in the state")

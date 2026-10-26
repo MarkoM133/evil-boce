@@ -148,7 +148,9 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    the hero's current card (the last evolution, else the base). `_play` refuses the others
    ("only for X", "Requires T"); equipment whose tag the hero no longer fits falls into the
    graveyard when an evolution comes or goes (`_drop_unfit_equipment`). A record carries the
-   trait list it played by. `{Sword}` effects count equipment cards, never a hero's trait.
+g. (2026-10-26) A grid knockback stopped by a wall or a hero costs `wall_damage` once, not per
+   step short. A Wind stage draws its direction (`StageState.wind_dir`, one of six) when it is
+   revealed; `terrain()` blows that way and the state and the replay keep it.
 10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
 11. A hero in the start zone can be activated at any time, and a stunned or locked hero

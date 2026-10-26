@@ -1,5 +1,5 @@
 {
-  "name": "Knockback into a wall: stays put and takes 2 per missing step",
+  "name": "Knockback into a wall: stays put and takes wall damage once",
   "steps": [
     {"setup": {"seed": 1}},
     {"move": {"type": "mulligan", "player": 0, "keep": true}},
@@ -16,7 +16,7 @@
     {"pass_round": true},
     {"move": {"type": "damage_to", "player": 0, "target": "deck"}},
     {"expect": {
-      "heroes.p0:TA-001.hp": 6,
+      "heroes.p0:TA-001.hp": 8,
       "heroes.p0:TA-001.hex": [4, 8],
       "players.p0.deck": {"$size": 30},
       "players.p0.graveyard": {"$size": 3},
