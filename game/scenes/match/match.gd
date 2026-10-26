@@ -2135,3 +2135,19 @@ func demo_timer() -> void:
 func demo_physics_kb() -> void:
 	state.settings.knockback = "physics"
 	demo_autoplay()
+
+
+## Screenshot helper: player 1's first hero stands mid-map and takes a physics knockback of
+## three hexes towards the far edge, so the hit, the bounce and the landing show.
+func demo_kb_hit() -> void:
+	_demo = true
+	state.settings.knockback = "physics"
+	var h: HeroState = state.heroes_of(0)[0]
+	h.zone = HeroState.ZONE_MAP
+	h.hex = Hex.offset_to_axial(11, 14)
+	var other: HeroState = state.heroes_of(1)[0]
+	other.zone = HeroState.ZONE_MAP
+	other.hex = Hex.offset_to_axial(11, 11)
+	_sync()
+	engine.knockback(state, h, Hex.direction_towards(other.hex, h.hex) + 3, 3)
+	_sync()
