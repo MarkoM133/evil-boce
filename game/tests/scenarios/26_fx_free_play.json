@@ -1,5 +1,5 @@
 {
-  "name": "fx free play: deactivate a core to put a Sword card from the hand on the hero for free",
+  "name": "fx free play: deactivate a core to put a Sword Equipment from the hand on the hero for free (a Sword Action is not offered)",
   "steps": [
     {"setup": {"seed": 1, "decks": [
       {"heroes": ["TA-010", "TA-002", "TA-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []},
@@ -12,7 +12,7 @@
       "heroes.p0:TA-010.cores": ["core:p1:1"],
       "cores.core:p1:1.place": "hero", "cores.core:p1:1.holder": "p0:TA-010", "cores.core:p1:1.face_up": true,
       "heroes.p1:TB-003.zone": "map", "heroes.p1:TB-003.hex": [8, 2],
-      "players.p0.hand": ["TA-024", "TX-010"],
+      "players.p0.hand": ["TA-024", "TF-009", "TX-010"],
       "initiative": 0
     }},
     {"move": {"type": "select", "player": 0, "hero": "p0:TA-010", "roll": false}},
@@ -25,7 +25,7 @@
     {"expect": {
       "heroes.p0:TA-010.equipment": ["TA-024"],
       "players.p0.energy": 1,
-      "players.p0.hand": ["TX-010"],
+      "players.p0.hand": ["TF-009", "TX-010"],
       "players.p0.inventory": ["core:p1:1"]
     }}
   ]

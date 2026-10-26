@@ -812,12 +812,21 @@ func _stage_buff(s: GameState, stage_id: String, h: HeroState, stat: String, amo
 func _free_play_options(s: GameState, slot: int, args: PackedStringArray) -> Array:
 	var out: Array = []
 	var max_cost: int = args[0].to_int()
-	var wanted_trait: String = args[1].trim_prefix("{").trim_suffix("}") if args.size() > 1 else ""
+	# Filters after the cost: a {Trait} and/or a card type (Zoro: "{Sword} Equipment").
+	var wanted_trait: String = ""
+	var wanted_type: String = ""
+	for i: int in range(1, args.size()):
+		if args[i].begins_with("{"):
+			wanted_trait = args[i].trim_prefix("{").trim_suffix("}")
+		else:
+			wanted_type = args[i].capitalize()
 	for cid: String in s.player(slot).hand:
 		var c: CardDef = engine.catalog.get_card(cid)
 		if c == null or not c.is_ready() or c.cost > max_cost:
 			continue
 		if not wanted_trait.is_empty() and not c.has_trait(wanted_trait):
+			continue
+		if not wanted_type.is_empty() and c.type != wanted_type:
 			continue
 		if not out.has(cid):
 			out.append(cid)

@@ -46,7 +46,7 @@ const VERBS: Dictionary[String, Array] = {
 	"TRAP_CORE": [false, 1],    # TRAP_CORE <n>  (an enemy hero activating the picked core this turn takes n)
 	"HOLD_HIT": [true, 0],      # HOLD_HIT SELF  (after a win: deal no DMG, double Knockback)
 	"NOOP": [false, 0],         # NOOP  (nothing; a "no" branch for CHOOSE)
-	"FREE_PLAY": [false, 1],    # FREE_PLAY <max cost> [{Trait}]  (play a card from hand on SELF for free)
+	"FREE_PLAY": [false, 1],    # FREE_PLAY <max cost> [{Trait}] [Type]  (play a card from hand on SELF for free)
 	"SWAP": [true, 0],          # SWAP FRIENDLY [ENGAGED]  (SELF and that hero trade hexes)
 	"DUEL_TOP": [false, 2],     # DUEL_TOP <STAT> <n>  (players on the stage show their top card; higher cost wins)
 	"MOVE_ID": [false, 2],      # MOVE_ID <hero id> <n>  (one hero of a group move; written by the runtime)

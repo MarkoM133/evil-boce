@@ -94,7 +94,8 @@ func test_sideboard_rules_and_swaps_between_games() -> void:
 	var in_id: String = str(side.keys()[0])
 	var out_id: String = ""
 	for k: Variant in cards:
-		if str(k) != in_id:
+		# A card that is not in the sideboard yet, so the count below is only the swap.
+		if str(k) != in_id and not side.has(str(k)):
 			out_id = str(k)
 			break
 	var swapped: Dictionary = cards.duplicate()

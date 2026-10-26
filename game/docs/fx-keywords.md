@@ -87,7 +87,7 @@ Players: `ME`, `OPP`.
 | `TRAP_CORE <n>` | | an enemy hero that activates the picked core this turn takes n |
 | `HOLD_HIT SELF` | | with `BATTLE IF WIN`: after winning, the owner may deal no DMG and double the Knockback |
 | `NOOP` | | nothing (a "no" branch) |
-| `FREE_PLAY <max cost> [{Trait}]` | | play a card from the hand on SELF without paying (colour rules do not apply) |
+| `FREE_PLAY <max cost> [{Trait}] [Type]` | | play a card from the hand on SELF without paying (colour rules do not apply); `Type` limits it to Action, Equipment or Assist |
 | `SWAP FRIENDLY [ENGAGED]` | | SELF and a friendly hero trade hexes (`ENGAGED`: one an enemy reaches or that reaches an enemy) |
 | `DUEL_TOP <STAT> <n>` | | stage: players with heroes on it show their top card; the higher cost gets +n for its heroes there |
 
