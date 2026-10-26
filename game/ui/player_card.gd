@@ -27,6 +27,8 @@ var _title: String = ""
 var _locked: bool = false
 ## A series (Best of 3): the deck of game one stays; only stages and cores are picked again.
 var _deck_locked: bool = false
+## Draft: heroes and cards come from the draft; stages and cores are still picked here.
+var _drafted: bool = false
 var _body: VBoxContainer
 var _popup: PopupPanel
 var _sb: StyleBoxFlat
@@ -123,6 +125,19 @@ func set_fixed_deck(d: Dictionary) -> void:
 	_rebuild()
 
 
+## Draft (GDD 13): no deck to pick, the draft makes it. Says whether that changed anything.
+func set_drafted(on: bool) -> bool:
+	if on == _drafted:
+		return false
+	_drafted = on
+	if on:
+		deck_index = 0
+		built = {}
+		leader = ""
+	_rebuild()
+	return true
+
+
 func deck_fixed() -> bool:
 	return _deck_locked
 
@@ -180,7 +195,7 @@ func _rebuild() -> void:
 	prev.tooltip_text = "Previous deck"
 	prev.pressed.connect(func() -> void: _flip(-1))
 	var fixed: bool = _view_only or _locked
-	var deck_fixed_: bool = fixed or _deck_locked
+	var deck_fixed_: bool = fixed or _deck_locked or _drafted
 	if not deck_fixed_:
 		deck_row.add_child(prev)
 	var name_box := VBoxContainer.new()
@@ -193,12 +208,12 @@ func _rebuild() -> void:
 	caption.add_child(UiTheme.label("DECK", 13, Palette.GOLD))
 	if not _view_only:
 		var builder: Button = WebApp.link("DECK BUILDER", "decks/new", "Build or change decks in the web app; saved decks show here.")
-		builder.visible = not _locked and not _deck_locked
+		builder.visible = not _locked and not _deck_locked and not _drafted
 		builder.add_theme_font_size_override("font_size", 12)
 		builder.add_theme_constant_override("h_separation", 2)
 		builder.custom_minimum_size = Vector2(0, 18)
 		caption.add_child(builder)
-	var name_l: Label = UiTheme.label(_shown_deck_name().to_upper() if _view_only else deck_name().to_upper(), 28)
+	var name_l: Label = UiTheme.label("DRAFTED DECK" if _drafted else (_shown_deck_name().to_upper() if _view_only else deck_name().to_upper()), 28)
 	name_l.clip_text = true
 	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_box.add_child(name_l)
@@ -206,6 +221,10 @@ func _rebuild() -> void:
 		var chaos: Label = UiTheme.label("CHAOS  ·  ALL RANDOM", 12, Palette.GOLD)
 		chaos.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		caption.add_child(chaos)
+	if _drafted:
+		var dr: Label = UiTheme.label("DRAFT  ·  HEROES AND CARDS ARE DRAFTED", 12, Palette.GOLD)
+		dr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		caption.add_child(dr)
 	if _deck_locked:
 		var same: Label = UiTheme.label("SERIES  ·  THE DECK STAYS", 12, Palette.GOLD)
 		same.size_flags_vertical = Control.SIZE_SHRINK_CENTER

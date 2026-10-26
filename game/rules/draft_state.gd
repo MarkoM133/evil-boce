@@ -126,6 +126,16 @@ func decks() -> Array[Dictionary]:
 	return out
 
 
+
+## Why `slot` may not take card `id` now ("" when it may), for the draft screen.
+func why_not(slot: int, id: String) -> String:
+	return _why_not(slot, id)
+
+
+## Cards `slot` has drafted so far.
+func card_count(slot: int) -> int:
+	return _count(slot)
+
 # --- inside ------------------------------------------------------------------------------
 
 func _hero_colors(slot: int) -> PackedStringArray:

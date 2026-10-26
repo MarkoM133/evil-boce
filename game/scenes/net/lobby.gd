@@ -10,6 +10,7 @@ extends Control
 ## Back goes to the Play screen (local, online, practice).
 const MENU_SCENE: String = "res://scenes/menu/play_menu.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
+const DRAFT_SCENE: String = "res://scenes/match/draft.tscn"
 
 var db: CardDb
 var decks: Array[Dictionary] = []
@@ -300,11 +301,16 @@ func _my_addresses() -> PackedStringArray:
 func _start() -> void:
 	if host == null:
 		return
-	if host.settings.mode == "draft":
-		_status.text = "The draft screen is still to come; pick another mode for now."
-		return
 	# A random map is drawn now, so everyone starts on the same one (the START message carries it).
 	host.settings.resolve_map(_rng, GameSettings.MAP_SIZES)
+	if host.settings.mode == "draft":
+		# Draft (GDD 13): everyone goes to the draft; the host starts the match when it is done.
+		var why: String = host.start_draft(_rng.randi())
+		if not why.is_empty():
+			_status.text = why
+			return
+		get_tree().change_scene_to_file(DRAFT_SCENE)
+		return
 	var err: String = host.start(_rng.randi())
 	if not err.is_empty():
 		_status.text = err
@@ -354,6 +360,10 @@ func _wire_client() -> void:
 			_ready_btn.text = "READY"
 			_ready_btn.theme_type_variation = &"Primary"
 		_refresh())
+	# Draft (GDD 13): the host opened the draft, everyone goes there.
+	client.draft_changed.connect(func(_d: Dictionary) -> void:
+		if get_tree().current_scene == self:
+			get_tree().change_scene_to_file(DRAFT_SCENE))
 	# The match scene needs a state to draw: go when the first one after START is in.
 	client.state_received.connect(func(_s: GameState) -> void:
 		if client.started and get_tree().current_scene == self:
@@ -431,7 +441,9 @@ func _refresh() -> void:
 	if host == null:
 		_rules.set_settings(MatchSettings.from_dict(client.settings if client != null else {}))
 	# Chaos (GDD 13): everyone plays random decks, stages and cores; a locked card is sent again.
-	if _card.set_locked_random(_rules.settings.mode == "chaos"):
+	var locked_a: bool = _card.set_locked_random(_rules.settings.mode == "chaos")
+	var locked_b: bool = _card.set_drafted(_rules.settings.mode == "draft")
+	if locked_a or locked_b:
 		_send_deck()
 	if host != null:
 		var why: String = host.can_start()

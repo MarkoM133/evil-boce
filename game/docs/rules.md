@@ -137,7 +137,8 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    four packs of ten from the copy pool of both players' colours (evolutions only of drafted
    heroes), picks in turn, the rest to the other, no card of the other's colour or over its
    limit, a player with nothing legal skips, every deck filled to `deck_size` (20) at the end.
-   The host runs it online (`start_draft`, `draft_pick`); the draft screen is still to come.
+   The host runs it online (`start_draft`, `draft_pick`); `scenes/match/draft.gd` shows it (local:
+   bots pick at random, the setup's stages and cores go with the drafted decks).
 10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
 11. A hero in the start zone can be activated at any time, and a stunned or locked hero

@@ -6,6 +6,7 @@ extends Control
 ## Online play has its own lobby, which looks the same.
 
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
+const DRAFT_SCENE: String = "res://scenes/match/draft.tscn"
 ## Back goes to the Play screen (local, online, practice).
 const MENU_SCENE: String = "res://scenes/menu/play_menu.tscn"
 const OPPONENTS: Array[String] = ["BOT · EASY", "BOT · HARD", "PLAYER 2"]
@@ -103,11 +104,14 @@ func _ready() -> void:
 	_check()
 
 
-## Chaos (GDD 13): both sides play random decks, stages and cores.
+## Chaos (GDD 13): both sides play random decks, stages and cores; Draft: the decks are drafted.
 func _lock_cards() -> void:
 	var chaos: bool = _rules.settings.mode == "chaos"
+	var drafted: bool = _rules.settings.mode == "draft"
 	for card: PlayerCard in _cards:
-		if card.set_locked_random(chaos):
+		var a: bool = card.set_locked_random(chaos)
+		var b: bool = card.set_drafted(drafted)
+		if a or b:
 			_check()
 
 
@@ -126,14 +130,13 @@ func _check() -> void:
 func _start() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	if _rules.settings.mode == "draft":
-		_problems.text = "The draft screen is still to come; pick another mode for now."
-		_problems.add_theme_color_override("font_color", Palette.GOLD)
-		return
 	var settings: MatchSettings = MatchSettings.from_dict(_rules.settings.to_dict())
 	GameSettings.set_match_rules("local", settings)
 	settings.resolve_map(rng, GameSettings.MAP_SIZES)
 	GameSettings.set_map_size(settings.map_size)
+	if settings.mode == "draft":
+		_start_draft(settings)
+		return
 	var series: MatchSeries = MatchSeries.current
 	if _in_series:
 		settings.first_initiative = series.next_initiative()
@@ -164,6 +167,21 @@ func _start() -> void:
 		"seed": rng.randi(),
 	}
 	get_tree().change_scene_to_file(MATCH_SCENE)
+
+
+## Draft (GDD 13): the draft screen first, with the stages, cores and seats chosen here.
+func _start_draft(settings: MatchSettings) -> void:
+	MatchSeries.current = null
+	settings.first_initiative = -1
+	var bot: bool = _opponent < 2
+	var level: String = "hard" if _opponent == 1 else "easy"
+	var loadouts: Array = []
+	for slot: int in 2:
+		_cards[slot].loadout.remember("p%d" % (slot + 1))
+		loadouts.append(_cards[slot].loadout)
+	DraftScreen.local = {"settings": settings, "loadouts": loadouts,
+		"names": ["Player 1", ("Bot (%s)" % level.capitalize()) if bot else "Player 2"], "bot": bot, "bot_level": level}
+	get_tree().change_scene_to_file(DRAFT_SCENE)
 
 
 ## Screenshot helper: opens player 1's stage picker.

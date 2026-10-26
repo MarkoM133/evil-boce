@@ -30,6 +30,35 @@ func _initialize() -> void:
 	call_deferred("_go")
 
 
+## Draft mode (GDD 13): back to the lobby, the host opens a draft, both pick (the guest over
+## the link) until the host starts the match with the drafted decks.
+func _draft(rng: RandomNumberGenerator) -> void:
+	host.back_to_lobby()
+	host.set_settings(MatchSettings.preset("draft"))
+	await create_timer(0.3).timeout
+	client.send_ready(true)
+	await create_timer(0.4).timeout
+	_check(host.start_draft(21) == "", "host opens a draft: " + host.can_start())
+	await create_timer(0.3).timeout
+	_check(not client.draft.is_empty(), "the guest got the draft")
+	var guard: int = 0
+	while host.draft != null and guard < 200:
+		guard += 1
+		var d: DraftState = host.draft
+		var who: int = d.waiting_on()
+		if who == 1:
+			var seen: DraftState = DraftState.from_dict(client.draft, db.catalog)
+			if seen.waiting_on() == 1:
+				client.send_draft_pick(seen.timeout_pick(1, rng))
+		else:
+			host.apply_draft_pick(who, d.timeout_pick(who, rng))
+		await create_timer(0.05).timeout
+	_check(host.draft == null and host.started, "the draft ended and the match started (%d steps)" % guard)
+	await create_timer(0.4).timeout
+	for p: PlayerState in host.state().players:
+		_check(p.deck.size() + p.hand.size() == 20, "seat %d plays its 20 drafted cards" % p.slot)
+	_check(client.state != null and client.state.heroes.size() == 6, "the guest sees six drafted heroes")
+
 func _go() -> void:
 	db = CardDb.load_from(GameSettings.data_path())
 	_check(db.is_ok(), "cards loaded: " + db.error)
@@ -88,5 +117,6 @@ func _go() -> void:
 	_check(client.state.phase == host.state().phase, "client is in the host's phase (%s)" % client.state.phase)
 	scene.queue_free()
 	await create_timer(0.2).timeout
+	await _draft(rng)
 	print("net smoke: %d failures" % fails)
 	quit(1 if fails > 0 else 0)
