@@ -6,7 +6,7 @@ extends Control
 ## Online play has its own lobby, which looks the same.
 
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
-## Back goes to the Play screen (vs bot, two players, online, practice).
+## Back goes to the Play screen (local, online, practice).
 const MENU_SCENE: String = "res://scenes/menu/play_menu.tscn"
 const OPPONENTS: Array[String] = ["BOT · EASY", "BOT · HARD", "PLAYER 2"]
 

@@ -6,10 +6,8 @@ extends Control
 ## unfinished match), Play, Online, Sandbox, Replays, Decks, Settings and Exit. When the game
 ## starts, the splash (logo, press any key, what is new) comes first.
 
-const SANDBOX_SCENE: String = "res://scenes/sandbox/sandbox.tscn"
 const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
 const PLAY_SCENE: String = "res://scenes/menu/play_menu.tscn"
-const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
 const SETTINGS_SCENE: String = "res://scenes/menu/settings_menu.tscn"
@@ -512,12 +510,8 @@ func _on_pressed(action: String) -> void:
 			get_tree().change_scene_to_file(MATCH_SCENE)
 		"play":
 			get_tree().change_scene_to_file(PLAY_SCENE)
-		"online":
-			get_tree().change_scene_to_file(LOBBY_SCENE)
 		"replays":
 			get_tree().change_scene_to_file(REPLAYS_SCENE)
-		"sandbox":
-			get_tree().change_scene_to_file(SANDBOX_SCENE)
 		"settings":
 			get_tree().change_scene_to_file(SETTINGS_SCENE)
 		"decks":

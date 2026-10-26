@@ -59,11 +59,14 @@ join again" (the host never sends cards or images; Syncthing is required, GDD 2)
 
 ## Lobby
 
-- The host picks the map, the range change and how stages and cores are placed (the same
-  choices as the local Play setup). Changing them un-readies the guests.
+- The host picks the map and the match rules (the same bar and panel as Local play,
+  `MatchRules`); guests see them read-only. Changing them un-readies the guests.
 - Each player picks a saved deck or a random one; a saved deck that breaks the deck rules is
   not sent and Ready stays off.
-- "Add a bot" fills the other seat (Easy / Hard); "Remove the bot" frees it for a player.
+- While the other seat is empty it shows the host's address and BOT · EASY / BOT · HARD; a
+  bot's seat has REMOVE to free it for a player.
+- Each seat shows the others its picks (`shown`: deck name, heroes, stages, cores; random
+  stays "?"), so both see what they play against before the start.
 - A guest may not use the host's name (seats are found by name on reconnect).
 
 ## In the match scene

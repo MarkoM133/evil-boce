@@ -58,12 +58,16 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
 
 ## Match
 
-Main menu → Play → pick decks (saved decks from `decks/` in the shared folder, or random),
-player 2 (bot Easy / Hard or a second local player) and the map. The match scene
-(`scenes/match/`) only draws the `GameState`, turns clicks into moves and runs the physics for
-the Roll phase; the rules are in `rules/` (see `rules.md`). `bot/bot.gd` is the bot.
-"Online…" opens the lobby (`scenes/net/`): host on port 7777 or join a Tailscale address;
-protocol and roles in `net.md`.
+Main menu → Play → Local play, Online play or Practice (the sandbox). Local play
+(`scenes/match/match_setup.gd`): each side picks a deck (saved decks from `decks/` in the
+shared folder, or random), stages and cores; player 2 is a bot (Easy / Hard) or a second
+player here. Under them the map (a picker with the three maps) and MATCH RULES (a panel with
+every rule a match can change, `ui/match_rules.gd`); both are remembered per mode. The match
+scene (`scenes/match/`) only draws the `GameState`, turns clicks into moves and runs the
+physics for the Roll phase; the rules are in `rules/` (see `rules.md`). `bot/bot.gd` is the
+bot. Online play opens the lobby (`scenes/net/`): host on port 7777 or join a Tailscale
+address; it looks like Local play, with the other player's picks shown read-only. Protocol and
+roles in `net.md`.
 
 ## Windows build
 
