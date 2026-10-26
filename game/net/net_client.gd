@@ -11,6 +11,7 @@ signal match_started(info: Dictionary)
 signal state_received(state: GameState)
 ## The host's move timer: seconds left per slot, sent whenever one restarts.
 signal clocks_received(clocks: Dictionary)
+signal draft_changed(draft: Dictionary)
 signal move_refused(move: Dictionary, reason: String)
 signal balls_received(positions: Dictionary)
 signal roll_received(outcome: RollOutcome)
@@ -30,6 +31,8 @@ var players: Array = []
 var settings: Dictionary = {}
 ## The host's series (Best of 3) as last sent (LOBBY, OVER); {} for single games.
 var series: Dictionary = {}
+## The draft as the host last sent it (Draft mode); {} otherwise.
+var draft: Dictionary = {}
 var state: GameState
 var started: bool = false
 var paused: bool = false
@@ -69,6 +72,10 @@ func send_ready(ready: bool) -> void:
 	link.send(1, {"t": NetProtocol.READY, "ready": ready})
 
 
+func send_draft_pick(id: String) -> void:
+	link.send(1, {"t": NetProtocol.DRAFT_PICK, "id": id})
+
+
 func send_pause(on: bool) -> void:
 	link.send(1, {"t": NetProtocol.PAUSE if on else NetProtocol.RESUME})
 
@@ -105,6 +112,9 @@ func _on_message(_peer: int, msg: Dictionary) -> void:
 			state_received.emit(state)
 		NetProtocol.CLOCK:
 			clocks_received.emit(JsonUtil.as_dict(msg.get("clocks", {})))
+		NetProtocol.DRAFT:
+			draft = JsonUtil.as_dict(msg.get("draft", {}))
+			draft_changed.emit(draft)
 		NetProtocol.REFUSED:
 			move_refused.emit(JsonUtil.as_dict(msg.get("move", {})), str(msg.get("reason", "")))
 		NetProtocol.BALLS:

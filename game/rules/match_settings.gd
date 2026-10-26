@@ -53,12 +53,13 @@ static func standard() -> MatchSettings:
 ## The game modes (GDD 13) as presets of these settings; "custom" is any other mix. The mode
 ## name travels with the settings (lobby, record) and the map is not part of it: a preset
 ## brings its map, changing the map afterwards keeps the name.
-const MODES: Array[String] = ["standard", "fast", "chaos", "bo3", "custom"]
+const MODES: Array[String] = ["standard", "fast", "chaos", "bo3", "draft", "custom"]
 const MODE_LINES: Dictionary[String, String] = {
 	"standard": "The rules as written: a 23 × 23 map, three stages to win, no timer.",
 	"fast": "30 seconds a move, 20 cards, two stages to win, a 17 × 17 map.",
 	"chaos": "Random heroes and decks, random stages and cores dropped on a random map.",
 	"bo3": "Best of 3: first to two wins. The loser starts the next game; stages and cores are picked again.",
+	"draft": "Draft: heroes in turn, then four packs of ten cards picked one by one; decks of 20.",
 	"custom": "Your own mix of rules.",
 }
 ## Map size 0 stands for "drawn when the match starts" (resolve_map).
@@ -78,6 +79,8 @@ static func preset(name: String) -> MatchSettings:
 			s.map_size = MAP_RANDOM
 		"bo3":
 			s.series_wins = 2
+		"draft":
+			s.deck_size = 20
 	s.mode = name if MODES.has(name) else "custom"
 	return s
 
@@ -85,7 +88,7 @@ static func preset(name: String) -> MatchSettings:
 ## The preset these settings match (the map and the name aside), else "custom".
 func mode_of() -> String:
 	var mine: Dictionary = to_dict()
-	for name: String in ["standard", "fast", "chaos", "bo3"]:
+	for name: String in ["standard", "fast", "chaos", "bo3", "draft"]:
 		var p: Dictionary = preset(name).to_dict()
 		var same: bool = true
 		for k: Variant in mine:

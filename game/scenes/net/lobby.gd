@@ -300,6 +300,9 @@ func _my_addresses() -> PackedStringArray:
 func _start() -> void:
 	if host == null:
 		return
+	if host.settings.mode == "draft":
+		_status.text = "The draft screen is still to come; pick another mode for now."
+		return
 	# A random map is drawn now, so everyone starts on the same one (the START message carries it).
 	host.settings.resolve_map(_rng, GameSettings.MAP_SIZES)
 	var err: String = host.start(_rng.randi())

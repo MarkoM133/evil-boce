@@ -133,7 +133,11 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    `RollOutcome` to `apply_knockback`. The outcome lands every moved ball as a roll does
    (cores, stages, ring-outs); a knocked hero takes `wall_damage` once per ball it hit. The
 9d. (2026-10-26) `series_wins` > 1 is a series (`MatchSeries`, not a rule: the scene and the host
-   keep it); `first_initiative` names who starts (the last loser), -1 draws lots as before.
+9e. (2026-10-26) The Draft mode is `DraftState` (rules/), pure: heroes A B B A A B with none shared,
+   four packs of ten from the copy pool of both players' colours (evolutions only of drafted
+   heroes), picks in turn, the rest to the other, no card of the other's colour or over its
+   limit, a player with nothing legal skips, every deck filled to `deck_size` (20) at the end.
+   The host runs it online (`start_draft`, `draft_pick`); the draft screen is still to come.
 10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
 11. A hero in the start zone can be activated at any time, and a stunned or locked hero

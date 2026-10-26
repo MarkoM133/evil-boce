@@ -126,6 +126,10 @@ func _check() -> void:
 func _start() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
+	if _rules.settings.mode == "draft":
+		_problems.text = "The draft screen is still to come; pick another mode for now."
+		_problems.add_theme_color_override("font_color", Palette.GOLD)
+		return
 	var settings: MatchSettings = MatchSettings.from_dict(_rules.settings.to_dict())
 	GameSettings.set_match_rules("local", settings)
 	settings.resolve_map(rng, GameSettings.MAP_SIZES)
@@ -191,12 +195,14 @@ func demo_leader_pick() -> void:
 
 ## Screenshot helper: the Chaos mode (everything random, the map drawn at the start).
 func demo_chaos() -> void:
+	GameSettings.in_memory = true
 	_rules.settings = MatchSettings.preset("chaos")
 	_rules._changed()
 
 
 ## Screenshot helper: game two of a Best of 3, the bot one up; the decks of game one stay.
 func demo_series() -> void:
+	GameSettings.in_memory = true
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2
 	var s := MatchSeries.new(2)

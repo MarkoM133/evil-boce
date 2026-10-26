@@ -10,6 +10,7 @@ signal match_started
 signal state_changed
 signal paused_changed(paused: bool, by: int)
 signal player_changed(slot: int, connected: bool)
+signal draft_changed
 
 ## In a series the deck of game one stays: only the stages and cores of a new deck are taken.
 func _series_deck(slot: int, deck: Dictionary) -> Dictionary:
@@ -33,6 +34,9 @@ var settings: MatchSettings = MatchSettings.standard()
 ## The series (Best of 3) this table plays, null for single games; the decks of game one stay.
 var series: MatchSeries
 var _series_filed: bool = false
+## The draft while it runs (Draft mode, start_draft); null otherwise.
+var draft: DraftState
+var _draft_seed: int = 0
 var game_version: String = ""
 var cards_version: int = 0
 ## Seats: [{slot, name, peer (0 = host, -1 = bot), ready, bot, bot_level, deck, connected}]
@@ -273,6 +277,67 @@ func send_clocks(clocks: Dictionary) -> void:
 	link.broadcast({"t": NetProtocol.CLOCK, "clocks": clocks})
 
 
+# --- the draft ----------------------------------------------------------------------------
+
+## The Draft mode (GDD 13): the host runs the DraftState, bots pick at random, every pick goes
+## out as DRAFT, and when it is done the drafted decks replace the seats' heroes and cards
+## (stages and cores stay as picked) and the match starts.
+func start_draft(seed: int) -> String:
+	var why: String = can_start()
+	if not why.is_empty():
+		return why
+	draft = DraftState.start(engine.catalog, seed, absi(seed) % 2, settings.deck_size)
+	_draft_seed = seed
+	_bot_drafts()
+	_send_draft()
+	return ""
+
+
+func apply_draft_pick(slot: int, id: String) -> String:
+	if draft == null:
+		return "no draft running"
+	var err: String = draft.pick(slot, id)
+	if not err.is_empty():
+		return err
+	_bot_drafts()
+	_send_draft()
+	return ""
+
+
+func _bot_drafts() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _draft_seed + draft.hero_picks * 31 + draft.pack_index * 7
+	var guard: int = 0
+	while draft.phase != DraftState.PHASE_DONE and guard < 100:
+		guard += 1
+		var s: Dictionary = seat(draft.waiting_on())
+		if s.is_empty() or not JsonUtil.as_bool(s.get("bot", false)):
+			break
+		draft.pick(draft.waiting_on(), draft.timeout_pick(draft.waiting_on(), rng))
+
+
+func _send_draft() -> void:
+	link.broadcast({"t": NetProtocol.DRAFT, "draft": draft.to_dict()})
+	draft_changed.emit()
+	if draft.phase == DraftState.PHASE_DONE:
+		_finish_draft()
+
+
+func _finish_draft() -> void:
+	var drafted: Array[Dictionary] = draft.decks()
+	for s: Dictionary in seats:
+		var slot: int = JsonUtil.as_int(s.get("slot", -1), -1)
+		if slot < 0 or slot >= drafted.size():
+			continue
+		var deck: Dictionary = JsonUtil.as_dict(s["deck"]).duplicate(true)
+		deck["deck_name"] = "Draft"
+		deck["heroes"] = drafted[slot]["heroes"]
+		deck["cards"] = drafted[slot]["cards"]
+		s["deck"] = deck
+	draft = null
+	start(_draft_seed + 1)
+
+
 # --- messages ---------------------------------------------------------------------------------
 
 func _on_message(peer: int, msg: Dictionary) -> void:
@@ -286,6 +351,10 @@ func _on_message(peer: int, msg: Dictionary) -> void:
 		return
 	var slot: int = JsonUtil.as_int(s["slot"])
 	match t:
+		NetProtocol.DRAFT_PICK:
+			var why: String = apply_draft_pick(slot, str(msg.get("id", "")))
+			if not why.is_empty():
+				link.send(peer, {"t": NetProtocol.REFUSED, "move": {"draft_pick": msg.get("id", "")}, "reason": why})
 		NetProtocol.DECK:
 			if started:
 				return

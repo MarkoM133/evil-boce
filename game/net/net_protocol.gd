@@ -14,6 +14,7 @@ const PAUSE: String = "pause"          # {}
 const RESUME: String = "resume"        # {}
 const DECK: String = "deck"            # {deck: engine deck dict}  (lobby)
 const READY: String = "ready"          # {ready: bool}            (lobby)
+const DRAFT_PICK: String = "draft_pick" # {id}                      (draft: a hero or a card)
 
 # host -> client
 const WELCOME: String = "welcome"      # {slot, name, players: [...], settings}
@@ -30,6 +31,7 @@ const PLAYER: String = "player"        # {slot, name, connected}  (someone came 
 const OVER: String = "over"            # {summary, record: the full MatchRecord, nothing is hidden now}
 const PING: String = "ping"            # {} every few seconds, so a dead link shows up
 const CLOCK: String = "clock"          # {clocks: {slot: seconds left}}  (the move timer restarted for someone)
+const DRAFT: String = "draft"          # {draft: DraftState dict}  (the draft moved on)
 
 const PLACEHOLDER_CARD: String = "?"
 ## Packets longer than this go out gzipped, behind a 0x01 byte (JSON always starts with "{").

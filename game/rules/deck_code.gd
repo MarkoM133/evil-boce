@@ -146,7 +146,7 @@ static func pool_capacity(pool: Array[CardDef]) -> int:
 
 
 ## Errors that make the deck unplayable (same rules as the app, minus the pool-size warning).
-static func check(catalog: CardCatalog, heroes: PackedStringArray, cards: Dictionary) -> PackedStringArray:
+static func check(catalog: CardCatalog, heroes: PackedStringArray, cards: Dictionary, size: int = DECK_SIZE) -> PackedStringArray:
 	var errors := PackedStringArray()
 	if heroes.size() != HERO_COUNT:
 		errors.append("pick %d heroes (now %d)" % [HERO_COUNT, heroes.size()])
@@ -187,6 +187,6 @@ static func check(catalog: CardCatalog, heroes: PackedStringArray, cards: Dictio
 		if n > LIMITS[c.type]:
 			errors.append("%s: %d copies, but %s allows at most %d" % [c.name, n, c.type, LIMITS[c.type]])
 		count += n
-	if count != DECK_SIZE:
-		errors.append("%d cards, the deck needs %d" % [count, DECK_SIZE])
+	if count != size:
+		errors.append("%d cards, the deck needs %d" % [count, size])
 	return errors
