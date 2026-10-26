@@ -41,6 +41,16 @@ static func set_map_size(n: int) -> void:
 	save()
 
 
+## The sideboard last built for a saved deck (Best of 3), by the deck's name.
+static func sideboard(deck_name: String) -> Dictionary:
+	return JsonUtil.as_dict(_config().get_value("sideboard", deck_name, {})) if not deck_name.is_empty() else {}
+
+
+static func set_sideboard(deck_name: String, side: Dictionary) -> void:
+	if not deck_name.is_empty():
+		set_value("sideboard", deck_name, side)
+
+
 ## Where the web app lives (WebApp opens its pages).
 static func web_app_url() -> String:
 	var u: String = str(_config().get_value("web", "url", "")).strip_edges()

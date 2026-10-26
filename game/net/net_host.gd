@@ -12,11 +12,17 @@ signal paused_changed(paused: bool, by: int)
 signal player_changed(slot: int, connected: bool)
 signal draft_changed
 
-## In a series the deck of game one stays: only the stages and cores of a new deck are taken.
+## In a series the deck of game one stays: only the stages and cores of a new deck are taken,
+## and cards swapped with the sideboard when the swap is legal (MatchSeries.set_cards).
 func _series_deck(slot: int, deck: Dictionary) -> Dictionary:
 	if series == null or series.is_over() or series.games == 0 or deck.is_empty() or slot < 0 or slot >= series.decks.size():
 		return deck
 	var fixed: Dictionary = JsonUtil.as_dict(series.decks[slot])
+	var want: Dictionary = JsonUtil.as_dict(deck.get("cards", {}))
+	var have: Dictionary = JsonUtil.as_dict(fixed.get("cards", {}))
+	if not want.is_empty() and (MatchSeries._swaps(have, want) > 0 or MatchSeries._swaps(want, have) > 0):
+		if series.set_cards(engine.catalog, slot, want).is_empty():
+			fixed = JsonUtil.as_dict(series.decks[slot])
 	var out: Dictionary = deck.duplicate(true)
 	out["deck_name"] = fixed.get("name", "")
 	out["heroes"] = fixed.get("heroes", [])
@@ -175,6 +181,10 @@ func start(seed: int) -> String:
 			for d: Variant in decks:
 				var dd: Dictionary = JsonUtil.as_dict(d)
 				series.decks.append({"name": str(dd.get("deck_name", "")), "heroes": dd.get("heroes", []), "cards": dd.get("cards", {})})
+				var side: Dictionary = JsonUtil.as_dict(dd.get("sideboard", {}))
+				if not MatchSeries.sideboard_error(engine.catalog, JsonUtil.as_strings(dd.get("heroes", [])), side).is_empty():
+					side = {}
+				series.sideboards.append(side)
 		settings.first_initiative = series.next_initiative()
 	else:
 		series = null

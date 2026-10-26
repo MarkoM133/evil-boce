@@ -64,3 +64,56 @@ func test_the_engine_takes_the_first_move_from_the_settings() -> void:
 	for seed: int in 12:
 		seen[engine.start_match(settings, decks, seed).initiative] = true
 	assert_eq(seen.size(), 2, "lots when nobody is named")
+
+
+func test_sideboard_rules_and_swaps_between_games() -> void:
+	var catalog := CardCatalog.from_json_text(FileAccess.get_file_as_string(FIXTURE))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 6
+	var d: Dictionary = DeckCode.random_deck(catalog, rng, "TA-001")
+	var heroes: PackedStringArray = JsonUtil.as_strings(d["heroes"])
+	var cards: Dictionary = JsonUtil.as_dict(d["cards"])
+	if not DeckCode.check(catalog, heroes, cards).is_empty():
+		pass_test("the fixture pool cannot make a full deck for this check")
+		return
+	# A sideboard of cards the deck could hold, under the limit.
+	var side: Dictionary = {}
+	for c: CardDef in DeckCode._pool(catalog, _heroes_of(catalog, heroes)):
+		if JsonUtil.as_int(cards.get(c.id, 0)) < DeckCode.LIMITS[c.type] and side.size() < 2:
+			side[c.id] = 1
+	assert_eq(MatchSeries.sideboard_error(catalog, heroes, side), "")
+	assert_ne(MatchSeries.sideboard_error(catalog, heroes, {"TX-010": 11}), "", "too many")
+	var s := MatchSeries.new(2)
+	s.decks = [{"name": "A", "heroes": heroes, "cards": cards}, {"name": "B", "heroes": heroes, "cards": cards}]
+	s.sideboards = [side, {}]
+	assert_ne(s.swap_error(catalog, 0, cards), "", "no swaps before the first game ends")
+	s.record(1)
+	assert_eq(s.swaps_used(0), 0)
+	if side.is_empty():
+		return
+	var in_id: String = str(side.keys()[0])
+	var out_id: String = ""
+	for k: Variant in cards:
+		if str(k) != in_id:
+			out_id = str(k)
+			break
+	var swapped: Dictionary = cards.duplicate()
+	swapped[out_id] = JsonUtil.as_int(swapped[out_id]) - 1
+	if JsonUtil.as_int(swapped[out_id]) == 0:
+		swapped.erase(out_id)
+	swapped[in_id] = JsonUtil.as_int(swapped.get(in_id, 0)) + 1
+	assert_eq(s.set_cards(catalog, 0, swapped), "")
+	assert_eq(s.swaps_used(0), 1)
+	assert_eq(JsonUtil.as_int(JsonUtil.as_dict(s.sideboards[0]).get(out_id, 0)), 1, "the card taken out waits in the sideboard")
+	var cheat: Dictionary = swapped.duplicate()
+	cheat[in_id] = JsonUtil.as_int(cheat[in_id]) + 3
+	assert_ne(s.set_cards(catalog, 0, cheat), "", "only what deck and sideboard hold")
+	var back: MatchSeries = MatchSeries.from_dict(s.to_dict())
+	assert_eq(back.swaps_used(0), 1, "survives the lobby round trip")
+
+
+static func _heroes_of(catalog: CardCatalog, ids: PackedStringArray) -> Array[CardDef]:
+	var out: Array[CardDef] = []
+	for id: String in ids:
+		out.append(catalog.get_card(id))
+	return out

@@ -401,6 +401,9 @@ func _send_deck() -> void:
 	var deck: Dictionary = _engine_deck(saved, GameSettings.player_name(), _card.loadout) if problems.is_empty() else {}
 	if not deck.is_empty():
 		deck["shown"] = _card.picks()
+		# Best of 3: the sideboard goes with the deck (the host keeps it for the series).
+		if _rules.settings.series_wins > 1:
+			deck["sideboard"] = _card.sideboard
 	if host != null:
 		host.set_my_deck(deck)
 	elif client != null:
@@ -434,9 +437,18 @@ func _refresh() -> void:
 	_series.visible = in_series
 	if in_series:
 		_series.text = "SERIES %s  ·  GAME %d NEXT  ·  THE DECKS STAY, PICK YOUR STAGES AND CORES" % [series.score(), series.games + 1]
-		if my_slot >= 0 and my_slot < series.decks.size() and not _card.deck_fixed():
-			_card.set_fixed_deck(JsonUtil.as_dict(series.decks[my_slot]))
-			_send_deck()
+		if my_slot >= 0 and my_slot < series.decks.size():
+			var want: Dictionary = JsonUtil.as_dict(series.decks[my_slot])
+			var have: Dictionary = JsonUtil.as_dict(_card.built.get("cards", {}))
+			var cards: Dictionary = JsonUtil.as_dict(want.get("cards", {}))
+			var has_side: bool = my_slot < series.sideboards.size() and not JsonUtil.as_dict(series.sideboards[my_slot]).is_empty()
+			if not _card.deck_fixed() or MatchSeries._swaps(have, cards) > 0 or MatchSeries._swaps(cards, have) > 0:
+				_card.swap_handler = _swap if has_side else Callable()
+				_card.set_fixed_deck(want)
+				_send_deck()
+	else:
+		var m: String = _rules.settings.mode
+		_card.set_sideboard_mode(_rules.settings.series_wins > 1 and m != "draft" and m != "chaos")
 	_rules.set_editable(host != null and not in_series)
 	if host == null:
 		_rules.set_settings(MatchSettings.from_dict(client.settings if client != null else {}))
@@ -451,6 +463,29 @@ func _refresh() -> void:
 		_start_btn.tooltip_text = why
 		_start_btn.text = (("START GAME %d" % (series.games + 1)) if in_series else "START MATCH") if why.is_empty() else why.to_upper()
 		_start_btn.add_theme_font_size_override("font_size", 40 if why.is_empty() else 22)
+
+
+## Best of 3 between games: swap with the sideboard; the host checks the swap and sends the
+## series back, which sets the deck shown here.
+func _swap() -> void:
+	var sd: Dictionary = host.series.to_dict() if host != null and host.series != null else (client.series if client != null else {})
+	if sd.is_empty():
+		return
+	var series: MatchSeries = MatchSeries.from_dict(sd)
+	var slot: int = host.host_slot if host != null else client.slot
+	if slot < 0 or slot >= series.decks.size() or slot >= series.break_decks.size():
+		return
+	var now: Dictionary = JsonUtil.as_dict(series.decks[slot])
+	SideboardPanel.open_swap(self, db, JsonUtil.as_strings(now.get("heroes", [])),
+		JsonUtil.as_dict(JsonUtil.as_dict(series.break_decks[slot]).get("cards", {})),
+		JsonUtil.as_dict(series.break_sides[slot]) if slot < series.break_sides.size() else {}, JsonUtil.as_dict(now.get("cards", {})),
+		func(cards: Dictionary) -> void:
+			var err: String = series.set_cards(db.catalog, slot, cards)
+			if not err.is_empty():
+				_status.text = err
+				return
+			_card.set_fixed_deck(JsonUtil.as_dict(series.decks[slot]))
+			_send_deck())
 
 
 ## A seat's state as chips in its card header: host, bot, ready, away, no deck; the host can

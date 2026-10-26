@@ -29,6 +29,11 @@ var _locked: bool = false
 var _deck_locked: bool = false
 ## Draft: heroes and cards come from the draft; stages and cores are still picked here.
 var _drafted: bool = false
+## Best of 3: the sideboard of the saved deck (up to 10, remembered by the deck's name), built
+## before a series; in a series `swap_handler` opens the swap between games.
+var sideboard: Dictionary = {}
+var _sideboard_on: bool = false
+var swap_handler: Callable = Callable()
 var _body: VBoxContainer
 var _popup: PopupPanel
 var _sb: StyleBoxFlat
@@ -138,6 +143,29 @@ func set_drafted(on: bool) -> bool:
 	return true
 
 
+## Best of 3 before a series: the SIDEBOARD button for a saved deck.
+func set_sideboard_mode(on: bool) -> void:
+	if on == _sideboard_on:
+		return
+	_sideboard_on = on
+	_load_sideboard()
+	_rebuild()
+
+
+func _load_sideboard() -> void:
+	var d: Dictionary = saved_deck()
+	sideboard = GameSettings.sideboard(str(d.get("name", ""))) if _sideboard_on and deck_index > 0 else {}
+
+
+func _open_sideboard() -> void:
+	var d: Dictionary = saved_deck()
+	SideboardPanel.open_build(self, db, JsonUtil.as_strings(d.get("heroes", [])), JsonUtil.as_dict(d.get("cards", {})), sideboard,
+		func(side: Dictionary) -> void:
+			sideboard = side
+			GameSettings.set_sideboard(str(d.get("name", "")), side)
+			_changed())
+
+
 func deck_fixed() -> bool:
 	return _deck_locked
 
@@ -179,6 +207,10 @@ func problems() -> PackedStringArray:
 		out.append_array(DeckCode.check(db.catalog, JsonUtil.as_strings(d["heroes"]), JsonUtil.as_dict(d["cards"])))
 	if db != null:
 		out.append_array(loadout.problems(db.catalog))
+	if _sideboard_on and not sideboard.is_empty() and db != null:
+		var sb_err: String = MatchSeries.sideboard_error(db.catalog, JsonUtil.as_strings(d.get("heroes", [])), sideboard)
+		if not sb_err.is_empty():
+			out.append("sideboard: " + sb_err)
 	return out
 
 
@@ -221,6 +253,23 @@ func _rebuild() -> void:
 		var chaos: Label = UiTheme.label("CHAOS  ·  ALL RANDOM", 12, Palette.GOLD)
 		chaos.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		caption.add_child(chaos)
+	if _sideboard_on and deck_index > 0 and not _view_only:
+		var sbb := Button.new()
+		sbb.text = "SIDEBOARD  %d / %d" % [SideboardPanel._total(sideboard), MatchSeries.SIDEBOARD]
+		sbb.add_theme_font_size_override("font_size", 12)
+		sbb.custom_minimum_size = Vector2(0, 18)
+		sbb.tooltip_text = "Best of 3: up to %d cards to swap in between games" % MatchSeries.SIDEBOARD
+		sbb.pressed.connect(_open_sideboard)
+		caption.add_child(sbb)
+	if swap_handler.is_valid() and _deck_locked and not _view_only:
+		var sw := Button.new()
+		sw.text = "SWAP CARDS"
+		sw.theme_type_variation = &"Gold"
+		sw.add_theme_font_size_override("font_size", 12)
+		sw.custom_minimum_size = Vector2(0, 18)
+		sw.tooltip_text = "Swap up to %d cards with your sideboard before this game" % MatchSeries.SWAPS
+		sw.pressed.connect(func() -> void: swap_handler.call())
+		caption.add_child(sw)
 	if _drafted:
 		var dr: Label = UiTheme.label("DRAFT  ·  HEROES AND CARDS ARE DRAFTED", 12, Palette.GOLD)
 		dr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -309,6 +358,7 @@ func _rebuild() -> void:
 
 func _flip(step: int) -> void:
 	deck_index = posmod(deck_index + step, decks.size() + 1)
+	_load_sideboard()
 	_changed()
 
 

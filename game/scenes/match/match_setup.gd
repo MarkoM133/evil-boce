@@ -56,6 +56,11 @@ func _ready() -> void:
 		_cards.append(card)
 		if _in_series and slot < series.decks.size():
 			card.set_fixed_deck(JsonUtil.as_dict(series.decks[slot]))
+			# A bot keeps its deck; players may swap with their sideboard.
+			var has_side: bool = slot < series.sideboards.size() and not JsonUtil.as_dict(series.sideboards[slot]).is_empty()
+			if has_side and not (slot == 1 and _opponent < 2):
+				card.swap_handler = _swap.bind(slot)
+				card.set_fixed_deck(JsonUtil.as_dict(series.decks[slot]))
 		if slot == 0:
 			var vs: Label = UiTheme.label("VS", 64, Palette.ACCENT)
 			vs.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -111,6 +116,7 @@ func _lock_cards() -> void:
 	for card: PlayerCard in _cards:
 		var a: bool = card.set_locked_random(chaos)
 		var b: bool = card.set_drafted(drafted)
+		card.set_sideboard_mode(_rules.settings.series_wins > 1 and not _in_series and not drafted and not chaos)
 		if a or b:
 			_check()
 
@@ -155,6 +161,10 @@ func _start() -> void:
 		var deck: Dictionary = DeckCode.random_deck(db.catalog, rng) if saved.is_empty() else saved
 		if series != null and not _in_series:
 			series.decks.append({"name": str(deck.get("name", "")), "heroes": deck.get("heroes", []), "cards": deck.get("cards", {})})
+			var side: Dictionary = card.sideboard if not saved.is_empty() else {}
+			if not MatchSeries.sideboard_error(db.catalog, JsonUtil.as_strings(deck.get("heroes", [])), side).is_empty():
+				side = {}
+			series.sideboards.append(side)
 		var who: String = ("Bot (%s)" % level.capitalize()) if bot and slot == 1 else "Player %d" % (slot + 1)
 		card.loadout.remember("p%d" % (slot + 1))
 		GameSettings.set_last_deck("p%d" % (slot + 1), "" if saved.is_empty() else str(saved["name"]))
@@ -167,6 +177,24 @@ func _start() -> void:
 		"seed": rng.randi(),
 	}
 	get_tree().change_scene_to_file(MATCH_SCENE)
+
+
+## Best of 3 between games: deck and sideboard trade cards (up to five); the deck of the next
+## game changes for good.
+func _swap(slot: int) -> void:
+	var series: MatchSeries = MatchSeries.current
+	var base: Dictionary = JsonUtil.as_dict(series.break_decks[slot]) if slot < series.break_decks.size() else {}
+	var now: Dictionary = JsonUtil.as_dict(series.decks[slot])
+	SideboardPanel.open_swap(self, db, JsonUtil.as_strings(now.get("heroes", [])), JsonUtil.as_dict(base.get("cards", {})),
+		JsonUtil.as_dict(series.break_sides[slot]) if slot < series.break_sides.size() else {}, JsonUtil.as_dict(now.get("cards", {})),
+		func(cards: Dictionary) -> void:
+			var err: String = series.set_cards(db.catalog, slot, cards)
+			if not err.is_empty():
+				_problems.text = "Player %d: %s" % [slot + 1, err]
+				_problems.add_theme_color_override("font_color", Palette.GOLD)
+				return
+			_cards[slot].set_fixed_deck(JsonUtil.as_dict(series.decks[slot]))
+			_check())
 
 
 ## Draft (GDD 13): the draft screen first, with the stages, cores and seats chosen here.
@@ -228,6 +256,48 @@ func demo_series() -> void:
 		var d: Dictionary = DeckCode.random_deck(db.catalog, rng)
 		s.decks.append({"name": str(d["name"]), "heroes": d["heroes"], "cards": d["cards"]})
 	s.opponent = 1
+	s.sideboards = [_demo_side(s, 0), {}]
 	s.record(1)
 	MatchSeries.current = s
 	get_tree().reload_current_scene()
+
+
+## Up to ten legal cards for seat `slot` of the series, the ones the deck holds fewest of first.
+func _demo_side(s: MatchSeries, slot: int) -> Dictionary:
+	var d: Dictionary = JsonUtil.as_dict(s.decks[slot])
+	var cards: Dictionary = JsonUtil.as_dict(d["cards"])
+	var heroes: Array[CardDef] = []
+	for id: String in JsonUtil.as_strings(d["heroes"]):
+		heroes.append(db.catalog.get_card(id))
+	var side: Dictionary = {}
+	var n: int = 0
+	for c: CardDef in DeckCode._pool(db.catalog, heroes):
+		if n < 6 and JsonUtil.as_int(cards.get(c.id, 0)) < DeckCode.LIMITS[c.type]:
+			side[c.id] = 1
+			n += 1
+	return side
+
+
+## Screenshot helper: the sideboard builder for player 1's deck (a random one stands in).
+func demo_sideboard() -> void:
+	GameSettings.in_memory = true
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2
+	var d: Dictionary = DeckCode.random_deck(db.catalog, rng)
+	var s := MatchSeries.new(2)
+	s.decks = [{"name": "x", "heroes": d["heroes"], "cards": d["cards"]}]
+	SideboardPanel.open_build(self, db, JsonUtil.as_strings(d["heroes"]), JsonUtil.as_dict(d["cards"]), _demo_side(s, 0), func(_x: Dictionary) -> void: pass)
+
+
+## Screenshot helper: swapping between games, one swap made.
+func demo_swap() -> void:
+	GameSettings.in_memory = true
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2
+	var d: Dictionary = DeckCode.random_deck(db.catalog, rng)
+	var s := MatchSeries.new(2)
+	s.decks = [{"name": "x", "heroes": d["heroes"], "cards": d["cards"]}]
+	var side: Dictionary = _demo_side(s, 0)
+	var p: SideboardPanel = SideboardPanel.open_swap(self, db, JsonUtil.as_strings(d["heroes"]), JsonUtil.as_dict(d["cards"]), side, JsonUtil.as_dict(d["cards"]), func(_x: Dictionary) -> void: pass)
+	p._swap(str(JsonUtil.as_dict(d["cards"]).keys()[0]), str(side.keys()[0]))
+	p._fill()
