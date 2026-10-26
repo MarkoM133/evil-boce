@@ -78,6 +78,10 @@ var _battle_fx_key: String = ""
 ## The battle camera (HUD 5): which battle it last flew to, so it flies once per battle.
 var _cam_battle_key: String = ""
 var _marks := ImmediateMesh.new()
+## Stages someone is trying to claim (Stay): their outline pulses (_process).
+var _claim_marks := ImmediateMesh.new()
+var _claim_mat: StandardMaterial3D
+var _pulse_t: float = 0.0
 var _line_mat: StandardMaterial3D
 var _bodies: Dictionary[String, BallBody] = {}
 var _views: Dictionary[String, BallView] = {}
@@ -232,6 +236,12 @@ func _ready() -> void:
 	marks_mi.mesh = _marks
 	marks_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(marks_mi)
+	_claim_mat = MeshKit.unshaded(Color.WHITE)
+	var claim_mi := MeshInstance3D.new()
+	claim_mi.mesh = _claim_marks
+	claim_mi.material_override = _claim_mat
+	claim_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(claim_mi)
 	_sling = Slingshot.new(tuning)
 	add_child(_sling.make_instance())
 
@@ -893,13 +903,22 @@ func _rebuild_tokens() -> void:
 		if st.is_claimed():
 			var flag := MeshInstance3D.new()
 			var pole := CylinderMesh.new()
-			pole.top_radius = 0.05
-			pole.bottom_radius = 0.05
-			pole.height = 2.2
+			pole.top_radius = 0.06
+			pole.bottom_radius = 0.06
+			pole.height = 2.6
 			flag.mesh = pole
-			flag.material_override = MeshKit.unshaded(Palette.team(state.team_of(st.claimed_by)), false)
-			flag.position = arena.hex_center(st.center) + Vector3(0, 1.1, 0)
+			var team_col: Color = Palette.team(state.team_of(st.claimed_by))
+			flag.material_override = MeshKit.unshaded(Color("e8e2d6"), false)
+			flag.position = arena.hex_center(st.center) + Vector3(0, 1.3, 0)
 			_tokens.add_child(flag)
+			# The banner on the pole, in the claimer's colour.
+			var cloth := MeshInstance3D.new()
+			var box := BoxMesh.new()
+			box.size = Vector3(1.1, 0.7, 0.05)
+			cloth.mesh = box
+			cloth.material_override = MeshKit.unshaded(team_col, false)
+			cloth.position = flag.position + Vector3(0.58, 0.85, 0)
+			_tokens.add_child(cloth)
 
 
 ## A revealed stage's card art laid on its hexes, faded, cut to their shape: the stage reads as
@@ -1037,6 +1056,10 @@ func _draw_marks() -> void:
 		if fighting:
 			col = Color(0.45, 0.41, 0.37, 0.7)
 		any = _outline(st.footprint(), col, fighting) or any
+		# A claimed stage is filled with its owner's colour: it reads as taken from afar.
+		if st.is_claimed() and not fighting:
+			_fill(st.footprint(), Color(Palette.team(state.team_of(st.claimed_by)), 0.32))
+			any = true
 	if state.phase == GameState.PHASE_BATTLE or state.phase == GameState.PHASE_POSTROLL:
 		any = _battle_arrows() or any
 	if not any:
@@ -1044,10 +1067,13 @@ func _draw_marks() -> void:
 		_marks.surface_add_vertex(Vector3.ZERO)
 		_marks.surface_add_vertex(Vector3.ZERO)
 	_marks.surface_end()
+	_draw_claim_marks()
 
 
 ## The outer edge of `cells`; `dashed` draws every edge as half a dash.
-func _outline(cells: Array[Vector2i], color: Color, dashed: bool = false) -> bool:
+func _outline(cells: Array[Vector2i], color: Color, dashed: bool = false, im: ImmediateMesh = null, width: float = 0.09) -> bool:
+	if im == null:
+		im = _marks
 	var drew: bool = false
 	for a: Vector2i in cells:
 		var c2: Vector2 = arena.map.to_world(a)
@@ -1058,7 +1084,7 @@ func _outline(cells: Array[Vector2i], color: Color, dashed: bool = false) -> boo
 			var p1: Vector2 = c2 + Hex.corner(i, tuning.hex_size) * 0.97
 			if dashed:
 				p1 = p0.lerp(p1, 0.5)
-			MeshKit.ribbon(_marks, PackedVector3Array([Vector3(p0.x, 0.04, p0.y), Vector3(p1.x, 0.04, p1.y)]), 0.07 if dashed else 0.09, color)
+			MeshKit.ribbon(im, PackedVector3Array([Vector3(p0.x, 0.04, p0.y), Vector3(p1.x, 0.04, p1.y)]), 0.07 if dashed else width, color)
 			drew = true
 	return drew
 
@@ -1338,6 +1364,9 @@ func _process(delta: float) -> void:
 	if _sling.is_aiming():
 		_sling.update(cam.camera, get_viewport().get_mouse_position(), get_viewport().get_visible_rect().size.y)
 	_refresh_range()
+	_pulse_t += delta
+	if _claim_mat != null:
+		_claim_mat.albedo_color = Color(1, 1, 1, 0.35 + 0.65 * (0.5 + 0.5 * sin(_pulse_t * 5.0)))
 	for id: String in _views:
 		# Balls ride over hills (the physics stays flat; see ArenaWorld.push_at).
 		_views[id].position.y = arena.height_at(_bodies[id].global_position)
@@ -2314,3 +2343,60 @@ func _run_phase_hold(delta: float) -> void:
 		_phase_hold = 0.0 if _demo or state.turn == 0 else PHASE_HOLD
 	elif _phase_hold > 0.0:
 		_phase_hold = maxf(0.0, _phase_hold - delta)
+
+
+## Filled hexes (a claimed stage in its owner's colour), on the marks layer.
+func _fill(cells: Array[Vector2i], color: Color) -> void:
+	_marks.surface_set_color(color)
+	for a: Vector2i in cells:
+		var c2: Vector2 = arena.map.to_world(a)
+		for i: int in 6:
+			var p0: Vector2 = c2 + Hex.corner(i - 1, tuning.hex_size) * 0.97
+			var p1: Vector2 = c2 + Hex.corner(i, tuning.hex_size) * 0.97
+			_marks.surface_add_vertex(Vector3(c2.x, 0.03, c2.y))
+			_marks.surface_add_vertex(Vector3(p0.x, 0.03, p0.y))
+			_marks.surface_add_vertex(Vector3(p1.x, 0.03, p1.y))
+
+
+## A stage the activated hero chose Stay on (GDD 6: a second Stay in a row claims it) gets a
+## thick outline in that player's colour that pulses, so standing there and trying to claim
+## read differently.
+func _draw_claim_marks() -> void:
+	_claim_marks.clear_surfaces()
+	_claim_marks.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var any: bool = false
+	for st: StageState in state.stages:
+		if not st.placed or st.is_claimed() or st.stay_hero.is_empty():
+			continue
+		var h: HeroState = state.hero(st.stay_hero)
+		if h == null or h.is_ko() or not h.is_on_map() or not st.covers(h.hex):
+			continue
+		any = _outline(st.footprint(), Palette.team(state.team_of(h.owner)), false, _claim_marks, 0.2) or any
+	if not any:
+		_claim_marks.surface_add_vertex(Vector3.ZERO)
+		_claim_marks.surface_add_vertex(Vector3.ZERO)
+		_claim_marks.surface_add_vertex(Vector3.ZERO)
+	_claim_marks.surface_end()
+
+
+## Screenshot helper: one stage claimed by player 1 (filled, with a banner) and one that player
+## 1's hero is trying to claim (pulsing outline).
+func demo_claims() -> void:
+	_demo = true
+	var mine: Array[StageState] = []
+	for st: StageState in state.stages:
+		if st.owner == 0:
+			mine.append(st)
+	mine[0].placed = true
+	mine[0].revealed = true
+	mine[0].center = Hex.offset_to_axial(8, 11)
+	mine[0].claimed_by = 0
+	mine[1].placed = true
+	mine[1].revealed = true
+	mine[1].center = Hex.offset_to_axial(14, 11)
+	var h: HeroState = state.heroes_of(0)[0]
+	h.zone = HeroState.ZONE_MAP
+	h.hex = mine[1].center
+	mine[1].stay_hero = h.id
+	mine[1].stay_turn = state.turn
+	_sync()
