@@ -124,7 +124,7 @@ static func from_card(c: Dictionary) -> CardDef:
 			if d.has_trait(t) or first.to_lower() == t.to_lower():
 				d.kind = t
 	d.terrain = parse_terrain(d.text)
-	if d.terrain == Terrain.Type.NONE and c.has("terrain"):
+	if d.terrain == Terrain.Type.NONE and c.has("terrain") and not has_terrain_line(d.text):
 		d.terrain = Terrain.parse(str(c.get("terrain", "")))
 	d.build_effects(str(c.get("fx", "")) if c.get("fx") != null else "")
 	return d
@@ -155,6 +155,15 @@ func to_record() -> Dictionary:
 	if fx_hand_written:
 		rec["fx"] = fx
 	return rec
+
+
+## Whether the card text has a `Terrain: X` line ("Terrain: None" is a terrain too: no stand-in
+## from the app field or the placeholders).
+static func has_terrain_line(text: String) -> bool:
+	for line: String in text.split("\n"):
+		if line.strip_edges().to_lower().begins_with("terrain:"):
+			return true
+	return false
 
 
 ## Finds a `Terrain: X` line in card text.

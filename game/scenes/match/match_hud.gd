@@ -1879,6 +1879,9 @@ func _scan_log() -> void:
 			if card != null:
 				var terrain: String = Terrain.name_of(card.terrain) if card.terrain != Terrain.Type.NONE else ""
 				toast("Stage revealed · %s%s" % [card.name, (" · " + terrain) if not terrain.is_empty() else ""])
+		elif t == "stage_buff":
+			# A stage's bonus is easy to miss on the table: say it.
+			toast(_describe(e))
 	_log_seen = n
 	# A replay jumping ahead shows only the last few.
 	for e: Dictionary in fresh.slice(maxi(0, fresh.size() - 3)):
@@ -1997,6 +2000,10 @@ func _describe(e: Dictionary) -> String:
 		"stage_revealed":
 			var st: StageState = state.stage(str(e.get("stage", "")))
 			return "Stage revealed: %s" % _card_name(st.card_id if st != null else "")
+		"stage_buff":
+			var sb: StageState = state.stage(str(e.get("stage", "")))
+			var stat: String = {"pwr": "Power", "dmg": "DMG", "kb": "KB", "rng": "Range", "hp": "HP"}.get(str(e.get("stat", "")), str(e.get("stat", "")))
+			return "%s: %s %+d %s" % [_card_name(sb.card_id if sb != null else ""), hero_l, JsonUtil.as_int(e.get("amount", 0)), stat]
 		"stage_claimed":
 			var st2: StageState = state.stage(str(e.get("stage", "")))
 			return "%s claims %s" % [player_name(JsonUtil.as_int(e.get("player", 0))), _card_name(st2.card_id if st2 != null else "")]

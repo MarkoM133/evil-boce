@@ -69,7 +69,8 @@ func hero_named(name: String) -> CardDef:
 func apply_terrain_overrides(d: Dictionary) -> void:
 	for k: Variant in d:
 		var card: CardDef = get_card(str(k))
-		if card != null and card.type == "Stage" and card.terrain == Terrain.Type.NONE:
+		if card != null and card.type == "Stage" and card.terrain == Terrain.Type.NONE \
+				and not CardDef.has_terrain_line(card.text):
 			card.terrain = Terrain.parse(str(d[k]))
 
 
