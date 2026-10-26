@@ -701,7 +701,7 @@ func _slide(b: BallBody, target: Vector3, v: BallView) -> void:
 	var steps: float = dist / maxf(tuning.hex_size * 1.7, 0.01)
 	# Slow enough to follow what a battle did (it used to be over in a blink).
 	var height: float = clampf(0.45 + 0.3 * steps, 0.45, 1.8)
-	var time: float = clampf(0.45 + 0.12 * steps, 0.45, 1.0)
+	var time: float = clampf(0.45 + 0.12 * steps, 0.45, 1.0) * GameSettings.anim_scale()
 	var t: Tween = create_tween()
 	t.tween_method(func(k: float) -> void:
 		var p: Vector3 = from.lerp(to, k)
@@ -986,9 +986,11 @@ func _refresh_range() -> void:
 	var marked: Array[Vector2i] = []
 	var key: String = ""
 	var ids := PackedStringArray()
-	for slot: int in state.active:
-		if not hud.shown_active(slot).is_empty():
-			ids.append(hud.shown_active(slot))
+	# The activated heroes' range shows always, unless only on hover (Settings → Interface).
+	if GameSettings.range_mode() == "active":
+		for slot: int in state.active:
+			if not hud.shown_active(slot).is_empty():
+				ids.append(hud.shown_active(slot))
 	if not _hovered.is_empty():
 		ids.append(_hovered)
 	for id: String in ids:
@@ -1389,6 +1391,11 @@ func _on_key(k: InputEventKey) -> void:
 				_apply(Move.make(Move.PASS, state.to_act))
 		KEY_HOME:
 			cam.reset_view()
+		KEY_B:
+			# Beams on or off (Settings → Interface); the rings stay.
+			GameSettings.set_value("display", "beams", not GameSettings.beams())
+			_refresh_target_fx()
+			hud.toast("Beams %s" % ("on" if GameSettings.beams() else "off"), Palette.FG)
 		KEY_C:
 			_toggle_battle_cam()
 
@@ -1749,7 +1756,11 @@ func _target_mark(at: Vector3, chosen: bool) -> Node3D:
 	grad.height = 64
 	bm.albedo_texture = grad
 	beam.material_override = bm
-	root.add_child(beam)
+	# The beam can be switched off (Settings, key B); the rings always show.
+	if GameSettings.beams():
+		root.add_child(beam)
+	else:
+		beam.queue_free()
 	for r: float in ([1.0, 0.7] if chosen else [0.85]):
 		var ring := MeshInstance3D.new()
 		var torus := TorusMesh.new()
@@ -1944,7 +1955,7 @@ func demo_reveal() -> void:
 
 ## Back to the table after BATTLE_CAM_HOLD seconds, unless a battle has started again by then.
 func _leave_cam_later() -> void:
-	var t: SceneTreeTimer = get_tree().create_timer(BATTLE_CAM_HOLD)
+	var t: SceneTreeTimer = get_tree().create_timer(BATTLE_CAM_HOLD * GameSettings.anim_scale())
 	await t.timeout
 	if _current_battle().is_empty() and hud.battle_cam:
 		hud.battle_cam = false
@@ -1957,7 +1968,7 @@ func _on_battle_resolved(index: int, winner_team: int) -> void:
 	if winner_team < 0 or index < 0 or index >= state.battles.size():
 		return
 	var ids: PackedStringArray = JsonUtil.as_strings(state.battles[index].get("heroes", []))
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.5 * GameSettings.anim_scale()).timeout
 	for hid: String in ids:
 		var h: HeroState = state.hero(hid)
 		if h != null and state.team_of(h.owner) == winner_team:

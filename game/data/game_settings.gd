@@ -90,7 +90,7 @@ const FPS_LIMITS: Array[int] = [0, 60, 120, 144, 240]
 const BUSES: Array[String] = ["Master", "Music", "Effects"]
 ## Rebindable keys: action -> default key.
 const DEFAULT_KEYS: Dictionary[String, Key] = {"pass": KEY_SPACE, "menu": KEY_ESCAPE, "card_zoom": KEY_ALT,
-	"battle_cam": KEY_C, "hold": KEY_CTRL}
+	"battle_cam": KEY_C, "hold": KEY_CTRL, "beams": KEY_B}
 ## The card-zoom key: held (the card shows while it is down) or pressed (on, then off).
 const ZOOM_MODES: Array[String] = ["hold", "press"]
 
@@ -278,3 +278,60 @@ static func hover_text() -> bool:
 ## unless the Hold key is down. Settings → Interface.
 static func auto_pass() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "auto_pass", true))
+
+
+# --- interface (Settings → Interface) -----------------------------------------------------------
+
+## Light beams over the heroes a card or a pick points at (the rings always show). Key B.
+static func beams() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "beams", true))
+
+
+## Banners in the middle: "all" (phases too), "moments" (battles, KOs, ring-outs, claims), "off".
+const BANNER_MODES: Array[String] = ["all", "moments", "off"]
+
+
+static func banners() -> String:
+	var v: String = str(_config().get_value("display", "banners", "all"))
+	return v if BANNER_MODES.has(v) else "all"
+
+
+## The splash (logo, press any key) when the game starts.
+static func splash() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "splash", true))
+
+
+## A small frames-per-second counter in the corner of a match.
+static func show_fps() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "fps", false))
+
+
+## Range circles: "active" (the activated heroes always, others on hover) or "hover" (only on hover).
+const RANGE_MODES: Array[String] = ["active", "hover"]
+
+
+static func range_mode() -> String:
+	var v: String = str(_config().get_value("display", "range", "active"))
+	return v if RANGE_MODES.has(v) else "active"
+
+
+## Animation speed (GDD 11): "normal" or "fast". Banners, knockback, battle camera waits.
+const ANIM_SPEEDS: Array[String] = ["normal", "fast"]
+
+
+static func anim_speed() -> String:
+	var v: String = str(_config().get_value("display", "anim_speed", "normal"))
+	return v if ANIM_SPEEDS.has(v) else "normal"
+
+
+## How long timed things last at this animation speed (1 normal, less when fast).
+static func anim_scale() -> float:
+	return 0.55 if anim_speed() == "fast" else 1.0
+
+
+## Everything back to its default except the shared folder, the online name, decks and picks.
+static func reset_to_defaults() -> void:
+	for section: String in ["display", "effects", "sound", "keys"]:
+		if _config().has_section(section):
+			_config().erase_section(section)
+	save()

@@ -88,6 +88,7 @@ var _prompt: Label
 var _detail: Label
 var _actions: VBoxContainer
 var _key_hint: Label
+var _fps: Label
 var _tray: HBoxContainer
 ## Energy, bottom left: yours (big) and the opponent's (small, red) above it.
 var _energy: EnergyDial
@@ -164,7 +165,8 @@ func refresh() -> void:
 	if _ribbon_phase(state.phase) != _ribbon_phase(_called_phase) or _called_phase.is_empty():
 		# Not while a replay rewinds (its log gets shorter).
 		# End is quiet (GDD 11): what it did shows through the log's own banners.
-		if not _called_phase.is_empty() and PHASES.has(state.phase) and state.phase != GameState.PHASE_END and state.log.size() >= _log_seen:
+		if not _called_phase.is_empty() and PHASES.has(state.phase) and state.phase != GameState.PHASE_END and state.log.size() >= _log_seen \
+				and GameSettings.banners() == "all":
 			banner("%s PHASE" % _ribbon_phase(state.phase).to_upper(), Palette.PANEL_SOLID, "TURN %d" % state.turn, "", START_BANNER_TIME if state.phase == GameState.PHASE_START else PHASE_BANNER_TIME)
 		_called_phase = state.phase
 	else:
@@ -257,6 +259,9 @@ func toast(text: String, color: Color = Palette.GOLD) -> void:
 
 ## A slanted band across the screen (BATTLE!, RING-OUT …): in, hold, out. Queued.
 func banner(title: String, color: Color, left: String = "", right: String = "", hold: float = BANNER_TIME) -> void:
+	# Banners can be cut down to the big moments, or switched off (Settings → Interface).
+	if GameSettings.banners() == "off":
+		return
 	_banners.append({"title": title, "color": color, "left": left, "right": right, "hold": hold})
 	if not _banner_busy:
 		_next_banner()
@@ -400,6 +405,17 @@ func _build() -> void:
 	_key_hint.add_theme_font_size_override("font_size", 12)
 	_key_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(_key_hint)
+
+	# Frames per second, top right corner (Settings → Interface).
+	_fps = Label.new()
+	_fps.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_fps.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_fps.position = Vector2(-8, 2)
+	_fps.add_theme_color_override("font_color", Palette.DIM)
+	_fps.add_theme_font_size_override("font_size", 11)
+	_fps.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fps.visible = GameSettings.show_fps()
+	add_child(_fps)
 
 	# Setup tray: stages / cores still to place, bottom centre.
 	_tray = HBoxContainer.new()
@@ -1292,6 +1308,8 @@ func _action(text: String, cb: Callable, kind: StringName = &"") -> Button:
 
 
 func _process(delta: float) -> void:
+	if _fps != null and _fps.visible:
+		_fps.text = "%d FPS" % Engine.get_frames_per_second()
 	if _hand_box == null or state == null:
 		return
 	# A card under the mouse shows on the dial what would be left after paying for it.
@@ -1918,7 +1936,7 @@ func _next_banner() -> void:
 	row.add_child(_banner_side(str(b["right"]), fg, false))
 	var t: Tween = band.create_tween()
 	t.tween_property(band, "position:x", -100.0, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	t.tween_interval(JsonUtil.as_float(b.get("hold", BANNER_TIME), BANNER_TIME))
+	t.tween_interval(JsonUtil.as_float(b.get("hold", BANNER_TIME), BANNER_TIME) * GameSettings.anim_scale())
 	t.tween_property(band, "position:x", size.x + 100.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	t.tween_callback(func() -> void:
 		band.queue_free()

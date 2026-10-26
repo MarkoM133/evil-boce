@@ -1,10 +1,16 @@
 extends Control
-## Settings (GDD 7): the shared data folder, the online name, display, sound and keys. Every
-## change is saved and applied at once; the data folder is checked as it is typed.
+## Settings (GDD 7), in tabs: Game (shared folder, name, how a match plays), Interface (what the
+## screen shows), Graphics, Sound, Keys. Every change is saved and applied at once; the data
+## folder is checked as it is typed.
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const KEY_LABELS: Dictionary[String, String] = {"pass": "Pass / end the round", "menu": "Menu / cancel",
-	"card_zoom": "Show a card big", "battle_cam": "Battle camera on / off", "hold": "Hold (no auto-pass while down)"}
+	"card_zoom": "Show a card big", "battle_cam": "Battle camera on / off", "hold": "Hold (no auto-pass while down)",
+	"beams": "Beams on heroes on / off"}
+const TABS: Array[String] = ["GAME", "INTERFACE", "GRAPHICS", "SOUND", "KEYS"]
+
+## The tab last open, kept while the game runs.
+static var _last_tab: int = 0
 
 var _data_path: LineEdit
 var _data_check: Label
@@ -12,16 +18,53 @@ var _key_buttons: Dictionary[String, Button] = {}
 ## The action waiting for a key press ("" when none).
 var _binding: String = ""
 var _browse: FileDialog
+var _pages: Array[VBoxContainer] = []
+var _tab_chips: HBoxContainer
 
 
 func _ready() -> void:
 	var frame: Dictionary = MenuScreen.build(self, CardDb.load_from(GameSettings.data_path()), "Settings",
-		"Saved at once; display changes apply straight away.", _back, 760.0)
+		"Saved at once; display changes apply straight away.", _back, 820.0)
 	var content: VBoxContainer = frame["content"]
-	var col: VBoxContainer = MenuScreen.card(content, 26)
-	col.add_theme_constant_override("separation", 8)
+	_tab_chips = HBoxContainer.new()
+	_tab_chips.add_theme_constant_override("separation", 6)
+	content.add_child(_tab_chips)
+	for t: String in TABS:
+		var page: VBoxContainer = MenuScreen.card(content, 26)
+		page.add_theme_constant_override("separation", 8)
+		_pages.append(page)
+	_build_game(_pages[0])
+	_build_interface(_pages[1])
+	_build_graphics(_pages[2])
+	_build_sound(_pages[3])
+	_build_keys(_pages[4])
+	_show_tab(_last_tab)
+	_show_keys()
+	_check_data()
 
-	_header(col, "GAME")
+
+## Shows tab `i` (and only its card); the chips mark which one.
+func _show_tab(i: int) -> void:
+	_last_tab = i
+	for k: int in _pages.size():
+		(_pages[k].get_parent() as Control).visible = k == i
+	for c: Node in _tab_chips.get_children():
+		c.queue_free()
+	for k: int in TABS.size():
+		var on: bool = k == i
+		var chip: UiShape = UiShape.chip(TABS[k], Palette.ACCENT if on else Palette.PANEL_SOLID,
+			Palette.FG if on else Palette.MUTED, 18, 36.0, 18.0)
+		chip.mouse_filter = Control.MOUSE_FILTER_STOP
+		chip.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		var idx: int = k
+		chip.gui_input.connect(func(e: InputEvent) -> void:
+			if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+				_show_tab(idx))
+		_tab_chips.add_child(chip)
+
+
+func _build_game(col: VBoxContainer) -> void:
+	_header(col, "SHARED FOLDER AND NAME")
 	var row := _row(col, "Shared folder")
 	_data_path = LineEdit.new()
 	_data_path.text = GameSettings.data_path()
@@ -47,7 +90,34 @@ func _ready() -> void:
 	name_edit.text_changed.connect(func(t: String) -> void: GameSettings.set_player_name(t))
 	row.add_child(name_edit)
 
-	_header(col, "DISPLAY")
+	_header(col, "IN A MATCH")
+	var ap := _option(col, "Auto-pass", ["On", "Off"], 0 if GameSettings.auto_pass() else 1)
+	ap.item_selected.connect(func(i: int) -> void: _store("display", "auto_pass", i == 0))
+	_hint(col, "Passes for you after a short wait when you have nothing to play. Hold Ctrl to stop it.")
+	var bcam := _option(col, "Battle camera", ["Flies to each battle", "Off"], 0 if GameSettings.battle_cam_auto() else 1)
+	bcam.item_selected.connect(func(i: int) -> void: _store("display", "battle_cam", i == 0))
+	var speed := _option(col, "Animation speed", ["Normal", "Fast"], GameSettings.ANIM_SPEEDS.find(GameSettings.anim_speed()))
+	speed.item_selected.connect(func(i: int) -> void: _store("display", "anim_speed", GameSettings.ANIM_SPEEDS[i]))
+	_hint(col, "Fast shortens banners, knockback and the battle camera's waits.")
+
+	_header(col, "RESET")
+	var reset := Button.new()
+	reset.text = "Reset all settings"
+	reset.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	reset.pressed.connect(func() -> void:
+		# A second click does it (no dialog in the way).
+		if reset.text != "Click again to reset":
+			reset.text = "Click again to reset"
+			return
+		GameSettings.reset_to_defaults()
+		GameSettings.apply(get_tree(), true)
+		get_tree().reload_current_scene())
+	col.add_child(reset)
+	_hint(col, "Interface, graphics, sound and keys go back to their defaults. The shared folder, your name and your decks stay.")
+
+
+func _build_interface(col: VBoxContainer) -> void:
+	_header(col, "SIZE AND MENU")
 	var scales: Array[String] = []
 	for s: float in GameSettings.UI_SCALES:
 		scales.append("%d %%" % roundi(s * 100.0))
@@ -61,12 +131,30 @@ func _ready() -> void:
 	layout.item_selected.connect(func(i: int) -> void: _store("display", "menu_layout", GameSettings.MENU_LAYOUTS[i]))
 	var fill := _option(col, "Cinema middle", ["Logo only", "Last match, what's new", "Table with balls"], GameSettings.CINEMA_FILLS.find(GameSettings.cinema_fill()))
 	fill.item_selected.connect(func(i: int) -> void: _store("display", "cinema_fill", GameSettings.CINEMA_FILLS[i]))
-	var bcam := _option(col, "Battle camera", ["Flies to each battle", "Off"], 0 if GameSettings.battle_cam_auto() else 1)
-	bcam.item_selected.connect(func(i: int) -> void: _store("display", "battle_cam", i == 0))
+	var splash := _option(col, "Splash at start", ["Shown", "Skipped"], 0 if GameSettings.splash() else 1)
+	splash.item_selected.connect(func(i: int) -> void: _store("display", "splash", i == 0))
+
+	_header(col, "ON THE TABLE")
+	var beams := _option(col, "Beams on heroes", ["On", "Off"], 0 if GameSettings.beams() else 1)
+	beams.item_selected.connect(func(i: int) -> void: _store("display", "beams", i == 0))
+	_hint(col, "The light over the heroes a card or a pick points at; the rings always show. Key B switches it in a match.")
+	var rng := _option(col, "Range circles", ["Activated heroes always, others on hover", "Only on hover"],
+		GameSettings.RANGE_MODES.find(GameSettings.range_mode()))
+	rng.item_selected.connect(func(i: int) -> void: _store("display", "range", GameSettings.RANGE_MODES[i]))
+
+	_header(col, "TEXT AND BANNERS")
 	var tips := _option(col, "Card text on hover", ["Shown", "Off"], 0 if GameSettings.hover_text() else 1)
 	tips.item_selected.connect(func(i: int) -> void: _store("display", "hover_text", i == 0))
-	var ap := _option(col, "Auto-pass", ["On (passes when you have nothing to play)", "Off"], 0 if GameSettings.auto_pass() else 1)
-	ap.item_selected.connect(func(i: int) -> void: _store("display", "auto_pass", i == 0))
+	_hint(col, "Right click or Alt still shows any card big.")
+	var ban := _option(col, "Banners", ["All, phases too", "Big moments only", "Off"],
+		GameSettings.BANNER_MODES.find(GameSettings.banners()))
+	ban.item_selected.connect(func(i: int) -> void: _store("display", "banners", GameSettings.BANNER_MODES[i]))
+	var fps := _option(col, "FPS counter", ["Off", "On"], 1 if GameSettings.show_fps() else 0)
+	fps.item_selected.connect(func(i: int) -> void: _store("display", "fps", i == 1))
+
+
+func _build_graphics(col: VBoxContainer) -> void:
+	_header(col, "WINDOW")
 	var mode := _option(col, "Window", ["Windowed", "Fullscreen"], 1 if GameSettings.fullscreen() else 0)
 	mode.item_selected.connect(func(i: int) -> void: _store("display", "fullscreen", i == 1))
 	var sizes: Array[String] = []
@@ -81,23 +169,27 @@ func _ready() -> void:
 		fps_names.append("No limit" if f == 0 else "%d" % f)
 	var fps := _option(col, "Frame limit", fps_names, maxi(0, GameSettings.FPS_LIMITS.find(GameSettings.max_fps())))
 	fps.item_selected.connect(func(i: int) -> void: _store("display", "max_fps", GameSettings.FPS_LIMITS[i]))
+
+	_header(col, "QUALITY AND EFFECTS")
 	var q := _option(col, "Quality", ["Low  ·  no shadows, faster", "Medium", "High  ·  softer shadows"],
 			GameSettings.QUALITIES.find(GameSettings.quality()))
 	q.item_selected.connect(func(i: int) -> void: _store("display", "quality", GameSettings.QUALITIES[i]))
-
-	_header(col, "EFFECTS")
 	var hs := _option(col, "Hit-stop", ["Off", "On  ·  a blink of freeze when damage lands"], 1 if GameSettings.effect("hit_stop") else 0)
 	hs.item_selected.connect(func(i: int) -> void: _store("effects", "hit_stop", i == 1))
 	var sm := _option(col, "Slow motion", ["Off", "On  ·  when a ball goes over the edge"], 1 if GameSettings.effect("slow_mo") else 0)
 	sm.item_selected.connect(func(i: int) -> void: _store("effects", "slow_mo", i == 1))
 
-	_header(col, "SOUND")
+
+func _build_sound(col: VBoxContainer) -> void:
+	_header(col, "VOLUME")
 	for bus: String in GameSettings.BUSES:
 		_volume(col, bus)
 
+
+func _build_keys(col: VBoxContainer) -> void:
 	_header(col, "KEYS")
 	for action: String in GameSettings.DEFAULT_KEYS:
-		row = _row(col, KEY_LABELS[action])
+		var row := _row(col, KEY_LABELS[action] if KEY_LABELS.has(action) else action)
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(180, 0)
 		b.pressed.connect(_start_binding.bind(action))
@@ -113,14 +205,17 @@ func _ready() -> void:
 		_binding = ""
 		_show_keys())
 	col.add_child(reset)
+	_header(col, "MOUSE")
+	_hint(col, "Drag a ball back to aim, release to throw; right click cancels. Wheel zooms, drag the table to turn the camera, Home resets it. Right click on a card or a hero shows its card big.")
+
+
+func _hint(parent: Control, text: String) -> void:
 	var note := Label.new()
 	note.theme_type_variation = &"Muted"
-	note.text = "Mouse: drag to aim, right click cancels, wheel zooms. Home resets the camera. Right click on a card or a hero shows its card big."
+	note.text = text
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(note)
-
-	_show_keys()
-	_check_data()
+	note.add_theme_font_size_override("font_size", 13)
+	parent.add_child(note)
 
 
 func _header(parent: Control, text: String) -> void:
@@ -249,3 +344,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _back() -> void:
 	_save_data()
 	get_tree().change_scene_to_file(MENU_SCENE)
+
+
+## Screenshot helper: the Interface tab.
+func demo_interface() -> void:
+	_show_tab(1)

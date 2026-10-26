@@ -79,6 +79,9 @@ func _ready() -> void:
 		f.modulate.a = 0.0
 	if _logo_node != null:
 		_logo_node.modulate.a = 0.0
+	# The splash can be skipped (Settings → Interface).
+	if not GameSettings.splash():
+		Splash.done = true
 	if Splash.done:
 		_play_intro(true)
 		return
