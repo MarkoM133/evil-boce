@@ -8,6 +8,7 @@ extends Control
 
 const SANDBOX_SCENE: String = "res://scenes/sandbox/sandbox.tscn"
 const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
+const PLAY_SCENE: String = "res://scenes/menu/play_menu.tscn"
 const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
@@ -16,9 +17,7 @@ const DECKS_SCENE: String = "res://scenes/decks/decks_menu.tscn"
 
 ## [label, action, what it is]
 const ENTRIES: Array = [
-	["PLAY", "play", "Against the bot, or two players on this computer"],
-	["ONLINE", "online", "Host a match or join one over Tailscale"],
-	["SANDBOX", "sandbox", "Throw balls around, try terrain"],
+	["PLAY", "play", "Vs the bot, two players here, online or practice"],
 	["REPLAYS", "replays", "Watch past matches, continue from any phase"],
 	["DECKS", "decks", "Your decks, deck codes"],
 	["SETTINGS", "settings", "Shared folder, display, sound, keys"],
@@ -512,7 +511,7 @@ func _on_pressed(action: String) -> void:
 			MatchLaunch.config = MatchLaunch.from_record(record)
 			get_tree().change_scene_to_file(MATCH_SCENE)
 		"play":
-			get_tree().change_scene_to_file(SETUP_SCENE)
+			get_tree().change_scene_to_file(PLAY_SCENE)
 		"online":
 			get_tree().change_scene_to_file(LOBBY_SCENE)
 		"replays":

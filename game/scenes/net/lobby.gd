@@ -6,7 +6,8 @@ extends Control
 ## guest. The NetHost / NetClient node lives under the root so the match scene keeps it, and
 ## after a match the host brings everyone back here.
 
-const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
+## Back goes to the Play screen (vs bot, two players, online, practice).
+const MENU_SCENE: String = "res://scenes/menu/play_menu.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const MatchSetup = preload("res://scenes/match/match_setup.gd")
 

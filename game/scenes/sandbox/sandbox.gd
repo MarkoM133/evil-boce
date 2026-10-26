@@ -2,7 +2,8 @@ extends Node3D
 ## Sandbox (step 1a): spawn heroes, throw them with the slingshot, watch them snap, open and
 ## show their range. No game rules here.
 
-const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
+## Back goes to the Play screen (vs bot, two players, online, practice).
+const MENU_SCENE: String = "res://scenes/menu/play_menu.tscn"
 
 enum Tool { NONE, SPAWN, TERRAIN }
 

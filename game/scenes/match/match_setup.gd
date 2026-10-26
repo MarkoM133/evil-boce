@@ -1,3 +1,4 @@
+class_name MatchSetup
 extends Control
 ## Before a match (GDD 7), as a match screen: two player cards face each other across a VS
 ## (deck, stages and cores each), who plays the second seat (bot Easy / Hard or a second player
@@ -5,7 +6,8 @@ extends Control
 ## START MATCH. Online play has its own lobby.
 
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
-const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
+## Back goes to the Play screen (vs bot, two players, online, practice).
+const MENU_SCENE: String = "res://scenes/menu/play_menu.tscn"
 const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
 ## Offered changes to every hero's printed range (Standard is -1, see MatchSettings.standard).
 const RANGE_DELTAS: Array[int] = [-2, -1, 0, 1]
@@ -15,6 +17,8 @@ var db: CardDb
 var decks: Array[Dictionary] = []
 var _cards: Array[PlayerCard] = []
 var _opponent: int = 0
+## Set by the Play screen before opening this one: 0 bot (easy), 2 a second player here.
+static var preset_opponent: int = 0
 var _map_i: int = 0
 var _range_i: int = 1
 var _manual: bool = true
@@ -23,6 +27,7 @@ var _start_btn: Button
 
 
 func _ready() -> void:
+	_opponent = preset_opponent
 	db = CardDb.load_from(GameSettings.data_path())
 	decks = DeckStore.load_all(db.root_dir)
 	_map_i = maxi(0, GameSettings.MAP_SIZES.find(GameSettings.map_size()))
