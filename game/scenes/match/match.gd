@@ -22,7 +22,7 @@ const CORE_LOOK: float = 1.3
 ## How strongly a revealed stage's art shows on its hexes.
 const STAGE_ART_ALPHA: float = 0.6
 ## Battle camera: its tilt (the opening view's) and how long it stays after the last battle.
-const BATTLE_CAM_PITCH: float = 50.0
+const BATTLE_CAM_PITCH: float = 34.0
 const BATTLE_CAM_HOLD: float = 1.8
 const CORE_COLORS: Dictionary[String, Color] = {
 	"Buff": Color("4fb858"), "Major": Color("ffd23f"), "Debuff": Color("9a5bd6"),
@@ -2208,9 +2208,20 @@ func _frame_battle(ids: PackedStringArray) -> void:
 	var spread: float = 0.0
 	for p: Vector3 in points:
 		spread = maxf(spread, Vector2(p.x - mid.x, p.z - mid.z).length())
-	# Tilted like the opening view, not from straight above.
+	# Low and close, from the side of the line between the fighters, so they stand next to
+	# each other and fill the screen (Marko 2026-10-26). The view turns at most 65 degrees
+	# away from the player's side of the table.
 	cam.pitch = deg_to_rad(BATTLE_CAM_PITCH)
-	cam.focus(mid, clampf(spread * 2.4 + 7.0, 8.0, 30.0))
+	if points.size() >= 2:
+		var d := Vector2(points[1].x - points[0].x, points[1].z - points[0].z)
+		if d.length() > 0.01:
+			var n := Vector2(d.y, -d.x).normalized()
+			if n.y < 0.0:
+				n = -n
+			cam.yaw = clampf(atan2(n.x, n.y), deg_to_rad(-65.0), deg_to_rad(65.0))
+	cam.focus(mid, clampf(spread * 2.0 + 10.0, 12.0, 26.0))
+	# Aim at the figures' middle, not their feet, so heads stay in the frame.
+	cam.target.y = 1.0
 	hud.battle_cam = true
 
 
