@@ -48,6 +48,11 @@ func parse(text: String) -> void:
 		catalog.apply_terrain_overrides(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(PLACEHOLDER_TERRAIN))))
 	if FileAccess.file_exists(PLACEHOLDER_FX):
 		catalog.apply_fx_overrides(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(PLACEHOLDER_FX))))
+	# The traits a first tag may name (GDD 10, 2026-10-26), edited in the web app.
+	var traits_path: String = data_dir().path_join("traits.json")
+	if FileAccess.file_exists(traits_path):
+		var td: Variant = JSON.parse_string(FileAccess.get_file_as_string(traits_path))
+		catalog.set_traits(JsonUtil.as_array(JsonUtil.as_dict(td).get("traits", [])))
 	var cards: Array = JsonUtil.as_array(doc.get("cards", []))
 	card_count = 0
 	for c: Variant in cards:

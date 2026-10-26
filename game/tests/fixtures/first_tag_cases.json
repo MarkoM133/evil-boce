@@ -1,0 +1,56 @@
+{
+  "about": "The first tag rule (2026-10-26) on invented cards: the game (test_first_tag.gd) and the web app (test/tags.test.mjs) must give the same answers.",
+  "traits": [
+    {"name": "Haki", "description": "Willpower."},
+    {"name": "Sword", "description": "Fights with blades."},
+    {"name": "Stand", "description": "Has a Stand."},
+    {"name": "Gear Second", "description": "A form of Delta."}
+  ],
+  "cards": [
+    {"id": "H-ALF", "name": "Alfa Prime", "type": "Hero", "color": "Red", "traits": ["Haki", "Crew A"], "aliases": ["Alfa", "The Alfa"]},
+    {"id": "H-BRA", "name": "Bravo", "type": "Hero", "color": "Red", "traits": ["Sword"]},
+    {"id": "H-CHA", "name": "Charlie", "type": "Hero", "color": "Blue", "traits": ["Stand"]},
+    {"id": "H-DEL", "name": "Delta", "type": "Hero", "color": "Blue", "traits": []},
+    {"id": "H-ECH", "name": "Echo", "type": "Hero", "color": "Green", "traits": ["Haki"]},
+    {"id": "E-DEL", "name": "Delta, Gear Second", "type": "Evolution", "color": "Blue", "hero": "Delta", "traits": ["Gear Second"]},
+    {"id": "C-GEN", "name": "Plain Red", "type": "Action", "color": "Red", "traits": ["General"]},
+    {"id": "C-GEN-G", "name": "Plain Green", "type": "Action", "color": "Green", "traits": ["General"]},
+    {"id": "C-ALF", "name": "Alfa Strike", "type": "Action", "color": "Red", "traits": ["The Alfa", "Sword"]},
+    {"id": "C-AB", "name": "Team Up", "type": "Action", "color": "Red", "traits": ["Alfa & Bravo"]},
+    {"id": "C-HAKI", "name": "Red Will", "type": "Action", "color": "Red", "traits": ["Haki"]},
+    {"id": "C-SWORD-B", "name": "Blue Blade", "type": "Equipment", "color": "Blue", "traits": ["Sword"]},
+    {"id": "C-GEAR", "name": "Jet Punch", "type": "Action", "color": "Blue", "traits": ["Gear Second"]},
+    {"id": "C-TYPO", "name": "Typo", "type": "Action", "color": "Red", "traits": ["Hakki"]},
+    {"id": "C-LATE", "name": "Late Name", "type": "Action", "color": "Red", "traits": ["Crew A", "Alfa"]},
+    {"id": "C-STAND", "name": "Blue Stand", "type": "Action", "color": "Blue", "traits": ["  stand "]},
+    {"id": "C-NONE", "name": "No Tags", "type": "Action", "color": "Red", "traits": []}
+  ],
+  "kinds": [
+    {"card": "C-GEN", "kind": "general"},
+    {"card": "C-ALF", "kind": "heroes", "heroes": ["Alfa Prime"]},
+    {"card": "C-AB", "kind": "heroes", "heroes": ["Alfa Prime", "Bravo"]},
+    {"card": "C-HAKI", "kind": "trait", "trait": "Haki"},
+    {"card": "C-STAND", "kind": "trait", "trait": "Stand"},
+    {"card": "C-TYPO", "kind": "invalid"},
+    {"card": "C-LATE", "kind": "invalid"},
+    {"card": "C-NONE", "kind": "invalid"}
+  ],
+  "cases": [
+    {"heroes": ["H-ALF", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-GEN", "ok": true, "why": "General: any hero of its colour"},
+    {"heroes": ["H-CHA", "H-DEL", "H-ECH"], "evolutions": [], "card": "C-GEN", "ok": false, "why": "no Red hero"},
+    {"heroes": ["H-ALF", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-ALF", "ok": true, "why": "an alias of Alfa Prime"},
+    {"heroes": ["H-BRA", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-ALF", "ok": false, "why": "Alfa is not in the deck"},
+    {"heroes": ["H-BRA", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-AB", "ok": true, "why": "Bravo is one of the two"},
+    {"heroes": ["H-ALF", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-HAKI", "ok": true, "why": "Alfa is Red and has Haki"},
+    {"heroes": ["H-BRA", "H-CHA", "H-ECH"], "evolutions": [], "card": "C-HAKI", "ok": false, "why": "Echo has Haki but is Green; Bravo is Red without Haki"},
+    {"heroes": ["H-BRA", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-SWORD-B", "ok": false, "why": "Bravo has Sword but is Red"},
+    {"heroes": ["H-ALF", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-GEAR", "ok": false, "needs": "E-DEL", "why": "only the evolution has Gear Second"},
+    {"heroes": ["H-ALF", "H-CHA", "H-DEL"], "evolutions": ["E-DEL"], "card": "C-GEAR", "ok": true, "why": "the evolution is in the deck"},
+    {"heroes": ["H-ALF", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-TYPO", "ok": false, "why": "unknown first tag"},
+    {"heroes": ["H-ALF", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-LATE", "ok": false, "why": "the alias is not the first tag"},
+    {"heroes": ["H-ALF", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-STAND", "ok": true, "why": "case and spaces do not matter"},
+    {"heroes": ["H-ALF", "H-CHA", "H-DEL"], "evolutions": [], "card": "E-DEL", "ok": true, "why": "an evolution of a deck hero"},
+    {"heroes": ["H-ALF", "H-BRA", "H-CHA"], "evolutions": [], "card": "E-DEL", "ok": false, "why": "Delta is not in the deck"},
+    {"heroes": ["H-ALF", "H-CHA", "H-DEL"], "evolutions": [], "card": "C-NONE", "ok": false, "why": "no tags at all"}
+  ]
+}

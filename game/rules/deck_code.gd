@@ -51,7 +51,7 @@ static func encode(heroes: PackedStringArray, cards: Dictionary, version: int) -
 
 
 ## A random deck like the app's randomFill: 3 different heroes (with `leader` among them when
-## given), then cards of their colours (evolutions only for those heroes), a colour at a time,
+## given), then cards they may take (the first tag rule, FirstTag), a colour at a time,
 ## up to 40 or until the pool runs out. The heroes are drawn again (a few tries) until their
 ## pool holds a full deck, so a random deck is short only when no draw allows 40.
 ## Returns {"name", "heroes": PackedStringArray, "cards": {id: n}}.
@@ -69,7 +69,7 @@ static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, leader
 		var draw: Array[CardDef] = fixed.duplicate()
 		while draw.size() < HERO_COUNT and not rest.is_empty():
 			draw.append(rest.pop_at(rng.randi_range(0, rest.size() - 1)))
-		var cap: int = pool_capacity(_pool(catalog, draw))
+		var cap: int = pool_capacity(_pool(catalog, draw, hero_evolutions(catalog, draw)))
 		if cap > best:
 			best = cap
 			picked = draw
@@ -80,10 +80,11 @@ static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, leader
 	for h: CardDef in picked:
 		ids.append(h.id)
 		names.append(h.name)
-	var pool: Array[CardDef] = _pool(catalog, picked)
 	var cards: Dictionary = {}
 	var total: int = 0
 	while total < DECK_SIZE:
+		# Cards an Evolution unlocks (a trait only it has) come in once that Evolution is in.
+		var pool: Array[CardDef] = _pool(catalog, picked, FirstTag.evolutions_in(catalog, cards.keys()))
 		# A colour first, then a card of it, so one big colour does not take the whole deck.
 		var by_color: Dictionary[String, Array] = {}
 		for c: CardDef in pool:
@@ -101,40 +102,24 @@ static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, leader
 	return {"name": "Random (%s)" % ", ".join(names), "heroes": ids, "cards": cards}
 
 
-## Deck cards these heroes may take: their colours, evolutions only for them.
-static func _pool(catalog: CardCatalog, heroes: Array[CardDef]) -> Array[CardDef]:
-	var colors := PackedStringArray()
-	var names := PackedStringArray()
-	for h: CardDef in heroes:
-		colors.append(h.color)
-		names.append(h.name)
+## Deck cards these heroes may take with these Evolution cards in the deck: the first tag rule
+## (FirstTag: colour, evolutions only for these heroes, General / hero / trait).
+static func _pool(catalog: CardCatalog, heroes: Array[CardDef], evolutions: Array[CardDef] = []) -> Array[CardDef]:
 	var pool: Array[CardDef] = []
 	for t: String in DECK_TYPES:
 		for c: CardDef in catalog.of_type(t):
-			if colors.has(c.color) and (t != "Evolution" or names.has(c.hero)) and _for_heroes(catalog, c, names):
+			if JsonUtil.as_bool(FirstTag.deck_verdict(catalog, c, heroes, evolutions)["ok"]):
 				pool.append(c)
 	return pool
 
 
-## Heroes a card is meant for: its traits that are a hero's full name or the first word of it
-## (Giorno = Giorno Giovanna; case does not matter); empty for a card any hero of its colour may
-## take. Such a card goes in a deck only with that hero.
-static func card_heroes(catalog: CardCatalog, c: CardDef) -> PackedStringArray:
-	var out := PackedStringArray()
-	for h: CardDef in catalog.of_type("Hero"):
-		if c.has_trait(h.name) or c.has_trait(h.name.get_slice(" ", 0)):
-			out.append(h.name)
-	return out
+## Every Evolution card of these heroes, to see what a deck of them could unlock.
+static func hero_evolutions(catalog: CardCatalog, heroes: Array[CardDef]) -> Array[CardDef]:
+	var names := PackedStringArray()
+	for h: CardDef in heroes:
+		names.append(h.name)
+	return catalog.of_type("Evolution").filter(func(e: CardDef) -> bool: return names.has(e.hero))
 
-
-static func _for_heroes(catalog: CardCatalog, c: CardDef, names: PackedStringArray) -> bool:
-	var only: PackedStringArray = card_heroes(catalog, c)
-	if only.is_empty():
-		return true
-	for n: String in only:
-		if names.has(n):
-			return true
-	return false
 
 
 ## Most cards a deck can hold from this pool (every card at its limit).
@@ -153,6 +138,7 @@ static func check(catalog: CardCatalog, heroes: PackedStringArray, cards: Dictio
 	var seen: PackedStringArray = PackedStringArray()
 	var colors: PackedStringArray = PackedStringArray()
 	var names: PackedStringArray = PackedStringArray()
+	var hero_defs: Array[CardDef] = []
 	for id: String in heroes:
 		if seen.has(id):
 			errors.append("the same hero is picked twice")
@@ -165,6 +151,8 @@ static func check(catalog: CardCatalog, heroes: PackedStringArray, cards: Dictio
 		else:
 			colors.append(h.color)
 			names.append(h.name)
+			hero_defs.append(h)
+	var evolutions: Array[CardDef] = FirstTag.evolutions_in(catalog, cards.keys().filter(func(k: Variant) -> bool: return JsonUtil.as_int(cards[k]) > 0))
 	var count: int = 0
 	for k: Variant in cards:
 		var id: String = str(k)
@@ -178,12 +166,10 @@ static func check(catalog: CardCatalog, heroes: PackedStringArray, cards: Dictio
 		if not DECK_TYPES.has(c.type):
 			errors.append("%s: %s can't go in a deck" % [c.name, c.type])
 			continue
-		if not colors.has(c.color):
-			errors.append("%s: color %s is not a color of the chosen heroes" % [c.name, c.color])
-		if c.type == "Evolution" and not names.has(c.hero):
-			errors.append("%s: Evolution for a hero who isn't in the deck" % c.name)
-		if not _for_heroes(catalog, c, names):
-			errors.append("%s: only for %s, who isn't in the deck" % [c.name, " or ".join(card_heroes(catalog, c))])
+		# Colour, Evolution and the first tag (FirstTag), the same rule as the web app.
+		var v: Dictionary = FirstTag.deck_verdict(catalog, c, hero_defs, evolutions)
+		if not JsonUtil.as_bool(v["ok"]):
+			errors.append("%s: %s" % [c.name, str(v["why"])])
 		if n > LIMITS[c.type]:
 			errors.append("%s: %d copies, but %s allows at most %d" % [c.name, n, c.type, LIMITS[c.type]])
 		count += n

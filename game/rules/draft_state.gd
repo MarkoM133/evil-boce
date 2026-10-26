@@ -171,19 +171,15 @@ func _why_not(slot: int, id: String) -> String:
 	var c: CardDef = catalog.get_card(id)
 	if c == null or not DeckCode.DECK_TYPES.has(c.type):
 		return "not a deck card"
-	if not _hero_colors(slot).has(c.color):
-		return "not a colour of your heroes"
-	var names: PackedStringArray = _hero_names(slot)
-	if c.type == "Evolution" and not names.has(c.hero):
-		return "an evolution of a hero you did not draft"
-	var only: PackedStringArray = DeckCode.card_heroes(catalog, c)
-	if not only.is_empty():
-		var mine: bool = false
-		for n: String in only:
-			if names.has(n):
-				mine = true
-		if not mine:
-			return "only for %s" % " or ".join(only)
+	# The first tag rule (FirstTag) with the heroes and Evolution cards drafted so far.
+	var hero_defs: Array[CardDef] = []
+	for hid: String in heroes[slot]:
+		var h: CardDef = catalog.get_card(hid)
+		if h != null:
+			hero_defs.append(h)
+	var v: Dictionary = FirstTag.deck_verdict(catalog, c, hero_defs, FirstTag.evolutions_in(catalog, cards[slot].keys()))
+	if not JsonUtil.as_bool(v["ok"]):
+		return str(v["why"])
 	if JsonUtil.as_int(cards[slot].get(id, 0)) >= DeckCode.LIMITS[c.type]:
 		return "you have the most copies allowed"
 	if _count(slot) >= deck_size:
@@ -203,7 +199,8 @@ func _open_packs() -> void:
 	var pool := PackedStringArray()
 	for t: String in DeckCode.DECK_TYPES:
 		for c: CardDef in catalog.of_type(t):
-			if not colors.has(c.color) or (t == "Evolution" and not names.has(c.hero)):
+			# Only cards one of the two may take (the first tag rule, any Evolution of their heroes).
+			if not _for_someone(c):
 				continue
 			for _n: int in DeckCode.LIMITS[t]:
 				pool.append(c.id)
@@ -221,6 +218,19 @@ func _open_packs() -> void:
 	pack_index = 0
 	pack_turn = first
 	_advance()
+
+
+## Whether either player could take `c` (with every Evolution card of its heroes).
+func _for_someone(c: CardDef) -> bool:
+	for slot: int in 2:
+		var hero_defs: Array[CardDef] = []
+		for hid: String in heroes[slot]:
+			var h: CardDef = catalog.get_card(hid)
+			if h != null:
+				hero_defs.append(h)
+		if JsonUtil.as_bool(FirstTag.deck_verdict(catalog, c, hero_defs, DeckCode.hero_evolutions(catalog, hero_defs))["ok"]):
+			return true
+	return false
 
 
 ## Moves on past empty packs and players with nothing legal to take; done after the last.

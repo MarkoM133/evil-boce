@@ -6,13 +6,14 @@ import { parseCardEngineXml, CODE_RE, ROT_RE, terrainFromText } from './parse.js
 export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'values', 'traits', 'text', 'abilityNames', 'landscape'];
 // Polja koja se uređuju samo u appu. Ponovni uvoz ih ne dira.
 // Za igru: fx (efekt karte za igru), fxStatus ('ok' | 'check' | ''), terrain (Stage; iz retka "Terrain:" ili ručno),
-// figure (put do .glb, npr. figures/OP1-001.glb), ballColor i ballColor2 (kuglica: tijelo i akcent), heroSfx.
+// aliases (Hero): druga imena po kojima ga prvi tag karte prepoznaje (pravilo prvog taga, js/tags.js),
+// , npr. figures/OP1-001.glb), ballColor i ballColor2 (kuglica: tijelo i akcent), heroSfx.
 // bakugan* su stara TTS polja: ostaju u starim zapisima (igra ih čita kao zadanu boju kuglice), app ih više ne nudi.
-export const APP_FIELDS = ['wt', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fx', 'fxStatus', 'terrain', 'figure', 'ballColor', 'ballColor2', 'heroSfx', 'deleted'];
+export const APP_FIELDS = ['wt', 'aliases', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fx', 'fxStatus', 'terrain', 'figure', 'ballColor', 'ballColor2', 'heroSfx', 'deleted'];
 // Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
 // fxStatus je samo oznaka za pregled, pa ni on ne diže verziju.
 export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fxStatus', 'figure', 'ballColor', 'ballColor2', 'heroSfx'];
-const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
+const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
 

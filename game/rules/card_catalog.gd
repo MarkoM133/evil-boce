@@ -5,6 +5,8 @@ extends RefCounted
 
 var version: int = 0
 var cards: Dictionary[String, CardDef] = {}
+## The traits a first tag may name (data/traits.json, or "traits" in the doc), as written there.
+var trait_names: PackedStringArray = PackedStringArray()
 
 
 static func from_doc(doc: Dictionary, with_placeholders: bool = true) -> CardCatalog:
@@ -18,9 +20,19 @@ static func from_doc(doc: Dictionary, with_placeholders: bool = true) -> CardCat
 			continue
 		var def: CardDef = CardDef.from_card(cd)
 		cat.cards[def.id] = def
+	cat.set_traits(JsonUtil.as_array(doc.get("traits", [])))
 	if with_placeholders and cat.of_type("Core").is_empty():
 		cat.add_placeholder_cores()
 	return cat
+
+
+## The trait list: [{name, description}] (data/traits.json) or plain names.
+func set_traits(list: Array) -> void:
+	trait_names = PackedStringArray()
+	for t: Variant in list:
+		var n: String = str(JsonUtil.as_dict(t).get("name", "")) if t is Dictionary else str(t)
+		if not n.strip_edges().is_empty():
+			trait_names.append(n.strip_edges())
 
 
 static func from_json_text(text: String, with_placeholders: bool = true) -> CardCatalog:

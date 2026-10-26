@@ -1,5 +1,6 @@
 // Deck: pravila (§8 plana), random deck (§10) i deck kod. Bez I/O, isto za app i testove.
 import { DECK_TYPES } from './parse.js';
+import { deckVerdict } from './tags.js';
 
 export const DECK_SIZE = 40;
 export const LIMITS = { Action: 4, Equipment: 4, Assist: 2, Evolution: 2 };
@@ -23,35 +24,36 @@ export function heroCards(db) {
   return db.cards.filter(c => c.type === 'Hero' && !c.deleted);
 }
 
-// Karte koje smiju u deck uz ove heroje (bez maknutih).
-export function deckPool(db, heroIds) {
+// Popis traitova (data/traits.json) uz bazu, za pravilo prvog taga; ne ide u cards.json.
+export function setTraits(db, traits) {
+  Object.defineProperty(db, 'traitList', { value: traits ?? [], enumerable: false, configurable: true, writable: true });
+  return db;
+}
+
+const traitsOf = db => db.traitList ?? [];
+
+// Evolution karte ovih heroja (sve iz baze), da se zna što bi deck mogao otključati.
+export function heroEvolutions(db, heroIds) {
   const ids = byId(db);
-  const heroes = heroIds.map(id => ids.get(id)).filter(Boolean);
-  const colors = new Set(heroes.map(h => h.color));
-  const names = new Set(heroes.map(h => h.name));
-  return db.cards.filter(c =>
-    !c.deleted &&
-    DECK_TYPES.includes(c.type) &&
-    colors.has(c.color) &&
-    (c.type !== 'Evolution' || names.has(c.hero)) &&
-    forHeroes(db, c, names));
+  const names = new Set(heroIds.map(id => ids.get(id)?.name).filter(Boolean));
+  return db.cards.filter(c => !c.deleted && c.type === 'Evolution' && names.has(c.hero)).map(c => c.id);
 }
 
-function forHeroes(db, card, names) {
-  const only = cardHeroes(db, card);
-  return !only.length || only.some(n => names.has(n));
+// Karte koje smiju u deck uz ove heroje i ove Evolution karte u decku (pravilo prvog taga, bez maknutih).
+export function deckPool(db, heroIds, evolutionIds = []) {
+  return db.cards.filter(c => !c.deleted && DECK_TYPES.includes(c.type) &&
+    deckVerdict(db, traitsOf(db), c, heroIds, evolutionIds).ok);
 }
 
-// Heroji kojima je karta namijenjena: traitovi jednaki punom imenu nekog heroja ili prvoj riječi
-// imena (Giorno = Giorno Giovanna; velika i mala slova nisu bitna). [] = karta za sve heroje
-// svoje boje. Takva karta smije u deck samo uz tog heroja.
-export function cardHeroes(db, card) {
-  const names = new Map();
-  for (const h of heroCards(db)) {
-    names.set(h.name.toLowerCase(), h.name);
-    names.set(h.name.split(' ')[0].toLowerCase(), h.name);
-  }
-  return (card.traits ?? []).map(t => names.get(String(t).toLowerCase())).filter(Boolean);
+// Zašto karta ne smije uz ove heroje ('' kad smije), i koje bi je Evolution karte otključale.
+export function cardVerdict(db, card, heroIds, evolutionIds = []) {
+  return deckVerdict(db, traitsOf(db), card, heroIds, evolutionIds);
+}
+
+// Evolution karte u decku (id-evi).
+export function deckEvolutions(db, cards) {
+  const ids = byId(db);
+  return Object.entries(cards).filter(([id, n]) => n > 0 && ids.get(id)?.type === 'Evolution').map(([id]) => id);
 }
 
 export function poolCapacity(pool) {
@@ -84,8 +86,7 @@ export function checkDeck(db, deck) {
     else if (heroes[i].deleted) warn(`hero ${heroes[i].name} was deleted from the database`);
   });
 
-  const colors = new Set(heroes.filter(Boolean).map(h => h.color));
-  const names = new Set(heroes.filter(Boolean).map(h => h.name));
+  const evolutions = deckEvolutions(db, deck.cards);
   const byType = {};
   const byColor = {};
   const curve = {};
@@ -95,9 +96,9 @@ export function checkDeck(db, deck) {
     if (!c) { err(`card ${id} is not in the database`); continue; }
     if (!DECK_TYPES.includes(c.type)) { err(`${c.name}: ${c.type} can't go in a deck`); continue; }
     if (c.deleted) warn(`${c.name} was deleted from the database`);
-    if (!colors.has(c.color)) err(`${c.name}: color ${c.color} is not a color of the chosen heroes`);
-    if (c.type === 'Evolution' && !names.has(c.hero)) err(`${c.name}: Evolution for a hero who isn't in the deck`);
-    if (!forHeroes(db, c, names)) err(`${c.name}: only for ${cardHeroes(db, c).join(' or ')}, who isn't in the deck`);
+    // Boja, Evolution i prvi tag (tags.js): isto pravilo kao u igri.
+    const v = cardVerdict(db, c, deck.heroes, evolutions);
+    if (!v.ok) err(`${c.name}: ${v.why}`);
     if (n > LIMITS[c.type]) err(`${c.name}: ${n} copies, but ${c.type} allows at most ${LIMITS[c.type]}`);
     byType[c.type] = (byType[c.type] ?? 0) + n;
     byColor[c.color] = (byColor[c.color] ?? 0) + n;
@@ -105,7 +106,7 @@ export function checkDeck(db, deck) {
   }
 
   const count = cardCount(deck);
-  const capacity = poolCapacity(deckPool(db, deck.heroes));
+  const capacity = poolCapacity(deckPool(db, deck.heroes, heroEvolutions(db, deck.heroes)));
   if (count > DECK_SIZE) err(`${nCards(count)}, the maximum is ${DECK_SIZE}`);
   else if (count < DECK_SIZE) {
     if (deck.heroes.length === 3 && capacity < DECK_SIZE) {
@@ -120,14 +121,16 @@ export function checkDeck(db, deck) {
 }
 
 // §10: popuni deck do 40. focusColor/focus (0..1) pomiče težinu prema jednoj boji (klizač u builderu).
+// Karte koje traže Evolution kartu (prvi tag je trait koji ima samo evolucija) ulaze tek kad je ta
+// Evolution već u decku: bazen se računa iznova nakon svake dodane karte.
 export function randomFill(db, deck, { focusColor = null, focus = 0, rng = Math.random } = {}) {
-  const pool = deckPool(db, deck.heroes);
   const cards = { ...deck.cards };
   let total = cardCount({ cards });
   const under = c => (cards[c.id] ?? 0) < LIMITS[c.type];
-  const colors = [...new Set(pool.map(c => c.color))];
   const weight = color => (color === focusColor ? 1 + 4 * focus : 1);
   while (total < DECK_SIZE) {
+    const pool = deckPool(db, deck.heroes, deckEvolutions(db, cards));
+    const colors = [...new Set(pool.map(c => c.color))];
     const open = colors.filter(color => pool.some(c => c.color === color && under(c)));
     if (!open.length) break;
     let r = rng() * open.reduce((s, color) => s + weight(color), 0);

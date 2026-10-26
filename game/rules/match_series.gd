@@ -111,6 +111,7 @@ static func from_dict(d: Dictionary) -> MatchSeries:
 ## the deck could hold (colour, evolution, hero-only), no more copies than its limit.
 static func sideboard_error(catalog: CardCatalog, heroes: PackedStringArray, side: Dictionary) -> String:
 	var total: int = 0
+	var hero_defs: Array[CardDef] = []
 	var names := PackedStringArray()
 	var colors := PackedStringArray()
 	for id: String in heroes:
@@ -118,6 +119,7 @@ static func sideboard_error(catalog: CardCatalog, heroes: PackedStringArray, sid
 		if h != null:
 			names.append(h.name)
 			colors.append(h.color)
+			hero_defs.append(h)
 	for k: Variant in side:
 		var n: int = JsonUtil.as_int(side[k])
 		if n <= 0:
@@ -126,11 +128,10 @@ static func sideboard_error(catalog: CardCatalog, heroes: PackedStringArray, sid
 		var c: CardDef = catalog.get_card(str(k))
 		if c == null or not DeckCode.DECK_TYPES.has(c.type):
 			return "%s cannot go in a sideboard" % str(k)
-		if not colors.has(c.color) or (c.type == "Evolution" and not names.has(c.hero)):
-			return "%s does not fit these heroes" % c.name
-		var only: PackedStringArray = DeckCode.card_heroes(catalog, c)
-		if not only.is_empty() and not Array(only).any(func(x: String) -> bool: return names.has(x)):
-			return "%s is only for %s" % [c.name, " or ".join(only)]
+		# The first tag rule (FirstTag); a card an Evolution unlocks may wait here for it.
+		var v: Dictionary = FirstTag.deck_verdict(catalog, c, hero_defs, DeckCode.hero_evolutions(catalog, hero_defs))
+		if not JsonUtil.as_bool(v["ok"]):
+			return "%s: %s" % [c.name, str(v["why"])]
 		if n > DeckCode.LIMITS[c.type]:
 			return "%s: at most %d" % [c.name, DeckCode.LIMITS[c.type]]
 	if total > SIDEBOARD:

@@ -31,6 +31,8 @@ var bonus: Dictionary[String, int] = {}
 var terrain: Terrain.Type = Terrain.Type.NONE
 var text: String = ""
 var traits: PackedStringArray = PackedStringArray()
+## Hero cards: other names the first tag of a card may use for this hero (app field, besides the name).
+var aliases: PackedStringArray = PackedStringArray()
 ## Ability names as the card shows them (underlined above the effect), in card order.
 var ability_names: PackedStringArray = PackedStringArray()
 ## Effects in the fx language: the web app's `fx` field when set, else what FxTextParser read
@@ -107,6 +109,7 @@ static func from_card(c: Dictionary) -> CardDef:
 	d.kind = str(c.get("kind", "")) if c.get("kind") != null else ""
 	d.text = str(c.get("text", "")) if c.get("text") != null else ""
 	d.traits = JsonUtil.as_strings(c.get("traits", []))
+	d.aliases = JsonUtil.as_strings(c.get("aliases", []))
 	d.ability_names = JsonUtil.as_strings(c.get("abilityNames", []))
 	var bonus: Dictionary = JsonUtil.as_dict(c.get("bonus", {}))
 	for k: Variant in bonus:
@@ -131,6 +134,8 @@ static func from_card(c: Dictionary) -> CardDef:
 func to_record() -> Dictionary:
 	var rec: Dictionary = {"id": id, "name": name, "type": type, "cost": cost, "wt": wt, "text": text,
 		"traits": Array(traits)}
+	if not aliases.is_empty():
+		rec["aliases"] = Array(aliases)
 	if not color.is_empty():
 		rec["color"] = color
 	if type == "Hero" or type == "Evolution":

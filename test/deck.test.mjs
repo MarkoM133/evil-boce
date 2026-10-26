@@ -1,10 +1,11 @@
 // Testovi pravila decka, random decka i deck koda na izmišljenoj bazi.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkDeck, randomFill, deckPool, poolCapacity, encodeDeck, decodeDeck, slugify, LIMITS } from '../js/deck.js';
+import { checkDeck, randomFill, deckPool, poolCapacity, encodeDeck, decodeDeck, slugify, setTraits, LIMITS } from '../js/deck.js';
 
 const hero = (id, name, color) => ({ id, name, type: 'Hero', color, stats: {} });
-const card = (id, type, color, cost = 1, extra = {}) => ({ id, name: `Card ${id}`, type, color, cost, ...extra });
+// Karte su General (pravilo prvog taga), osim kad test kaže drukčije.
+const card = (id, type, color, cost = 1, extra = {}) => ({ id, name: `Card ${id}`, type, color, cost, traits: ['General'], ...extra });
 
 function db() {
   const cards = [
@@ -111,25 +112,22 @@ test('slugify za ime filea', () => {
   assert.equal(slugify('  Čćžšđ Deck #2!! '), 'cczsd-deck-2');
 });
 
-test('karta s traitom imena heroja smije samo uz tog heroja', () => {
+test('prvi tag: alias heroja zaključa kartu na njega, trait s popisa na heroja s tim traitom', () => {
   const d = db();
-  d.cards.push(card('Red-ONLY', 'Equipment', 'Red', 3, { traits: ['Sword', 'alpha'] }));
-  d.cards.push(card('Red-SWORD', 'Equipment', 'Red', 3, { traits: ['Sword'] }));
-  assert.ok(deckPool(d, ['H-1', 'H-2', 'H-3']).some(c => c.id === 'Red-ONLY'));
-  assert.ok(deckPool(d, ['H-1', 'H-2', 'H-3']).some(c => c.id === 'Red-SWORD'));
-  // Bez Alphe nema crvenih heroja, pa uzmi deck s crvenim herojem koji nije Alpha.
+  d.cards.find(c => c.id === 'H-1').aliases = ['Al'];
+  d.cards.find(c => c.id === 'H-1').traits = ['Sword'];
   d.cards.push(hero('H-5', 'Epsilon', 'Red'));
-  const pool = deckPool(d, ['H-5', 'H-2', 'H-3']).map(c => c.id);
-  assert.ok(!pool.includes('Red-ONLY'));
-  assert.ok(pool.includes('Red-SWORD'));
+  d.cards.push(card('Red-ONLY', 'Equipment', 'Red', 3, { traits: ['al', 'Sword'] }));
+  d.cards.push(card('Red-SWORD', 'Equipment', 'Red', 3, { traits: ['Sword'] }));
+  d.cards.push(card('Red-TYPO', 'Action', 'Red', 1, { traits: ['Swrd'] }));
+  setTraits(d, [{ name: 'Sword' }]);
+  const withAlpha = deckPool(d, ['H-1', 'H-2', 'H-3']).map(c => c.id);
+  assert.ok(withAlpha.includes('Red-ONLY'));
+  assert.ok(withAlpha.includes('Red-SWORD'), 'Alpha has Sword');
+  assert.ok(!withAlpha.includes('Red-TYPO'), 'an unknown first tag is dead');
+  const noAlpha = deckPool(d, ['H-5', 'H-2', 'H-3']).map(c => c.id);
+  assert.ok(!noAlpha.includes('Red-ONLY'));
+  assert.ok(!noAlpha.includes('Red-SWORD'), 'Epsilon has no Sword');
   const deck = { heroes: ['H-5', 'H-2', 'H-3'], cards: { 'Red-ONLY': 1 } };
   assert.ok(checkDeck(d, deck).problems.some(p => p.level === 'error' && p.msg.includes('only for Alpha')));
-});
-
-test('trait s prvom riječi imena heroja vrijedi kao puno ime', () => {
-  const d = db();
-  d.cards.push(hero('H-6', 'Zeta Prime', 'Red'));
-  d.cards.push(card('Red-Z', 'Action', 'Red', 1, { traits: ['zeta'] }));
-  assert.ok(!deckPool(d, ['H-1', 'H-2', 'H-3']).some(c => c.id === 'Red-Z'));
-  assert.ok(deckPool(d, ['H-6', 'H-2', 'H-3']).some(c => c.id === 'Red-Z'));
 });
