@@ -145,13 +145,19 @@ async function imageFor(card, thumb) {
 }
 
 // width je širina portrait karte; landscape karta (Hero, Evolution) dobije istu visinu, pa je jednako oštra.
-async function makeThumb(blob, width) {
+// JPEG nema prozirnost: prozirno postane crno. Core karte (žeton na bijelom) dobiju bijelu podlogu (bg),
+// jer ih Card Engine nekad izveze s prozirnom pozadinom.
+async function makeThumb(blob, width, bg = null) {
   const bmp = await createImageBitmap(blob);
   const scale = Math.min(1, bmp.width > bmp.height ? (width * 7) / 5 / bmp.height : width / bmp.width);
   width = Math.round(bmp.width * scale);
   const height = Math.round(bmp.height * scale);
   const canvas = new OffscreenCanvas(width, height);
   const ctx = canvas.getContext('2d');
+  if (bg) {
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, width, height);
+  }
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bmp, 0, 0, width, height);
   bmp.close();
@@ -498,7 +504,7 @@ async function updateThumbs(db) {
     const plan = thumbPlan(db, await fs.listFileNames(root(), `data/${s.dir}`));
     for (const c of plan.missing) {
       const f = await fs.getFile(root(), `data/${c.image}`);
-      if (f) await fs.writeFile(root(), `data/${s.dir}/${thumbName(c)}`, await makeThumb(f, s.width));
+      if (f) await fs.writeFile(root(), `data/${s.dir}/${thumbName(c)}`, await makeThumb(f, s.width, c.type === 'Core' ? '#ffffff' : null));
     }
     for (const f of plan.extra) await fs.removeFile(root(), `data/${s.dir}/${f}`);
     made += plan.missing.length;
