@@ -13,7 +13,7 @@ const TILE := Vector2(330, 440)
 const MODES: Array = [
 	["LOCAL PLAY", "Against the bot, or two players on this computer", "local", "hero"],
 	["ONLINE PLAY", "Host a match or join one over Tailscale", "online", "hero"],
-	["PRACTICE", "Throw balls around and try terrain. Nothing counts, nothing is saved.", "practice", "stage"],
+	["PRACTICE", "Throw balls around and try terrain, just for fun.", "practice", "stage"],
 ]
 
 var db: CardDb
