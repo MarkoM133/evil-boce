@@ -34,7 +34,7 @@ func _deck(a: bool) -> Dictionary:
 	# The guest deck passes the host check (DeckCode.check), as a real one would.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 9
-	var b: Dictionary = DeckCode.random_deck(catalog, rng, "TB-001")
+	var b: Dictionary = DeckCode.random_deck(catalog, rng, PackedStringArray(["TB-001"]))
 	return {"name": "B", "heroes": b["heroes"], "cards": b["cards"], "stages": ["TS-004", "TS-005", "TS-006"], "cores": cores}
 
 

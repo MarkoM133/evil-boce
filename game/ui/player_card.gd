@@ -15,9 +15,9 @@ var db: CardDb
 var decks: Array[Dictionary] = []
 ## 0 = random, else decks[deck_index - 1].
 var deck_index: int = 0
-## Random deck: the leader picked for it ("" = random heroes) and the deck built around it
-## ({} = drawn when the match starts).
-var leader: String = ""
+## Random deck: the hero picked for each of its three slots ("" = drawn; Marko 2026-10-26: every
+## hero is picked on its own) and the deck built with them ({} = drawn when the match starts).
+var chosen: PackedStringArray = PackedStringArray(["", "", ""])
 var built: Dictionary = {}
 var loadout: Loadout = Loadout.new()
 var team: int = 0
@@ -128,7 +128,7 @@ func set_fixed_deck(d: Dictionary) -> void:
 	_deck_locked = true
 	deck_index = 0
 	built = d
-	leader = ""
+	chosen = PackedStringArray(["", "", ""])
 	_rebuild()
 
 
@@ -140,7 +140,7 @@ func set_drafted(on: bool) -> bool:
 	if on:
 		deck_index = 0
 		built = {}
-		leader = ""
+		chosen = PackedStringArray(["", "", ""])
 	_rebuild()
 	return true
 
@@ -180,7 +180,7 @@ func set_locked_random(on: bool) -> bool:
 	if on:
 		deck_index = 0
 		built = {}
-		leader = ""
+		chosen = PackedStringArray(["", "", ""])
 		loadout = Loadout.random()
 	_rebuild()
 	return true
@@ -284,7 +284,7 @@ func _rebuild() -> void:
 		roll.text = "REROLL" if not built.is_empty() else "BUILD"
 		roll.add_theme_font_size_override("font_size", 18)
 		roll.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		roll.tooltip_text = "Build a random deck now (around the leader, if you picked one) and see it before the match"
+		roll.tooltip_text = "Build a random deck now (with the heroes you picked, the rest drawn) and see it before the match"
 		roll.pressed.connect(_build_random)
 		deck_row.add_child(roll)
 	var next := Button.new()
@@ -300,9 +300,10 @@ func _rebuild() -> void:
 	var ids: PackedStringArray = JsonUtil.as_strings((_shown if _view_only else saved_deck()).get("heroes", []))
 	for i: int in DeckCode.HERO_COUNT:
 		var id: String = ids[i] if i < ids.size() else ""
-		if i == 0 and deck_index == 0 and not deck_fixed_ and id.is_empty():
-			id = leader
-		heroes.add_child(_hero_tile(id, i == 0 and deck_index == 0 and not deck_fixed_))
+		var pickable: bool = deck_index == 0 and not deck_fixed_
+		if pickable and id.is_empty():
+			id = chosen[i]
+		heroes.add_child(_hero_tile(id, pickable, i))
 
 	# Stages.
 	_body.add_child(UiTheme.label("STAGES", 13, Palette.GOLD))
@@ -368,9 +369,9 @@ func _changed() -> void:
 	changed.emit()
 
 
-## A hero of the deck as a slanted art slice with its name; "?" for a random deck. The first
-## slot of a random deck is its leader: a click picks it.
-func _hero_tile(id: String, leader_slot: bool = false) -> Control:
+## A hero of the deck as a slanted art slice with its name; "?" for a random deck. In a random
+## deck every slot is picked on its own: a click picks that hero, Random leaves it to the draw.
+func _hero_tile(id: String, pickable: bool = false, slot: int = 0) -> Control:
 	var s := HeroSlice.new()
 	s.custom_minimum_size = Vector2(176, 70)
 	var card: CardDef = db.catalog.get_card(id) if db != null and not id.is_empty() else null
@@ -378,9 +379,9 @@ func _hero_tile(id: String, leader_slot: bool = false) -> Control:
 	s.art_region = HeroSlice.region_for(s.art)
 	s.art_fallback = Palette.hero(card.color if card != null else "").darkened(0.3) if card != null else Palette.SURFACE_2
 	s.mouse_filter = Control.MOUSE_FILTER_PASS
-	if leader_slot:
+	if pickable and not id.is_empty() and slot < chosen.size() and chosen[slot] == id:
 		# Over the art, so the name keeps its room.
-		var chip: UiShape = UiShape.chip("LEADER", Palette.GOLD, Color.BLACK, 11, 18.0, 7.0)
+		var chip: UiShape = UiShape.chip("PICKED", Palette.GOLD, Color.BLACK, 11, 18.0, 7.0)
 		chip.position = Vector2(14, -9)
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		s.add_child(chip)
@@ -392,9 +393,9 @@ func _hero_tile(id: String, leader_slot: bool = false) -> Control:
 	if card != null:
 		s.tooltip_text = "%s\n%s" % [card.name, card.text]
 	else:
-		s.tooltip_text = "Three random heroes, drawn when the match starts"
-	if leader_slot:
-		s.tooltip_text = "Leader: click to pick the hero the random deck is built around\n\n" + s.tooltip_text
+		s.tooltip_text = "A random hero, drawn when the match starts"
+	if pickable:
+		s.tooltip_text = "Click to pick this hero (Random leaves it to the draw)\n\n" + s.tooltip_text
 		s.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		s.mouse_entered.connect(func() -> void:
 			s.outline = Palette.GOLD
@@ -405,17 +406,21 @@ func _hero_tile(id: String, leader_slot: bool = false) -> Control:
 		s.gui_input.connect(func(e: InputEvent) -> void:
 			if e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
 					and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-				_pick_leader())
+				_pick_hero(slot))
 	return s
 
 
-## A random deck around the leader (or three random heroes), shown now and played as it is.
+## A random deck with the heroes picked (the rest drawn), shown now and played as it is.
 func _build_random() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	built = DeckCode.random_deck(db.catalog, rng, leader)
-	var lead: CardDef = db.catalog.get_card(leader) if not leader.is_empty() else null
-	built["name"] = "Random · " + (lead.name if lead != null else "rolled")
+	built = DeckCode.random_deck(db.catalog, rng, chosen)
+	var names := PackedStringArray()
+	for id: String in chosen:
+		var c: CardDef = db.catalog.get_card(id) if not id.is_empty() else null
+		if c != null:
+			names.append(c.name)
+	built["name"] = "Random · " + (", ".join(names) if not names.is_empty() else "rolled")
 	_changed()
 
 
@@ -518,15 +523,16 @@ func _core_button(slot: int) -> Button:
 
 # --- pickers ----------------------------------------------------------------------------
 
-## The leader of a random deck: picking one builds the deck around it, Random goes back to a
-## deck drawn at the start.
-func _pick_leader() -> void:
+## One hero slot of a random deck: a hero (not one picked in another slot) or Random. With a
+## hero picked the deck is built now; all Random goes back to a deck drawn at the start.
+func _pick_hero(slot: int) -> void:
 	var items: Array[Dictionary] = [{"id": "", "name": "RANDOM", "tex": null}]
 	for c: CardDef in db.catalog.of_type("Hero"):
-		items.append({"id": c.id, "name": c.name, "tex": db.thumb(c.id)})
-	_open_popup("Leader", items, func(id: String) -> void:
-		leader = id
-		if id.is_empty():
+		var elsewhere: bool = chosen.has(c.id) and chosen[slot] != c.id
+		items.append({"id": c.id, "name": c.name, "tex": db.thumb(c.id), "used": elsewhere})
+	_open_popup("Hero %d" % (slot + 1), items, func(id: String) -> void:
+		chosen[slot] = id
+		if "".join(chosen).is_empty():
 			built = {}
 			_changed()
 		else:

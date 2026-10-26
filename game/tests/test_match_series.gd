@@ -70,7 +70,7 @@ func test_sideboard_rules_and_swaps_between_games() -> void:
 	var catalog := CardCatalog.from_json_text(FileAccess.get_file_as_string(FIXTURE))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 6
-	var d: Dictionary = DeckCode.random_deck(catalog, rng, "TA-001")
+	var d: Dictionary = DeckCode.random_deck(catalog, rng, PackedStringArray(["TA-001"]))
 	var heroes: PackedStringArray = JsonUtil.as_strings(d["heroes"])
 	var cards: Dictionary = JsonUtil.as_dict(d["cards"])
 	if not DeckCode.check(catalog, heroes, cards).is_empty():

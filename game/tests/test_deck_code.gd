@@ -58,7 +58,7 @@ func test_random_deck_keeps_the_leader_and_the_rules() -> void:
 	var rng := RandomNumberGenerator.new()
 	for h: CardDef in catalog.of_type("Hero"):
 		rng.seed = h.id.hash()
-		var d: Dictionary = DeckCode.random_deck(catalog, rng, h.id)
+		var d: Dictionary = DeckCode.random_deck(catalog, rng, PackedStringArray([h.id]))
 		var heroes: PackedStringArray = JsonUtil.as_strings(d["heroes"])
 		assert_true(heroes.has(h.id), "leader %s is in the deck" % h.id)
 		assert_eq(heroes.size(), DeckCode.HERO_COUNT)

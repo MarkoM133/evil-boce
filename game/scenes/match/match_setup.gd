@@ -226,18 +226,18 @@ func demo_maps() -> void:
 	_rules.open_map_picker()
 
 
-## Screenshot helpers: player 1 builds a random deck around the first hero; the leader picker.
-func demo_leader() -> void:
+## Screenshot helpers: player 1 builds a random deck with its first hero picked; the hero picker.
+func demo_heroes() -> void:
 	_cards[0].deck_index = 0
-	_cards[0].leader = db.catalog.of_type("Hero")[0].id
+	_cards[0].chosen = PackedStringArray([db.catalog.of_type("Hero")[0].id, "", ""])
 	_cards[0]._build_random()
 	_cards[1].deck_index = 0
 	_cards[1]._rebuild()
 
 
-func demo_leader_pick() -> void:
+func demo_hero_pick() -> void:
 	_cards[1].deck_index = 0
-	_cards[1]._pick_leader()
+	_cards[1]._pick_hero(1)
 
 
 ## Screenshot helper: the Chaos mode (everything random, the map drawn at the start).

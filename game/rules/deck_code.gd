@@ -50,18 +50,19 @@ static func encode(heroes: PackedStringArray, cards: Dictionary, version: int) -
 	return "|".join([PREFIX, "v%d" % version, ",".join(heroes), ",".join(items)])
 
 
-## A random deck like the app's randomFill: 3 different heroes (with `leader` among them when
-## given), then cards they may take (the first tag rule, FirstTag), a colour at a time,
+## A random deck like the app's randomFill: 3 different heroes (the `chosen` ones, by slot, the
+## rest drawn), then cards they may take (the first tag rule, FirstTag), a colour at a time,
 ## up to 40 or until the pool runs out. The heroes are drawn again (a few tries) until their
 ## pool holds a full deck, so a random deck is short only when no draw allows 40.
-## Returns {"name", "heroes": PackedStringArray, "cards": {id: n}}.
-static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, leader: String = "") -> Dictionary:
+## Returns {"name", "heroes": PackedStringArray (in slot order), "cards": {id: n}}.
+static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, chosen: PackedStringArray = PackedStringArray()) -> Dictionary:
 	var others: Array[CardDef] = catalog.of_type("Hero")
 	var fixed: Array[CardDef] = []
-	var lead: CardDef = catalog.get_card(leader) if not leader.is_empty() else null
-	if lead != null and lead.is_hero():
-		fixed.append(lead)
-		others.erase(lead)
+	for id: String in chosen:
+		var c: CardDef = catalog.get_card(id) if not id.is_empty() else null
+		if c != null and c.is_hero() and not fixed.has(c):
+			fixed.append(c)
+			others.erase(c)
 	var picked: Array[CardDef] = []
 	var best: int = -1
 	for _try: int in 40:
@@ -75,6 +76,19 @@ static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, leader
 			picked = draw
 		if cap >= DECK_SIZE:
 			break
+	# Chosen heroes on their own slots, the drawn ones in the slots left.
+	var drawn: Array[CardDef] = picked.filter(func(h: CardDef) -> bool: return not fixed.has(h))
+	var ordered: Array[CardDef] = []
+	for i: int in HERO_COUNT:
+		var want: CardDef = catalog.get_card(chosen[i]) if i < chosen.size() and not chosen[i].is_empty() else null
+		if want != null and picked.has(want) and not ordered.has(want):
+			ordered.append(want)
+		elif not drawn.is_empty():
+			ordered.append(drawn.pop_front())
+	for h: CardDef in picked:
+		if not ordered.has(h):
+			ordered.append(h)
+	picked = ordered
 	var ids := PackedStringArray()
 	var names := PackedStringArray()
 	for h: CardDef in picked:
