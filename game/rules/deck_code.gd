@@ -50,19 +50,62 @@ static func encode(heroes: PackedStringArray, cards: Dictionary, version: int) -
 	return "|".join([PREFIX, "v%d" % version, ",".join(heroes), ",".join(items)])
 
 
-## A random deck like the app's randomFill: 3 different heroes, then cards of their colours
-## (evolutions only for those heroes) up to 40 or until the pool runs out.
+## A random deck like the app's randomFill: 3 different heroes (with `leader` among them when
+## given), then cards of their colours (evolutions only for those heroes), a colour at a time,
+## up to 40 or until the pool runs out. The heroes are drawn again (a few tries) until their
+## pool holds a full deck, so a random deck is short only when no draw allows 40.
 ## Returns {"name", "heroes": PackedStringArray, "cards": {id: n}}.
-static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator) -> Dictionary:
-	var heroes: Array[CardDef] = catalog.of_type("Hero")
+static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, leader: String = "") -> Dictionary:
+	var others: Array[CardDef] = catalog.of_type("Hero")
+	var fixed: Array[CardDef] = []
+	var lead: CardDef = catalog.get_card(leader) if not leader.is_empty() else null
+	if lead != null and lead.is_hero():
+		fixed.append(lead)
+		others.erase(lead)
 	var picked: Array[CardDef] = []
-	while picked.size() < HERO_COUNT and not heroes.is_empty():
-		picked.append(heroes.pop_at(rng.randi_range(0, heroes.size() - 1)))
+	var best: int = -1
+	for _try: int in 40:
+		var rest: Array[CardDef] = others.duplicate()
+		var draw: Array[CardDef] = fixed.duplicate()
+		while draw.size() < HERO_COUNT and not rest.is_empty():
+			draw.append(rest.pop_at(rng.randi_range(0, rest.size() - 1)))
+		var cap: int = pool_capacity(_pool(catalog, draw))
+		if cap > best:
+			best = cap
+			picked = draw
+		if cap >= DECK_SIZE:
+			break
 	var ids := PackedStringArray()
-	var colors := PackedStringArray()
 	var names := PackedStringArray()
 	for h: CardDef in picked:
 		ids.append(h.id)
+		names.append(h.name)
+	var pool: Array[CardDef] = _pool(catalog, picked)
+	var cards: Dictionary = {}
+	var total: int = 0
+	while total < DECK_SIZE:
+		# A colour first, then a card of it, so one big colour does not take the whole deck.
+		var by_color: Dictionary[String, Array] = {}
+		for c: CardDef in pool:
+			if JsonUtil.as_int(cards.get(c.id, 0)) < LIMITS[c.type]:
+				if not by_color.has(c.color):
+					by_color[c.color] = []
+				by_color[c.color].append(c)
+		if by_color.is_empty():
+			break
+		var colors: Array = by_color.keys()
+		var open: Array = by_color[str(colors[rng.randi_range(0, colors.size() - 1)])]
+		var c: CardDef = open[rng.randi_range(0, open.size() - 1)]
+		cards[c.id] = JsonUtil.as_int(cards.get(c.id, 0)) + 1
+		total += 1
+	return {"name": "Random (%s)" % ", ".join(names), "heroes": ids, "cards": cards}
+
+
+## Deck cards these heroes may take: their colours, evolutions only for them.
+static func _pool(catalog: CardCatalog, heroes: Array[CardDef]) -> Array[CardDef]:
+	var colors := PackedStringArray()
+	var names := PackedStringArray()
+	for h: CardDef in heroes:
 		colors.append(h.color)
 		names.append(h.name)
 	var pool: Array[CardDef] = []
@@ -70,19 +113,15 @@ static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator) -> Dic
 		for c: CardDef in catalog.of_type(t):
 			if colors.has(c.color) and (t != "Evolution" or names.has(c.hero)):
 				pool.append(c)
-	var cards: Dictionary = {}
-	var total: int = 0
-	while total < DECK_SIZE:
-		var open: Array[CardDef] = []
-		for c: CardDef in pool:
-			if JsonUtil.as_int(cards.get(c.id, 0)) < LIMITS[c.type]:
-				open.append(c)
-		if open.is_empty():
-			break
-		var c: CardDef = open[rng.randi_range(0, open.size() - 1)]
-		cards[c.id] = JsonUtil.as_int(cards.get(c.id, 0)) + 1
-		total += 1
-	return {"name": "Random (%s)" % ", ".join(names), "heroes": ids, "cards": cards}
+	return pool
+
+
+## Most cards a deck can hold from this pool (every card at its limit).
+static func pool_capacity(pool: Array[CardDef]) -> int:
+	var n: int = 0
+	for c: CardDef in pool:
+		n += LIMITS[c.type]
+	return n
 
 
 ## Errors that make the deck unplayable (same rules as the app, minus the pool-size warning).

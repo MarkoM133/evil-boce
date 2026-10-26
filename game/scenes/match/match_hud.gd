@@ -29,6 +29,7 @@ signal hero_hovered(hero_id: String)
 signal menu_pressed
 signal rematch_pressed
 signal watch_replay_pressed
+signal new_match_pressed
 ## Setup: the player picked which stage or core to place next.
 signal setup_item_pressed(id: String)
 
@@ -67,6 +68,8 @@ var replay: bool = false
 var net_paused: String = ""
 ## Text of the end screen's first button; "" hides it (an online guest waits for the host).
 var rematch_text: String = "Rematch"
+## End screen: NEW MATCH back to the Play setup (local matches only).
+var new_match: bool = true
 ## Setup: the stage or core the local player places next (set by the match scene).
 var setup_pick: String = ""
 ## The match summary (MatchRecord.summary) shown on the end screen; set by the match scene.
@@ -2064,6 +2067,13 @@ func _refresh_over() -> void:
 		again.add_theme_font_size_override("font_size", 28)
 		again.pressed.connect(func() -> void: rematch_pressed.emit())
 		buttons.add_child(again)
+	if new_match:
+		var fresh := Button.new()
+		fresh.text = "NEW MATCH"
+		fresh.tooltip_text = "Back to the setup: other decks, map or rules"
+		fresh.add_theme_font_size_override("font_size", 22)
+		fresh.pressed.connect(func() -> void: new_match_pressed.emit())
+		buttons.add_child(fresh)
 	var watch := Button.new()
 	watch.text = "WATCH REPLAY"
 	watch.add_theme_font_size_override("font_size", 22)

@@ -7,6 +7,7 @@ const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
 const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
+const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
 ## Seconds between two bot moves, so a human can follow.
 const BOT_DELAY: float = 0.5
 ## Auto-pass waits this long, the same whether a card could have been played or not (GDD 8).
@@ -324,6 +325,9 @@ func _build_hud() -> void:
 	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
 	hud.menu_pressed.connect(_toggle_menu)
 	hud.rematch_pressed.connect(_rematch)
+	hud.new_match_pressed.connect(func() -> void:
+		await _snapshot()
+		get_tree().change_scene_to_file(SETUP_SCENE))
 	hud.watch_replay_pressed.connect(func() -> void:
 		var rec: MatchRecord = recorder.record if recorder != null else _net_record
 		if rec == null:
@@ -338,6 +342,7 @@ func _build_hud() -> void:
 		_range_key = ""
 		hud.setup_pick = _setup_item()
 		hud.refresh())
+	hud.new_match = net_role.is_empty()
 	if net_role == "host":
 		hud.rematch_text = "Back to the lobby"
 	elif net_role == "client":

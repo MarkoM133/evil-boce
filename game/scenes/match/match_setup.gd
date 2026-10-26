@@ -139,3 +139,17 @@ func demo_rules() -> void:
 
 func demo_maps() -> void:
 	_rules.open_map_picker()
+
+
+## Screenshot helpers: player 1 builds a random deck around the first hero; the leader picker.
+func demo_leader() -> void:
+	_cards[0].deck_index = 0
+	_cards[0].leader = db.catalog.of_type("Hero")[0].id
+	_cards[0]._build_random()
+	_cards[1].deck_index = 0
+	_cards[1]._rebuild()
+
+
+func demo_leader_pick() -> void:
+	_cards[1].deck_index = 0
+	_cards[1]._pick_leader()
