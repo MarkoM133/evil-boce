@@ -8,7 +8,11 @@ understood (`CardDef.unparsed`) is **not ready** and cannot be played until it g
 ## One line per effect
 
 ```
-WHEN [ONCE] [OPTIONAL] [RANGE] [IF COND [ARG]]: ACTION; ACTION; ...
+WHEN [ONCE] [OPTIONAL] [RANGE] [LAUNCH] [IF COND [ARG]]: ACTION; ACTION; ...
+
+`LAUNCH` (GDD 10): the effect's `KNOCKBACK` is a physical hit when the match's knockback mode is
+`mixed`; in `physics` every knockback is one, in `grid` none. The card text phrase for it is not
+settled yet (the card author).
 ACTION = VERB [TARGET] [ARGS...]
 ```
 

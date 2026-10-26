@@ -77,6 +77,17 @@ func apply_roll(o: RollOutcome) -> String:
 	return ""
 
 
+## A physics knockback's outcome: recorded with the rolls, so a replay moves the balls the same.
+func apply_knockback(o: RollOutcome) -> String:
+	var err: String = engine.apply_knockback(state, o)
+	if not err.is_empty():
+		return err
+	var f: Dictionary = record.last_frame()
+	JsonUtil.as_array(f.get("rolls", [])).append(o.to_dict())
+	_after()
+	return ""
+
+
 func _after() -> void:
 	var f: Dictionary = record.last_frame()
 	if state.phase != str(f.get("phase", "")) or state.turn != JsonUtil.as_int(f.get("turn", -1)):

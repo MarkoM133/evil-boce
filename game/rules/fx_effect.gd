@@ -11,6 +11,7 @@ extends RefCounted
 ##        or may be used then), PASSIVE (while in play), REVEAL (stage turned face up).
 ## Flags: ONCE = once per turn, OPTIONAL = "may" (used through the use_ability move),
 ##        RANGE = targets must be within the hero's range.
+##        LAUNCH = its knockback is a physical hit in the "mixed" knockback mode (GDD 10).
 ## IF:    ACTIVATED (the hero is activated this turn), WIN (runs after the hero's side wins
 ##        the current battle), EQUIPPED {Trait} (an enemy in the battle has that trait).
 
@@ -60,6 +61,8 @@ const COUNTERS: Array[String] = ["TRAIT_EQUIPPED", "CORES", "MISSING_HP", "ENERG
 var when: String = "PLAY"
 var once: bool = false
 var optional: bool = false
+## LAUNCH: the knockback is a physical hit in the "mixed" knockback mode (GDD 10).
+var launch: bool = false
 var range: bool = false
 var cond: String = ""
 var cond_arg: String = ""
@@ -76,6 +79,8 @@ func to_fx() -> String:
 		head.append("ONCE")
 	if optional:
 		head.append("OPTIONAL")
+	if launch:
+		head.append("LAUNCH")
 	if range:
 		head.append("RANGE")
 	if not cond.is_empty():
@@ -185,6 +190,8 @@ static func parse_line(line: String) -> FxEffect:
 				e.once = true
 			"OPTIONAL":
 				e.optional = true
+			"LAUNCH":
+				e.launch = true
 			"RANGE":
 				e.range = true
 			"IF":

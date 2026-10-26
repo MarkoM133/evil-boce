@@ -78,6 +78,8 @@ var _core_tokens: Dictionary[String, Node3D] = {}
 var _hovered: String = ""
 var _range_key: String = ""
 var _launching: bool = false
+## The sim is running a physics knockback, not a roll (_launch_knockbacks).
+var _knocking: bool = false
 ## Core id -> ball id, in pick-up order, while a roll runs.
 var _picked: Dictionary[String, String] = {}
 var _pick_order: PackedStringArray = PackedStringArray()
@@ -624,13 +626,15 @@ func _sync() -> void:
 	hud.refresh()
 	if _replay != null or net_role == "client":
 		# Watching, or a guest: nothing moves by itself; balls follow what the host sends.
-		hud.rolling = net_role == "client" and state.awaiting_roll
+		hud.rolling = net_role == "client" and (state.awaiting_roll or not state.pending_knockbacks.is_empty())
 		hud.refresh()
 		for b: BallBody in _bodies.values():
 			b.freeze = true
 		return
 	if state.awaiting_roll and not _runner.is_running() and not _launching:
 		_launch_roll()
+	elif not state.pending_knockbacks.is_empty() and not _runner.is_running() and not _launching:
+		_launch_knockbacks()
 
 
 func _sync_hero(h: HeroState) -> void:
@@ -1130,6 +1134,37 @@ func _throw_all() -> void:
 		_on_roll_finished(RollOutcome.new())
 
 
+## Physics knockback (GDD 10, 2026-10-26): the knocked balls close, then each is hit along its
+## hex direction hard enough to go the knockback's hexes on open ground (distance is linear in
+## power, see PhysicsTuning); walls and balls bounce it. The sim's outcome goes back to the
+## engine through apply_knockback, the way a roll's does.
+func _launch_knockbacks() -> void:
+	_launching = true
+	_knocking = true
+	hud.rolling = true
+	hud.refresh()
+	for k: Dictionary in state.pending_knockbacks:
+		var h: HeroState = state.hero(str(k.get("hero", "")))
+		if h != null and _views.has(h.id):
+			_views[h.id].close(true)
+	get_tree().create_timer(BallView.CLOSE_TIME_FAST + 0.05).timeout.connect(_hit_all)
+
+
+func _hit_all() -> void:
+	var hits: Array[Dictionary] = []
+	for k: Dictionary in state.pending_knockbacks:
+		var h: HeroState = state.hero(str(k.get("hero", "")))
+		if h == null or not _bodies.has(h.id):
+			continue
+		var b: BallBody = _bodies[h.id]
+		var d: Vector2 = Hex.to_world(Hex.DIRECTIONS[posmod(JsonUtil.as_int(k.get("dir", 0)), 6)], 1.0).normalized()
+		var hexes: float = float(JsonUtil.as_int(k.get("steps", 0)))
+		hits.append({"ball": b, "dir": Vector3(d.x, 0, d.y), "power": clampf(hexes / tuning.full_power_hexes(b.wt), 0.0, 1.0)})
+	_launching = false
+	if hits.is_empty() or not _runner.start_many(hits):
+		_on_roll_finished(RollOutcome.new())
+
+
 func _physics_process(delta: float) -> void:
 	if not _runner.is_running():
 		return
@@ -1169,7 +1204,12 @@ func _on_roll_finished(o: RollOutcome) -> void:
 		var r: RollResult = o.result_for(_picked[cid])
 		if r != null:
 			r.cores_picked.append(cid)
-	var err: String = net_host.apply_roll(o) if net_role == "host" else recorder.apply_roll(o)
+	var err: String
+	if _knocking:
+		_knocking = false
+		err = net_host.apply_knockback(o) if net_role == "host" else recorder.apply_knockback(o)
+	else:
+		err = net_host.apply_roll(o) if net_role == "host" else recorder.apply_roll(o)
 	if not err.is_empty():
 		hud.toast(err, Palette.FG)
 	else:
@@ -2089,3 +2129,9 @@ func _on_battle_resolved(index: int, winner_team: int) -> void:
 ## Screenshot helper: the move timer at three seconds, so the clock and the safe moves show.
 func demo_timer() -> void:
 	state.settings.timer_seconds = 3
+
+
+## Screenshot helper: every knockback goes through the physics, and the bots play both sides.
+func demo_physics_kb() -> void:
+	state.settings.knockback = "physics"
+	demo_autoplay()

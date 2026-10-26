@@ -27,6 +27,8 @@ static func wait_key(engine: RulesEngine, s: GameState, slot: int) -> String:
 	var p: PlayerState = s.player(slot)
 	if p == null or p.surrendered or s.is_over():
 		return ""
+	if not s.pending_knockbacks.is_empty():
+		return ""
 	if not s.pending.is_empty():
 		var d: Dictionary = s.pending[0]
 		if str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:

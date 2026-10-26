@@ -195,6 +195,14 @@ func apply_roll(o: RollOutcome) -> String:
 	return err
 
 
+func apply_knockback(o: RollOutcome) -> String:
+	var err: String = recorder.apply_knockback(o)
+	if err.is_empty():
+		link.broadcast({"t": NetProtocol.ROLL, "outcome": o.to_dict()})
+		_send_states()
+	return err
+
+
 ## Ball positions while the physics runs on the host (unreliable, ~20 Hz).
 func send_balls(positions: Dictionary) -> void:
 	link.broadcast_fast({"t": NetProtocol.BALLS, "p": positions})

@@ -222,6 +222,8 @@ func apply(s: GameState, m: Move) -> String:
 		s.event("surrender", {"player": m.player})
 		_end_match(s, other_slot(s, m.player), "surrender")
 		return ""
+	if not s.pending_knockbacks.is_empty():
+		return "waiting for the knockback"
 	# Decisions the engine is waiting for come before anything else.
 	if not s.pending.is_empty():
 		return _apply_decision(s, m)
@@ -585,6 +587,33 @@ func core_return_error(s: GameState, c: CoreState, a: Vector2i) -> String:
 # Roll outcome from the sim
 # =====================================================================================
 
+## Feeds the physics result of the pending knockbacks (GDD 10, 2026-10-26): every ball the sim
+## moved lands where it stopped, with cores picked, stages revealed and ring-outs as in a roll;
+## a knocked hero takes `wall_damage` once for every ball it hit. Then the match goes on.
+func apply_knockback(s: GameState, o: RollOutcome) -> String:
+	if s.pending_knockbacks.is_empty():
+		return "no knockback waiting"
+	var asked: Dictionary = {}
+	for k: Dictionary in s.pending_knockbacks:
+		asked[str(k.get("hero", ""))] = JsonUtil.as_int(k.get("steps", 0))
+	s.pending_knockbacks.clear()
+	for r: RollResult in o.results:
+		var h: HeroState = s.hero(r.ball_id)
+		if h == null or h.is_ko():
+			continue
+		var from: Vector2i = h.hex
+		_apply_result(s, h, r)
+		if asked.has(h.id):
+			s.event("knockback", {"hero": h.id, "from": Hex.to_json(from), "to": Hex.to_json(h.hex),
+				"steps": asked[h.id], "physics": true, "hits": r.collisions.size()})
+			if h.is_on_map() and not r.collisions.is_empty():
+				hero_damage(s, h, r.collisions.size() * s.settings.wall_damage)
+	s.event("knockback_done", {"heroes": asked.keys()})
+	_check_win(s)
+	_continue(s)
+	return ""
+
+
 ## Feeds the physics result for this turn's throws. Every result whose ball id is a hero id
 ## moves that hero; others are ignored.
 func apply_roll(s: GameState, o: RollOutcome) -> String:
@@ -673,7 +702,7 @@ func _continue(s: GameState) -> void:
 	while not s.is_over() and guard < 64:
 		guard += 1
 		_drop_held_hits(s)
-		if not s.pending.is_empty():
+		if not s.pending.is_empty() or not s.pending_knockbacks.is_empty():
 			return
 		match s.phase:
 			GameState.PHASE_SETUP_STAGES:
@@ -1225,8 +1254,15 @@ func _lost_active(s: GameState, h: HeroState) -> void:
 
 ## Grid knockback: `steps` hexes in direction `dir`. A wall or hero stops it, with
 ## wall_damage per step not taken; leaving the map is a ring-out.
-func knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
+## Knockback (GDD 10). In the "physics" mode, or for a Launch in "mixed", the hero is not moved
+## here: the knockback waits in `pending_knockbacks` for the sim (apply_knockback). Otherwise
+## it goes hex by hex, stopped by walls and heroes.
+func knockback(s: GameState, h: HeroState, dir: int, steps: int, launch: bool = false) -> void:
 	if steps <= 0 or not h.is_on_map() or h.has_status("immune_kb"):
+		return
+	if s.settings.knockback == "physics" or (s.settings.knockback == "mixed" and launch):
+		s.pending_knockbacks.append({"hero": h.id, "dir": dir, "steps": steps})
+		s.event("knockback_launched", {"hero": h.id, "dir": dir, "steps": steps})
 		return
 	var start: Vector2i = h.hex
 	var pos: Vector2i = h.hex

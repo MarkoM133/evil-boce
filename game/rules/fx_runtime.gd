@@ -709,7 +709,7 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 				var dir: int = Hex.direction_towards(me.hex, h.hex)
 				if towards:
 					dir = (dir + 3) % 6
-				engine.knockback(s, h, dir, args[0].to_int())
+				engine.knockback(s, h, dir, args[0].to_int(), e.launch)
 		"STATUS":
 			var turns: int = 1 if args.size() < 2 or args[1] == "TURN" else args[1].to_int()
 			for h: HeroState in _targets(s, ctx, e, target, answer):
