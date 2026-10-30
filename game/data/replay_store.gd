@@ -132,3 +132,52 @@ static func last_shot() -> Texture2D:
 
 static func last_caption() -> String:
 	return str(_read_json(LAST_INFO).get("caption", ""))
+
+
+# --- the last match's battles (main menu idle preview, playtest 2026-10-30) ---------------------
+
+const HIGHLIGHTS: String = "user://highlights"
+const HIGHLIGHTS_MAX: int = 8
+
+
+## A new match starts: the last one's battle pictures go.
+static func clear_highlights() -> void:
+	var dir := DirAccess.open(HIGHLIGHTS)
+	if dir == null:
+		return
+	for f: String in dir.get_files():
+		dir.remove(f)
+
+
+## A picture of the table right after a battle; the newest HIGHLIGHTS_MAX stay.
+static func save_highlight(img: Image) -> void:
+	if img == null or img.is_empty():
+		return
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(HIGHLIGHTS))
+	var names: PackedStringArray = _highlight_files()
+	while names.size() >= HIGHLIGHTS_MAX:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(HIGHLIGHTS.path_join(names[0])))
+		names.remove_at(0)
+	var n: int = Time.get_ticks_usec()
+	img.save_jpg(ProjectSettings.globalize_path(HIGHLIGHTS.path_join("%020d.jpg" % n)), 0.85)
+
+
+static func highlights() -> Array[Texture2D]:
+	var out: Array[Texture2D] = []
+	for f: String in _highlight_files():
+		var img: Image = Image.load_from_file(ProjectSettings.globalize_path(HIGHLIGHTS.path_join(f)))
+		if img != null and not img.is_empty():
+			out.append(ImageTexture.create_from_image(img))
+	return out
+
+
+static func _highlight_files() -> PackedStringArray:
+	var dir := DirAccess.open(HIGHLIGHTS)
+	if dir == null:
+		return PackedStringArray()
+	var names := PackedStringArray()
+	for f: String in dir.get_files():
+		if f.ends_with(".jpg"):
+			names.append(f)
+	names.sort()
+	return names

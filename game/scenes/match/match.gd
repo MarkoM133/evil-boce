@@ -257,6 +257,8 @@ func _ready() -> void:
 	_build_hud()
 	_sync()
 	if state.turn == 0 and _replay == null and resume_from == null and not _demo:
+		# A new match: the last one's battle pictures (menu idle preview) make way.
+		ReplayStore.clear_highlights()
 		_show_initiative()
 	if _streaming():
 		net_host.stream_start(_replay)
@@ -2420,6 +2422,8 @@ func _on_battle_resolved(index: int, winner_team: int) -> void:
 			var l: HeroState = state.hero(hid)
 			if l != null and state.team_of(l.owner) != winner_team and _views.has(l.id) and not l.is_ko():
 				_views[l.id].struck_by(_views[strongest.id])
+		# The blow, for the menu's idle preview of this match.
+		get_tree().create_timer(0.25).timeout.connect(_highlight_shot)
 	for hid: String in ids:
 		var h: HeroState = state.hero(hid)
 		if h != null and state.team_of(h.owner) == winner_team:
@@ -2872,3 +2876,25 @@ func _clear_ghosts() -> void:
 		t.tween_property(node, "modulate:a", 0.0, 0.35)
 		t.tween_callback(node.queue_free)
 	_ghosts = keep
+
+
+## The table as the camera sees it, without the HUD, for the main menu's idle preview
+## (playtest 2026-10-30: one picture of the end only). A second camera renders the same world
+## once into its own viewport, so the screen does not flicker.
+func _highlight_shot() -> void:
+	if _replay != null or _demo or not is_inside_tree():
+		return
+	var vp := SubViewport.new()
+	vp.size = Vector2i(960, 540)
+	vp.world_3d = get_viewport().world_3d
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var eye := Camera3D.new()
+	vp.add_child(eye)
+	add_child(vp)
+	eye.global_transform = cam.camera.global_transform
+	eye.fov = cam.camera.fov
+	eye.current = true
+	await RenderingServer.frame_post_draw
+	if is_instance_valid(vp):
+		ReplayStore.save_highlight(vp.get_texture().get_image())
+		vp.queue_free()

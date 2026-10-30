@@ -323,6 +323,7 @@ func _build_strip(logo: Texture2D) -> void:
 		var img := MenuLogo.new()
 		img.logo = logo
 		img.shot = ReplayStore.last_shot()
+		img.shots = ReplayStore.highlights()
 		img.caption = ReplayStore.last_caption().trim_prefix("Last match: ")
 		img.custom_minimum_size = Vector2(580, 580)
 		holder.add_child(img)

@@ -1,20 +1,25 @@
 class_name MenuLogo
 extends Control
 ## The side strip menu's logo. Left alone for IDLE seconds (no mouse or key), it fades out and
-## the last match takes its place in the logo's circle, slowly zooming in, with a line about it
+## the last match takes its place in the logo's circle (its battles one after another, else its
+## end), slowly zooming in, with a line about it
 ## under the circle; any mouse move, key or click brings the logo back.
 
 const IDLE: float = 8.0
 const FADE: float = 0.7
-## The picture zooms from 1 to 1 + ZOOM over ZOOM_TIME seconds.
+## Each picture zooms from 1 to 1 + ZOOM while it shows.
 const ZOOM: float = 0.18
-const ZOOM_TIME: float = 30.0
 ## The circle's radius as a share of half the control's smaller side (the logo's ring).
 const RING: float = 0.8
 const POINTS: int = 96
+const SHOW_TIME: float = 4.0
+const BLEND_TIME: float = 0.8
 
 var logo: Texture2D
 var shot: Texture2D
+## Pictures from the last match's battles; with any, the circle goes through them one after
+## another (playtest 2026-10-30: one picture only), cross-fading every SHOW_TIME seconds.
+var shots: Array[Texture2D] = []
 var caption: String = ""
 var _idle: float = 0.0
 ## 0: the logo, 1: the last match.
@@ -27,7 +32,7 @@ func _init() -> void:
 
 
 func _process(delta: float) -> void:
-	if shot == null:
+	if shot == null and shots.is_empty():
 		return
 	_idle += delta
 	var was: float = _k
@@ -57,12 +62,28 @@ func _draw() -> void:
 		var ls: Vector2 = logo.get_size()
 		var fit: float = minf(size.x / ls.x, size.y / ls.y)
 		draw_texture_rect(logo, Rect2(c - ls * fit * 0.5, ls * fit), false, Color(1, 1, 1, 1.0 - _k))
-	if shot == null or _k <= 0.0:
+	var pics: Array[Texture2D] = shots if not shots.is_empty() else ([shot] as Array[Texture2D])
+	if pics.is_empty() or pics[0] == null or _k <= 0.0:
 		return
 	var r: float = minf(size.x, size.y) * 0.5 * RING
-	var zoom: float = 1.0 + ZOOM * minf(_zoom_t / ZOOM_TIME, 1.0)
-	# A square from the middle of the picture, smaller as it zooms.
-	var sz: Vector2 = shot.get_size()
+	# Which picture now and how far into the fade to the next; each zooms in while it shows.
+	var step: float = _zoom_t / SHOW_TIME
+	var i: int = int(step) % pics.size()
+	var into: float = step - floorf(step)
+	var blend: float = clampf((into * SHOW_TIME - (SHOW_TIME - BLEND_TIME)) / BLEND_TIME, 0.0, 1.0) if pics.size() > 1 else 0.0
+	_circle(pics[i], c, r, 1.0 + ZOOM * into, _k)
+	if blend > 0.0:
+		_circle(pics[(i + 1) % pics.size()], c, r, 1.0, _k * blend)
+	draw_arc(c, r, 0.0, TAU, POINTS, Color(Palette.ACCENT, _k), 8.0, true)
+	if caption != "":
+		var font: Font = UiTheme.display_heavy()
+		draw_string(font, Vector2(0, c.y + r + 44.0), caption.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, size.x, 20,
+			Color(Palette.FG, _k))
+
+
+## One picture in the circle: a square from its middle, smaller as `zoom` grows.
+func _circle(pic: Texture2D, c: Vector2, r: float, zoom: float, alpha: float) -> void:
+	var sz: Vector2 = pic.get_size()
 	var side: float = minf(sz.x, sz.y) / zoom
 	var uv_half := Vector2(side / sz.x, side / sz.y) * 0.5
 	var pts := PackedVector2Array()
@@ -71,13 +92,7 @@ func _draw() -> void:
 		var d := Vector2.from_angle(TAU * i / POINTS)
 		pts.append(c + d * r)
 		uvs.append(Vector2(0.5, 0.5) + d * uv_half)
-	var tint := Color(1, 1, 1, _k)
 	var colors := PackedColorArray()
 	colors.resize(POINTS)
-	colors.fill(tint)
-	draw_polygon(pts, colors, uvs, shot)
-	draw_arc(c, r, 0.0, TAU, POINTS, Color(Palette.ACCENT, _k), 8.0, true)
-	if caption != "":
-		var font: Font = UiTheme.display_heavy()
-		draw_string(font, Vector2(0, c.y + r + 44.0), caption.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, size.x, 20,
-			Color(Palette.FG, _k))
+	colors.fill(Color(1, 1, 1, alpha))
+	draw_polygon(pts, colors, uvs, pic)
