@@ -69,6 +69,11 @@ var db: CardDb
 var local_slots: PackedInt32Array = PackedInt32Array()
 ## Hero highlighted from the table (hover on a ball).
 var hover_hero: String = ""
+## A playable card pressed in the hand: {slot, cid, heroes, from}; a drag once it moved
+## (playtest 2026-10-30: drag a card onto a hero).
+var _drag: Dictionary = {}
+var _dragging: bool = false
+const DRAG_START: float = 14.0
 ## True while the physics runs, so the prompt can say so.
 var rolling: bool = false
 ## Watching a recorded match: no prompts, buttons or end screen, only the table and panels.
@@ -1785,7 +1790,9 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		if playable and e is InputEventMouseButton:
 			var mb := e as InputEventMouseButton
 			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-				_card_chosen(slot, cid, heroes))
+				# A click (let go where pressed) plays as before; a drag carries it to a hero (_input).
+				_drag = {"slot": slot, "cid": cid, "heroes": heroes, "from": get_global_mouse_position()}
+				_dragging = false)
 	return root
 
 
@@ -1830,6 +1837,8 @@ func _show_big(cid: String) -> void:
 
 ## The card-zoom key (Settings → Keys; held, or pressed on and off) shows the card under the mouse.
 func _input(event: InputEvent) -> void:
+	if not _drag.is_empty() and _drag_input(event):
+		return
 	# An open big card goes away on any left click (the click does nothing else).
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and not _big_cid.is_empty():
@@ -1846,6 +1855,44 @@ func _input(event: InputEvent) -> void:
 			_toggle_big(_hover_cid)
 	else:
 		_show_big(_hover_cid if k.pressed else "")
+
+
+## A card held from the hand: past DRAG_START pixels it is dragged, the heroes it can go on
+## light up (the targeting of a click); let go on one of them plays it there, elsewhere puts it
+## back. Let go without moving is a click. True when the event was used.
+func _drag_input(event: InputEvent) -> bool:
+	var heroes: PackedStringArray = _drag["heroes"]
+	if event is InputEventMouseMotion and not _dragging:
+		var from: Vector2 = _drag["from"]
+		if get_global_mouse_position().distance_to(from) < DRAG_START:
+			return false
+		_dragging = true
+		if not heroes.is_empty():
+			target_slot = JsonUtil.as_int(_drag["slot"])
+			target_cid = str(_drag["cid"])
+			target_heroes = heroes
+			_target_why = _last_why_by.get(target_cid, {})
+			targeting_changed.emit()
+			refresh()
+		return false
+	if not (event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT \
+			and not (event as InputEventMouseButton).pressed):
+		return false
+	var d: Dictionary = _drag
+	_drag = {}
+	if not _dragging:
+		_card_chosen(JsonUtil.as_int(d["slot"]), str(d["cid"]), heroes)
+		return false
+	_dragging = false
+	get_viewport().set_input_as_handled()
+	if heroes.is_empty():
+		# Nothing to aim at (an assist): let go above the hand plays it.
+		if get_global_mouse_position().y < size.y - HAND_HEIGHT:
+			card_pressed.emit(JsonUtil.as_int(d["slot"]), str(d["cid"]), "")
+		return true
+	if not play_target(hover_hero):
+		cancel_targeting()
+	return true
 
 
 ## The mouse is on card `cid`; with the zoom key held, the big card follows it.
