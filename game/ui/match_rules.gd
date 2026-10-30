@@ -22,7 +22,7 @@ const COLUMNS: Array = [
 	[
 		["HEROES", [
 			["range_delta", "Hero range", "Added to every hero's printed range. Lowered, it never drops below 2.", [-2, -1, 0, 1, 2]],
-			["core_slots", "Cores per hero", "How many cores one hero can hold.", [1, 2, 3, 4, 5]],
+			["core_slots", "Cores per hero", "How many cores one hero can hold; 0 plays without cores.", [0, 1, 2, 3, 4, 5]],
 			["equipment_limit", "Equipment per hero", "How many equipment cards one hero can wear.", [1, 2, 3, 4, 5]],
 			["wall_damage", "Wall damage", "Damage a knocked-back hero takes when a wall or another hero stops it (once per hit).", [0, 1, 2, 3, 4]],
 		]],
@@ -100,6 +100,8 @@ static func value_text(key: String, v: Variant) -> String:
 		"range_delta":
 			var d: int = JsonUtil.as_int(v)
 			return "AS PRINTED" if d == 0 else "%+d" % d
+		"core_slots":
+			return "NO CORES" if JsonUtil.as_int(v) <= 0 else str(JsonUtil.as_int(v))
 		"manual_setup":
 			return "BY THE PLAYERS" if JsonUtil.as_bool(v) else "AT RANDOM"
 		"series_wins":

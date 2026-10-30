@@ -1,0 +1,12 @@
+{
+  "name": "0 cores per hero is a match without cores: none are placed and the match starts (Marko 2026-10-30)",
+  "steps": [
+    {"setup": {"seed": 1, "settings": {"core_slots": 0}}},
+    {"expect": {
+      "phase": "mulligan",
+      "stages.stage:p0:1.placed": true,
+      "cores.core:p0:1": null,
+      "cores.core:p1:6": null
+    }}
+  ]
+}

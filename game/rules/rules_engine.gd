@@ -67,7 +67,8 @@ func start_match(settings: MatchSettings, decks: Array, seed: int) -> GameState:
 			st.owner = i
 			s.stages.append(st)
 		n = 0
-		for cid: String in p.core_cards:
+		# 0 cores per hero is a match without cores: none go on the table (Marko 2026-10-30).
+		for cid: String in (p.core_cards if s.settings.core_slots > 0 else PackedStringArray()):
 			n += 1
 			var c := CoreState.new()
 			c.id = "core:p%d:%d" % [i, n]
