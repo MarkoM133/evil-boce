@@ -185,7 +185,9 @@ func _build() -> void:
 	_rules_chip.add_theme_constant_override("separation", 10)
 	_rules_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	rcol.add_child(_rules_chip)
-	_rules_line = UiTheme.label("", 18)
+	_rules_line = Label.new()
+	_rules_line.add_theme_color_override("font_color", Palette.MUTED)
+	_rules_line.add_theme_font_size_override("font_size", 14)
 	_rules_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rcol.add_child(_rules_line)
 	_rules_changes = Label.new()
@@ -193,11 +195,11 @@ func _build() -> void:
 	_rules_changes.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rcol.add_child(_rules_changes)
 	_rules_btn = Button.new()
-	_rules_btn.add_theme_font_size_override("font_size", 20)
+	_rules_btn.theme_type_variation = &"Ghost"
+	_rules_btn.add_theme_font_size_override("font_size", 15)
 	_rules_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_rules_btn.pressed.connect(open_rules)
 	rrow.add_child(_rules_btn)
-	_hover(_rules_tile, _rules_box, func() -> bool: return true, open_rules)
 
 
 ## A tile that lights up on hover and calls `on_click` when clicked, while `active` says so.
@@ -230,22 +232,35 @@ func _refresh() -> void:
 	_map_word.text = ("DRAWN AT THE START" if random_map else str(info[0])) + ("  ·  STANDARD" if n == MatchSettings.standard().map_size else "")
 	_map_tile.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if editable else Control.CURSOR_ARROW
 	_map_tile.tooltip_text = "Pick the map" if editable else "The host picks the map"
-	_rules_tile.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-
+	# The modes are picked right here (playtest 2026-10-30: they were inside MATCH RULES); the
+	# rules themselves sit behind a quiet button and only say something when they differ.
 	for c: Node in _rules_chip.get_children():
 		c.queue_free()
-	_rules_chip.add_child(UiTheme.label("MATCH RULES", 15, Palette.GOLD))
+	_rules_chip.add_child(UiTheme.label("MODE", 15, Palette.GOLD))
 	var diff: PackedStringArray = changes()
-	var custom: bool = settings.mode == "custom"
-	_rules_chip.add_child(UiShape.chip(("CUSTOM · %d" % diff.size()) if custom else settings.mode.to_upper(),
-		Palette.ACCENT if custom else (Palette.SURFACE_2 if settings.mode == "standard" else Palette.GOLD),
-		Palette.FG, 13, 22.0, 10.0))
-	_rules_line.text = "Hero range %s  ·  stages and cores %s  ·  first to %d stages" % [
-		value_text("range_delta", settings.range_delta).to_lower(),
-		"placed by the players" if settings.manual_setup else "placed at random", settings.stages_to_win]
-	_rules_changes.text = ("Changed: " + ", ".join(diff)) if not diff.is_empty() else "Everything as in Standard."
-	_rules_changes.add_theme_color_override("font_color", Palette.GOLD if not diff.is_empty() else Palette.MUTED)
-	_rules_btn.text = "CHANGE RULES" if editable else "SEE RULES"
+	for name: String in MatchSettings.MODES:
+		if name == "custom":
+			continue
+		var b := Button.new()
+		b.text = name.to_upper()
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 17)
+		b.theme_type_variation = &"Gold" if name == settings.mode else &""
+		b.disabled = not editable
+		b.tooltip_text = str(MatchSettings.MODE_LINES.get(name, ""))
+		b.pressed.connect(func() -> void:
+			settings = MatchSettings.preset(name)
+			_changed())
+		_rules_chip.add_child(b)
+	if settings.mode == "custom":
+		_rules_chip.add_child(UiShape.chip("CUSTOM · %d" % diff.size(), Palette.ACCENT, Palette.FG, 13, 22.0, 10.0))
+	_rules_line.text = str(MatchSettings.MODE_LINES.get(settings.mode, ""))
+	# A mode says what it is in its line; only a custom mix lists what it changed.
+	var custom: bool = settings.mode == "custom" and not diff.is_empty()
+	_rules_changes.text = ("Changed: " + ", ".join(diff)) if custom else ""
+	_rules_changes.visible = custom
+	_rules_changes.add_theme_color_override("font_color", Palette.GOLD)
+	_rules_btn.text = ("RULES ›" if editable else "SEE RULES ›")
 	if _rules_body != null and is_instance_valid(_rules_body):
 		_fill_rules()
 
