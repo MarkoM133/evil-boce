@@ -90,6 +90,8 @@ var _views: Dictionary[String, BallView] = {}
 var _core_tokens: Dictionary[String, Node3D] = {}
 var _hovered: String = ""
 var _range_key: String = ""
+## Hexes of the stage or core hovered in the HUD strip (marked like a footprint).
+var _board_marks: Array[Vector2i] = []
 var _launching: bool = false
 ## The sim is running a physics knockback, not a roll (_launch_knockbacks).
 var _knocking: bool = false
@@ -393,6 +395,9 @@ func _build_hud() -> void:
 		_apply(Move.make(Move.USE_ABILITY, slot, {"hero": hero_id, "card": card_id, "index": index})))
 	hud.hero_clicked.connect(_on_hero_clicked)
 	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
+	hud.board_hovered.connect(func(hexes: Array[Vector2i]) -> void:
+		_board_marks = hexes
+		_refresh_range())
 	hud.ball_choice_made.connect(func(_id: String) -> void: _refresh_target_fx())
 	hud.menu_pressed.connect(_toggle_menu)
 	hud.rematch_pressed.connect(_rematch)
@@ -1256,6 +1261,10 @@ func _refresh_range() -> void:
 		cells.clear()
 		for o: Variant in JsonUtil.as_array(d.get("options", [])):
 			cells.append(JsonUtil.as_hex(o))
+	# A stage or core hovered in the HUD strip is marked where it lies.
+	if not _board_marks.is_empty():
+		marked.append_array(_board_marks)
+		key += "board:%s" % str(_board_marks)
 	if key == _range_key:
 		return
 	_range_key = key
@@ -2386,6 +2395,18 @@ func _on_battle_resolved(index: int, winner_team: int) -> void:
 		return
 	var ids: PackedStringArray = JsonUtil.as_strings(state.battles[index].get("heroes", []))
 	await get_tree().create_timer(0.5 * GameSettings.anim_scale()).timeout
+	# The blow: every loser a winner reaches takes the strongest winner's colour burst.
+	var strongest: HeroState = null
+	for hid: String in ids:
+		var w: HeroState = state.hero(hid)
+		if w != null and state.team_of(w.owner) == winner_team and _views.has(w.id) \
+				and (strongest == null or engine.stat(state, w, "pwr") > engine.stat(state, strongest, "pwr")):
+			strongest = w
+	if strongest != null:
+		for hid: String in ids:
+			var l: HeroState = state.hero(hid)
+			if l != null and state.team_of(l.owner) != winner_team and _views.has(l.id) and not l.is_ko():
+				_views[l.id].struck_by(_views[strongest.id])
 	for hid: String in ids:
 		var h: HeroState = state.hero(hid)
 		if h != null and state.team_of(h.owner) == winner_team:

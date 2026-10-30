@@ -252,6 +252,13 @@ func float_text(text: String, color: Color) -> void:
 	t.tween_callback(l.queue_free)
 
 
+## The winner's blow lands on this ball (playtest 2026-10-30: the hit itself had no effect):
+## the winner's colour burst and a squash.
+func struck_by(winner: BallView) -> void:
+	ColorFx.burst(self, winner._style, winner._hero_color, radius)
+	land()
+
+
 ## Knockback landing: a quick squash and spring back.
 func land() -> void:
 	if state == State.CLOSING:

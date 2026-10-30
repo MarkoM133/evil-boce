@@ -28,6 +28,8 @@ signal choose_pressed(slot: int, value: Variant)
 signal ability_pressed(slot: int, hero_id: String, card_id: String, index: int)
 signal hero_clicked(hero_id: String)
 signal hero_hovered(hero_id: String)
+## A stage or core in the board strip is hovered: its hexes ([] when the mouse left).
+signal board_hovered(hexes: Array[Vector2i])
 signal menu_pressed
 signal rematch_pressed
 signal watch_replay_pressed
@@ -56,7 +58,8 @@ const BATTLE_BANNER_TIME: float = 1.6
 ## How far a hovered hand card rises.
 const LIFT: float = 56.0
 ## Log events that get a banner (the rest only go to the log).
-const BANNER_EVENTS: Array[String] = ["battle", "battle_locked", "battle_tie_break", "ring_out", "ko", "stage_claimed", "triggered"]
+const BANNER_EVENTS: Array[String] = ["battle", "battle_locked", "battle_tie_break", "ring_out", "ko", "stage_claimed", "triggered",
+	"damage", "deck_damage"]
 
 var engine: RulesEngine
 var state: GameState
@@ -145,6 +148,9 @@ var _last_why_by: Dictionary = {}
 var _aim_line: Control
 ## Under the phase ribbon while a battle is fought: which one and who with what Power.
 var _battle_bar: HBoxContainer
+## Stages and your cores under the ribbon (_refresh_board).
+var _board: VBoxContainer
+var _board_sig: String = ""
 ## The battle camera is on (set by the match): letterbox, only the fighting heroes in the rosters.
 var battle_cam: bool = false
 var _letterbox: Array[ColorRect] = []
@@ -199,6 +205,7 @@ func refresh() -> void:
 	_scan_log()
 	_refresh_ribbon()
 	_refresh_battle_bar()
+	_refresh_board()
 	_refresh_energy()
 	for slot: int in state.players.size():
 		if slot < _rosters.size():
@@ -541,6 +548,14 @@ func _build() -> void:
 	_battle_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_battle_bar.visible = false
 	add_child(_battle_bar)
+
+	_board = VBoxContainer.new()
+	_board.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_board.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_board.position = Vector2(0, 62)
+	_board.add_theme_constant_override("separation", 4)
+	_board.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_board)
 
 	_aim_line = Control.new()
 	_aim_line.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -2038,7 +2053,20 @@ func _banner_for(e: Dictionary) -> void:
 				elif pw == best_pow:
 					tie = true
 			banner("BATTLE!", Palette.ACCENT, sides[0], sides[1], BATTLE_BANNER_TIME)
+			# Who won, said on its own for two seconds (playtest 2026-10-30).
+			if not tie and best >= 0:
+				var who: String = sides[best].get_slice("\n", 0)
+				banner("%s %s THE FIGHT!" % [who, "WINS" if not who.contains(" + ") else "WIN"], Palette.team(best).darkened(0.2), "", "", 2.0)
 			battle_resolved.emit(index, -1 if tie else best)
+		"damage":
+			# A battle's hit, said out loud: who takes how much (playtest 2026-10-30).
+			var amount: int = JsonUtil.as_int(e.get("amount", 0))
+			if str(e.get("phase", "")) == GameState.PHASE_BATTLE and amount > 0:
+				banner("%s TAKES %d DAMAGE" % [_hero_label(str(e.get("hero", ""))).to_upper(), amount], Palette.ACCENT_DEEP, "", "HP %d" % JsonUtil.as_int(e.get("hp", 0)), 1.6)
+		"deck_damage":
+			if str(e.get("phase", "")) == GameState.PHASE_BATTLE:
+				var p: PlayerState = state.player(JsonUtil.as_int(e.get("player", 0)))
+				banner("%s DECKS %d!" % [player_name(p.slot).to_upper(), JsonUtil.as_int(e.get("amount", 0))], Palette.ACCENT_DEEP, "", "%d LEFT IN THE DECK" % p.deck.size(), 1.6)
 		"ring_out":
 			banner("RING-OUT", Palette.GOLD, "", _hero_label(str(e.get("hero", ""))).to_upper())
 		"ko":
@@ -2712,3 +2740,149 @@ func _heroes_line(e: Dictionary) -> String:
 	for id: String in JsonUtil.as_strings(e.get("heroes", [])):
 		names.append(_hero_label(id))
 	return " vs ".join(names)
+
+
+# --- stages and cores at a glance (playtest 2026-10-30) ---------------------------------
+
+## Under the phase ribbon: all six stages (yours as cards from the start, marked HIDDEN until
+## they turn face up; the other side's as "?" until then) and your cores (HIDDEN or PUBLIC, and
+## on whom). Hover shows where it is on the table, a click shows the card big.
+func _refresh_board() -> void:
+	if _board == null:
+		return
+	var on: bool = state.turn > 0 and not state.is_over()
+	_board.visible = on
+	_board.position.y = 112.0 if _battle_bar.visible else 62.0
+	if not on:
+		return
+	var viewer: int = hand_slot() if hand_slot() >= 0 else (local_slots[0] if not local_slots.is_empty() else -1)
+	var sig: String = "%d|%s" % [viewer, str(local_slots)]
+	for st: StageState in state.stages:
+		sig += "|%s:%s:%s:%d:%s" % [st.id, st.card_id, st.revealed, st.claimed_by, st.placed]
+	for c: CoreState in state.cores:
+		sig += "|%s:%s:%s:%s" % [c.id, c.place, c.face_up, c.holder]
+	if sig == _board_sig:
+		return
+	_board_sig = sig
+	_clear(_board)
+	var stages := HBoxContainer.new()
+	stages.add_theme_constant_override("separation", 6)
+	stages.alignment = BoxContainer.ALIGNMENT_CENTER
+	stages.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_board.add_child(stages)
+	# The viewer's stages first, then the other side's.
+	var order: Array[StageState] = []
+	for st: StageState in state.stages:
+		if st.owner == viewer:
+			order.append(st)
+	for st: StageState in state.stages:
+		if st.owner != viewer:
+			order.append(st)
+	for st: StageState in order:
+		stages.add_child(_board_stage(st))
+	if viewer < 0:
+		return
+	var mine: Array[CoreState] = []
+	for c: CoreState in state.cores:
+		if c.owner == viewer:
+			mine.append(c)
+	if mine.is_empty():
+		return
+	var cores := HBoxContainer.new()
+	cores.add_theme_constant_override("separation", 4)
+	cores.alignment = BoxContainer.ALIGNMENT_CENTER
+	cores.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_board.add_child(cores)
+	var cap: Label = UiTheme.label("YOUR CORES", 12, Palette.GOLD)
+	cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cores.add_child(cap)
+	for c: CoreState in mine:
+		cores.add_child(_board_core(c))
+
+
+func _board_stage(st: StageState) -> Control:
+	var known: bool = st.revealed or local_slots.has(st.owner)
+	var card: CardDef = engine.catalog.get_card(st.card_id) if known and not st.card_id.is_empty() else null
+	var tile := PanelContainer.new()
+	tile.custom_minimum_size = Vector2(70, 46)
+	tile.clip_contents = true
+	var sb: StyleBoxFlat = UiTheme.box(Palette.SURFACE_2, 4, Color(0, 0, 0, 0), 0, 0)
+	sb.set_border_width_all(3 if st.is_claimed() else 2)
+	sb.border_color = Palette.team(state.team_of(st.claimed_by)) if st.is_claimed() else Color(Palette.team(state.team_of(st.owner)), 0.7)
+	tile.add_theme_stylebox_override("panel", sb)
+	var tex: Texture2D = db.thumb(card.id) if card != null and db != null else null
+	if tex != null:
+		var art := TextureRect.new()
+		art.texture = tex
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# Yours but still face down: you know it, the table does not yet.
+		art.modulate = Color(1, 1, 1, 1.0 if st.revealed else 0.45)
+		tile.add_child(art)
+	else:
+		var q: Label = UiTheme.label("?", 26, Palette.DIM)
+		q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		tile.add_child(q)
+	var word: String = "CLAIMED" if st.is_claimed() else ("HIDDEN" if not st.revealed and card != null else "")
+	if not word.is_empty():
+		var tag: Label = UiTheme.label(word, 10, Palette.GOLD if st.is_claimed() else Palette.FG)
+		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		tag.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		tag.add_theme_constant_override("outline_size", 4)
+		tag.add_theme_color_override("font_outline_color", Color.BLACK)
+		tile.add_child(tag)
+	var whose: String = player_name(st.owner)
+	if card != null:
+		tile.tooltip_text = "%s (%s's stage%s)%s" % [card.name, whose, ", face down" if not st.revealed else "",
+			("\n" + _card_tip(card.text)) if not _card_tip(card.text).is_empty() else ""]
+	else:
+		tile.tooltip_text = "%s's stage, face down until a hero stops on it" % whose
+	if st.is_claimed():
+		tile.tooltip_text += "\nClaimed by %s" % player_name(st.claimed_by)
+	_board_hover(tile, st.footprint() if st.placed else [] as Array[Vector2i], card)
+	return tile
+
+
+func _board_core(c: CoreState) -> Control:
+	var card: CardDef = engine.catalog.get_card(c.card_id)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 0)
+	box.mouse_filter = Control.MOUSE_FILTER_STOP
+	var chip: Control = _core_slot(c.id, Palette.SURFACE_2)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(chip)
+	var where: String = ""
+	var hexes: Array[Vector2i] = []
+	match c.place:
+		CoreState.ON_FIELD:
+			where = "PUBLIC" if c.face_up else "HIDDEN"
+			hexes.append(c.hex)
+		CoreState.ON_HERO:
+			var h: HeroState = state.hero(c.holder)
+			where = hero_name(h).get_slice(",", 0).to_upper() if h != null else "ON A HERO"
+			if h != null and h.is_on_map():
+				hexes.append(h.hex)
+		CoreState.IN_INVENTORY:
+			where = "TO PUT BACK"
+		_:
+			where = "NOT PLACED"
+	var w: Label = UiTheme.label(where, 9, Palette.MUTED if where != "HIDDEN" else Palette.FG)
+	w.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	w.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(w)
+	box.tooltip_text = "%s%s" % [card.name if card != null else "Core",
+		"\nFace down: only you know it" if c.place == CoreState.ON_FIELD and not c.face_up else ""]
+	_board_hover(box, hexes, card)
+	return box
+
+
+func _board_hover(c: Control, hexes: Array[Vector2i], card: CardDef) -> void:
+	c.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if card != null else Control.CURSOR_ARROW
+	c.mouse_entered.connect(func() -> void: board_hovered.emit(hexes))
+	c.mouse_exited.connect(func() -> void: board_hovered.emit([] as Array[Vector2i]))
+	c.gui_input.connect(func(e: InputEvent) -> void:
+		if card != null and e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
+			_toggle_big(card.id)
+			c.accept_event())
