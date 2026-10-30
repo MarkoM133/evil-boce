@@ -126,7 +126,11 @@ static func _build() -> Theme:
 	t.set_color("font_focus_color", "Button", Palette.FG)
 	t.set_color("font_disabled_color", "Button", Color(Palette.MUTED, 0.45))
 	t.set_stylebox("normal", "Button", slant(Palette.BUTTON))
-	t.set_stylebox("hover", "Button", slant(Palette.BUTTON_HOVER))
+	# Hover draws the gold outline the tiles and cards get, on every button (playtest 2026-10-30).
+	var hover_b := slant(Palette.BUTTON_HOVER)
+	hover_b.border_color = Palette.GOLD
+	hover_b.set_border_width_all(2)
+	t.set_stylebox("hover", "Button", hover_b)
 	t.set_stylebox("pressed", "Button", slant(Palette.ACCENT))
 	t.set_stylebox("hover_pressed", "Button", slant(Palette.ACCENT_HOVER))
 	t.set_stylebox("disabled", "Button", slant(Color("111111")))
@@ -146,12 +150,14 @@ static func _build() -> Theme:
 	prim.border_color = Palette.ACCENT_DEEP
 	prim.border_width_bottom = 5
 	var prim_hover := slant(Palette.ACCENT_HOVER, 26, 10)
-	prim_hover.border_color = Palette.ACCENT_DEEP
-	prim_hover.border_width_bottom = 7
+	prim_hover.border_color = Palette.GOLD
+	prim_hover.set_border_width_all(3)
 	t.set_stylebox("normal", "Primary", prim)
 	t.set_stylebox("hover", "Primary", prim_hover)
 	t.set_stylebox("pressed", "Primary", slant(Palette.ACCENT_DEEP, 26, 10))
-	t.set_stylebox("disabled", "Primary", slant(Color("2a1210"), 26, 10))
+	# Off (something to fix first) still reads as the main button, only dimmer (it looked black).
+	t.set_stylebox("disabled", "Primary", slant(Palette.ACCENT.darkened(0.55), 26, 10))
+	t.set_color("font_disabled_color", "Primary", Color(1, 1, 1, 0.45))
 
 	t.set_type_variation("Gold", "Button")
 	t.set_color("font_color", "Gold", Color.BLACK)

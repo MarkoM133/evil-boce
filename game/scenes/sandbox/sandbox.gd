@@ -153,7 +153,7 @@ func _build_hud() -> void:
 
 	var hint := Label.new()
 	hint.theme_type_variation = &"Muted"
-	hint.text = "Drag a ball: throw  ·  Right drag / drag table: turn  ·  Middle drag, WASD: move  ·  Wheel: zoom  ·  Q E: turn  ·  O open  ·  F focus  ·  Del remove  ·  Home reset view"
+	hint.text = "Drag a ball: throw  ·  Right drag: turn  ·  Drag table, middle drag, WASD: move  ·  Wheel: zoom  ·  Q E: turn  ·  O open  ·  F focus  ·  Del remove  ·  Home reset view"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.position = Vector2(14, -30)
 	hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -541,7 +541,8 @@ func _on_left(pressed: bool) -> void:
 				_start_aim(p)
 			return
 		_press_on_empty = true
-		cam.begin_drag(OrbitCamera.Drag.ORBIT)
+		# Left drag on the table pans, right drag orbits (playtest 2026-10-30: both orbited).
+		cam.begin_drag(OrbitCamera.Drag.PAN)
 		return
 	if _aiming != null:
 		_release_aim()

@@ -681,18 +681,19 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 		assists.tooltip_text = _card_tip(_card_texts(p.assists))
 		assists.mouse_filter = Control.MOUSE_FILTER_PASS
 		col.add_child(assists)
-	if not p.inventory.is_empty():
-		var inv := Label.new()
-		inv.add_theme_color_override("font_color", Palette.GOLD)
-		inv.add_theme_font_size_override("font_size", 13)
-		inv.text = "%d core(s) to put back" % p.inventory.size()
-		inv.horizontal_alignment = align
-		col.add_child(inv)
 	for h: HeroState in state.heroes_of(slot):
 		# In the battle camera only the heroes fighting show.
 		if battle_cam and not _in_battle(h):
 			continue
 		col.add_child(_hero_slice(h, right))
+	# Under the third hero, so it does not push the heroes down (playtest 2026-10-30).
+	if not p.inventory.is_empty():
+		var inv := Label.new()
+		inv.add_theme_color_override("font_color", Palette.GOLD)
+		inv.add_theme_font_size_override("font_size", 13)
+		inv.text = "%d core%s to put back" % [p.inventory.size(), "" if p.inventory.size() == 1 else "s"]
+		inv.horizontal_alignment = align
+		col.add_child(inv)
 	# Your own deck and graveyard stand as piles by the hand (_refresh_piles); the counts here
 	# are for the other side (and for two players at one screen).
 	if local_slots.size() == 1 and local_slots[0] == slot:
@@ -838,8 +839,6 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	extra.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
 	bottom.add_child(extra)
 	if expanded and not ko:
-		# A stat a core changes is green (up) or red (down).
-		var from_cores: Dictionary[String, int] = _core_bonus(h)
 		var stats := RichTextLabel.new()
 		stats.bbcode_enabled = true
 		# Fixed to the panel's width (it never pushes onto the art at the far end).
@@ -854,8 +853,11 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		stats.add_theme_color_override("default_color", Palette.FG)
 		var parts := PackedStringArray()
 		for key: String in ["pwr", "dmg", "rng", "kb"]:
-			var text: String = "%s %d" % [key.to_upper(), engine.stat(state, h, key)]
-			var by: int = from_cores.get(key, 0)
+			var value: int = engine.stat(state, h, key)
+			var text: String = "%s %d" % [key.to_upper(), value]
+			# Green up, red down against the card, whatever moved it: cores, equipment, effects
+			# (playtest 2026-10-30: Sandai Kitetsu's +3 DMG stayed white).
+			var by: int = value - engine.base_stat(state, h, key)
 			if by != 0:
 				text = "[color=#%s]%s[/color]" % [(Palette.HP if by > 0 else Palette.ACCENT).to_html(false), text]
 			parts.append(text)
@@ -1093,19 +1095,6 @@ func _core_slot(core_id: String, hero_color: Color) -> Control:
 	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	chip.tooltip_text = "%s core: %s" % [card.kind, card.name]
 	return chip
-
-
-## What the hero's active cores add to each stat ({"pwr": 2000, "kb": -1}).
-func _core_bonus(h: HeroState) -> Dictionary[String, int]:
-	var out: Dictionary[String, int] = {}
-	for cid: String in h.cores:
-		var c: CoreState = state.core(cid)
-		var card: CardDef = engine.catalog.get_card(c.card_id) if c != null else null
-		if card == null:
-			continue
-		for k: String in card.bonus:
-			out[k] = out.get(k, 0) + card.bonus[k]
-	return out
 
 
 func _hero_tag(h: HeroState, active: bool, pickable: bool, in_battle: bool) -> UiShape:
@@ -1478,6 +1467,11 @@ func _refresh_hand() -> void:
 	if state.phase == GameState.PHASE_MULLIGAN and hand_slot() >= 0 and _hand_sig != ",".join(state.player(hand_slot()).hand):
 		_hand_sig = ",".join(state.player(hand_slot()).hand)
 		_hand_dealt = false
+	# A refresh while the starting hand is still flying in would rebuild it in place and cut
+	# the deal short (playtest 2026-10-30: the deal was gone); the same cards stay as they are.
+	if state.phase == GameState.PHASE_MULLIGAN and _hand_dealt and _hand.get_child_count() > 0 \
+			and Time.get_ticks_msec() < _mulligan_ready_at:
+		return
 	_clear(_hand)
 	var mulligan: bool = state.phase == GameState.PHASE_MULLIGAN
 	_hand_title.visible = false
@@ -1907,7 +1901,13 @@ func _refresh_dialog() -> void:
 		_option_button("%s   HP %d → %d" % [hero_name(h).to_upper(), h.hp, maxi(h.hp - amount, 0)],
 			func() -> void: damage_pressed.emit(who, id))
 	var p: PlayerState = state.player(who)
-	_option_button("DECK   %d cards, %d in hand" % [p.deck.size(), p.hand.size()], func() -> void: damage_pressed.emit(who, "deck"))
+	# How many cards go and what is left, like the hero lines (playtest 2026-10-30).
+	var from_deck: int = mini(amount, p.deck.size())
+	var from_hand: int = amount - from_deck
+	var deck_line: String = "DECK   %d cards → %d" % [p.deck.size(), p.deck.size() - from_deck]
+	if from_hand > 0:
+		deck_line += "   + %d from your hand (%d)" % [from_hand, p.hand.size()]
+	_option_button(deck_line, func() -> void: damage_pressed.emit(who, "deck"))
 
 
 ## A card effect asks for a hero, core, card or branch (hexes are clicked on the table).

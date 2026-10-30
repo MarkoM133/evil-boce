@@ -920,8 +920,9 @@ func _rebuild_tokens() -> void:
 			if b == null or not b.is_on_map() or b.id < a.id:
 				continue
 			var tag := Label3D.new()
-			tag.text = "LOCKED · TIE"
-			tag.font_size = 48
+			# Says what it means for the player (playtest 2026-10-30: LOCKED · TIE was unclear).
+			tag.text = "TIED · FIGHT AGAIN\nCAN'T BE PICKED"
+			tag.font_size = 40
 			tag.pixel_size = 0.016
 			tag.outline_size = 12
 			tag.modulate = Palette.ACCENT.lightened(0.25)
@@ -1733,7 +1734,7 @@ func _replay_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
-			cam.begin_drag(OrbitCamera.Drag.ORBIT if mb.pressed else OrbitCamera.Drag.NONE)
+			cam.begin_drag(OrbitCamera.Drag.PAN if mb.pressed else OrbitCamera.Drag.NONE)
 	if event is InputEventMouseMotion and not cam.is_dragging():
 		_set_hover(_hero_under_mouse(), true)
 	cam.handle_input(event)
@@ -1799,7 +1800,8 @@ func _on_left(pressed: bool) -> void:
 			_on_hero_clicked(id)
 			return
 		_press_on_empty = true
-		cam.begin_drag(OrbitCamera.Drag.ORBIT)
+		# Left drag on the table pans, right drag orbits (playtest 2026-10-30: both orbited).
+		cam.begin_drag(OrbitCamera.Drag.PAN)
 		return
 	if _sling.is_aiming():
 		_release_aim()

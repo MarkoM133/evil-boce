@@ -98,7 +98,9 @@ func _build_game(col: VBoxContainer) -> void:
 	web.text_changed.connect(func(t: String) -> void: GameSettings.set_web_app_url(t))
 	row.add_child(web)
 	var open_web := Button.new()
-	open_web.text = "OPEN  ↗"
+	open_web.text = "OPEN"
+	open_web.icon = WebApp.external_icon()
+	open_web.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	open_web.pressed.connect(func() -> void: WebApp.open())
 	row.add_child(open_web)
 	_hint(col, "GitHub Pages works for everyone; the local server is http://localhost:5100/ while it runs. Empty goes back to Pages.")
@@ -219,7 +221,7 @@ func _build_keys(col: VBoxContainer) -> void:
 		_show_keys())
 	col.add_child(reset)
 	_header(col, "MOUSE")
-	_hint(col, "Drag a ball back to aim, release to throw; right click cancels. Wheel zooms, drag the table to turn the camera, Home resets it. Right click on a card or a hero shows its card big.")
+	_hint(col, "Drag a ball back to aim, release to throw; right click cancels. Wheel zooms, drag the table to move the camera, right drag turns it, Home resets it. Right click on a card or a hero shows its card big.")
 
 
 func _hint(parent: Control, text: String) -> void:

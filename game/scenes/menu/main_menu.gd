@@ -51,9 +51,10 @@ func _ready() -> void:
 	else:
 		_build_strip(logo)
 
-	# The version line, with the web app (card studio, deck builder) one click away.
-	var foot := HBoxContainer.new()
-	foot.add_theme_constant_override("separation", 14)
+	# The web app (card studio, deck builder) one click away, above the version line
+	# (playtest 2026-10-30).
+	var foot := VBoxContainer.new()
+	foot.add_theme_constant_override("separation", 4)
 	var studio: Button = WebApp.link("CARD STUDIO", "", "Cards, decks and Balance in the web app.")
 	studio.add_theme_font_size_override("font_size", 13)
 	foot.add_child(studio)
@@ -62,6 +63,8 @@ func _ready() -> void:
 	foot_l.add_theme_font_size_override("font_size", 13)
 	foot_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	foot.add_child(foot_l)
+	studio.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN if layout == "cinema" else Control.SIZE_SHRINK_END
+	foot_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if layout == "cinema" else HORIZONTAL_ALIGNMENT_RIGHT
 	# Above the bottom strip in the cinema layout; bottom right beside the side strip.
 	if layout == "cinema":
 		foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -131,7 +134,7 @@ func _play_intro(with_logo: bool) -> void:
 func _version_line() -> String:
 	var version: String = str(ProjectSettings.get_setting("application/config/version", ""))
 	if db.is_ok():
-		return "v%s  ·  cards v%d, %d cards" % [version, db.version, db.card_count]
+		return "GAME v%s   ·   CARDS v%d   ·   %d CARDS" % [version, db.version, db.card_count]
 	return "v%s  ·  %s  ·  set the shared folder in Settings" % [version, db.error]
 
 

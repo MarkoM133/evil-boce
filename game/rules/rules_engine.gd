@@ -1503,6 +1503,26 @@ func stat(s: GameState, h: HeroState, key: String) -> int:
 	return maxi(0, stat_flat(s, h, key) + fx.passive_stat(s, h, key))
 
 
+## The printed value of the hero's current card (range after the match's range change), before
+## anything adds to it: the HUD colours a stat that differs.
+func base_stat(s: GameState, h: HeroState, key: String) -> int:
+	var card: CardDef = stat_card(h)
+	if card == null:
+		return 0
+	match key:
+		"hp":
+			return card.hp
+		"dmg":
+			return card.dmg
+		"pwr":
+			return card.pwr
+		"rng":
+			return s.settings.adjust_rng(card.rng)
+		"kb":
+			return card.kb
+	return 0
+
+
 ## The card's value plus equipment and active core `bonus` fields plus bonuses that last the
 ## phase or the turn; no passive effects (they use this to avoid asking about themselves).
 func stat_flat(s: GameState, h: HeroState, key: String) -> int:
