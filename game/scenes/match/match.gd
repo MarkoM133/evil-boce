@@ -285,8 +285,13 @@ func _show_initiative() -> void:
 		names.append(hud.player_name(p.slot))
 		colors.append(Palette.team(state.team_of(p.slot)))
 	hud.get_parent().add_child(dice)
-	dice.setup(state.rng_seed, state.initiative, names, colors)
-	_bot_wait = 4.0
+	# People here throw by hand (playtest 2026-10-30); bots wait until the dice are gone.
+	var people := PackedInt32Array()
+	for slot: int in hud.local_slots:
+		if not bots.has(slot):
+			people.append(slot)
+	dice.setup(state.rng_seed, state.initiative, names, colors, people)
+	_bot_wait = 3600.0
 	dice.finished.connect(func() -> void: _bot_wait = BOT_DELAY)
 
 
