@@ -297,6 +297,10 @@ func banner(title: String, color: Color, left: String = "", right: String = "", 
 	# Banners can be cut down to the big moments, or switched off (Settings → Interface).
 	if GameSettings.banners() == "off":
 		return
+	# A phase call-out still waiting is out of date once a newer one comes (fast bots could leave
+	# "TURN 3 · PREROLL" showing in turn 5).
+	if title.ends_with(" PHASE"):
+		_banners = _banners.filter(func(q: Dictionary) -> bool: return not str(q["title"]).ends_with(" PHASE"))
 	_banners.append({"title": title, "color": color, "left": left, "right": right, "hold": hold})
 	if not _banner_busy:
 		_next_banner()
@@ -755,15 +759,18 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		s.art_tint = Color(0.35, 0.35, 0.35)
 		s.modulate.a = 0.6
 	if active:
+		# Every panel is full width now (playtest 2026-10-30); the activated one stands out by a
+		# thick gold edge and a warm ground instead of sticking out.
 		s.outline = Palette.GOLD
+		s.outline_width = 4.0
+		s.bg = Color("2b2416") if h.id != hover_hero else Color("3a3020")
 	elif pickable:
 		var chosen_pick: bool = picks.get(h.owner, "") == h.id
 		s.outline = Color("ffd36a") if chosen_pick else Color(Palette.GOLD, 0.55)
 		s.outline_width = 3.5 if chosen_pick else 2.0
 	if in_battle:
 		s.stripe = Palette.ACCENT
-	s.custom_minimum_size = Vector2(ROSTER_WIDTH - 14.0, SLICE_HEIGHT + (22.0 if expanded else 0.0))
-	# Inactive heroes sit a little in from the edge, so the active one sticks out.
+	s.custom_minimum_size = Vector2(ROSTER_WIDTH, SLICE_HEIGHT + (22.0 if expanded else 0.0))
 	s.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var shown_id: String = card.id if card != null else ""
 	s.gui_input.connect(func(e: InputEvent) -> void:
@@ -878,11 +885,8 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 			parts.append(text)
 		stats.text = ("[right]%s[/right]" if right else "%s") % "   ".join(parts)
 		col.add_child(stats)
-	# The active hero sticks out of the column; the others sit in a little.
 	var wrap := MarginContainer.new()
 	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	wrap.add_theme_constant_override("margin_right" if right else "margin_left", 0 if active else 14)
-	wrap.add_theme_constant_override("margin_left" if right else "margin_right", 14 if active else 0)
 	wrap.add_child(s)
 	# The hero's ability as a tab on the panel's outer end, lasting effects as chips under it.
 	var row := HBoxContainer.new()
