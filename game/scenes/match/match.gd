@@ -742,6 +742,11 @@ func _sync_hero(h: HeroState) -> void:
 	var first: bool = not _hp.has(h.id)
 	var was: int = _hp.get(h.id, h.hp)
 	_hp[h.id] = h.hp
+	# The standee follows the top evolution, back to the hero's own when it goes (playtest
+	# 2026-10-30); an evolution without a sprite keeps the hero's.
+	var top: CardDef = engine.stat_card(h)
+	var figure: Texture2D = db.sprite_of(top.id) if top != null else null
+	v.set_figure(figure if figure != null else db.sprite_of(h.card_id))
 	var animate: bool = not first and not _quiet
 	if h.is_ko():
 		if not _ko_shown.has(h.id):

@@ -12,6 +12,8 @@ var card_count: int = 0
 ## Card id -> small image in data/thumbs/ (same name as the full image, as .jpg).
 var thumbs: Dictionary[String, String] = {}
 var heroes: Array[HeroDef] = []
+## Card id -> its standee sprite (heroes and evolutions that have one).
+var sprite_paths: Dictionary[String, String] = {}
 ## Rules-side view of the same cards (placeholder cores and terrain applied).
 var catalog: CardCatalog = CardCatalog.new()
 var error: String = ""
@@ -37,6 +39,7 @@ func data_dir() -> String:
 
 func parse(text: String) -> void:
 	heroes.clear()
+	sprite_paths.clear()
 	var json := JSON.new()
 	if json.parse(text) != OK or not json.data is Dictionary:
 		error = "cards.json is not valid JSON (line %d)" % json.get_error_line()
@@ -65,6 +68,9 @@ func parse(text: String) -> void:
 		var image: String = str(card.get("image", ""))
 		if not image.is_empty():
 			thumbs[str(card.get("id", ""))] = data_dir().path_join("thumbs/%s.jpg" % image.get_file().get_basename())
+		var sprite: String = str(card.get("sprite", ""))
+		if not sprite.is_empty():
+			sprite_paths[str(card.get("id", ""))] = data_dir().path_join(sprite)
 		if str(card.get("type", "")) == "Hero":
 			heroes.append(HeroDef.from_card(card, data_dir()))
 	heroes.sort_custom(func(a: HeroDef, b: HeroDef) -> bool: return a.id < b.id)
@@ -76,6 +82,11 @@ func is_ok() -> bool:
 
 func sprite(hero: HeroDef) -> Texture2D:
 	return texture(hero.sprite_path)
+
+
+## The standee of a hero or an evolution card, or null when it has none.
+func sprite_of(card_id: String) -> Texture2D:
+	return texture(sprite_paths[card_id]) if sprite_paths.has(card_id) else null
 
 
 func emblem(set_code: String) -> Texture2D:

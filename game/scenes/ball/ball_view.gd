@@ -90,6 +90,14 @@ func configure(hero_color: Color, accent: Color, team_color: Color,
 	_fit_figure()
 
 
+## A new standee (an evolution came or went); null keeps the current one.
+func set_figure(figure: Texture2D) -> void:
+	if figure == null or figure == _figure.texture:
+		return
+	_figure.texture = figure
+	_fit_figure()
+
+
 func set_radius(r: float) -> void:
 	radius = r
 	_body.scale = Vector3.ONE * r
