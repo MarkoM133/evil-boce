@@ -1018,13 +1018,16 @@ func _find_battles(s: GameState) -> void:
 				var l: HeroState = s.hero(lid)
 				if l != null and l.is_on_map() and not taken.has(l.id):
 					members.append(l)
-		for other: HeroState in s.heroes:
-			if other == seed or not other.is_on_map() or taken.has(other.id) or members.has(other):
-				continue
-			if s.same_team(seed, other):
-				continue
-			if in_range(s, seed, other) or in_range(s, other, seed):
-				members.append(other)
+		# The starters: the seed (or the locked group) and the enemies in range with it. Then
+		# whoever is in range with a starter of the other team joins, allies of the seed too
+		# (playtest 2026-10-30: Zoro reaching the enemy was left out); nothing spreads further
+		# (GDD 10: the heroes who started it and who is in their range, no chaining).
+		var starters: Array[HeroState] = members.duplicate()
+		for other: HeroState in _joiners(s, [seed], taken, members):
+			members.append(other)
+			starters.append(other)
+		for other: HeroState in _joiners(s, starters, taken, members):
+			members.append(other)
 		var has_enemy: bool = false
 		for m: HeroState in members:
 			if not s.same_team(m, seed):
@@ -1038,6 +1041,21 @@ func _find_battles(s: GameState) -> void:
 		s.battles.append({"heroes": ids, "resolved": false, "winner_team": -1, "tie": false})
 	if not s.battles.is_empty():
 		s.event("battles", {"battles": s.battles.duplicate(true)})
+
+
+## Heroes on the map, free and not yet in `members`, in range (either way) with a hero of
+## `against` from the other team.
+func _joiners(s: GameState, against: Array[HeroState], taken: PackedStringArray,
+		members: Array[HeroState]) -> Array[HeroState]:
+	var out: Array[HeroState] = []
+	for other: HeroState in s.heroes:
+		if not other.is_on_map() or taken.has(other.id) or members.has(other) or out.has(other):
+			continue
+		for m: HeroState in against:
+			if not s.same_team(m, other) and (in_range(s, m, other) or in_range(s, other, m)):
+				out.append(other)
+				break
+	return out
 
 
 func _next_battle(s: GameState) -> void:

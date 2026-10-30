@@ -178,6 +178,9 @@ g. (2026-10-26) A grid knockback stopped by a wall or a hero costs `wall_damage`
    (`NO_CLAIM OPP`, `COST OPP`, `CHOOSE OPP`) needs an enemy hero in range. A chosen branch is
    checked in full before its first step runs, so a choice never half happens. FREE_PLAY offers
    only cards that could really go on the hero (`free_play_error`).
+16. (2026-10-30, playtest) Battle members: the seed (or the locked group) and the enemies in
+   range with it are the starters; then every hero in range with a starter of the other team
+   joins, the seed's allies too (`_joiners`). Nobody joins through a joiner (no chaining).
 - JO1-011 "3 copies at once": the third copy of the card played by the same player in the
   same phase also gives +5 DMG (`IF COPIES 3`).
 - Stage reveal bonuses last while the hero stays on that stage and it is unclaimed.
