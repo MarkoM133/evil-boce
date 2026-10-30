@@ -444,7 +444,7 @@ func _card_round(engine: RulesEngine, s: GameState, slot: int) -> Move:
 		var best_gain: float = 0.5
 		for m: Move in options:
 			var after: GameState = _try(engine, s, m)
-			if after == null:
+			if after == null or _reckless(engine, s, after, slot):
 				continue
 			var gain: float = evaluate(engine, after, slot) - now
 			if gain > best_gain:
@@ -454,9 +454,40 @@ func _card_round(engine: RulesEngine, s: GameState, slot: int) -> Move:
 	# Easy: the first thing in hand that helps right away.
 	for m: Move in options:
 		var after: GameState = _try(engine, s, m)
-		if after != null and evaluate(engine, after, slot) > now:
+		if after != null and not _reckless(engine, s, after, slot) and evaluate(engine, after, slot) > now:
 			return m
 	return Move.make(Move.PASS, slot)
+
+
+## A move that costs the bot's own heroes HP ("as an additional cost, take 3 DMG") only to pile
+## Power onto a battle it already wins, or that leaves the hero on less than 5 HP
+## (playtest 2026-10-30: Easy took Big Mom from 12 to 3 HP to deal 2 DMG).
+func _reckless(engine: RulesEngine, s: GameState, after: GameState, slot: int) -> bool:
+	var low: bool = false
+	var harm: int = 0
+	for h: HeroState in s.heroes_of(slot):
+		var a: HeroState = after.hero(h.id)
+		if a == null or a.hp >= h.hp:
+			continue
+		harm += h.hp - a.hp
+		if a.hp < 5:
+			low = true
+	if harm <= 0:
+		return false
+	return low or _battle_gap(engine, s, slot) > 0
+
+
+## The Power lead of `slot`'s side in the battle being fought (0 outside a battle).
+func _battle_gap(engine: RulesEngine, s: GameState, slot: int) -> int:
+	if s.phase != GameState.PHASE_BATTLE or s.battle_index < 0 or s.battle_index >= s.battles.size():
+		return 0
+	var gap: int = 0
+	for id: String in JsonUtil.as_strings(s.battles[s.battle_index].get("heroes", [])):
+		var h: HeroState = s.hero(id)
+		if h == null or not h.is_on_map():
+			continue
+		gap += engine.stat(s, h, "pwr") * (1 if s.team_of(h.owner) == s.team_of(slot) else -1)
+	return gap
 
 
 # =====================================================================================

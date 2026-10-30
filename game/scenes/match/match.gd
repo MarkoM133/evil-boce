@@ -1747,7 +1747,11 @@ func _on_key(k: InputEventKey) -> void:
 			else:
 				_toggle_menu()
 		KEY_SPACE:
-			if hud.local_slots.has(state.to_act) and not state.round_over:
+			if state.phase == GameState.PHASE_START:
+				# Space confirms the picked hero (it used to send a Pass the engine refused with
+				# "select a hero", playtest 2026-10-30).
+				hud.confirm_pick()
+			elif hud.local_slots.has(state.to_act) and not state.round_over:
 				_apply(Move.make(Move.PASS, state.to_act))
 		KEY_HOME:
 			cam.reset_view()

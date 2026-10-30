@@ -1166,6 +1166,20 @@ func _in_card_round() -> bool:
 
 
 ## True when the game waits for something from this slot.
+## Space in Start: the first local seat with a picked hero confirms it.
+func confirm_pick() -> void:
+	for slot: int in local_slots:
+		if not _needs_input(slot):
+			continue
+		var picked: HeroState = state.hero(str(picks.get(slot, "")))
+		if picked == null:
+			toast("Pick a hero first", Palette.FG)
+			return
+		var rolls: bool = picked.zone == HeroState.ZONE_STRIP or pick_rolls.get(slot, true) == true
+		pick_confirmed.emit(slot, picked.id, rolls)
+		return
+
+
 func _needs_input(slot: int) -> bool:
 	match state.phase:
 		GameState.PHASE_MULLIGAN:
@@ -1265,21 +1279,19 @@ func _refresh_prompt() -> void:
 					row.add_theme_constant_override("separation", 6)
 					row.size_flags_horizontal = Control.SIZE_FILL
 					_actions.add_child(row)
-					for roll_choice: bool in [true, false]:
+					# In the start zone there is nothing to choose: only ROLL (playtest 2026-10-30).
+					for roll_choice: bool in ([true] if must_roll else [true, false]):
 						var b := Button.new()
 						b.text = "ROLL" if roll_choice else "STAY"
 						b.focus_mode = Control.FOCUS_NONE
 						b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 						b.theme_type_variation = &"Gold" if rolls == roll_choice else &""
-						b.disabled = must_roll and not roll_choice
-						if b.disabled:
-							b.tooltip_text = "A hero in the start zone must roll"
 						var want: bool = roll_choice
 						b.pressed.connect(func() -> void:
 							pick_rolls[slot] = want
 							refresh())
 						row.add_child(b)
-					_action("CONFIRM %s" % hero_name(picked).to_upper(), func() -> void: pick_confirmed.emit(slot, picked.id, rolls), &"Primary")
+					_action("CONFIRM %s" % hero_name(picked).get_slice(",", 0).to_upper(), func() -> void: pick_confirmed.emit(slot, picked.id, rolls), &"Primary")
 				if engine.selectable_heroes(state, slot).is_empty():
 					_action("No hero can act", func() -> void: no_hero_pressed.emit(slot), &"Primary")
 			GameState.PHASE_ROLL:
@@ -1413,7 +1425,12 @@ func _action(text: String, cb: Callable, kind: StringName = &"") -> Button:
 	b.theme_type_variation = kind
 	if kind == &"Primary":
 		b.add_theme_font_size_override("font_size", 34)
-		b.custom_minimum_size = Vector2(220, 0)
+		# As wide as the prompt card above it; a long text is cut, not pushed under the deck
+		# (playtest 2026-10-30: CONFIRM KAIDO, HYBRID FORM).
+		b.custom_minimum_size = Vector2(290, 0)
+		b.clip_text = true
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		b.tooltip_text = text
 	b.size_flags_horizontal = Control.SIZE_SHRINK_END
 	b.pressed.connect(cb)
 	_actions.add_child(b)
@@ -2484,8 +2501,8 @@ func show_ball_choice(hero_id: String, at: Vector2) -> void:
 	var stay_b: Button = _ball_choice.get_child(1)
 	roll_b.theme_type_variation = &"Gold" if picked and rolls else &""
 	stay_b.theme_type_variation = &"Gold" if picked and not rolls else &""
-	stay_b.disabled = must_roll
-	stay_b.tooltip_text = "A hero in the start zone must roll" if must_roll else ""
+	# In the start zone a hero must roll: STAY is not offered at all.
+	stay_b.visible = not must_roll
 	_ball_choice.reset_size()
 	_ball_choice.position = at - Vector2(_ball_choice.size.x * 0.5, 0)
 	_ball_choice.visible = true

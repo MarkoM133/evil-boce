@@ -112,6 +112,10 @@ func is_open() -> bool:
 
 ## Turns the spinner by the distance travelled, as if the ball rolled.
 func roll(delta: Vector3) -> void:
+	# An open ball (the figure out) slides upright when nudged; rolling it tipped it over with
+	# the figure on top (playtest 2026-10-30).
+	if state != State.CLOSED:
+		return
 	var d := Vector3(delta.x, 0, delta.z)
 	var dist: float = d.length()
 	if dist < 0.00001:

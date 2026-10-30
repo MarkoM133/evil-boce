@@ -19,6 +19,8 @@ var deck_index: int = 0
 ## hero is picked on its own) and the deck built with them ({} = drawn when the match starts).
 var chosen: PackedStringArray = PackedStringArray(["", "", ""])
 var built: Dictionary = {}
+## A random deck built after hero picks is shown only after BUILD / REROLL (the others stay "?").
+var _show_built: bool = true
 var loadout: Loadout = Loadout.new()
 var team: int = 0
 ## Extra controls in the header (the opponent type in Play setup).
@@ -281,11 +283,11 @@ func _rebuild() -> void:
 		deck_row.add_child(builder)
 	if deck_index == 0 and not deck_fixed_:
 		var roll := Button.new()
-		roll.text = "REROLL" if not built.is_empty() else "BUILD"
+		roll.text = "REROLL" if not built.is_empty() and _show_built else "BUILD"
 		roll.add_theme_font_size_override("font_size", 18)
 		roll.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		roll.tooltip_text = "Build a random deck now (with the heroes you picked, the rest drawn) and see it before the match"
-		roll.pressed.connect(_build_random)
+		roll.pressed.connect(func() -> void: _build_random())
 		deck_row.add_child(roll)
 	var next := Button.new()
 	next.text = "›"
@@ -301,7 +303,7 @@ func _rebuild() -> void:
 	for i: int in DeckCode.HERO_COUNT:
 		var id: String = ids[i] if i < ids.size() else ""
 		var pickable: bool = deck_index == 0 and not deck_fixed_
-		if pickable and id.is_empty():
+		if pickable and (id.is_empty() or not _show_built):
 			id = chosen[i]
 		heroes.add_child(_hero_tile(id, pickable, i))
 
@@ -411,7 +413,8 @@ func _hero_tile(id: String, pickable: bool = false, slot: int = 0) -> Control:
 
 
 ## A random deck with the heroes picked (the rest drawn), shown now and played as it is.
-func _build_random() -> void:
+func _build_random(show: bool = true) -> void:
+	_show_built = show
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	built = DeckCode.random_deck(db.catalog, rng, chosen)
@@ -536,7 +539,9 @@ func _pick_hero(slot: int) -> void:
 			built = {}
 			_changed()
 		else:
-			_build_random())
+			# The other slots stay "?" (playtest 2026-10-30): the deck is drawn now but only
+			# shown after BUILD or REROLL.
+			_build_random(false))
 
 
 func _pick_stage(slot: int) -> void:
@@ -569,6 +574,11 @@ func _open_popup(title: String, items: Array[Dictionary], on_pick: Callable) -> 
 	col.add_theme_constant_override("separation", 12)
 	_popup.add_child(col)
 	col.add_child(UiTheme.label(title.to_upper(), 28))
+	var back := Button.new()
+	back.text = "BACK"
+	back.theme_type_variation = &"Ghost"
+	back.size_flags_horizontal = Control.SIZE_SHRINK_END
+	back.pressed.connect(func() -> void: _popup.hide())
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 10)
@@ -580,4 +590,5 @@ func _open_popup(title: String, items: Array[Dictionary], on_pick: Callable) -> 
 			_popup.hide()
 			on_pick.call(id)
 		grid.add_child(card_tile(db, id, Vector2(210, 120), pick, JsonUtil.as_bool(it.get("used", false))))
+	col.add_child(back)
 	_popup.popup_centered()
