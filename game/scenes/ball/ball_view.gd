@@ -38,6 +38,9 @@ var _lid: Node3D
 var _figure_pivot: Node3D
 var _figure: Sprite3D
 var _ground_ring: MeshInstance3D
+## Evolution level shown (set_evolved) and its aura, null when not evolved.
+var _evo_level: int = 0
+var _aura: Node3D
 var _flash: MeshInstance3D
 var _burst: CPUParticles3D
 
@@ -257,6 +260,75 @@ func float_text(text: String, color: Color) -> void:
 func struck_by(winner: BallView) -> void:
 	ColorFx.burst(self, winner._style, winner._hero_color, radius)
 	land()
+
+
+## Evolution level shown on the ball (playtest 2026-10-30): an aura in the hero's colour while it
+## is evolved (a glowing ring on the ground and slow sparks rising), and a burst with
+## "EVOLVED!" when the level goes up. 0 takes the aura away.
+func set_evolved(level: int, animate: bool) -> void:
+	if level == _evo_level:
+		return
+	var up: bool = level > _evo_level
+	_evo_level = level
+	if _aura != null:
+		_aura.queue_free()
+		_aura = null
+	if level > 0:
+		_aura = Node3D.new()
+		_aura.name = "Aura"
+		add_child(_aura)
+		var ring := MeshInstance3D.new()
+		ring.mesh = MeshKit.annulus(1.3, 1.75, true, 64)
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		mat.albedo_color = Color(_hero_color, 0.55)
+		ring.material_override = mat
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		ring.scale = Vector3.ONE * radius
+		ring.position.y = -radius + 0.02
+		_aura.add_child(ring)
+		var pulse: Tween = ring.create_tween().set_loops()
+		pulse.tween_property(mat, "albedo_color:a", 0.2, 0.9).set_trans(Tween.TRANS_SINE)
+		pulse.tween_property(mat, "albedo_color:a", 0.55, 0.9).set_trans(Tween.TRANS_SINE)
+		var sparks := CPUParticles3D.new()
+		sparks.amount = 10 + 6 * level
+		sparks.lifetime = 1.6
+		sparks.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+		sparks.emission_ring_axis = Vector3.UP
+		sparks.emission_ring_radius = radius * 1.4
+		sparks.emission_ring_inner_radius = radius * 1.1
+		sparks.emission_ring_height = 0.0
+		sparks.direction = Vector3.UP
+		sparks.spread = 8.0
+		sparks.initial_velocity_min = 0.6
+		sparks.initial_velocity_max = 1.1
+		sparks.gravity = Vector3.ZERO
+		sparks.position.y = -radius + 0.05
+		var dot := SphereMesh.new()
+		dot.radius = 0.035
+		dot.height = 0.07
+		dot.radial_segments = 6
+		dot.rings = 3
+		var dmat := StandardMaterial3D.new()
+		dmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		dmat.vertex_color_use_as_albedo = true
+		dmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		dmat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		dot.surface_set_material(0, dmat)
+		sparks.mesh = dot
+		var fade := Gradient.new()
+		fade.set_color(0, Color(_hero_color.lightened(0.3), 0.9))
+		fade.set_color(1, Color(_hero_color, 0.0))
+		sparks.color_ramp = fade
+		_aura.add_child(sparks)
+		sparks.emitting = true
+	if animate and up:
+		ColorFx.burst(self, _style, _hero_color, radius)
+		float_text("EVOLVED!", _hero_color.lightened(0.3))
+		_figure_pivot.scale = Vector3.ONE * 1.35
+		create_tween().tween_property(_figure_pivot, "scale", Vector3.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 ## Knockback landing: a quick squash and spring back.

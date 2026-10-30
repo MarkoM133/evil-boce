@@ -812,6 +812,12 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(name_l)
+	# Evolved: its level by the name (playtest 2026-10-30).
+	if not h.evolutions.is_empty() and not ko:
+		var evo: UiShape = UiShape.chip("EVO %d" % h.evolutions.size(), hero_color, Color.BLACK if hero_color.get_luminance() > 0.5 else Palette.FG, 12, 20.0, 8.0)
+		evo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		evo.tooltip_text = "Evolved %d time%s" % [h.evolutions.size(), "" if h.evolutions.size() == 1 else "s"]
+		top.add_child(evo)
 	var tag: UiShape = _hero_tag(h, active, pickable, in_battle)
 	# Picking a hero for a card: who can take it (the one under the mouse is chosen), who not.
 	if is_targeting() and h.owner == target_slot and not ko:
@@ -1726,7 +1732,10 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(face)
 	var tex: Texture2D = db.thumb(cid) if db != null else null
-	var pic: Rect2 = _card_rect(tex)
+	# A landscape card (an evolution) is turned upright to fill the slot like every other card
+	# (playtest 2026-10-30: it lay across the top, smaller); the big card shows it as printed.
+	var turned: bool = tex != null and tex.get_width() > tex.get_height()
+	var pic: Rect2 = Rect2(Vector2.ZERO, CARD_SIZE) if turned else _card_rect(tex)
 	root.set_meta("pic", pic)
 	if tex != null:
 		var img := TextureRect.new()
@@ -1735,8 +1744,13 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		img.stretch_mode = TextureRect.STRETCH_SCALE
 		img.position = pic.position
 		img.size = pic.size
+		if turned:
+			# Turned a quarter clockwise about its top left corner, then moved back into the slot.
+			img.size = Vector2(CARD_SIZE.y, CARD_SIZE.x)
+			img.rotation = PI * 0.5
+			img.position = Vector2(CARD_SIZE.x, 0)
 		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		img.material = round_corners(pic.size.x / pic.size.y)
+		img.material = round_corners(img.size.x / img.size.y)
 		face.add_child(img)
 	else:
 		var back := ColorRect.new()
@@ -2976,7 +2990,11 @@ func _board_stage(st: StageState) -> Control:
 		tile.tooltip_text = "%s's stage, face down until a hero stops on it" % whose
 	if st.is_claimed():
 		tile.tooltip_text += "\nClaimed by %s" % player_name(st.claimed_by)
-	_board_hover(tile, st.footprint() if st.placed else [] as Array[Vector2i], card)
+	# Not a ternary: its value is an untyped Array, which the typed parameter refuses.
+	var hexes: Array[Vector2i] = []
+	if st.placed:
+		hexes = st.footprint()
+	_board_hover(tile, hexes, card)
 	return tile
 
 

@@ -767,6 +767,7 @@ func _sync_hero(h: HeroState) -> void:
 	var figure: Texture2D = db.sprite_of(top.id) if top != null else null
 	v.set_figure(figure if figure != null else db.sprite_of(h.card_id))
 	var animate: bool = not first and not _quiet
+	v.set_evolved(h.evolutions.size() if not h.is_ko() else 0, animate)
 	if h.is_ko():
 		if not _ko_shown.has(h.id):
 			_ko_shown[h.id] = true
@@ -2623,6 +2624,28 @@ func demo_equip() -> void:
 			h.equipment.append(c.id)
 	hud.hover_hero = h.id
 	_sync()
+
+
+## Screenshot helper: a hero evolves on the table (aura, EVO on its panel) and an evolution card
+## waits upright in the hand of a Preroll card round.
+func demo_evolved() -> void:
+	_demo = true
+	state.turn = maxi(state.turn, 3)
+	state.phase = GameState.PHASE_PREROLL
+	state.to_act = 0
+	for evo: CardDef in engine.catalog.of_type("Evolution"):
+		for h: HeroState in state.heroes_of(0):
+			var base: CardDef = engine.catalog.get_card(h.card_id)
+			if base == null or base.name != evo.hero:
+				continue
+			h.zone = HeroState.ZONE_MAP
+			h.hex = Hex.offset_to_axial(state.settings.map_size / 2, state.settings.map_size / 2 + 3)
+			_sync()
+			h.evolutions.append(evo.id)
+			state.player(0).hand.append(evo.id)
+			cam.focus(arena.hex_center(h.hex), 14.0)
+			_sync()
+			return
 
 
 ## Screenshot helper: a Preroll card round with a hand, a graveyard and the deck piles.
