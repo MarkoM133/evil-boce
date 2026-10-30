@@ -55,6 +55,13 @@ extends Resource
 ## Wind: push on rolling balls, m/s^2. Kept below `deceleration` so every ball still stops.
 @export var wind_accel: float = 4.0
 
+@export_group("Planted")
+## An open ball (figure out: on a stage, in a battle, locked) that is bumped goes at most this
+## many hexes (playtest 2026-10-30: 1 to 2).
+@export var planted_max_hexes: float = 1.6
+## Share of its speed the ball that bumped a planted one goes on with.
+@export var planted_hitter_keep: float = 0.5
+
 @export_group("Ring-out")
 ## A ball below this height (m) has fallen off the table.
 @export var fell_below_y: float = -3.0

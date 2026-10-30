@@ -805,6 +805,8 @@ func _sync_hero(h: HeroState) -> void:
 	if _sliding.has(h.id):
 		return
 	var open: bool = _shows_figure(h)
+	# An open hero barely moves when bumped (BallBody.planted, playtest 2026-10-30).
+	b.planted = open
 	if open and not v.is_open() and v.state != BallView.State.OPENING:
 		v.open()
 	elif not open and v.is_open():

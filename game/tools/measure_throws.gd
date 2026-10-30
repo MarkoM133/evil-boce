@@ -100,6 +100,11 @@ func _run() -> void:
 		var h: Array[float] = await _hit(pair.x, pair.y, 4.0)
 		print("  WT%d -> WT%d        %6.2f                 %6.2f" % [pair.x, pair.y, h[0], h[1]])
 	print("")
+	print("Ball on an open (planted) ball, full power, 4 hexes apart (target at most %.1f hexes)" % tuning.planted_max_hexes)
+	for pair: Vector2i in [Vector2i(1, 3), Vector2i(2, 2), Vector2i(3, 1)]:
+		var h: Array[float] = await _hit(pair.x, pair.y, 4.0, true)
+		print("  WT%d -> WT%d        %6.2f                 %6.2f" % [pair.x, pair.y, h[0], h[1]])
+	print("")
 	quit()
 
 
@@ -140,10 +145,11 @@ func _throw_end(wt: int, power: float) -> Array[float]:
 
 
 ## [mover hexes after the hit, target hexes]
-func _hit(mover_wt: int, target_wt: int, gap_hexes: float) -> Array[float]:
+func _hit(mover_wt: int, target_wt: int, gap_hexes: float, planted: bool = false) -> Array[float]:
 	var m: BallBody = _make("mover", mover_wt, Vector3.ZERO)
 	var target_pos := Vector3(0, 0, -gap_hexes * spacing)
 	var t: BallBody = _make("target", target_wt, target_pos)
+	t.planted = planted
 	await physics_frame
 	runner.start(m, Vector3(0, 0, -1), 1.0)
 	var hit_pos := Vector3.INF

@@ -35,6 +35,15 @@ var _frame: int = 0
 var _last_pos: Vector3 = Vector3.ZERO
 var _grounded: bool = false
 var _snap_tween: Tween
+## An open ball (its figure out) is planted: a bump moves it at most planted_max_hexes, and the
+## ball that hit it goes on with planted_hitter_keep of its speed (playtest 2026-10-30). The
+## scene sets it; a throw or a knockback lifts it (launch).
+var planted: bool = false
+## Velocity one and two physics steps back: by the time a contact is reported the step that
+## made it is already solved, so the speed before the hit is the older one.
+var _prev_velocity: Vector3 = Vector3.ZERO
+var _last_velocity: Vector3 = Vector3.ZERO
+var _wake_pos: Vector3 = Vector3.ZERO
 
 
 func setup(id: String, wt_: int, world_: BallWorld) -> void:
@@ -103,6 +112,7 @@ func launch(dir: Vector3, power: float) -> void:
 	var flat := Vector3(dir.x, 0.0, dir.z).normalized()
 	_kill_snap()
 	freeze = false
+	planted = false
 	_begin(true, p)
 	sleeping = false
 	linear_velocity = flat * tuning.launch_speed(wt) * pow(p, tuning.power_exponent)
@@ -126,6 +136,8 @@ func resnap() -> void:
 
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	_prev_velocity = _last_velocity
+	_last_velocity = state.linear_velocity
 	_grounded = false
 	for i: int in state.get_contact_count():
 		if absf(state.get_contact_local_normal(i).y) > 0.6:
@@ -147,6 +159,13 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		return
 	var drop: float = tuning.deceleration * world.friction_factor_at(state.transform.origin) * state.step
 	var k: float = maxf(0.0, speed - drop) / speed
+	if planted and motion == Motion.MOVING:
+		# Only as fast as still stops within the planted distance from where it was bumped.
+		var gone: float = Vector2(state.transform.origin.x - _wake_pos.x, state.transform.origin.z - _wake_pos.z).length()
+		var left: float = maxf(0.0, tuning.planted_max_hexes * tuning.hex_spacing() - gone)
+		var most: float = sqrt(2.0 * tuning.deceleration * left)
+		if speed * k > most:
+			k = most / speed
 	state.linear_velocity = Vector3(v.x * k, v.y, v.z * k)
 
 
@@ -169,6 +188,7 @@ func _physics_process(delta: float) -> void:
 
 func _begin(thrown: bool, power: float) -> void:
 	var pos: Vector3 = global_position
+	_wake_pos = pos
 	_walls_seen = PackedStringArray()
 	_result = RollResult.new()
 	_result.ball_id = ball_id
@@ -266,6 +286,9 @@ func _on_body_entered(body: Node) -> void:
 		var other := body as BallBody
 		if not _result.collisions.has(other.ball_id):
 			_result.collisions.append(other.ball_id)
+		# A planted ball barely gives: the one that hit it goes on with part of its speed.
+		if other.planted and not planted:
+			linear_velocity = Vector3(_prev_velocity.x, linear_velocity.y, _prev_velocity.z) * tuning.planted_hitter_keep
 	elif body.is_in_group("walls"):
 		# One hit per wall (GDD 10): a wall is several bodies, one per hex, that share a "wall"
 		# meta; a seam, a scrape or a bounce back into the same wall is still one hit.

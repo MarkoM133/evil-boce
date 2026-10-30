@@ -24,3 +24,5 @@ ice_factor = 0.35
 mud_factor = 2.6
 fell_below_y = -3.0
 ring_out_return_delay = 1.0
+planted_max_hexes = 1.6
+planted_hitter_keep = 0.5
