@@ -550,9 +550,10 @@ func _pick_stage(slot: int) -> void:
 		var terrain: String = Terrain.name_of(c.terrain) if c.terrain != Terrain.Type.NONE else ""
 		items.append({"id": c.id, "name": c.name + ("\n" + terrain.to_upper() if not terrain.is_empty() else ""),
 			"tex": db.thumb(c.id), "used": loadout.stages.has(c.id) and loadout.stages[slot] != c.id})
+	# Stages as whole cards, so their effect can be read (playtest 2026-10-30).
 	_open_popup("Stage %d" % (slot + 1), items, func(id: String) -> void:
 		loadout.stages[slot] = id
-		_changed())
+		_changed(), true)
 
 
 func _pick_core(slot: int) -> void:
@@ -567,7 +568,35 @@ func _pick_core(slot: int) -> void:
 		_changed())
 
 
-func _open_popup(title: String, items: Array[Dictionary], on_pick: Callable) -> void:
+## A card as its whole picture (a stage with its effect text); dimmed when picked elsewhere.
+func _whole_card(id: String, on_click: Callable, used: bool) -> Control:
+	var card: CardDef = db.catalog.get_card(id)
+	var tile := PanelContainer.new()
+	var sb: StyleBoxFlat = UiTheme.box(Color(0, 0, 0, 0), 6, Color(0, 0, 0, 0), 0, 0)
+	sb.set_border_width_all(3)
+	sb.border_color = Color(0, 0, 0, 0)
+	tile.add_theme_stylebox_override("panel", sb)
+	var art := TextureRect.new()
+	art.texture = db.thumb(id)
+	art.custom_minimum_size = Vector2(170, 238)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.modulate = Color(0.4, 0.4, 0.4) if used else Color.WHITE
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(art)
+	tile.tooltip_text = "Already picked" if used else ("%s\n%s" % [card.name, card.text] if card != null else "")
+	tile.mouse_default_cursor_shape = Control.CURSOR_FORBIDDEN if used else Control.CURSOR_POINTING_HAND
+	if not used:
+		tile.mouse_entered.connect(func() -> void: sb.border_color = Palette.GOLD)
+		tile.mouse_exited.connect(func() -> void: sb.border_color = Color(0, 0, 0, 0))
+		tile.gui_input.connect(func(e: InputEvent) -> void:
+			if e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
+					and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+				on_click.call())
+	return tile
+
+
+func _open_popup(title: String, items: Array[Dictionary], on_pick: Callable, whole_cards: bool = false) -> void:
 	for c: Node in _popup.get_children():
 		c.queue_free()
 	var col := VBoxContainer.new()
@@ -589,6 +618,10 @@ func _open_popup(title: String, items: Array[Dictionary], on_pick: Callable) -> 
 		var pick := func() -> void:
 			_popup.hide()
 			on_pick.call(id)
-		grid.add_child(card_tile(db, id, Vector2(210, 120), pick, JsonUtil.as_bool(it.get("used", false))))
+		var used: bool = JsonUtil.as_bool(it.get("used", false))
+		if whole_cards and not id.is_empty() and db.thumb(id) != null:
+			grid.add_child(_whole_card(id, pick, used))
+		else:
+			grid.add_child(card_tile(db, id, Vector2(210, 120) if not whole_cards else Vector2(170, 238), pick, used))
 	col.add_child(back)
 	_popup.popup_centered()

@@ -1356,6 +1356,10 @@ func _setup_prompt() -> void:
 	if local_slots.size() > 1:
 		_detail.text = "%s: " % player_name(who) + _detail.text
 	for id: String in setup_items(state, who):
+		# Stages come as their cards, so the effect is there to read (playtest 2026-10-30).
+		if stages and state.stage(id) != null and db != null and db.thumb(state.stage(id).card_id) != null:
+			_tray.add_child(_setup_card(id, state.stage(id).card_id))
+			continue
 		var b := Button.new()
 		b.text = _setup_label(id)
 		b.focus_mode = Control.FOCUS_NONE
@@ -1366,6 +1370,38 @@ func _setup_prompt() -> void:
 		if not tip.is_empty():
 			b.tooltip_text = tip
 		_tray.add_child(b)
+
+
+## A stage to place as its card: a click picks it, a right click shows it big.
+func _setup_card(id: String, card_id: String) -> Control:
+	var tile := PanelContainer.new()
+	var sb: StyleBoxFlat = UiTheme.box(Color(0, 0, 0, 0), 6, Color(0, 0, 0, 0), 0, 0)
+	sb.set_border_width_all(4)
+	sb.border_color = Palette.GOLD if id == setup_pick else Color(0, 0, 0, 0)
+	tile.add_theme_stylebox_override("panel", sb)
+	var art := TextureRect.new()
+	art.texture = db.thumb(card_id)
+	art.custom_minimum_size = Vector2(120, 168)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(art)
+	tile.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var tip: String = _setup_tip(id)
+	tile.tooltip_text = (tip + "\n" if not tip.is_empty() else "") + "Click to pick, right click to see it big"
+	tile.mouse_entered.connect(func() -> void:
+		if id != setup_pick:
+			sb.border_color = Color(Palette.GOLD, 0.5))
+	tile.mouse_exited.connect(func() -> void:
+		sb.border_color = Palette.GOLD if id == setup_pick else Color(0, 0, 0, 0))
+	tile.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
+			if (e as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT:
+				_toggle_big(card_id)
+			else:
+				setup_item_pressed.emit(id)
+			tile.accept_event())
+	return tile
 
 
 ## Stages (or cores, in the core phase) `slot` still has to place.
