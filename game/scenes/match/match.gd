@@ -74,6 +74,8 @@ var _balls: Node3D
 var _tokens: Node3D
 ## Weather on stages with a terrain (_refresh_terrain_fx), by "stage|kind|dir".
 var _terrain_fx: Dictionary[String, Node3D] = {}
+## Cards played on heroes in a battle, shown beside them until it is over (_ghost_card).
+var _ghosts: Array[Dictionary] = []
 ## Beams and rings on the heroes a card can go on (HUD 2).
 var _target_fx: Node3D
 ## Red rings under the heroes of the battle being fought (HUD 4), and for which battle.
@@ -402,6 +404,7 @@ func _build_hud() -> void:
 		_apply(Move.make(Move.USE_ABILITY, slot, {"hero": hero_id, "card": card_id, "index": index})))
 	hud.hero_clicked.connect(_on_hero_clicked)
 	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
+	hud.card_played.connect(_ghost_card)
 	hud.board_hovered.connect(func(hexes: Array[Vector2i]) -> void:
 		_board_marks = hexes
 		_refresh_range())
@@ -719,6 +722,7 @@ func _sync() -> void:
 	world.terrain = engine.terrain(state)
 	arena.set_terrain(world.terrain)
 	_refresh_terrain_fx()
+	_clear_ghosts()
 	world.blocked.clear()
 	for w: WallState in state.walls:
 		for a: Vector2i in w.hexes:
@@ -2812,3 +2816,59 @@ func _terrain_effect(st: StageState, kind: Terrain.Type, dir: int) -> Node3D:
 	root.add_child(p)
 	p.emitting = true
 	return root
+
+
+## A card played on a hero comes down onto it as a see-through card (playtest 2026-10-30). In a
+## battle they stay fanned beside the hero until the battle is over, so both sides see what went
+## in; otherwise it fades after a moment.
+func _ghost_card(card_id: String, hero_id: String) -> void:
+	var tex: Texture2D = db.thumb(card_id) if db != null else null
+	if tex == null or not _bodies.has(hero_id):
+		return
+	var at: Vector3 = _bodies[hero_id].global_position
+	var in_battle: bool = state.phase == GameState.PHASE_BATTLE
+	var n: int = 0
+	for g: Dictionary in _ghosts:
+		if str(g["hero"]) == hero_id:
+			n += 1
+	var card := Sprite3D.new()
+	card.texture = tex
+	card.pixel_size = 1.5 / maxf(float(tex.get_height()), 1.0)
+	card.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	card.no_depth_test = true
+	card.render_priority = 5
+	card.modulate = Color(1, 1, 1, 0.0)
+	# Fanned beside the hero, one step out per card already there.
+	var rest := at + Vector3(1.1 + 0.55 * n, 1.9, -0.2 * n)
+	card.position = rest + Vector3(0, 2.2, 0)
+	add_child(card)
+	var t: Tween = card.create_tween().set_parallel(true)
+	t.tween_property(card, "position", rest, 0.45 * GameSettings.anim_scale()).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(card, "modulate:a", 0.82, 0.3 * GameSettings.anim_scale())
+	if in_battle:
+		_ghosts.append({"node": card, "hero": hero_id, "battle": state.battle_index, "turn": state.turn})
+		return
+	var out: Tween = card.create_tween()
+	out.tween_interval(1.6 * GameSettings.anim_scale())
+	out.tween_property(card, "modulate:a", 0.0, 0.4)
+	out.tween_callback(card.queue_free)
+
+
+## Battle ghosts go once their battle is over (another battle, another phase or turn).
+func _clear_ghosts() -> void:
+	var keep: Array[Dictionary] = []
+	for g: Dictionary in _ghosts:
+		var node: Sprite3D = g["node"]
+		if not is_instance_valid(node):
+			continue
+		var b: int = JsonUtil.as_int(g["battle"])
+		var done: bool = state.phase != GameState.PHASE_BATTLE or state.turn != JsonUtil.as_int(g["turn"]) \
+				or state.battle_index != b or (b >= 0 and b < state.battles.size() and JsonUtil.as_bool(state.battles[b].get("resolved", false)))
+		if not done:
+			keep.append(g)
+			continue
+		var t: Tween = node.create_tween()
+		t.tween_interval(0.6 * GameSettings.anim_scale())
+		t.tween_property(node, "modulate:a", 0.0, 0.35)
+		t.tween_callback(node.queue_free)
+	_ghosts = keep

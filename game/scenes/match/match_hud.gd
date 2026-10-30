@@ -30,6 +30,8 @@ signal hero_clicked(hero_id: String)
 signal hero_hovered(hero_id: String)
 ## A stage or core in the board strip is hovered: its hexes ([] when the mouse left).
 signal board_hovered(hexes: Array[Vector2i])
+## A card went onto a hero (log: equipped, evolved, action): the table shows it coming down.
+signal card_played(card_id: String, hero_id: String)
 signal menu_pressed
 signal rematch_pressed
 signal watch_replay_pressed
@@ -2045,6 +2047,8 @@ func _scan_log() -> void:
 	for i: int in range(_log_seen, n):
 		var e: Dictionary = state.log[i]
 		var t: String = str(e.get("type", ""))
+		if (t == "equipped" or t == "evolved" or t == "action") and not str(e.get("hero", "")).is_empty():
+			card_played.emit(str(e.get("card", "")), str(e.get("hero", "")))
 		if BANNER_EVENTS.has(t):
 			fresh.append(e)
 		elif t == "stage_revealed":
