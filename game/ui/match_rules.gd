@@ -13,14 +13,16 @@ const MAP_INFO: Dictionary[int, Array] = {
 	15: ["SMALL", "Heroes meet fast. Short, rough matches."],
 	17: ["MEDIUM", "A step between the two."],
 	23: ["LARGE", "Room to move and to place stages. The Standard map."],
+	25: ["HUGE", "More room: heroes take a turn or two longer to meet."],
+	27: ["GIANT", "The widest table: long throws, slow to close in."],
 	MatchSettings.MAP_RANDOM: ["ANY", "Drawn when the match starts. Chaos plays this way."],
 }
 ## The panel: columns of [section, rows]; a row is [setting, name, what it does, the values offered].
 const COLUMNS: Array = [
 	[
 		["HEROES", [
-			["range_delta", "Hero range", "Added to every hero's printed range. Lowered, it never drops below 2.", [-2, -1, 0, 1]],
-			["core_slots", "Cores per hero", "How many cores one hero can hold.", [1, 2, 3, 4]],
+			["range_delta", "Hero range", "Added to every hero's printed range. Lowered, it never drops below 2.", [-2, -1, 0, 1, 2]],
+			["core_slots", "Cores per hero", "How many cores one hero can hold.", [1, 2, 3, 4, 5]],
 			["equipment_limit", "Equipment per hero", "How many equipment cards one hero can wear.", [1, 2, 3, 4, 5]],
 			["wall_damage", "Wall damage", "Damage a knocked-back hero takes when a wall or another hero stops it (once per hit).", [0, 1, 2, 3, 4]],
 		]],
@@ -335,9 +337,12 @@ func open_map_picker() -> void:
 	if not editable:
 		return
 	var col: VBoxContainer = _overlay("Map", "Heroes come in on the coloured rows; the stages go in the straw middle third.", 1100.0)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 18)
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	# Five maps and Random: three a row (playtest 2026-10-30 added 25 and 27).
+	var row := GridContainer.new()
+	row.columns = 3
+	row.add_theme_constant_override("h_separation", 18)
+	row.add_theme_constant_override("v_separation", 18)
+	row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	col.add_child(row)
 	for n: int in GameSettings.MAP_SIZES:
 		row.add_child(_map_choice(n))
@@ -351,7 +356,7 @@ func _map_choice(n: int) -> Control:
 	sb.set_border_width_all(3)
 	sb.border_color = Palette.ACCENT if picked else Color(0, 0, 0, 0)
 	tile.add_theme_stylebox_override("panel", sb)
-	tile.custom_minimum_size = Vector2(330, 0)
+	tile.custom_minimum_size = Vector2(300, 0)
 	tile.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
@@ -359,14 +364,14 @@ func _map_choice(n: int) -> Control:
 	tile.add_child(col)
 	if n == MatchSettings.MAP_RANDOM:
 		var q: Label = UiTheme.label("?", 160, Palette.DIM)
-		q.custom_minimum_size = Vector2(298, 298)
+		q.custom_minimum_size = Vector2(220, 220)
 		q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		col.add_child(q)
 	else:
 		var pic := MapPreview.new()
 		pic.map_size = n
-		pic.custom_minimum_size = Vector2(298, 298)
+		pic.custom_minimum_size = Vector2(220, 220)
 		col.add_child(pic)
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 8)

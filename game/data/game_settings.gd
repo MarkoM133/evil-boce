@@ -4,7 +4,7 @@ extends RefCounted
 ## line as `-- --data=<path>`.
 
 const PATH: String = "user://settings.cfg"
-const MAP_SIZES: Array[int] = [15, 17, 23]
+const MAP_SIZES: Array[int] = [15, 17, 23, 25, 27]
 
 static var _cfg: ConfigFile
 ## Tests set this to work on a fresh, unsaved config instead of the player's file.

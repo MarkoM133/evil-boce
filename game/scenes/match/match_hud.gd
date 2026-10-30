@@ -1958,12 +1958,23 @@ func _option_button(text: String, cb: Callable) -> Button:
 # --- log and banners -----------------------------------------------------------------
 
 ## The match so far in words, oldest first (the pause menu shows it).
+## A phase gets its own heading before its first line (playtest 2026-10-30: only new turns
+## showed); a phase where nothing happened shows nothing.
 func log_lines() -> PackedStringArray:
 	var lines := PackedStringArray()
+	var at: String = ""
 	for e: Dictionary in state.log:
 		var s: String = _describe(e)
-		if not s.is_empty():
-			lines.append(s)
+		if s.is_empty():
+			continue
+		var turn: int = JsonUtil.as_int(e.get("turn", 0))
+		var phase: String = str(e.get("phase", ""))
+		var key: String = "%d|%s" % [turn, _ribbon_phase(phase)]
+		# "end of turn" closes the turn itself; it needs no heading.
+		if turn > 0 and key != at and str(e.get("type", "")) != "turn_end":
+			lines.append("TURN %d · %s" % [turn, _ribbon_phase(phase).to_upper()])
+		at = key
+		lines.append(s)
 	return lines
 
 

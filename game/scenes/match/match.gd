@@ -950,6 +950,21 @@ func _rebuild_tokens() -> void:
 			cloth.material_override = MeshKit.unshaded(team_col, false)
 			cloth.position = flag.position + Vector3(0.58, 0.85, 0)
 			_tokens.add_child(cloth)
+		elif st.placed and not st.stay_hero.is_empty() and st.stay_turn == state.turn - 1:
+			# A hero stayed here last turn: one more Stay claims it (playtest 2026-10-30: nothing
+			# showed how long anyone had stood on a stage).
+			var stayer: HeroState = state.hero(st.stay_hero)
+			if stayer != null and state.heroes_on_stage(st).has(stayer):
+				var tag := Label3D.new()
+				tag.text = "STAYED 1 TURN\n%s · STAY AGAIN TO CLAIM" % hud.hero_name(stayer).to_upper()
+				tag.font_size = 36
+				tag.pixel_size = 0.016
+				tag.outline_size = 10
+				tag.modulate = Palette.team(state.team_of(stayer.owner)).lightened(0.35)
+				tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+				tag.no_depth_test = true
+				tag.position = arena.hex_center(st.center) + Vector3(0, 2.4, 0)
+				_tokens.add_child(tag)
 
 
 ## A revealed stage's card art laid on its hexes, faded, cut to their shape: the stage reads as
@@ -1195,13 +1210,15 @@ func _refresh_range() -> void:
 	var marked: Array[Vector2i] = []
 	var key: String = ""
 	var ids := PackedStringArray()
-	# The activated heroes' range shows always, unless only on hover (Settings → Interface).
-	if GameSettings.range_mode() == "active":
+	# A hovered hero shows only its own range, so it is clear whose it is (playtest 2026-10-30:
+	# two activated ranges ran into one patch). Otherwise the activated heroes' ranges show,
+	# unless only on hover (Settings → Interface).
+	if not _hovered.is_empty():
+		ids.append(_hovered)
+	elif GameSettings.range_mode() == "active":
 		for slot: int in state.active:
 			if not hud.shown_active(slot).is_empty():
 				ids.append(hud.shown_active(slot))
-	if not _hovered.is_empty():
-		ids.append(_hovered)
 	for id: String in ids:
 		var h: HeroState = state.hero(id)
 		if h == null or not h.is_on_map() or _bodies[h.id].motion != BallBody.Motion.RESTING:
@@ -2086,6 +2103,20 @@ func _refresh_target_fx() -> void:
 	for hid: String in lit:
 		if _bodies.has(hid) and not hud.target_heroes.has(hid):
 			_target_fx.add_child(_target_mark(_bodies[hid].global_position, true))
+	# Start, nothing picked yet: every hero that can be activated pulses, so it is clear a hero
+	# has to be picked and which (playtest 2026-10-30); locked or stunned ones stay dark.
+	if state.phase == GameState.PHASE_START and _replay == null:
+		for slot: int in hud.local_slots:
+			if state.active.has(slot) or hud.picks.has(slot):
+				continue
+			for h: HeroState in engine.selectable_heroes(state, slot):
+				if not _bodies.has(h.id) or lit.has(h.id):
+					continue
+				var mark: Node3D = _target_mark(_bodies[h.id].global_position, false)
+				_target_fx.add_child(mark)
+				var pulse: Tween = mark.create_tween().set_loops()
+				pulse.tween_property(mark, "scale", Vector3(1.25, 1.0, 1.25), 0.45).set_trans(Tween.TRANS_SINE)
+				pulse.tween_property(mark, "scale", Vector3.ONE, 0.45).set_trans(Tween.TRANS_SINE)
 
 
 ## Shows briefly on the hero a card just went on.
