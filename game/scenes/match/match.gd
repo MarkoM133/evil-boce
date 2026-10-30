@@ -72,6 +72,8 @@ var _runner: RollRunner
 var _sling: Slingshot
 var _balls: Node3D
 var _tokens: Node3D
+## Weather on stages with a terrain (_refresh_terrain_fx), by "stage|kind|dir".
+var _terrain_fx: Dictionary[String, Node3D] = {}
 ## Beams and rings on the heroes a card can go on (HUD 2).
 var _target_fx: Node3D
 ## Red rings under the heroes of the battle being fought (HUD 4), and for which battle.
@@ -711,6 +713,7 @@ func _after_change() -> void:
 func _sync() -> void:
 	world.terrain = engine.terrain(state)
 	arena.set_terrain(world.terrain)
+	_refresh_terrain_fx()
 	world.blocked.clear()
 	for w: WallState in state.walls:
 		for a: Vector2i in w.hexes:
@@ -1014,7 +1017,8 @@ func _stage_art(st: StageState) -> Node3D:
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	mi.material_override = mat
 	# The terrain shows on the picture (Marko 2026-10-26: it was felt, not seen): ice is pale
-	# and shiny, mud dark and dull; a label by the stage names it.
+	# and shiny, mud dark and dull; snow, mud and wind play over it (_refresh_terrain_fx). Only a
+	# Ramp, a hill already, keeps a label.
 	var kind: Terrain.Type = world.terrain.at(st.center) if world != null and world.terrain != null else Terrain.Type.NONE
 	match kind:
 		Terrain.Type.ICE:
@@ -1024,7 +1028,7 @@ func _stage_art(st: StageState) -> Node3D:
 		Terrain.Type.MUD:
 			mat.albedo_color = Color(0.72, 0.55, 0.38, STAGE_ART_ALPHA + 0.15)
 			mat.roughness = 1.0
-	if kind != Terrain.Type.NONE:
+	if kind == Terrain.Type.RAMP:
 		var tag := Label3D.new()
 		tag.text = Terrain.name_of(kind).to_upper()
 		tag.font_size = 44
@@ -2691,3 +2695,115 @@ func demo_locked() -> void:
 	b.locked_with = PackedStringArray([a.id])
 	state.phase = GameState.PHASE_START
 	_sync()
+
+
+## Weather on the stages whose terrain is on (playtest 2026-10-30: a label was not what was
+## meant, it should look like the mockup's snow): snow falls on Ice, mud bubbles on Mud, streaks
+## blow along a Wind. A Ramp is its hill. Kept between syncs so the particles do not restart.
+func _refresh_terrain_fx() -> void:
+	var want: Dictionary[String, bool] = {}
+	for st: StageState in state.stages:
+		if not st.placed or not st.revealed or world.terrain == null:
+			continue
+		var kind: Terrain.Type = world.terrain.at(st.center)
+		if kind != Terrain.Type.ICE and kind != Terrain.Type.MUD and kind != Terrain.Type.WIND:
+			continue
+		var key: String = "%s|%d|%d" % [st.id, kind, world.terrain.dir_of(st.center)]
+		want[key] = true
+		if not _terrain_fx.has(key):
+			var fx: Node3D = _terrain_effect(st, kind, world.terrain.dir_of(st.center))
+			add_child(fx)
+			_terrain_fx[key] = fx
+	for key: String in _terrain_fx.keys():
+		if not want.has(key):
+			_terrain_fx[key].queue_free()
+			_terrain_fx.erase(key)
+
+
+func _terrain_effect(st: StageState, kind: Terrain.Type, dir: int) -> Node3D:
+	var root := Node3D.new()
+	root.position = arena.hex_center(st.center)
+	var p := CPUParticles3D.new()
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	var span: float = tuning.hex_size * 2.6
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.vertex_color_use_as_albedo = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var ramp := Gradient.new()
+	match kind:
+		Terrain.Type.ICE:
+			# Flakes drift down over the stage and melt into the ice.
+			p.amount = 70
+			p.lifetime = 3.2
+			p.emission_box_extents = Vector3(span, 0.2, span)
+			p.position.y = 3.4
+			p.direction = Vector3(0, -1, 0)
+			p.spread = 18.0
+			p.initial_velocity_min = 0.5
+			p.initial_velocity_max = 0.9
+			p.gravity = Vector3(0.08, -0.35, 0.04)
+			var q := QuadMesh.new()
+			q.size = Vector2(0.09, 0.09)
+			mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+			q.surface_set_material(0, mat)
+			p.mesh = q
+			ramp.set_color(0, Color(1, 1, 1, 0.0))
+			ramp.add_point(0.15, Color(1, 1, 1, 0.95))
+			ramp.set_color(ramp.get_point_count() - 1, Color(0.85, 0.95, 1.0, 0.0))
+		Terrain.Type.MUD:
+			# Slow brown bubbles that swell and pop.
+			p.amount = 16
+			p.lifetime = 1.6
+			p.emission_box_extents = Vector3(span * 0.9, 0.0, span * 0.9)
+			p.position.y = 0.05
+			p.direction = Vector3.UP
+			p.spread = 5.0
+			p.initial_velocity_min = 0.05
+			p.initial_velocity_max = 0.15
+			p.gravity = Vector3.ZERO
+			var s := SphereMesh.new()
+			s.radius = 0.09
+			s.height = 0.12
+			s.radial_segments = 10
+			s.rings = 5
+			# A flat dark brown: the ramp's vertex colour came out pale over the stage art.
+			mat.vertex_color_use_as_albedo = false
+			mat.albedo_color = Color("3b2412")
+			s.surface_set_material(0, mat)
+			p.mesh = s
+			var grow := Curve.new()
+			grow.add_point(Vector2(0, 0.2))
+			grow.add_point(Vector2(0.85, 1.4))
+			grow.add_point(Vector2(1, 0.0))
+			p.scale_amount_curve = grow
+			ramp.set_color(0, Color("4a2f17", 0.95))
+			ramp.set_color(1, Color("7a5634", 0.9))
+		Terrain.Type.WIND:
+			# Thin streaks racing the way the wind blows.
+			var v: Vector2 = TerrainPhysics.wind_vector(dir).normalized()
+			p.amount = 34
+			p.lifetime = 0.9
+			p.emission_box_extents = Vector3(span, 0.6, span)
+			p.position.y = 0.7
+			p.direction = Vector3(v.x, 0, v.y)
+			p.spread = 4.0
+			p.initial_velocity_min = 4.5
+			p.initial_velocity_max = 6.5
+			p.gravity = Vector3.ZERO
+			p.particle_flag_align_y = true
+			var bar := BoxMesh.new()
+			bar.size = Vector3(0.025, 0.7, 0.025)
+			mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			bar.surface_set_material(0, mat)
+			p.mesh = bar
+			ramp.set_color(0, Color(0.8, 1.0, 0.95, 0.0))
+			ramp.add_point(0.3, Color(0.85, 1.0, 0.97, 0.55))
+			ramp.set_color(ramp.get_point_count() - 1, Color(0.8, 1.0, 0.95, 0.0))
+	p.color_ramp = ramp
+	p.local_coords = false
+	p.preprocess = p.lifetime
+	root.add_child(p)
+	p.emitting = true
+	return root
