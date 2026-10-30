@@ -306,4 +306,4 @@ func demo_swap() -> void:
 
 ## Screenshot helper: the Buff core picker of player 1 is open.
 func demo_core_pick() -> void:
-	_cards[0].call("_pick_core", 0)
+	_cards[0].call("_open_core_picker")

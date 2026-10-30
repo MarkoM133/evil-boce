@@ -510,15 +510,16 @@ func _core_button(slot: int) -> Button:
 	for st: String in ["normal", "hover", "pressed", "focus"]:
 		b.add_theme_stylebox_override(st, empty)
 	var color: Color = KIND_COLORS.get(kind, Palette.FG)
+	# The picked core's value on it (playtest 2026-10-30: B / M / D told nothing).
 	var d: UiShape = UiShape.make(UiShape.Kind.DIAMOND, color if card != null else Color(0, 0, 0, 0), Vector2(40, 40),
-		kind.left(1) if card != null else "?", 18, Color.BLACK if card != null else Palette.DIM)
+		_core_short(card) if card != null else "?", 12 if card != null else 18, Color.BLACK if card != null else Palette.DIM)
 	if card == null:
 		d.outline = Color(color, 0.7)
 	d.position = Vector2(2, 2)
 	b.add_child(d)
 	b.tooltip_text = ("%s core: %s\n%s" % [kind, card.name, card.text]) if card != null else "%s core: random" % kind
 	if not _view_only and not _locked:
-		b.pressed.connect(func() -> void: _pick_core(slot))
+		b.pressed.connect(_open_core_picker)
 	else:
 		b.mouse_default_cursor_shape = Control.CURSOR_ARROW
 	return b
@@ -556,16 +557,103 @@ func _pick_stage(slot: int) -> void:
 		_changed(), true)
 
 
-func _pick_core(slot: int) -> void:
-	var kind: String = Loadout.core_kind(slot)
-	var items: Array[Dictionary] = [{"id": "", "name": "RANDOM", "tex": null}]
-	for c: CardDef in db.catalog.of_type("Core"):
-		if c.kind == kind:
-			items.append({"id": c.id, "name": c.name, "tex": db.thumb(c.id), "text": c.text,
-				"used": loadout.cores.has(c.id) and loadout.cores[slot] != c.id})
-	_open_popup("%s core" % kind, items, func(id: String) -> void:
-		loadout.cores[slot] = id
-		_changed())
+## All six cores in one window (playtest 2026-10-30: one window per slot was awkward): a row per
+## kind, two picks each. A click picks a core (the older pick of the row makes room when both
+## are taken) or drops a picked one; RANDOM leaves the row to the draw.
+func _open_core_picker() -> void:
+	for c: Node in _popup.get_children():
+		c.queue_free()
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	_popup.add_child(col)
+	col.add_child(UiTheme.label("CORES", 28))
+	var hint := Label.new()
+	hint.text = "Two of each kind. Click to pick or drop one; RANDOM leaves the row to the draw."
+	hint.add_theme_color_override("font_color", Palette.MUTED)
+	col.add_child(hint)
+	for k: int in Loadout.CORE_KINDS.size():
+		var kind: String = Loadout.CORE_KINDS[k]
+		var first: int = k * Loadout.CORES_PER_KIND
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		col.add_child(row)
+		var kind_color: Color = KIND_COLORS.get(kind, Palette.FG)
+		var name_l: Label = UiTheme.label(kind.to_upper(), 18, kind_color)
+		name_l.custom_minimum_size = Vector2(90, 0)
+		name_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(name_l)
+		var all_random: bool = true
+		for j: int in Loadout.CORES_PER_KIND:
+			if not loadout.cores[first + j].is_empty():
+				all_random = false
+		row.add_child(_core_choice("", all_random, func() -> void:
+			for j: int in Loadout.CORES_PER_KIND:
+				loadout.cores[first + j] = ""
+			_core_picked()))
+		for c: CardDef in db.catalog.of_type("Core"):
+			if c.kind != kind:
+				continue
+			var id: String = c.id
+			var at: int = -1
+			for j: int in Loadout.CORES_PER_KIND:
+				if loadout.cores[first + j] == id:
+					at = first + j
+			row.add_child(_core_choice(id, at >= 0, func() -> void:
+				if at >= 0:
+					loadout.cores[at] = ""
+				else:
+					var free: int = -1
+					for j: int in Loadout.CORES_PER_KIND:
+						if free < 0 and loadout.cores[first + j].is_empty():
+							free = first + j
+					if free < 0:
+						# Both taken: the older pick goes, the new one comes last.
+						for j: int in range(1, Loadout.CORES_PER_KIND):
+							loadout.cores[first + j - 1] = loadout.cores[first + j]
+						free = first + Loadout.CORES_PER_KIND - 1
+					loadout.cores[free] = id
+				_core_picked()))
+	var done := Button.new()
+	done.text = "DONE"
+	done.theme_type_variation = &"Primary"
+	done.size_flags_horizontal = Control.SIZE_SHRINK_END
+	done.pressed.connect(func() -> void: _popup.hide())
+	col.add_child(done)
+	if not _popup.visible:
+		_popup.popup_centered()
+
+
+## A core tile in the picker, gold edged with PICKED when it is one of the row's picks.
+func _core_choice(id: String, picked: bool, on_click: Callable) -> Control:
+	var frame := PanelContainer.new()
+	var sb: StyleBoxFlat = UiTheme.box(Color(0, 0, 0, 0), 4, Color(0, 0, 0, 0), 2, 2)
+	sb.set_border_width_all(3)
+	sb.border_color = Palette.GOLD if picked else Color(0, 0, 0, 0)
+	frame.add_theme_stylebox_override("panel", sb)
+	var tile: Control = card_tile(db, id, Vector2(150, 96), on_click)
+	frame.add_child(tile)
+	if picked and not id.is_empty():
+		# On the tile itself: a container would stretch it over the whole frame.
+		var chip: UiShape = UiShape.chip("PICKED", Palette.GOLD, Color.BLACK, 11, 18.0, 7.0)
+		chip.position = Vector2(14, 4)
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tile.add_child(chip)
+	return frame
+
+
+func _core_picked() -> void:
+	_changed()
+	_open_core_picker()
+
+
+## A core's value in short for its diamond: "+2K", "+2", "−1".
+static func _core_short(card: CardDef) -> String:
+	if card.bonus.is_empty():
+		return card.kind.left(1)
+	var key: String = card.bonus.keys()[0]
+	var v: int = card.bonus[key]
+	var text: String = ("%+dK" % (v / 1000)) if key == "pwr" and v % 1000 == 0 else "%+d" % v
+	return text.replace("-", "−")
 
 
 ## A card as its whole picture (a stage with its effect text); dimmed when picked elsewhere.
