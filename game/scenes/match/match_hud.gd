@@ -577,7 +577,7 @@ func _build() -> void:
 	_over.visible = false
 	add_child(_over)
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.72)
+	dim.color = Color(0, 0, 0, 0.84)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_over.add_child(dim)
 	var over_center := CenterContainer.new()
@@ -585,7 +585,8 @@ func _build() -> void:
 	_over.add_child(over_center)
 	_over_box = VBoxContainer.new()
 	_over_box.custom_minimum_size = Vector2(760, 0)
-	_over_box.add_theme_constant_override("separation", 14)
+	_over_box.add_theme_constant_override("separation", 16)
+	_over_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	over_center.add_child(_over_box)
 
 	_toast_box = Control.new()
@@ -2248,42 +2249,82 @@ func _refresh_over() -> void:
 	if not _over.visible:
 		return
 	_clear(_over_box)
+	# A leftover choice under the end screen showed through it (playtest 2026-10-30).
+	if _dialog != null:
+		_dialog.visible = false
 	var reasons: Dictionary = {"ko": "ALL HEROES KO", "stages": "STAGES CLAIMED", "deckout": "DECK-OUT",
 		"surrender": "SURRENDER", "draw": "DRAW"}
-	_over_box.add_child(UiTheme.label("%s  ·  TURN %d" % [str(reasons.get(state.result, state.result.to_upper())), state.turn], 18, Palette.GOLD))
+	var won: bool = state.winner >= 0 and local_slots.size() == 1 and local_slots.has(state.winner)
+	var lost: bool = state.winner >= 0 and local_slots.size() == 1 and not local_slots.has(state.winner)
 	var title: String = "DRAW"
-	var title_color: Color = Palette.FG
-	if state.winner >= 0:
-		if local_slots.size() == 1:
-			title = "VICTORY" if local_slots.has(state.winner) else "DEFEAT"
-			title_color = Palette.FG if local_slots.has(state.winner) else Palette.MUTED
-		else:
-			title = "%s WINS" % player_name(state.winner).to_upper()
-	# The title with a red shadow behind it, like the app's stickers.
-	var stack := Control.new()
-	stack.custom_minimum_size = Vector2(0, 130)
-	_over_box.add_child(stack)
-	var shadow: Label = UiTheme.label(title, 120, Palette.ACCENT)
-	shadow.position = Vector2(8, 8)
-	stack.add_child(shadow)
-	var main: Label = UiTheme.label(title, 120, title_color)
-	main.add_theme_color_override("font_outline_color", Color.BLACK)
-	main.add_theme_constant_override("outline_size", 8)
-	stack.add_child(main)
-	if state.winner >= 0:
+	if won:
+		title = "VICTORY"
+	elif lost:
+		title = "DEFEAT"
+	elif state.winner >= 0:
+		title = "%s WINS" % player_name(state.winner).to_upper()
+	# The title on a band across the screen, as the phase banners (playtest 2026-10-30: the end
+	# screen wanted a redesign): straw for a win, dark with a red edge for a loss.
+	var band := PanelContainer.new()
+	var band_col: Color = Palette.GOLD if won else (Color("141414") if lost else Palette.SURFACE_2)
+	var bsb: StyleBoxFlat = UiTheme.slant(band_col, 60, 6)
+	bsb.border_color = Palette.ACCENT if lost else Color.BLACK
+	bsb.border_width_bottom = 8
+	bsb.border_width_top = 2
+	band.add_theme_stylebox_override("panel", bsb)
+	band.custom_minimum_size = Vector2(900, 0)
+	band.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_over_box.add_child(band)
+	var main: Label = UiTheme.label(title, 120, Color.BLACK if won else (Palette.MUTED if lost else Palette.FG))
+	main.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if not won:
+		main.add_theme_color_override("font_shadow_color", Palette.ACCENT)
+		main.add_theme_constant_override("shadow_offset_x", 6)
+		main.add_theme_constant_override("shadow_offset_y", 6)
+	band.add_child(main)
+	var why: Label = UiTheme.label("%s  ·  TURN %d" % [str(reasons.get(state.result, state.result.to_upper())), state.turn], 20, Palette.GOLD)
+	why.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_over_box.add_child(why)
+	# Both sides with their heroes, the viewer's first; KO'd heroes grey, the winner marked.
+	var sides := HBoxContainer.new()
+	sides.add_theme_constant_override("separation", 48)
+	sides.alignment = BoxContainer.ALIGNMENT_CENTER
+	_over_box.add_child(sides)
+	var order: Array[int] = []
+	for p: PlayerState in state.players:
+		if local_slots.has(p.slot):
+			order.append(p.slot)
+	for p: PlayerState in state.players:
+		if not order.has(p.slot):
+			order.append(p.slot)
+	for slot: int in order:
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 6)
+		sides.add_child(col)
+		var head := HBoxContainer.new()
+		head.add_theme_constant_override("separation", 10)
+		col.add_child(head)
+		head.add_child(UiTheme.label(player_name(slot).to_upper(), 24, Palette.team(state.team_of(slot)).lightened(0.2)))
+		if state.winner >= 0 and state.team_of(slot) == state.team_of(state.winner):
+			var chip: UiShape = UiShape.chip("WINNER", Palette.GOLD, Color.BLACK, 13, 22.0, 9.0)
+			chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			head.add_child(chip)
 		var strips := HBoxContainer.new()
 		strips.add_theme_constant_override("separation", 6)
-		_over_box.add_child(strips)
-		for h: HeroState in state.heroes_of(state.winner):
+		col.add_child(strips)
+		for h: HeroState in state.heroes_of(slot):
 			var s := HeroSlice.new()
 			var card: CardDef = engine.stat_card(h)
 			s.art = db.thumb(card.id) if db != null and card != null else null
 			s.art_region = HeroSlice.region_for(s.art)
 			s.art_fallback = Palette.hero(card.color if card != null else "")
-			s.custom_minimum_size = Vector2(HeroSlice.ART_W + HeroSlice.CUT + 4.0, 56)
+			s.custom_minimum_size = Vector2(HeroSlice.ART_W + HeroSlice.CUT + 4.0, 64)
 			if h.is_ko():
-				s.art_tint = Color(0.35, 0.35, 0.35)
-			s.tooltip_text = hero_name(h)
+				s.art_tint = Color(0.3, 0.3, 0.3)
+				var ko: UiShape = UiShape.chip("KO", Palette.ACCENT_DEEP, Palette.FG, 12, 18.0, 7.0)
+				ko.position = Vector2(10, 40)
+				s.add_child(ko)
+			s.tooltip_text = "%s · %s" % [hero_name(h), "KO" if h.is_ko() else "HP %d" % h.hp]
 			strips.add_child(s)
 	if not series_text.is_empty():
 		_over_box.add_child(UiTheme.label(series_text, 26, Palette.GOLD))
@@ -2296,6 +2337,7 @@ func _refresh_over() -> void:
 		_over_box.add_child(wait)
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 12)
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	_over_box.add_child(buttons)
 	if not rematch_text.is_empty():
 		var again := Button.new()
@@ -2335,6 +2377,8 @@ func _refresh_over() -> void:
 ## Per player, from the match summary that also goes to stats/ (GDD 11: the end shows stats).
 func _stats_table() -> Control:
 	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UiTheme.box(Color(Palette.PANEL_SOLID, 0.9), 6, Color(0, 0, 0, 0), 28, 14))
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var grid := GridContainer.new()
 	var players: Array = JsonUtil.as_array(end_summary.get("players", []))
 	grid.columns = players.size() + 1
