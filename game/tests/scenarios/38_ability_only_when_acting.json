@@ -1,0 +1,19 @@
+{
+  "name": "a hero's ability is used only by the activated hero (playtest 2026-10-30: Zoro's ability came up while Kaido was activated)",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8],
+      "heroes.p0:TA-002.zone": "map", "heroes.p0:TA-002.hex": [2, 2],
+      "heroes.p1:TB-003.zone": "map", "heroes.p1:TB-003.hex": [8, 2],
+      "initiative": 0
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-002", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003", "roll": false}},
+    {"pass_round": true},
+    {"expect": {"phase": "postroll", "to_act": 0}},
+    {"move": {"type": "use_ability", "player": 0, "hero": "p0:TA-001", "card": "TA-001", "index": 0}, "error": "cannot be used now"}
+  ]
+}

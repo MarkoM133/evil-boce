@@ -585,6 +585,12 @@ func reverse_roll(s: GameState, slot: int) -> String:
 	return ""
 
 
+## The hero's name as the player sees it (its current card).
+func hero_name(h: HeroState) -> String:
+	var c: CardDef = stat_card(h)
+	return c.name if c != null else h.id
+
+
 ## "" when an inventory core may go back onto `a`.
 func core_return_error(s: GameState, c: CoreState, a: Vector2i) -> String:
 	if not s.map().contains(a):
@@ -595,7 +601,7 @@ func core_return_error(s: GameState, c: CoreState, a: Vector2i) -> String:
 	var picker: HeroState = s.hero(c.picked_by)
 	if picker != null and picker.is_on_map():
 		if not reaches_hex(s, picker, a):
-			return "must be within the range of %s" % picker.id
+			return "must be within the range of %s" % hero_name(picker)
 	elif not s.in_half_of_team(a, s.team_of(c.owner)):
 		return "must be in your half"
 	return ""
@@ -1561,10 +1567,13 @@ func clamp_hp(s: GameState, h: HeroState) -> void:
 ## own heroes taking part in it. Cards are played in the colour of these heroes.
 func card_context_heroes(s: GameState, slot: int) -> Array[HeroState]:
 	var out: Array[HeroState] = []
-	if s.phase == GameState.PHASE_BATTLE and s.battle_index >= 0 and s.battle_index < s.battles.size():
-		for h: HeroState in _battle_heroes(s, s.battles[s.battle_index]):
-			if h.owner == slot:
-				out.append(h)
+	if s.phase == GameState.PHASE_BATTLE:
+		# Only the heroes of the battle being fought; between battles (a core being put back,
+		# a knockback) nobody, not the activated hero (playtest 2026-10-30).
+		if s.battle_index >= 0 and s.battle_index < s.battles.size():
+			for h: HeroState in _battle_heroes(s, s.battles[s.battle_index]):
+				if h.owner == slot:
+					out.append(h)
 		return out
 	var a: HeroState = s.active_hero(slot)
 	if a != null and not a.is_ko():
@@ -1581,6 +1590,12 @@ func _play_card(s: GameState, m: Move) -> String:
 ## rules do not apply; the card's own limits and phase lock do).
 func play_free(s: GameState, slot: int, cid: String, on: HeroState) -> String:
 	return _play(s, slot, cid, on.id, true, on)
+
+
+## Why play_free would refuse `cid` on `on` ("" when it would go), tried on a copy.
+func free_play_error(s: GameState, slot: int, cid: String, on: HeroState) -> String:
+	var copy: GameState = GameState.from_dict(s.to_dict())
+	return play_free(copy, slot, cid, copy.hero(on.id))
 
 
 func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, forced: HeroState,
@@ -1611,7 +1626,9 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 			if hc != null and hc.color == card.color:
 				same_colour.append(h)
 		if same_colour.is_empty():
-			return "no %s hero to play this for" % card.color
+			if s.phase == GameState.PHASE_BATTLE:
+				return "needs a %s hero in this battle" % card.color
+			return "needs an activated %s hero" % card.color
 	# The first tag (GDD 10): the card goes only to a hero it names, or whose current traits fit.
 	var fit: Array[HeroState] = []
 	var unfit: String = ""

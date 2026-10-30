@@ -142,6 +142,11 @@ func usable_abilities(s: GameState, slot: int) -> Array[Dictionary]:
 			continue
 		var card: CardDef = src["card"]
 		var h: HeroState = src["hero"]
+		# A hero's ability is used by that hero acting: the activated hero, or in the Battle
+		# phase a hero in the battle being fought (playtest 2026-10-30: Zoro's ability came up
+		# while Kaido was the activated hero).
+		if h != null and not _hero_acts(s, h):
+			continue
 		for i: int in card.effects.size():
 			var e: FxEffect = card.effects[i]
 			if not e.optional or e.when != when or e.cond == "WIN":
@@ -157,6 +162,16 @@ func usable_abilities(s: GameState, slot: int) -> Array[Dictionary]:
 				continue
 			out.append({"hero": h.id if h != null else "", "card": card.id, "index": i, "effect": e, "key": key})
 	return out
+
+
+## Whether `h` acts now: in the Battle phase it is in the battle being fought, else it is the
+## activated hero.
+func _hero_acts(s: GameState, h: HeroState) -> bool:
+	if s.phase == GameState.PHASE_BATTLE:
+		if s.battle_index < 0 or s.battle_index >= s.battles.size():
+			return false
+		return JsonUtil.as_strings(s.battles[s.battle_index].get("heroes", [])).has(h.id)
+	return s.active.get(h.owner, "") == h.id
 
 
 ## Runs one optional ability; "" or why not.
@@ -482,7 +497,7 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 	match verb:
 		"DAMAGE", "HEAL", "KNOCKBACK", "STATUS", "REMOVE_EVO", "BUFF", "DAMAGE_MOD":
 			if target == "ENEMY" or target == "FRIENDLY":
-				var options: Array = _hero_options(s, ctx, e, target)
+				var options: Array = _hero_options(s, ctx, e, target, verb)
 				if options.is_empty():
 					return {"error": "no hero to target"}
 				if options.size() == 1:
@@ -524,8 +539,14 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			if hexes.is_empty():
 				return {"error": "the core cannot move"}
 			return {"player": player, "kind": "hex", "options": hexes, "prompt": "Move the core up to %s" % args[0]}
+		"COST", "NO_CLAIM", "DISCHARGE":
+			# [Range] on an effect that names the opponent, not a hero (Conqueror's Haki,
+			# Observation Killing): an enemy hero has to be in range (playtest 2026-10-30).
+			# Only as the effect's first step: inside a chosen branch the card was already let through.
+			if target == "OPP" and e.range and e.actions.find(a) == 0 and not _enemy_in_range(s, me, player):
+				return {"error": "no enemy hero in range"}
 		"FREE_PLAY":
-			var options: Array = _free_play_options(s, player, args)
+			var options: Array = _free_play_options(s, player, args, me)
 			if options.is_empty():
 				return {"error": "no card to play for free"}
 			return {"player": player, "kind": "card", "options": options, "prompt": "Play a card for free"}
@@ -574,6 +595,8 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 				return {}
 			return {"player": who, "kind": "card", "options": Array(hand), "prompt": "Discard a card"}
 		"CHOOSE":
+			if e.range and target == "OPP" and not _enemy_in_range(s, me, player):
+				return {"error": "no enemy hero in range"}
 			var who: int = player if target == "ME" else engine.other_slot(s, player)
 			var labels: Array = []
 			for branch: Variant in JsonUtil.as_array(a.get("branches", [])):
@@ -744,7 +767,7 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			for h: HeroState in _targets(s, ctx, e, target, answer):
 				s.turn_mods.append({"kind": "dmg_taken", "hero": h.id, "amount": args[0].to_int()})
 		"REMOVE_EVO":
-			for h: HeroState in _targets(s, ctx, e, target, answer):
+			for h: HeroState in _targets(s, ctx, e, target, answer, verb):
 				engine.remove_evolution(s, h)
 		"WALL":
 			var w := WallState.new()
@@ -815,16 +838,39 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			var index: int = JsonUtil.as_int(answer, 0)
 			if index < 0 or index >= branches.size():
 				return "no such option"
-			var sub := FxEffect.new()
-			sub.when = e.when
-			sub.range = e.range
-			for b: Variant in JsonUtil.as_array(branches[index]):
-				sub.actions.append(JsonUtil.as_dict(b))
-			sub.line = sub.to_fx()
+			var sub: FxEffect = _branch(e, branches[index])
+			# Every step of the branch must be possible before the first one runs: a branch
+			# that fails halfway would leave its first steps done (Soul Pocus healed, then
+			# found no hero to damage, and the other branch ran as well).
+			for b: Dictionary in sub.actions:
+				var need: Dictionary = _needed_choice(s, ctx, sub, b, null)
+				if need.has("error"):
+					return "that option cannot be done: %s" % str(need["error"])
+				if str(b["verb"]) == "PICK_CORE":
+					break
 			return run(s, ctx, sub)
 		_:
 			return "unknown verb %s" % verb
 	return ""
+
+
+func _branch(e: FxEffect, branch: Variant) -> FxEffect:
+	var sub := FxEffect.new()
+	sub.when = e.when
+	sub.range = e.range
+	for b: Variant in JsonUtil.as_array(branch):
+		sub.actions.append(JsonUtil.as_dict(b))
+	sub.line = sub.to_fx()
+	return sub
+
+
+func _enemy_in_range(s: GameState, me: HeroState, player: int) -> bool:
+	if me == null:
+		return false
+	for h: HeroState in s.heroes:
+		if h.is_on_map() and s.team_of(h.owner) != s.team_of(player) and engine.in_range(s, me, h):
+			return true
+	return false
 
 
 func _stage_buff(s: GameState, stage_id: String, h: HeroState, stat: String, amount: int) -> void:
@@ -833,7 +879,7 @@ func _stage_buff(s: GameState, stage_id: String, h: HeroState, stat: String, amo
 
 
 ## Cards in hand the player may play for free: cost up to args[0], with the trait if given.
-func _free_play_options(s: GameState, slot: int, args: PackedStringArray) -> Array:
+func _free_play_options(s: GameState, slot: int, args: PackedStringArray, on: HeroState = null) -> Array:
 	var out: Array = []
 	var max_cost: int = args[0].to_int()
 	# Filters after the cost: a {Trait} and/or a card type (Zoro: "{Sword} Equipment").
@@ -851,6 +897,9 @@ func _free_play_options(s: GameState, slot: int, args: PackedStringArray) -> Arr
 		if not wanted_trait.is_empty() and not c.has_trait(wanted_trait):
 			continue
 		if not wanted_type.is_empty() and c.type != wanted_type:
+			continue
+		# Only what can really go on the hero (Zoro already wearing Enma cannot take another).
+		if on != null and not engine.free_play_error(s, slot, cid, on).is_empty():
 			continue
 		if not out.has(cid):
 			out.append(cid)
@@ -876,7 +925,7 @@ static func _branch_fx(branch: Variant) -> PackedStringArray:
 
 # --- targets ----------------------------------------------------------------------------
 
-func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer: Variant) -> Array[HeroState]:
+func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer: Variant, verb: String = "") -> Array[HeroState]:
 	var out: Array[HeroState] = []
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
@@ -886,7 +935,7 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 			if me != null:
 				out.append(me)
 		"ENEMY", "FRIENDLY":
-			var options: Array = _hero_options(s, ctx, e, target)
+			var options: Array = _hero_options(s, ctx, e, target, verb)
 			var id: String = str(answer) if answer != null else (str(options[0]) if not options.is_empty() else "")
 			var h: HeroState = s.hero(id)
 			if h != null:
@@ -933,12 +982,21 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 
 
 ## Ids of heroes a chooser may pick for ENEMY / FRIENDLY (in range when the effect says so).
-func _hero_options(s: GameState, ctx: Dictionary, e: FxEffect, target: String) -> Array:
+func _hero_options(s: GameState, ctx: Dictionary, e: FxEffect, target: String, verb: String = "") -> Array:
 	var out: Array = []
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
+	# A Battle Phase effect works on the battle being fought: "your Opponent's Hero" is the one
+	# in it (GDD 10), not any enemy on the map.
+	var in_battle := PackedStringArray()
+	if e.when == "BATTLE" and s.phase == GameState.PHASE_BATTLE and s.battle_index >= 0 and s.battle_index < s.battles.size():
+		in_battle = JsonUtil.as_strings(s.battles[s.battle_index].get("heroes", []))
 	for h: HeroState in s.heroes:
 		if not h.is_on_map():
+			continue
+		if not in_battle.is_empty() and not in_battle.has(h.id):
+			continue
+		if verb == "REMOVE_EVO" and h.evolutions.is_empty():
 			continue
 		var enemy: bool = s.team_of(h.owner) != s.team_of(player)
 		if (target == "ENEMY") != enemy:

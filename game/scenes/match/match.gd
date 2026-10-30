@@ -1215,7 +1215,11 @@ func _refresh_range() -> void:
 		cells = _setup_cells(item)
 		marked.clear()
 		if cells.has(_setup_hover):
-			marked = Hex.spiral(_setup_hover, 1) if state.stage(item) != null else [_setup_hover]
+			# A ternary's value is an untyped Array, which a typed one refuses at runtime.
+			if state.stage(item) != null:
+				marked = Hex.spiral(_setup_hover, 1)
+			else:
+				marked.append(_setup_hover)
 	var d: Dictionary = _local_decision()
 	if str(d.get("type", "")) == RulesEngine.DECISION_RETURN_CORE:
 		var c: CoreState = state.core(str(d.get("core", "")))

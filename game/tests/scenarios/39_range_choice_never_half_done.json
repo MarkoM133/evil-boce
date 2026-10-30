@@ -1,0 +1,29 @@
+{
+  "name": "a [Range] card aimed at the opponent needs an enemy in range; a branch that cannot be done in full is refused and changes nothing (playtest 2026-10-30: Soul Pocus did both)",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8], "heroes.p0:TA-001.hp": 5,
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [9, 8],
+      "players.p0.hand": ["TA-051"],
+      "players.p0.energy": 4,
+      "players.p1.energy": 3,
+      "initiative": 0
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002", "roll": false}},
+    {"pass_round": true},
+    {"expect": {"phase": "postroll", "to_act": 0}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-051"}, "error": "no enemy hero in range"},
+    {"set": {"heroes.p1:TB-002.hex": [6, 8]}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-051"}},
+    {"expect": {"pending.0.kind": "option", "pending.0.player": 1}},
+    {"set": {"heroes.p1:TB-002.hex": [11, 8]}},
+    {"move": {"type": "choose", "player": 1, "value": 1}, "error": "cannot be done"},
+    {"expect": {"heroes.p0:TA-001.hp": 5, "pending.0.kind": "option"}},
+    {"move": {"type": "choose", "player": 1, "value": 0}},
+    {"expect": {"heroes.p0:TA-001.hp": 5, "players.p1.energy": 1, "pending": {"$size": 0}}}
+  ]
+}

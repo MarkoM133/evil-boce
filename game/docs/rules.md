@@ -170,6 +170,14 @@ g. (2026-10-26) A grid knockback stopped by a wall or a hero costs `wall_damage`
    nothing, and the hand shows why (`_play_blocker`).
 13. (2026-10-26) A face-down stage turns face up whenever a hero stops on it: a roll, a
    knockback, an effect's move or a swap (`RulesEngine.arrive`).
+14. (2026-10-30, playtest) A hero's optional ability ("may", Once Per Turn or not) is used only
+   by a hero that acts: the activated hero, or in the Battle phase a hero in the battle being
+   fought. Between battles nobody plays cards. A Battle Phase effect aimed at a hero picks among
+   that battle's heroes; Remove Evolution only offers heroes with one.
+15. (2026-10-30, playtest) A [Range] effect that names the opponent rather than a hero
+   (`NO_CLAIM OPP`, `COST OPP`, `CHOOSE OPP`) needs an enemy hero in range. A chosen branch is
+   checked in full before its first step runs, so a choice never half happens. FREE_PLAY offers
+   only cards that could really go on the hero (`free_play_error`).
 - JO1-011 "3 copies at once": the third copy of the card played by the same player in the
   same phase also gives +5 DMG (`IF COPIES 3`).
 - Stage reveal bonuses last while the hero stays on that stage and it is unclaimed.

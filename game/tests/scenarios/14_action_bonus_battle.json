@@ -17,7 +17,7 @@
     {"pass_round": true},
     {"expect": {"phase": "battle", "to_act": 0}},
     {"move": {"type": "play_card", "player": 0, "card": "TA-041"}, "error": "not ready"},
-    {"move": {"type": "play_card", "player": 0, "card": "TA-042"}, "error": "no Blue hero"},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-042"}, "error": "needs a Blue hero in this battle"},
     {"move": {"type": "play_card", "player": 0, "card": "TA-040"}},
     {"expect": {"heroes.p0:TA-001.phase_bonus.pwr": 1000, "players.p0.energy": 1, "to_act": 1}},
     {"move": {"type": "pass", "player": 1}},
