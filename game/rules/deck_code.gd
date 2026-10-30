@@ -55,7 +55,8 @@ static func encode(heroes: PackedStringArray, cards: Dictionary, version: int) -
 ## up to 40 or until the pool runs out. The heroes are drawn again (a few tries) until their
 ## pool holds a full deck, so a random deck is short only when no draw allows 40.
 ## Returns {"name", "heroes": PackedStringArray (in slot order), "cards": {id: n}}.
-static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, chosen: PackedStringArray = PackedStringArray()) -> Dictionary:
+static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, chosen: PackedStringArray = PackedStringArray(),
+		size: int = DECK_SIZE) -> Dictionary:
 	var others: Array[CardDef] = catalog.of_type("Hero")
 	var fixed: Array[CardDef] = []
 	for id: String in chosen:
@@ -74,7 +75,7 @@ static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, chosen
 		if cap > best:
 			best = cap
 			picked = draw
-		if cap >= DECK_SIZE:
+		if cap >= size:
 			break
 	# Chosen heroes on their own slots, the drawn ones in the slots left.
 	var drawn: Array[CardDef] = picked.filter(func(h: CardDef) -> bool: return not fixed.has(h))
@@ -95,8 +96,31 @@ static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, chosen
 		ids.append(h.id)
 		names.append(h.name)
 	var cards: Dictionary = {}
+	_fill(catalog, picked, cards, size, rng)
+	return {"name": "Random (%s)" % ", ".join(names), "heroes": ids, "cards": cards}
+
+
+## A deck ({heroes, cards}) topped up to `size` cards with random legal ones, within the limits
+## (the deck sizes over 40 for random and drafted decks, Marko 2026-10-30). Short only when the
+## pool runs out.
+static func fill_deck(catalog: CardCatalog, deck: Dictionary, size: int, rng: RandomNumberGenerator) -> Dictionary:
+	var heroes: Array[CardDef] = []
+	for id: String in JsonUtil.as_strings(deck.get("heroes", [])):
+		var h: CardDef = catalog.get_card(id)
+		if h != null:
+			heroes.append(h)
+	var out: Dictionary = deck.duplicate(true)
+	var cards: Dictionary = JsonUtil.as_dict(out.get("cards", {}))
+	_fill(catalog, heroes, cards, size, rng)
+	out["cards"] = cards
+	return out
+
+
+static func _fill(catalog: CardCatalog, picked: Array[CardDef], cards: Dictionary, size: int, rng: RandomNumberGenerator) -> void:
 	var total: int = 0
-	while total < DECK_SIZE:
+	for k: Variant in cards:
+		total += JsonUtil.as_int(cards[k])
+	while total < size:
 		# Cards an Evolution unlocks (a trait only it has) come in once that Evolution is in.
 		var pool: Array[CardDef] = _pool(catalog, picked, FirstTag.evolutions_in(catalog, cards.keys()))
 		# A colour first, then a card of it, so one big colour does not take the whole deck.
@@ -113,7 +137,6 @@ static func random_deck(catalog: CardCatalog, rng: RandomNumberGenerator, chosen
 		var c: CardDef = open[rng.randi_range(0, open.size() - 1)]
 		cards[c.id] = JsonUtil.as_int(cards.get(c.id, 0)) + 1
 		total += 1
-	return {"name": "Random (%s)" % ", ".join(names), "heroes": ids, "cards": cards}
 
 
 ## Deck cards these heroes may take with these Evolution cards in the deck: the first tag rule

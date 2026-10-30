@@ -257,6 +257,9 @@ func _version() -> String:
 
 func _engine_deck(saved: Dictionary, who: String, loadout: Loadout = null) -> Dictionary:
 	var deck: Dictionary = saved if not saved.is_empty() else DeckCode.random_deck(db.catalog, _rng)
+	# Over 40 only a random deck grows (Marko 2026-10-30); a saved deck plays its 40.
+	if saved.is_empty() and _rules != null and _rules.settings.deck_size > DeckCode.DECK_SIZE:
+		deck = DeckCode.fill_deck(db.catalog, deck, _rules.settings.deck_size, _rng)
 	return MatchLaunch.engine_deck(db.catalog, deck, who, _rng, loadout)
 
 

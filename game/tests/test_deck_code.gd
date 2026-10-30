@@ -65,3 +65,19 @@ func test_random_deck_keeps_the_leader_and_the_rules() -> void:
 		for e: String in DeckCode.check(catalog, heroes, JsonUtil.as_dict(d["cards"])):
 			# Only a small pool may leave the deck short; colours and evolutions always fit.
 			assert_string_contains(e, "the deck needs")
+
+
+func test_fill_deck_grows_a_deck_within_the_limits() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var d: Dictionary = DeckCode.random_deck(catalog, rng)
+	var big: Dictionary = DeckCode.fill_deck(catalog, d, 50, rng)
+	var total: int = 0
+	var cards: Dictionary = JsonUtil.as_dict(big["cards"])
+	for id: Variant in cards:
+		total += JsonUtil.as_int(cards[id])
+		var c: CardDef = catalog.get_card(str(id))
+		assert_true(JsonUtil.as_int(cards[id]) <= DeckCode.LIMITS[c.type], "%s within its limit" % id)
+	assert_true(total > 40 and total <= 50, "grown past 40, at most 50 (got %d)" % total)
+	for id: Variant in JsonUtil.as_dict(d["cards"]):
+		assert_true(JsonUtil.as_int(cards.get(id, 0)) >= JsonUtil.as_int(d["cards"][id]), "keeps %s" % id)

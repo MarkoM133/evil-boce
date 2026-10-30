@@ -159,6 +159,9 @@ func _start() -> void:
 		var card: PlayerCard = _cards[slot]
 		var saved: Dictionary = card.saved_deck()
 		var deck: Dictionary = DeckCode.random_deck(db.catalog, rng) if saved.is_empty() else saved
+		# Over 40 only a random deck grows (Marko 2026-10-30); a saved deck plays its 40.
+		if card.deck_index == 0 and settings.deck_size > DeckCode.DECK_SIZE:
+			deck = DeckCode.fill_deck(db.catalog, deck, settings.deck_size, rng)
 		if series != null and not _in_series:
 			series.decks.append({"name": str(deck.get("name", "")), "heroes": deck.get("heroes", []), "cards": deck.get("cards", {})})
 			var side: Dictionary = card.sideboard if not saved.is_empty() else {}
