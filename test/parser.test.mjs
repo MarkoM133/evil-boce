@@ -630,6 +630,10 @@ test('Card editor drafts: game fields bump rev and version, look fields and a ne
   assert.equal(game.db.cards[1].updated, undefined);
   assert.equal(game.db.cards[1].who, undefined);
   assert.equal(applyDrafts(db, { 'OP9-002': { cost: 1 } }).changed, 0);
+  const fx = applyDrafts(db, { 'OP9-001': { fx: 'BATTLE: DAMAGE ENEMY 1', fxStatus: 'ok' } });
+  assert.deepEqual([fx.bumped, fx.db.cards[0].fx, fx.db.cards[0].fxStatus], [true, 'BATTLE: DAMAGE ENEMY 1', 'ok']);
+  const core = applyDrafts(db, { 'OP9-002': { coreImage: 'effect' } });
+  assert.deepEqual([core.bumped, core.db.cards[1].coreImage], [false, 'effect']);
   const added = applyDrafts(db, { 'OP9-003': { new: true, name: 'Hero B', type: 'Hero', color: 'Red', stats: { hp: 8 }, text: '', updated: 'x', who: 'Tarik' } }, { 'OP9-003': 'cccc3333' });
   assert.equal(added.bumped, true);
   assert.equal(added.db.version, 5);

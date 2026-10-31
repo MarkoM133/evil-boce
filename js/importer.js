@@ -13,7 +13,7 @@ export const APP_FIELDS = ['wt', 'aliases', 'bakugan', 'bakuganShape', 'bakuganC
 // Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
 // fxStatus je samo oznaka za pregled, pa ni on ne diže verziju.
 export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fxStatus', 'figure', 'ballColor', 'ballColor2', 'heroSfx'];
-const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'art', 'artCrop', 'emblem', 'bg', 'template', 'status', 'notes', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
+const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
 
@@ -381,8 +381,8 @@ export function applyAppEdits(db, edits, now = new Date()) {
 // polja izgleda (art, izrez, amblem, pozadina, predložak, status, bilješke) i nova slika ne dižu.
 // images: { id: imageHash } za karte kojima je Objava nacrtala novi PNG (data/images/ID.hash.png).
 // Nacrt s new: true i kodom kojeg nema u bazi je nova karta (dodaje se na kraj, rev 1).
-export const DRAFT_GAME_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'traits', 'aliases', 'text', 'abilityNames', 'terrain'];
-export const DRAFT_LOOK_FIELDS = ['art', 'artCrop', 'emblem', 'bg', 'template', 'status', 'notes'];
+export const DRAFT_GAME_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx'];
+export const DRAFT_LOOK_FIELDS = ['fxStatus', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes'];
 
 export function applyDrafts(db, drafts, images = {}, now = new Date()) {
   let changed = 0;
