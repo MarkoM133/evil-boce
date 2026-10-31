@@ -10,6 +10,8 @@ import { lockPath, lockState, newLock, HEARTBEAT_MS, SETTLE_MS } from './locks.j
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
+// Zadnja Objava iz editora: baza prije nje i objavljeni nacrti, za Undo.
+const LAST_PUBLISH_PATH = 'data/editor/last-publish.json';
 export const EDIT_TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core'];
 // Tip se mijenja samo unutar iste vrste karte (isti predložak i ista polja).
 const PORTRAIT = ['Action', 'Equipment', 'Assist'];
@@ -28,6 +30,10 @@ const INSERTS = [
   ['Battle', 'Battle Phase: '], ['Once per turn', ' Once Per Turn'], ['[PWR]', '[PWR]'], ['[DMG]', '[DMG]'],
   ['[HP]', '[HP]'], ['[RNG]', '[RNG]'], ['[KB]', '[KB]'],
 ];
+
+// Prazan objekt ili popis je isto što i polje kojeg nema (Stage bez bonusa, karta bez tagova).
+const empty = v => v == null || (typeof v === 'object' && Object.keys(v).length === 0);
+const sameVal = (a, b) => (empty(a) && empty(b)) || JSON.stringify(a) === JSON.stringify(b);
 
 // env: { state, h, toast, guard, render, go(id) }.
 export function createEditor(env) {
@@ -94,7 +100,7 @@ export function createEditor(env) {
     ed.id = id;
     ed.base = base;
     ed.work = structuredClone({ ...base, ...(ed.drafts?.cards?.[id] ?? {}) });
-    ed.work.bonus ??= {};
+    if (PORTRAIT.includes(base.type) || base.type === 'Core') ed.work.bonus ??= {};
     ed.work.traits ??= [];
     ed.work.artCrop ??= { x: 0.5, y: 0.5, zoom: 1 };
     if (HEROISH.includes(base.type)) ed.work.stats ??= {};
@@ -389,9 +395,10 @@ export function createEditor(env) {
     const wide = landscape(ed.work);
     ed.canvas = h('canvas', { class: `ce-canvas${wide ? ' wide' : ''}`, width: wide ? 2100 : 1500, height: wide ? 1500 : 2100 });
     ed.warnBox = h('ul', { class: 'ce-warnings' });
+    ed.diffBox = h('div', { class: 'ce-diff' });
     hookDrag(ed.canvas);
     queueDraw();
-    return h('section', { class: 'ce-preview' }, ed.canvas, ed.warnBox,
+    return h('section', { class: 'ce-preview' }, ed.canvas, ed.warnBox, ed.diffBox,
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.'));
   }
 
@@ -464,6 +471,23 @@ export function createEditor(env) {
     .map(([id, d]) => ({ id, d, base: env.state.db.cards.find(c => c.id === id) }))
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
+  // Zadnja Objava i Undo (samo Marko, dok se baza nije mijenjala).
+  function renderLast(marko) {
+    if (!canWrite()) return null;
+    if (ed.last === undefined || ed.last === null) {
+      ed.last = false;
+      readLast().then(l => { ed.last = l ?? false; if (l) env.render(); });
+      return null;
+    }
+    const l = ed.last;
+    if (!l) return null;
+    const ok = env.state.db.updated === l.after.updated;
+    return h('div', { class: 'ce-last' },
+      h('span', {}, `Last Publish: ${new Date(l.at).toLocaleString()}${l.who ? ` by ${l.who}` : ''}, ${Object.keys(l.drafts).length} cards${l.bumped ? `, version ${l.after.version}` : ''}.`),
+      ok ? h('button', { class: 'ghost', type: 'button', disabled: !marko, onclick: () => env.guard(undoPublish) }, 'Undo last Publish')
+        : h('small', { class: 'muted' }, 'Cards changed since then, so it can no longer be undone.'));
+  }
+
   function renderPublish() {
     const list = draftList();
     const marko = who() === 'Marko';
@@ -487,9 +511,36 @@ export function createEditor(env) {
             h('td', {}, h('span', { class: `chip${card.status === 'done' ? '' : ' warn'}` }, card.status ?? 'draft')),
             h('td', {}, h('button', { class: 'ghost', type: 'button', onclick: () => go(id) }, 'Open')));
         }))) : null,
+      renderLast(marko),
       h('div', { class: 'ce-actions' },
         h('button', { class: 'primary', type: 'button', disabled: !!why, onclick: () => env.guard(publishAll) }, `Publish ${list.length} ${list.length === 1 ? 'card' : 'cards'}`),
         why ? h('small', { class: 'muted' }, why) : null));
+  }
+
+  async function readLast() {
+    try { return JSON.parse((await fs.readText(store().root, LAST_PUBLISH_PATH)) ?? 'null'); } catch { return null; }
+  }
+
+  // Undo zadnje Objave: baza kakva je bila prije nje (pod novom verzijom, da igra i deckovi vide promjenu),
+  // nove slike van, objavljeni nacrti opet čekaju. Samo dok se baza u međuvremenu nije mijenjala.
+  async function undoPublish() {
+    await env.assertFresh();
+    const last = await readLast();
+    if (!last) throw new Error('No Publish to undo.');
+    const db = env.state.db;
+    if (db.updated !== last.after.updated) throw new Error('The cards changed after that Publish (Import or another save), so it can no longer be undone.');
+    if (!confirm(`Undo the Publish of ${new Date(last.at).toLocaleString()} (${Object.keys(last.drafts).length} cards)? The cards go back to how they were and wait as drafts again.`)) return;
+    const restored = { ...last.before, version: db.version + (last.bumped ? 1 : 0), updated: new Date().toISOString() };
+    await env.commitDb(restored);
+    const after = await readDrafts();
+    after.cards ??= {};
+    for (const [id, d] of Object.entries(last.drafts)) after.cards[id] ??= d;
+    await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(after, null, 2) + '\n');
+    await fs.removeFile(store().root, LAST_PUBLISH_PATH).catch(() => {});
+    ed.drafts = after;
+    ed.last = null;
+    env.toast(`Publish undone: ${Object.keys(last.drafts).length} cards are drafts again${last.bumped ? ` (version ${restored.version})` : ''}.`);
+    env.render();
   }
 
   // Objava: PNG svake karte s artom (renderer), baza i povijest (env.commitDb), pa se nacrti brišu.
@@ -501,6 +552,9 @@ export function createEditor(env) {
     const ids = Object.keys(drafts);
     if (!ids.length) throw new Error('Nothing waits for Publish.');
     if (!confirm(`Publish ${ids.length} ${ids.length === 1 ? 'card' : 'cards'} into the game?`)) return;
+    // Nova Objava: Undo prethodne više nije moguć, pa njene stare slike mogu van.
+    await env.dropOldImages();
+    const before = env.state.db;
     const images = {};
     const kept = [];
     for (const id of ids) {
@@ -523,7 +577,12 @@ export function createEditor(env) {
       images[id] = hash;
     }
     const { db, changed, bumped } = applyDrafts(env.state.db, drafts, images);
-    const done = changed ? await env.commitDb(db) : { old: 0, thumbs: 0 };
+    const done = changed ? await env.commitDb(db, { keepOld: true }) : { old: 0, thumbs: 0 };
+    if (changed) {
+      const published = Object.fromEntries(ids.filter(id => drafts[id]).map(id => [id, drafts[id]]));
+      await fs.writeFile(store().root, LAST_PUBLISH_PATH, JSON.stringify({ at: new Date().toISOString(), who: who(), bumped, after: { version: db.version, updated: db.updated }, drafts: published, before }) + '\n');
+      ed.last = null;
+    }
     // Nacrti spremljeni dok je Objava trajala ostaju za iduću.
     const after = await readDrafts();
     for (const id of ids) if (drafts[id] && after.cards?.[id]?.updated === drafts[id].updated) delete after.cards[id];
@@ -575,6 +634,18 @@ export function createEditor(env) {
     const warnings = renderCard(ed.canvas, w, tpl, ed.art, ed.emblem);
     warnings.push(...checks(w));
     ed.warnBox.replaceChildren(...warnings.map(x => h('li', {}, x)));
+    ed.diffBox.replaceChildren(...renderDiff(w));
+  }
+
+  // Razlike prema objavljenoj karti (cards.json): staro → novo, po polju.
+  function renderDiff(w) {
+    if (w.new) return [h('p', { class: 'muted small' }, 'A new card: it is not in the game until Publish.')];
+    const short = v => { const t = typeof v === 'string' ? v : JSON.stringify(v); return t === undefined ? '–' : t.length > 90 ? `${t.slice(0, 88)}…` : t; };
+    const rows = FIELDS.filter(k => w[k] !== undefined && !sameVal(w[k], ed.base[k]));
+    if (!rows.length) return [];
+    return [h('p', { class: 'small' }, 'Against the published card:'),
+      h('table', { class: 'ce-pub-table' }, h('tbody', {}, rows.map(k => h('tr', {},
+        h('td', {}, k), h('td', { class: 'muted' }, short(ed.base[k])), h('td', {}, '→ ', short(w[k]))))))];
   }
 
   // Provjere dok pišeš (uz upozorenja renderera).
@@ -631,7 +702,7 @@ export function createEditor(env) {
     const diff = {};
     for (const k of FIELDS) {
       if (w[k] === undefined) continue;
-      if (JSON.stringify(w[k]) !== JSON.stringify(ed.base[k])) diff[k] = w[k];
+      if (!sameVal(w[k], ed.base[k])) diff[k] = w[k];
     }
     const fresh = await readDrafts();
     const before = ed.drafts?.cards?.[w.id]?.updated;

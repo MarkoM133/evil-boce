@@ -796,15 +796,21 @@ function renderMain() {
 const cardEditor = createEditor({
   state, h, toast, guard, render,
   go: id => { state.editId = id; replaceNext = false; render(); },
-  // Objava nacrta: baza i povijest, pa stare slike van i umanjene slike za nove.
+  // Objava nacrta: baza i povijest, pa umanjene slike za nove. keepOld: stare slike ostaju za Undo.
   assertFresh,
-  async commitDb(db) {
+  async commitDb(db, { keepOld = false } = {}) {
     await writeDb(db);
-    const old = obsoleteImages(db, await fs.listFileNames(root(), 'data/images'));
+    const old = keepOld ? [] : obsoleteImages(db, await fs.listFileNames(root(), 'data/images'));
     for (const f of old) await fs.removeFile(root(), `data/images/${f}`);
     const thumbs = await updateThumbs(db);
     state.store.dropImageUrls();
     return { old: old.length, thumbs };
+  },
+  // Slike koje je zadržala prethodna Objava (za Undo) kad Undo više nije moguć.
+  async dropOldImages() {
+    const old = obsoleteImages(state.db, await fs.listFileNames(root(), 'data/images'));
+    for (const f of old) await fs.removeFile(root(), `data/images/${f}`);
+    return old.length;
   },
 });
 
