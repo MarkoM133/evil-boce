@@ -9,3 +9,6 @@ game/.shots/
 game/build/
 game/export/
 game/.branding/
+
+# Card Engine assets and art (private, they live in the Syncthing folder)
+data/card-engine/
