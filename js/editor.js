@@ -35,7 +35,7 @@ export function createEditor(env) {
   const ed = {
     drafts: null, tpl: null, tpls: {}, ready: false, agency: true, loading: false, error: null,
     id: null, work: null, base: null, art: null, artFor: null, emblem: null, emblemFor: null,
-    dirty: false, q: '', set: '', type: '', canvas: null, warnBox: null, frame: 0,
+    dirty: false, q: '', set: '', type: '', color: '', hero: '', show: '', canvas: null, warnBox: null, frame: 0,
   };
   const store = () => env.state.store;
   const canWrite = () => store()?.kind === 'folder';
@@ -137,9 +137,24 @@ export function createEditor(env) {
         ['', 'Marko', 'Tarik'].map(x => h('option', { value: x, selected: x === who() }, x || '–')))));
   }
 
+  // Filteri popisa gledaju kartu s nacrtom (art i status se mijenjaju u nacrtu).
+  const SHOW = [['', 'Everything'], ['noart', 'No art'], ['fx', 'Needs fx'], ['draft', 'Status: draft'], ['review', 'Status: review'], ['done', 'Status: done'], ['unpublished', 'Unpublished changes']];
+  const needsFx = c => !!(c.text ?? '').trim() && !['Stage', 'Core'].includes(c.type) && (!c.fx || c.fxStatus === 'check');
+  const heroOf = c => (HEROISH.includes(c.type) ? c.hero || c.name : c.traits?.[0]);
   const shown = () => {
     const q = ed.q.trim().toLowerCase();
-    return cards().filter(c => (!ed.set || setOf(c) === ed.set) && (!ed.type || c.type === ed.type) && (!q || `${c.id} ${c.name}`.toLowerCase().includes(q)));
+    return cards().filter(c => {
+      const m = { ...c, ...(ed.drafts?.cards?.[c.id] ?? {}) };
+      if (ed.set && setOf(c) !== ed.set) return false;
+      if (ed.type && c.type !== ed.type) return false;
+      if (ed.color && m.color !== ed.color) return false;
+      if (ed.hero && heroOf(m) !== ed.hero) return false;
+      if (ed.show === 'noart' && m.art) return false;
+      if (ed.show === 'fx' && !needsFx(m)) return false;
+      if (['draft', 'review', 'done'].includes(ed.show) && (m.status ?? 'draft') !== ed.show) return false;
+      if (ed.show === 'unpublished' && !ed.drafts?.cards?.[c.id]) return false;
+      return !q || `${c.id} ${m.name}`.toLowerCase().includes(q);
+    });
   };
 
   function renderList() {
@@ -151,6 +166,14 @@ export function createEditor(env) {
         h('select', { 'aria-label': 'Type', onchange: e => { ed.type = e.target.value; env.render(); } },
           h('option', { value: '' }, 'All types'), EDIT_TYPES.map(t => h('option', { value: t, selected: t === ed.type }, t)))),
       h('input', { class: 'ce-find', type: 'search', placeholder: 'Find', value: ed.q, oninput: e => { ed.q = e.target.value; refreshList(); } }),
+      h('div', { class: 'ce-list-head' },
+        h('select', { 'aria-label': 'Colour', onchange: e => { ed.color = e.target.value; env.render(); } },
+          h('option', { value: '' }, 'All colours'), COLORS.map(c => h('option', { value: c, selected: c === ed.color }, c))),
+        h('select', { 'aria-label': 'Hero', onchange: e => { ed.hero = e.target.value; env.render(); } },
+          h('option', { value: '' }, 'All heroes'), heroNames().map(n => h('option', { value: n, selected: n === ed.hero }, n)))),
+      h('select', { class: 'ce-find', 'aria-label': 'Show', onchange: e => { ed.show = e.target.value; env.render(); } },
+        SHOW.map(([v, label]) => h('option', { value: v, selected: v === ed.show }, label))),
+      h('p', { class: 'muted small' }, `${shown().length} of ${cards().length}`),
       renderNew(sets),
       h('ul', { id: 'ce-items' }, shown().map(c => item(c))));
   }
@@ -169,6 +192,23 @@ export function createEditor(env) {
       h('div', { class: 'ce-list-head' },
         h('button', { class: 'primary', type: 'button', onclick: () => newCard(setSel.value, typeSel.value) }, 'Create'),
         h('button', { class: 'ghost', type: 'button', onclick: () => { ed.newOpen = false; env.render(); } }, 'Cancel')));
+  }
+
+  const heroNames = () => env.state.db.cards.filter(c => c.type === 'Hero' && !c.deleted).map(c => c.name).sort();
+
+  // Duplikat: ista karta pod sljedećim kodom u istom setu, kao nova karta (nacrt do Objave).
+  function duplicate() {
+    const w = ed.work;
+    if (ed.dirty && !confirm('Discard the unsaved changes to this card?')) return;
+    const id = nextId(setOf(w));
+    const copy = structuredClone(w);
+    for (const k of ['image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted', 'fx', 'fxStatus', 'aliases']) delete copy[k];
+    ed.id = id;
+    ed.base = { id };
+    ed.work = { ...copy, id, new: true, name: `${w.name ?? ''} (copy)`, status: 'draft' };
+    ed.dirty = true;
+    ed.art = ed.artFor = ed.emblem = ed.emblemFor = null;
+    env.go(id);
   }
 
   function nextId(set) {
@@ -329,6 +369,7 @@ export function createEditor(env) {
         h('button', { class: 'primary', type: 'submit', disabled: !canWrite() || ed.lock?.state === 'other' }, 'Save draft'),
         ed.drafts?.cards?.[w.id] ? h('button', { type: 'button', class: 'ghost', disabled: !canWrite(), onclick: () => env.guard(discardDraft) }, 'Discard draft') : null,
         h('button', { type: 'button', class: 'ghost', onclick: () => downloadPng() }, 'Download PNG'),
+        h('button', { type: 'button', class: 'ghost', onclick: () => duplicate(), title: 'A new card with the next code in this set' }, 'Duplicate'),
         canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer).')));
   }
 
