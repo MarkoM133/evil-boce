@@ -44,10 +44,9 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-pub-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* otvorena karta: cijeli ekran s trakom */
-.ce-full { display: grid; gap: 22px; }
+/* otvorena karta: u okviru s izbornikom; stupci po širini sadržaja (container), ne prozora */
+.ce-full { display: grid; gap: 22px; container-type: inline-size; }
 .ce-top { display: flex; align-items: center; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3; background: var(--black); }
-.ce-logo { background: none; clip-path: none; padding: 0 6px 0 0; }
-.ce-logo:hover { background: none; }
 .ce-crumbs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); font-weight: 600; }
 .ce-crumbs strong { color: var(--bone); }
 .ce-crumbs .link { text-decoration: none; }
@@ -60,8 +59,20 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-lockchip { font: 600 14px var(--text); color: var(--straw); background: var(--straw-wash); padding: 9px 14px; display: inline-flex; gap: 10px; align-items: center; }
 .ce-lockchip.other { color: var(--bone); background: var(--red-wash); }
 .ce-lockchip.muted { color: var(--muted); background: none; }
-.ce-cols { display: grid; grid-template-columns: 300px minmax(360px, 1fr) minmax(380px, 500px); gap: 28px; align-items: start; }
-.ce-cols.wide { grid-template-columns: 290px minmax(480px, 1.3fr) minmax(380px, 460px); }
+.ce-cols { display: grid; grid-template-columns: 280px minmax(320px, 1fr) minmax(360px, 480px); grid-template-areas: "side centre form"; gap: 28px; align-items: start; }
+.ce-cols.wide { grid-template-columns: 270px minmax(420px, 1.3fr) minmax(360px, 440px); }
+.ce-cols > .ce-side { grid-area: side; }
+.ce-cols > .ce-centre { grid-area: centre; }
+.ce-cols > .ce-form { grid-area: form; }
+/* Uže (laptop, izbornik lijevo): karta i paneli lijevo, forma desno. */
+@container (max-width: 1180px) {
+  .ce-cols, .ce-cols.wide { grid-template-columns: minmax(300px, 0.9fr) minmax(340px, 1.1fr); grid-template-areas: "centre form" "side form"; }
+  .ce-cols > .ce-side { position: static; max-height: none; }
+}
+@container (max-width: 720px) {
+  .ce-cols, .ce-cols.wide { grid-template-columns: minmax(0, 1fr); grid-template-areas: "centre" "form" "side"; }
+  .ce-cols > .ce-centre { position: static; }
+}
 .ce-side { display: grid; gap: 18px; position: sticky; top: 86px; max-height: calc(100vh / var(--z) - 100px); overflow-y: auto; }
 .ce-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 15px; }
 .ce-checks li { display: grid; grid-template-columns: 20px 1fr; gap: 6px; }
@@ -206,13 +217,7 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-item.active { background: var(--surface); color: var(--bone); }
 .ce-preview { position: sticky; top: 8px; display: grid; gap: 10px; }
 
-@media (max-width: 1280px) {
-  .ce-cols, .ce-cols.wide { grid-template-columns: 260px minmax(0, 1fr); }
-  .ce-form { grid-column: 1 / -1; }
-}
 @media (max-width: 900px) {
-  .ce-cols, .ce-cols.wide { grid-template-columns: 1fr; }
-  .ce-side, .ce-centre { position: static; max-height: none; }
   .ce-top { flex-wrap: wrap; }
   .ce-pub-row { grid-template-columns: 30px 1fr; }
   .card-editor, .ce-frames { grid-template-columns: 1fr; }

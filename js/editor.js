@@ -229,8 +229,6 @@ export function createEditor(env) {
       : ed.lock?.state === 'mine' ? h('span', { class: 'ce-lockchip' }, '🔒 You are editing')
         : canWrite() && !who() ? h('span', { class: 'ce-lockchip muted' }, 'Set "Signed in as" to lock the card') : null;
     const top = h('header', { class: 'ce-top' },
-      h('button', { class: 'ce-logo', type: 'button', title: 'Back to Sets', onclick: () => go(ed.from) },
-        h('span', { class: 'wordmark small', role: 'img', 'aria-label': 'Evil Boće' }, h('span', { class: 'w-evil' }, 'Evil'), h('span', { class: 'w-boce' }, 'Boće'))),
       h('nav', { class: 'ce-crumbs' },
         h('button', { class: 'link', type: 'button', onclick: () => go('sets') }, 'Card editor'), ' / ',
         h('button', { class: 'link', type: 'button', onclick: () => { sets.pick(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id)); go('sets'); } }, setName), ' / ',

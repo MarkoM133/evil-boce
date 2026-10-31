@@ -533,11 +533,8 @@ function render() {
     document.body.classList.remove('detail-open'); // pregled ga vrati kad nacrta detalj
     // Izlaz iz Card editora: nespremljena karta pita (ostaje u editoru ako ne), lock se otpušta.
     if (state.tab !== 'editor' && !cardEditor.leave()) state.tab = 'editor';
-    // Otvorena karta u Card editoru je cijeli ekran sa svojom trakom (mockup); stranice Card editora su bez trake heroja.
-    const full = state.tab === 'editor' && cardEditor.isCardPage();
-    document.body.classList.toggle('editor-full', full);
-    if (full) app.replaceChildren(cardEditor.render());
-    else if (state.tab === 'editor') app.replaceChildren(renderMain());
+    // Stranice Card editora (i otvorena karta) su u istom okviru s izbornikom, bez trake heroja.
+    if (state.tab === 'editor') app.replaceChildren(renderMain());
     else app.replaceChildren(renderHeader(), renderMain());
     updateStrip();
     cardPushed = false;
