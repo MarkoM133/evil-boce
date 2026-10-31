@@ -220,7 +220,7 @@ export function createEditor(env) {
     if (PORTRAIT.includes(w.type)) parts.push(sameFramePanel(w));
     if (w.type === 'Stage') parts.push(panel('Terrain', h('p', { class: 'small' }, 'The terrain line is added to the card by the editor, under the text. It is not typed in the text.')));
     if (w.type === 'Core') parts.push(panel('Cores', h('p', { class: 'small' }, 'Cores are not in a set. They have their own list in Card editor › Sets.')));
-    if (!['Stage', 'Core'].includes(w.type)) parts.push(fxPanel(w));
+    if (w.type !== 'Core') parts.push(fxPanel(w));
     if (PORTRAIT.includes(w.type)) { ed.balBox = h('div', {}); parts.push(ed.balBox); } else ed.balBox = null;
     parts.push(notesPanel(w));
     return h('aside', { class: 'ce-side' }, ...parts);
@@ -266,7 +266,7 @@ export function createEditor(env) {
       h('div', { class: 'ce-panel-head' }, h('h3', {}, 'fx for the game'),
         h('button', { class: 'ghost', type: 'button', disabled: textChanged || !p?.proposal, title: textChanged ? 'Publish first: the proposal is for the published text' : '', onclick: propose }, 'Propose fx')),
       box, h('p', { class: `small ${p?.unparsed?.length && !w.fx ? 'warn' : 'muted'}` }, note),
-      w.fx && w.fxStatus === 'check' ? h('p', { class: 'small warn' }, 'The text changed after this fx was confirmed: check it, then edit or confirm.') : null,
+      w.fx && w.fxStatus === 'check' ? h('p', { class: 'small warn' }, 'Not confirmed: a proposal, or the text changed after it. Check it against the text, then Confirm (or edit it) and Save.') : null,
       w.fx && w.fxStatus === 'check' ? h('button', { class: 'ghost', type: 'button', onclick: () => { snap(true); w.fxStatus = 'ok'; changed(); env.render(); } }, 'Confirm fx') : null,
       !w.new && env.openEffect ? h('button', { class: 'link small', type: 'button', onclick: () => env.openEffect(w.id) }, 'What the game reads →') : null);
   }
@@ -717,7 +717,7 @@ export function createEditor(env) {
     const textChanged = !w.new && toWords(w.text ?? '') !== (ed.base.type === 'Stage' ? stripTerrain(ed.base.text) : ed.base.text ?? '');
     const gameReads = () => {
       if (!(card.text ?? '').trim()) return;
-      if (w.fx) out.push([w.fxStatus !== 'check', w.fxStatus === 'check' ? 'The fx needs a check (the text changed)' : 'fx confirmed for the game']);
+      if (w.fx) out.push([w.fxStatus !== 'check', w.fxStatus === 'check' ? 'The fx is not confirmed yet' : 'fx confirmed for the game']);
       else if (textChanged || w.new) out.push([false, 'The game reads the text after Publish']);
       else if (!fxp) out.push([false, 'No report from the game yet']);
       else if (fxp.unparsed?.length) out.push([false, `"${fxp.unparsed[0]}" needs fx`]);

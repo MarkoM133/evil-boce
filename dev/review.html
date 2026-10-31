@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Draft review</title>
+  <base href="/">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow+Condensed:wght@600&display=swap">
+  <style>
+    body { margin: 0; background: #15151a; color: #ddd; font: 13px sans-serif; }
+    #out { display: grid; grid-template-columns: repeat(var(--cols, 4), auto); gap: 14px; padding: 12px; justify-content: start; }
+    .pair { display: flex; gap: 4px; align-items: flex-end; }
+    .pair img, .pair canvas { width: var(--w, 150px); display: block; border-radius: 4px; }
+    .pair.wide img, .pair.wide canvas { width: calc(var(--w, 150px) * 1.4); }
+    figcaption { max-width: 310px; }
+    .warn { color: #f4c22f; }
+    #report { display: none; }
+  </style>
+</head>
+<body>
+  <!-- Development check through the local server (npm start): every card as the editor draws it
+       (cards.json with drafts), beside its Card Engine PNG, with the renderer's warnings.
+       /dev/review.html?from=0&n=16&cols=4. The JSON report of all cards is in #report. -->
+  <div id="out"></div>
+  <pre id="report"></pre>
+  <script type="module">
+    import { loadTemplate, renderCard, fontsReady, loadImage, templateName } from '../js/render.js';
+
+    const q = new URLSearchParams(location.search);
+    const from = Number(q.get('from') ?? 0);
+    const n = Number(q.get('n') ?? 999);
+    document.documentElement.style.setProperty('--cols', q.get('cols') ?? '4');
+    if (q.get("w")) document.documentElement.style.setProperty("--w", `${q.get("w")}px`);
+    const out = document.getElementById('out');
+    const db = await (await fetch('/data/cards.json', { cache: 'no-store' })).json();
+    const drafts = await fetch('/data/editor/drafts.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : { cards: {} }));
+    await fontsReady();
+    const templates = {};
+    const tplOf = async card => (templates[templateName(card)] ??= await loadTemplate(templateName(card), async rel => `/data/${rel}`));
+    const img = async p => (p ? loadImage(`/data/${p}`).catch(() => null) : null);
+    const cards = db.cards.filter(c => !c.deleted).map(c => ({ ...c, ...(drafts.cards?.[c.id] ?? {}) }))
+      .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    const report = [];
+    for (const [i, card] of cards.entries()) {
+      const wide = card.type === 'Hero' || card.type === 'Evolution';
+      const emblemPath = card.emblem ?? (card.type === 'Evolution' ? cards.find(x => x.type === 'Hero' && x.name === card.hero)?.emblem : null);
+      const canvas = document.createElement('canvas');
+      const warnings = renderCard(canvas, card, await tplOf(card), await img(card.art), await img(emblemPath));
+      if (wide && !emblemPath) warnings.push('No emblem.');
+      report.push({ id: card.id, name: card.name, type: card.type, warnings });
+      if (i < from || i >= from + n) continue;
+      const ce = document.createElement('img');
+      const dir = wide ? 'Sve Karte Landscape' : 'Sve Karte Portrait';
+      const names = [card.name, `${card.id} ${card.name} Hero`, `${card.id} ${card.name}`];
+      let k = 0;
+      ce.src = `/data/card-engine/Za Poslat/${dir}/${encodeURIComponent(names[k])}.png`;
+      ce.onerror = () => { if (++k < names.length) ce.src = `/data/card-engine/Za Poslat/${dir}/${encodeURIComponent(names[k])}.png`; else ce.onerror = null; };
+      const fig = document.createElement('figure');
+      fig.style.margin = '0';
+      const pair = document.createElement('div');
+      pair.className = `pair${wide ? ' wide' : ''}`;
+      pair.append(ce, canvas);
+      const cap = document.createElement('figcaption');
+      cap.innerHTML = `${card.id} ${card.name}${warnings.length ? `<br><span class="warn">${warnings.join(' ')}</span>` : ''}`;
+      fig.append(pair, cap);
+      out.append(fig);
+    }
+    document.getElementById('report').textContent = JSON.stringify(report);
+    document.body.dataset.ready = '1';
+  </script>
+</body>
+</html>
