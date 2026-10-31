@@ -49,14 +49,24 @@ export function createSetsView(ctx) {
 
   async function imageUrl(code, name) {
     const key = `${code}/${name}`;
-    if (!(key in v.urls)) v.urls[key] = (await ctx.store().dataUrl(`sets/${key}`).catch(() => null)) ?? null;
+    // Samo nađene slike se pamte: pack.png koji Syncthing donese kasnije se vidi pri idućem crtanju.
+    if (!v.urls[key]) v.urls[key] = (await ctx.store().dataUrl(`sets/${key}`).catch(() => null)) ?? null;
     return v.urls[key];
   }
 
   // def: { packSize } of the default pack (a Draft that mixes sets); left as it is when not given.
-  async function save(sets, def = null) {
-    const fresh = JSON.parse((await fs.readText(ctx.store().root, SETS_PATH)) ?? '{"sets":[]}');
-    fresh.sets = sets.map(({ code, name, number, packSize }) => ({ code, name, number, packSize }));
+  // Spremanje mijenja samo zadani set (one: { code, name, number, packSize }) u svježe pročitanoj datoteci,
+  // da ne pregazi set koji je drugi stroj dodao ili promijenio u međuvremenu. def: veličina default paketa.
+  async function save(one, def = null) {
+    const text = await fs.readText(ctx.store().root, SETS_PATH);
+    let fresh;
+    try { fresh = text?.trim() ? JSON.parse(text) : { sets: [] }; } catch { throw new Error('sets.json is being written right now. Try again in a moment.'); }
+    fresh.sets ??= [];
+    if (one) {
+      const row = { code: one.code, name: one.name, number: one.number, packSize: one.packSize };
+      const i = fresh.sets.findIndex(x => x.code === one.code);
+      if (i >= 0) fresh.sets[i] = row; else fresh.sets.push(row);
+    }
     if (def) fresh.default = def;
     fresh.updated = new Date().toISOString();
     fresh.who = ctx.who() || undefined;
@@ -108,7 +118,7 @@ export function createSetsView(ctx) {
       if (!code) return;
       if (!CODE_RE.test(code)) throw new Error('A set code is 2–4 capital letters and a number, e.g. OP2 or NR1.');
       if (list.some(s => s.code === code)) throw new Error(`Set ${code} already exists.`);
-      await save([...list, { code, name: code, number: Math.max(0, ...list.map(s => s.number)) + 1, packSize: DEFAULT_PACK }]);
+      await save({ code, name: code, number: Math.max(0, ...list.map(s => s.number)) + 1, packSize: DEFAULT_PACK });
       v.code = code;
       v.settings = true;
       ctx.render();
@@ -192,7 +202,7 @@ export function createSetsView(ctx) {
         imageField(s.code, 'draft-bg.png', 'DRAFT BACKGROUND', 'behind the pack while it opens')),
       h('div', { class: 'ce-actions' },
         h('button', { class: 'primary', type: 'button', disabled: !ctx.canWrite(), onclick: () => ctx.guard(async () => {
-          await save(list.map(x => (x.code === s.code ? work : x)));
+          await save(work);
           v.settings = false;
           ctx.toast(`Set ${s.code} saved.`);
           ctx.render();
@@ -216,7 +226,7 @@ export function createSetsView(ctx) {
           imageField('default', 'draft-bg.png', 'DRAFT BACKGROUND')),
         h('div', { class: 'ce-actions' },
           h('button', { class: 'primary', type: 'button', disabled: !ctx.canWrite(), onclick: () => ctx.guard(async () => {
-            await save(sets(), size);
+            await save(null, size);
             ctx.toast('Default pack saved.');
             ctx.render();
           }) }, 'Save'))));

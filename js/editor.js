@@ -40,6 +40,7 @@ const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equ
 const empty = v => v == null || v === '' || (typeof v === 'object' && Object.keys(v).length === 0);
 const sameVal = (a, b) => (empty(a) && empty(b)) || JSON.stringify(a) === JSON.stringify(b);
 const setOf = id => id.split('-')[0];
+const isDefaultCrop = c => !c || (c.x === 0.5 && c.y === 0.5 && (c.zoom ?? 1) === 1);
 const when = iso => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
@@ -79,16 +80,22 @@ export function createEditor(env) {
   }
 
   // Uvijek s diska (drugi stroj je mogao spremiti u međuvremenu; Syncthing donese datoteku).
+  // Datoteke koje nema daju fallback; datoteka koja se ne da pročitati (Syncthing je upravo mijenja) je greška,
+  // da se pozivatelj ne bi zapisao prazan popis preko tuđih nacrta.
   async function readJson(path, fallback) {
-    try {
-      if (store().kind === 'folder') {
-        const t = await fs.readText(store().root, path);
-        return t ? JSON.parse(t) : structuredClone(fallback);
-      }
+    let text;
+    if (store().kind === 'folder') text = await fs.readText(store().root, path);
+    else {
       const r = await fetch(path, { cache: 'no-store' });
-      return r.ok ? await r.json() : structuredClone(fallback);
+      if (r.status === 404) return structuredClone(fallback);
+      if (!r.ok) throw new Error(`${path} could not be read (${r.status}).`);
+      text = await r.text();
+    }
+    if (text == null || !text.trim()) return structuredClone(fallback);
+    try {
+      return JSON.parse(text);
     } catch {
-      return structuredClone(fallback);
+      throw new Error(`${path} is being written right now (or is broken). Try again in a moment.`);
     }
   }
   const readDrafts = () => readJson(DRAFTS_PATH, { version: 1, cards: {} });
@@ -128,7 +135,7 @@ export function createEditor(env) {
   function cardOf(w) {
     const c = { ...w, text: toWords(w.text) };
     if (w.type === 'Stage') c.text = withTerrain(c.text, w.terrain ?? 'None');
-    if (w.type === 'Core') { c.bonus = coreBonus(w.effect); c.text = ''; c.template = 'core'; }
+    if (w.type === 'Core') { c.bonus = coreBonus(w.effect); c.text = ''; }
     delete c.effect;
     return c;
   }
@@ -140,6 +147,7 @@ export function createEditor(env) {
     ed.id = id;
     ed.base = base;
     ed.work = workOf({ ...base, ...(draft ?? {}) });
+    ed.opened = cardOf(ed.work);
     ed.dirty = false;
     ed.undo = [];
     ed.artMode = false;
@@ -162,16 +170,46 @@ export function createEditor(env) {
     if (ed.error) return h('section', { class: 'panel' }, h('p', { class: 'warn' }, ed.error));
     const want = env.state.editId ?? 'sets';
     if (PAGES.includes(want)) {
-      if (ed.id) { ed.id = null; ed.work = null; }
+      if (ed.id) {
+        if (!leaveOk()) return renderCardPage();
+        ed.id = null;
+        ed.work = null;
+      }
       syncLock();
-      if (Date.now() - ed.locksAt > HEARTBEAT_MS) readLocks().then(changed => { if (changed) env.render(); });
+      // Lockovi i cards.json s drugog stroja, najviše svakih 30 s.
+      if (Date.now() - ed.locksAt > HEARTBEAT_MS) {
+        Promise.all([readLocks(), refreshDb()]).then(([a, b]) => { if (a || b) env.render(); }).catch(() => {});
+      }
       return { sets: sets.render, guide: guide.render, traits: renderTraitsPage, frames: frames.render, publish: renderPublish }[want]();
     }
-    if (want !== ed.id) open(want);
+    if (want !== ed.id) {
+      if (!leaveOk()) return renderCardPage();
+      open(want);
+    }
     syncLock();
     if (!ed.work) return h('section', { class: 'panel' }, h('p', { class: 'warn' }, `No card ${want}.`), h('button', { class: 'ghost', onclick: () => go('sets') }, 'Back to Sets'));
     return renderCardPage();
   }
+
+  // Nespremljene izmjene pri odlasku s karte (Natrag, druga stranica): pitaj; "ne" vrati adresu na kartu.
+  function leaveOk() {
+    if (!ed.dirty || !ed.work) return true;
+    if (confirm('Discard the unsaved changes to this card?')) { ed.dirty = false; return true; }
+    env.state.editId = ed.id;
+    env.state.tab = 'editor';
+    setTimeout(env.render, 0);
+    return false;
+  }
+
+  // Odlazak iz Card editora na drugu stranicu appa: pitaj za nespremljeno i otpusti lock.
+  function leave() {
+    if (!leaveOk()) return false;
+    ed.id = null;
+    ed.work = null;
+    releaseLock();
+    return true;
+  }
+  window.addEventListener('beforeunload', e => { if (ed.dirty && ed.work) e.preventDefault(); });
 
   function go(id) {
     if (ed.dirty && id !== ed.id && !confirm('Discard the unsaved changes to this card?')) return;
@@ -319,7 +357,7 @@ export function createEditor(env) {
     const buttons = w.type === 'Core' ? [] : ed.artMode ? [] : [
       h('button', { class: 'ghost', type: 'button', disabled: !ed.artFor && !w.art, onclick: () => { ed.artMode = true; env.render(); } }, 'Edit art'),
       h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => fileIn.click() }, w.art ? 'Replace art' : 'Add art'),
-      w.type === 'Stage' ? null : h('button', { class: 'ghost', type: 'button', onclick: () => { env.toast('Remove background works on a plain background colour: save the PNG there, then Replace art.'); env.openTab('tools'); } }, 'Remove background'),
+      w.type === 'Stage' ? null : h('button', { class: 'ghost', type: 'button', onclick: () => { if (!leaveOk()) return; ed.work = null; ed.id = null; env.toast('Remove background works on a plain background colour: save the PNG there, then Replace art.'); env.openTab('tools'); } }, 'Remove background'),
       h('button', { class: 'ghost', type: 'button', title: 'A new card with the next code in this set', onclick: duplicate }, 'Duplicate'),
       h('button', { class: 'ghost', type: 'button', onclick: downloadPng }, 'Download PNG'),
     ];
@@ -355,9 +393,11 @@ export function createEditor(env) {
     ed.tpl = tpl;
     if (first && HEROISH.includes(w.type) && !w.bg) { env.render(); return; }
     if (ed.artFor !== w.art) {
-      ed.artFor = w.art;
-      const url = w.art ? await store().dataUrl(w.art) : null;
-      ed.art = url ? await loadImage(url).catch(() => null) : null;
+      const want = w.art;
+      ed.artFor = want;
+      const url = want ? await store().dataUrl(want) : null;
+      const img = url ? await loadImage(url).catch(() => null) : null;
+      if (ed.artFor === want) ed.art = img;
     }
     const emblemPath = w.emblem ?? (w.type === 'Evolution' ? heroCard(w)?.emblem ?? ed.drafts?.cards?.[heroCard(w)?.id]?.emblem : null);
     if (ed.emblemFor !== emblemPath) {
@@ -788,7 +828,13 @@ export function createEditor(env) {
     const area = h('textarea', { rows: 4, value: w.text ?? '' });
     const sugBox = h('div', { class: 'ce-suggest' });
     let sug = { from: 0, items: [] };
-    const sync = () => { snap(); w.text = area.value; changed(); refreshToggles(); };
+    const sync = () => {
+      snap();
+      w.text = area.value;
+      if (w.fx && w.fxStatus !== 'check') w.fxStatus = 'check';
+      changed();
+      refreshToggles();
+    };
     const take = item => {
       const at = area.selectionStart ?? area.value.length;
       area.value = area.value.slice(0, sug.from) + item.insert + area.value.slice(at);
@@ -953,14 +999,19 @@ export function createEditor(env) {
 
   // Nacrt: polja koja se razlikuju od cards.json, tko i kad. Drugi nacrti se čitaju iznova prije pisanja.
   async function saveDraft() {
-    const w = ed.work;
     if (ed.lock?.state === 'other') throw new Error(`${ed.lock.other?.who ?? 'Someone'} is editing this card.`);
+    if (await refreshDb()) {
+      rebase();
+      env.render();
+      throw new Error('The cards were published in the meantime. Fields you did not touch now show the new version; check your changes and Save again.');
+    }
+    const w = ed.work;
     const card = cardOf(w);
-    // fx potvrđen za stari tekst: tekst se promijenio, pa ga treba provjeriti.
-    if (card.fx && card.fxStatus !== 'check' && !w.new && card.text !== (ed.base.text ?? '') && sameVal(card.fx, ed.base.fx)) card.fxStatus = 'check';
     const diff = {};
     for (const k of FIELDS) {
       if (card[k] === undefined && ed.base[k] === undefined) continue;
+      // Izrez na sredini bez zuma je isto što i izrez kojeg nema.
+      if (k === 'artCrop' && ed.base[k] == null && isDefaultCrop(card[k])) continue;
       if (!sameVal(card[k], ed.base[k])) diff[k] = card[k] ?? null;
     }
     const fresh = await readDrafts();
@@ -982,7 +1033,28 @@ export function createEditor(env) {
     env.render();
   }
 
+  // cards.json s diska: ako se promijenio (Objava na drugom stroju), app ga preuzme. true kad je nov.
+  async function refreshDb() {
+    return env.reloadDb ? env.reloadDb() : false;
+  }
+
+  // Otvorena karta nakon Objave u međuvremenu: polja koja korisnik nije dirao dobiju novu objavljenu vrijednost.
+  function rebase() {
+    if (!ed.work || !ed.opened) return;
+    const nb = db().cards.find(c => c.id === ed.id);
+    if (!nb) return;
+    const now = cardOf(ed.work);
+    const draft = ed.drafts?.cards?.[ed.id] ?? {};
+    const fresh = workOf({ ...nb, ...draft });
+    const freshCard = cardOf(fresh);
+    for (const k of FIELDS) if (sameVal(now[k], ed.opened[k]) && !(k in draft)) now[k] = freshCard[k];
+    ed.base = nb;
+    ed.work = workOf(now);
+    ed.opened = cardOf(workOf({ ...nb, ...draft }));
+  }
+
   async function discardDraft() {
+    if (ed.lock?.state === 'other') throw new Error(`${ed.lock.other?.who ?? 'Someone'} is editing this card.`);
     if (!confirm(ed.work?.new ? 'Throw away this new card?' : 'Throw away the unpublished changes to this card?')) return;
     const fresh = await readDrafts();
     delete fresh.cards?.[ed.id];
@@ -999,8 +1071,9 @@ export function createEditor(env) {
     if (!file) return;
     const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[file.type];
     if (!ext) throw new Error('Art must be PNG, JPEG or WebP.');
-    const path = `art/${ed.work.id}.${ext}`;
-    await fs.writeFile(store().root, `data/${path}`, new Uint8Array(await file.arrayBuffer()));
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const path = `art/${ed.work.id}.${await imageHashOf(bytes)}.${ext}`;
+    await fs.writeFile(store().root, `data/${path}`, bytes);
     store().dropImageUrls?.();
     snap(true);
     ed.work.art = path;
@@ -1016,8 +1089,9 @@ export function createEditor(env) {
     if (!file) return;
     const ext = { 'image/png': 'png', 'image/webp': 'webp' }[file.type];
     if (!ext) throw new Error('The emblem must be PNG or WebP (with a clear background).');
-    const path = `art/emblems/${ed.work.id}.${ext}`;
-    await fs.writeFile(store().root, `data/${path}`, new Uint8Array(await file.arrayBuffer()));
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const path = `art/emblems/${ed.work.id}.${await imageHashOf(bytes)}.${ext}`;
+    await fs.writeFile(store().root, `data/${path}`, bytes);
     store().dropImageUrls?.();
     snap(true);
     ed.work.emblem = path;
@@ -1114,15 +1188,30 @@ export function createEditor(env) {
     const old = await readLock(id);
     const st = lockState(old, me);
     if (st === 'other' && !force) {
-      if (ed.lock?.id === id) { ed.lock = { id, who: me, state: 'other', other: old }; env.render(); }
+      if (ed.lock?.id === id) { ed.lock = { id, who: me, state: 'other', other: old }; watchLock(id, me); env.render(); }
       return;
     }
     const since = st === 'mine' ? old.since : null;
-    await fs.writeFile(store().root, lockPath(id), JSON.stringify(newLock(me, new Date(), since)) + '\n');
     if (ed.lock?.id !== id) return;
+    await fs.writeFile(store().root, lockPath(id), JSON.stringify(newLock(me, new Date(), since)) + '\n');
+    if (ed.lock?.id !== id) {
+      // Karta je u međuvremenu zatvorena: lock ne smije ostati.
+      fs.removeFile(store().root, lockPath(id)).catch(() => {});
+      return;
+    }
     ed.lock = { id, who: me, state: 'mine', since: since ?? new Date().toISOString() };
-    ed.lock.beat = setInterval(() => {
-      if (ed.lock?.id === id && ed.lock.state === 'mine') fs.writeFile(store().root, lockPath(id), JSON.stringify(newLock(me, new Date(), ed.lock.since)) + '\n').catch(() => {});
+    ed.lock.beat = setInterval(async () => {
+      if (ed.lock?.id !== id || ed.lock.state !== 'mine') return;
+      const now = await readLock(id);
+      // Netko je preuzeo kartu (Take over): odstupi, spremanje se gasi.
+      if (now?.who && now.who !== me && lockState(now, me) === 'other') {
+        clearInterval(ed.lock.beat);
+        ed.lock = { id, who: me, state: 'other', other: now };
+        watchLock(id, me);
+        env.render();
+        return;
+      }
+      fs.writeFile(store().root, lockPath(id), JSON.stringify(newLock(me, new Date(), ed.lock.since)) + '\n').catch(() => {});
     }, HEARTBEAT_MS);
     // Drugi stroj je možda zaključao u isto vrijeme: Syncthing to donese za par sekundi.
     if (!force) setTimeout(async () => {
@@ -1131,10 +1220,24 @@ export function createEditor(env) {
       if (now?.who && now.who !== me && lockState(now, me) === 'other') {
         clearInterval(ed.lock.beat);
         ed.lock = { id, who: me, state: 'other', other: now };
+        watchLock(id, me);
         env.render();
       }
     }, SETTLE_MS);
     env.render();
+  }
+
+  // Tuđi lock: svakih 30 s pogledaj je li karta slobodna, pa je zaključaj za sebe.
+  function watchLock(id, me) {
+    const l = ed.lock;
+    l.beat = setInterval(async () => {
+      if (ed.lock !== l) { clearInterval(l.beat); return; }
+      const now = await readLock(id);
+      if (lockState(now, me) !== 'other') {
+        clearInterval(l.beat);
+        if (ed.lock === l) claimLock(id, me);
+      } else if (now?.who !== l.other?.who) { l.other = now; env.render(); }
+    }, HEARTBEAT_MS);
   }
 
   function releaseLock() {
@@ -1187,7 +1290,9 @@ export function createEditor(env) {
     const fresh = await readDrafts();
     fresh.cards ??= {};
     let n = 0;
-    for (const c of allCards()) {
+    const ids = [...db().cards.filter(c => EDIT_TYPES.includes(c.type) && !c.deleted).map(c => c.id),
+      ...Object.entries(fresh.cards).filter(([id, d]) => d.new && !db().cards.some(c => c.id === id)).map(([id]) => id)];
+    for (const c of ids.map(id => ({ id, ...(fresh.cards[id] ?? {}) }))) {
       const d = fresh.cards[c.id] ?? {};
       const traits = d.traits ?? db().cards.find(x => x.id === c.id)?.traits ?? c.traits ?? [];
       if (!traits.includes(from)) continue;
@@ -1353,7 +1458,12 @@ export function createEditor(env) {
     await env.commitDb(restored);
     const after = await readDrafts();
     after.cards ??= {};
-    for (const [id, d] of Object.entries(last.drafts)) after.cards[id] ??= d;
+    for (const [id, d] of Object.entries(last.drafts)) after.cards[id] = after.cards[id] ? { ...d, ...after.cards[id] } : d;
+    const files = await fs.listFileNames(store().root, 'data/images').catch(() => []);
+    for (const [id, d] of Object.entries(last.drafts)) {
+      if (!d.new) continue;
+      for (const name of files.filter(n => n.startsWith(`${id}.`))) await fs.removeFile(store().root, `data/images/${name}`).catch(() => {});
+    }
     await writeJson(DRAFTS_PATH, after);
     await fs.removeFile(store().root, LAST_PUBLISH_PATH).catch(() => {});
     ed.drafts = after;
@@ -1374,8 +1484,6 @@ export function createEditor(env) {
     const list = Object.keys(drafts);
     if (!list.length) throw new Error('Nothing to publish.');
     if (!confirm(`Publish ${list.length} ${list.length === 1 ? 'card' : 'cards'} into the game?`)) return;
-    // Nova Objava: Undo prethodne više nije moguć, pa njene stare slike mogu van.
-    await env.dropOldImages();
     const before = db();
     const images = {};
     const kept = [];
@@ -1388,7 +1496,7 @@ export function createEditor(env) {
       const art = url ? await loadImage(url).catch(() => null) : null;
       if (!art && !core) { if (drafts[id].new) delete drafts[id]; kept.push(id); continue; }
       const heroOfCard = card.type === 'Evolution' ? db().cards.find(x => x.type === 'Hero' && x.name === card.hero) : null;
-      const emblemPath = card.emblem ?? (heroOfCard ? merged(heroOfCard).emblem : null);
+      const emblemPath = card.emblem ?? (heroOfCard ? drafts[heroOfCard.id]?.emblem ?? heroOfCard.emblem : null);
       const eUrl = emblemPath ? await store().dataUrl(emblemPath) : null;
       const emblem = eUrl ? await loadImage(eUrl).catch(() => null) : null;
       const canvas = document.createElement('canvas');
@@ -1402,6 +1510,8 @@ export function createEditor(env) {
     }
     const { db: next, changed, bumped } = applyDrafts(db(), drafts, images);
     if (changed) {
+      // Nova Objava zamjenjuje zadnju: Undo prethodne više nije moguć, pa njene stare slike mogu van.
+      await env.dropOldImages();
       await env.commitDb(next, { keepOld: true });
       await writeJson(LAST_PUBLISH_PATH, { at: new Date().toISOString(), who: who(), bumped, after: { version: next.version, updated: next.updated }, drafts, before });
       ed.last = undefined;
@@ -1429,7 +1539,7 @@ export function createEditor(env) {
   });
 
   return {
-    render, isCardPage, isDirty: () => ed.dirty, newCard, who, setWho,
+    render, isCardPage, isDirty: () => ed.dirty, newCard, who, setWho, leave,
     waiting: () => Object.keys(ed.drafts?.cards ?? {}).length,
   };
 }

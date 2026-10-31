@@ -26,4 +26,5 @@ test('card text: Stage terrain line and Core bonus', () => {
   assert.deepEqual(coreBonus('+2000[PWR]'), { pwr: 2000 });
   assert.deepEqual(coreBonus('-1[KB]'), { kb: -1 });
   assert.equal(coreEffect({ pwr: -2000 }), '-2000[PWR]');
+  assert.deepEqual(coreBonus('Lv2[DMG] x2000[PWR]'), {}, 'a number glued to a word is not a bonus');
 });

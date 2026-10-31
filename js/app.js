@@ -531,6 +531,8 @@ function render() {
   const app = $('#app');
   if (state.store) {
     document.body.classList.remove('detail-open'); // pregled ga vrati kad nacrta detalj
+    // Izlaz iz Card editora: nespremljena karta pita (ostaje u editoru ako ne), lock se otpušta.
+    if (state.tab !== 'editor' && !cardEditor.leave()) state.tab = 'editor';
     // Otvorena karta u Card editoru je cijeli ekran sa svojom trakom (mockup); stranice Card editora su bez trake heroja.
     const full = state.tab === 'editor' && cardEditor.isCardPage();
     document.body.classList.toggle('editor-full', full);
@@ -836,6 +838,15 @@ const cardEditor = createEditor({
   state, h, toast, guard, render,
   go: id => { state.editId = id; replaceNext = false; render(); },
   renderTraits: () => renderTraits(),
+  // cards.json s diska, ako ga je drugi stroj u međuvremenu objavio; true kad je stigla nova verzija.
+  async reloadDb() {
+    const disk = await state.store.readDb();
+    if (disk.version === state.db.version && disk.updated === state.db.updated) return false;
+    state.db = disk;
+    setTraits(state.db, state.traits?.traits);
+    state.changelog = await state.store.readChangelog().catch(() => state.changelog);
+    return true;
+  },
   openTab: tab => { state.tab = tab; replaceNext = false; render(); },
   openEffect: id => { state.tab = 'browse'; state.selected = id; state.detailTab = 'effect'; replaceNext = false; render(); },
   // Objava nacrta: baza i povijest, pa umanjene slike za nove. keepOld: stare slike ostaju za Undo.

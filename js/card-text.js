@@ -56,7 +56,7 @@ const KEY_TOKEN = { pwr: 'PWR', dmg: 'DMG', kb: 'KB', hp: 'HP', rng: 'RNG' };
 
 export function coreBonus(effect) {
   const bonus = {};
-  for (const m of (effect ?? '').matchAll(/([+-−]?\d+)\s*\[(PWR|DMG|KB|HP|RNG)\]/g)) bonus[BONUS_KEY[m[2]]] = Number(m[1].replace('−', '-'));
+  for (const m of (effect ?? '').matchAll(/(?<![\w.])([+\-−]?\d+)\s*\[(PWR|DMG|KB|HP|RNG)\]/g)) bonus[BONUS_KEY[m[2]]] = Number(m[1].replace('−', '-'));
   return bonus;
 }
 
