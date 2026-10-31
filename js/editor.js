@@ -1,19 +1,26 @@
-// Card editor (zamjena za Card Engine), 1. korak: Edit za Action, Equipment i Assist karte.
-// Forma i živi preview jedno uz drugo; izmjene se spremaju kao nacrti u data/editor/drafts.json,
-// a igra ih vidi tek kad ih Objava prebaci u cards.json (Card editor › Publish, idući korak).
-// Art je u data/art/<kod>.<ext> (puna rezolucija), izrez je u karti (artCrop).
-import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, TINTS } from './render.js';
+// Card editor (zamjena za Card Engine): Edit za sve tipove karata (Action, Equipment, Assist, Hero,
+// Evolution, Stage, Core). Forma i živi preview jedno uz drugo; izmjene se spremaju kao nacrti u
+// data/editor/drafts.json, a igra ih vidi tek kad ih Objava prebaci u cards.json (Card editor › Publish).
+// Art je u data/art/<kod>.<ext> (puna rezolucija), izrez je u karti (artCrop); amblemi u data/art/emblems/.
+import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, TINTS } from './render.js';
 import { firstTag, tagLabel, traitNames, INVALID } from './tags.js';
+import { TERRAINS } from './parse.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
-export const EDIT_TYPES = ['Action', 'Equipment', 'Assist'];
+export const EDIT_TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core'];
+// Tip se mijenja samo unutar iste vrste karte (isti predložak i ista polja).
+const PORTRAIT = ['Action', 'Equipment', 'Assist'];
+const HEROISH = ['Hero', 'Evolution'];
 const COLORS = Object.keys(TINTS);
 const STATUSES = ['draft', 'review', 'done'];
+const CORE_KINDS = ['Buff', 'Major', 'Debuff'];
 const WHO_KEY = 'evil-boce-who';
 const BONUS_KEYS = [['pwr', 'Power'], ['dmg', 'DMG'], ['hp', 'HP'], ['rng', 'Range'], ['kb', 'KB']];
+const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'Power'], ['rng', 'Range'], ['kb', 'KB']];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
-const FIELDS = ['name', 'type', 'color', 'cost', 'bonus', 'traits', 'text', 'art', 'artCrop', 'template', 'status', 'notes'];
+const FIELDS = ['name', 'type', 'color', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'text', 'terrain',
+  'art', 'artCrop', 'emblem', 'bg', 'template', 'status', 'notes'];
 const INSERTS = [
   ['[Range]', '[Range] '], ['Preroll', 'Preroll Phase: '], ['Roll', 'Roll Phase: '], ['Postroll', 'Postroll Phase: '],
   ['Battle', 'Battle Phase: '], ['Once per turn', ' Once Per Turn'], ['[PWR]', '[PWR]'], ['[DMG]', '[DMG]'],
@@ -24,9 +31,9 @@ const INSERTS = [
 export function createEditor(env) {
   const { h } = env;
   const ed = {
-    drafts: null, tpl: null, agency: true, loading: false, error: null,
-    id: null, work: null, base: null, art: null, artFor: null, dirty: false, q: '', set: '',
-    canvas: null, warnBox: null, frame: 0,
+    drafts: null, tpl: null, tpls: {}, ready: false, agency: true, loading: false, error: null,
+    id: null, work: null, base: null, art: null, artFor: null, emblem: null, emblemFor: null,
+    dirty: false, q: '', set: '', type: '', canvas: null, warnBox: null, frame: 0,
   };
   const store = () => env.state.store;
   const canWrite = () => store()?.kind === 'folder';
@@ -37,14 +44,22 @@ export function createEditor(env) {
     ed.loading = true;
     try {
       ed.agency = await fontsReady();
-      ed.tpl = await loadTemplate('action', rel => store().dataUrl(rel));
       ed.drafts = await readDrafts();
+      ed.ready = true;
     } catch (e) {
       ed.error = e.message || String(e);
     }
     ed.loading = false;
     env.render();
   }
+
+  // Predlošci se učitavaju kad zatrebaju (data/card-frames/<ime>/).
+  function templateFor(card) {
+    const name = templateName(card);
+    ed.tpls[name] ??= loadTemplate(name, rel => store().dataUrl(rel));
+    return ed.tpls[name];
+  }
+  const landscape = card => ['hero', 'evolution'].includes(templateName(card));
 
   // Uvijek s diska (drugi stroj je mogao spremiti u međuvremenu; Syncthing donese datoteku).
   async function readDrafts() {
@@ -73,17 +88,20 @@ export function createEditor(env) {
     ed.work.bonus ??= {};
     ed.work.traits ??= [];
     ed.work.artCrop ??= { x: 0.5, y: 0.5, zoom: 1 };
+    if (HEROISH.includes(base.type)) ed.work.stats ??= {};
     ed.dirty = false;
     ed.art = null;
     ed.artFor = null;
+    ed.emblem = null;
+    ed.emblemFor = null;
   }
 
   // ---------- prikaz ----------
 
   function render() {
-    if (!ed.tpl && !ed.error) {
+    if (!ed.ready && !ed.error) {
       load();
-      return h('section', { class: 'panel' }, h('p', { class: 'muted' }, 'Loading the card frames…'));
+      return h('section', { class: 'panel' }, h('p', { class: 'muted' }, 'Loading the card editor…'));
     }
     if (ed.error) return h('section', { class: 'panel' }, h('p', { class: 'warn' }, ed.error));
     const want = env.state.editId;
@@ -92,17 +110,21 @@ export function createEditor(env) {
     return h('div', { class: 'card-editor' }, renderList(), ed.work ? renderForm() : h('p', { class: 'muted ce-empty' }, 'Pick a card on the left.'), ed.work ? renderPreview() : null);
   }
 
+  const shown = () => {
+    const q = ed.q.trim().toLowerCase();
+    return cards().filter(c => (!ed.set || setOf(c) === ed.set) && (!ed.type || c.type === ed.type) && (!q || `${c.id} ${c.name}`.toLowerCase().includes(q)));
+  };
+
   function renderList() {
     const sets = [...new Set(cards().map(setOf))];
-    const q = ed.q.trim().toLowerCase();
-    const list = cards().filter(c => (!ed.set || setOf(c) === ed.set) && (!q || `${c.id} ${c.name}`.toLowerCase().includes(q)));
     return h('aside', { class: 'ce-list' },
       h('div', { class: 'ce-list-head' },
         h('select', { 'aria-label': 'Set', onchange: e => { ed.set = e.target.value; env.render(); } },
           h('option', { value: '' }, 'All sets'), sets.map(s => h('option', { value: s, selected: s === ed.set }, s))),
-        h('input', { type: 'search', placeholder: 'Find', value: ed.q, oninput: e => { ed.q = e.target.value; refreshList(); } })),
-      h('ul', { id: 'ce-items' }, list.map(c => item(c))),
-      h('p', { class: 'muted small' }, 'Action, Equipment and Assist cards. The other card types come in the next step.'));
+        h('select', { 'aria-label': 'Type', onchange: e => { ed.type = e.target.value; env.render(); } },
+          h('option', { value: '' }, 'All types'), EDIT_TYPES.map(t => h('option', { value: t, selected: t === ed.type }, t)))),
+      h('input', { class: 'ce-find', type: 'search', placeholder: 'Find', value: ed.q, oninput: e => { ed.q = e.target.value; refreshList(); } }),
+      h('ul', { id: 'ce-items' }, shown().map(c => item(c))));
   }
 
   function item(c) {
@@ -117,8 +139,7 @@ export function createEditor(env) {
   function refreshList() {
     const ul = document.getElementById('ce-items');
     if (!ul) return;
-    const q = ed.q.trim().toLowerCase();
-    ul.replaceChildren(...cards().filter(c => (!ed.set || setOf(c) === ed.set) && (!q || `${c.id} ${c.name}`.toLowerCase().includes(q))).map(item));
+    ul.replaceChildren(...shown().map(item));
   }
 
   function go(id) {
@@ -132,10 +153,11 @@ export function createEditor(env) {
     const db = env.state.db;
     const traits = traitNames(env.state.traits?.traits);
     const heroes = db.cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === w.color);
-    const firstOptions = ['General', ...heroes.map(x => x.name), ...traits];
-    if (w.traits[0] && !firstOptions.includes(w.traits[0])) firstOptions.push(w.traits[0]);
+    const portrait = PORTRAIT.includes(w.type);
+    const heroish = HEROISH.includes(w.type);
     const set = (k, v) => { w[k] = v; changed(); };
     const field = (label, input, hint) => h('label', { class: 'ce-field' }, h('span', {}, label), input, hint ? h('small', { class: 'muted' }, hint) : null);
+    const num = (value, oninput, opts = {}) => h('input', { type: 'number', value: value ?? '', placeholder: '–', oninput, ...opts });
     const text = h('textarea', { rows: 5, value: w.text ?? '', oninput: e => set('text', e.target.value) });
     const insert = s => {
       const a = text.selectionStart ?? text.value.length;
@@ -145,36 +167,88 @@ export function createEditor(env) {
       text.focus();
       set('text', text.value);
     };
+    const bonusRow = keys => h('div', { class: 'ce-row' }, keys.map(([k, label]) => field(label, num(w.bonus[k], e => {
+      const b = { ...w.bonus };
+      if (e.target.value === '' || Number(e.target.value) === 0) delete b[k]; else b[k] = Number(e.target.value);
+      set('bonus', b);
+    }, { step: k === 'pwr' ? 1000 : 1 }))));
+    const tagsList = (label, from, hint) => field(label, h('input', { list: 'ce-traits', value: w.traits.slice(from).join(', '), placeholder: 'Sword, Devil Fruit',
+      oninput: e => set('traits', [...w.traits.slice(0, from), ...e.target.value.split(',').map(s => s.trim()).filter(Boolean)]) }), hint);
+
+    // Vrsta karte određuje polja: uspravne akcije, heroji i evolucije, Stage, Core.
+    let body;
+    if (portrait) {
+      const firstOptions = ['General', ...heroes.map(x => x.name), ...traits];
+      if (w.traits[0] && !firstOptions.includes(w.traits[0])) firstOptions.push(w.traits[0]);
+      body = [
+        bonusRow(BONUS_KEYS),
+        h('div', { class: 'ce-row' },
+          field('First tag', h('select', { onchange: e => set('traits', [e.target.value, ...w.traits.slice(1)]) },
+            h('option', { value: '' }, '–'), firstOptions.map(t => h('option', { value: t, selected: t === w.traits[0] }, t))), 'Who may play it.'),
+          tagsList('Other tags', 1, 'For effects ("for every {Sword}"), comma between.')),
+        field('Text', text), inserts(insert),
+      ];
+    } else if (heroish) {
+      const evoHeroes = db.cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === w.color);
+      body = [
+        h('div', { class: 'ce-row' }, STAT_KEYS.map(([k, label]) => field(label, num(w.stats[k], e => {
+          set('stats', { ...w.stats, [k]: e.target.value === '' ? undefined : Number(e.target.value) });
+        }, { step: k === 'pwr' ? 1000 : 1 })))),
+        h('div', { class: 'ce-row' },
+          field('Ability name', h('input', { value: w.abilityNames?.[0] ?? '', oninput: e => set('abilityNames', [e.target.value, ...(w.abilityNames ?? []).slice(1)]) }), 'Bold and underlined above the text.'),
+          w.type === 'Evolution' ? field('Level', h('select', { onchange: e => set('evo', Number(e.target.value)) }, [1, 2, 3].map(n => h('option', { value: n, selected: n === (w.evo ?? 1) }, `EVO ${n}`)))) : null,
+          w.type === 'Evolution' ? field('Hero', h('select', { onchange: e => set('hero', e.target.value) },
+            h('option', { value: '' }, '–'), evoHeroes.map(x => h('option', { value: x.name, selected: x.name === w.hero }, x.name)))) : null),
+        tagsList('Tags', 0, 'Comma between.'),
+        field('Text', text), inserts(insert),
+        h('fieldset', { class: 'ce-art' },
+          h('legend', {}, 'Plate and background'),
+          h('div', { class: 'ce-row' },
+            field('Emblem', h('input', { type: 'file', accept: 'image/png,image/webp', disabled: !canWrite(), onchange: e => env.guard(() => uploadEmblem(e.target.files[0])) }),
+              w.emblem ? `data/${w.emblem}` : 'None yet: a PNG with a clear background.'),
+            field('Background behind the art', h('div', { class: 'ce-row' },
+              h('input', { id: 'ce-bg', type: 'color', value: w.bg || ed.tpl?.layout?.bg?.[w.color] || '#000000', oninput: e => set('bg', e.target.value) }),
+              w.bg ? h('button', { type: 'button', class: 'ghost', onclick: () => { delete w.bg; changed(); env.render(); } }, 'Colour default') : null)))),
+      ];
+    } else if (w.type === 'Stage') {
+      body = [
+        field('Terrain', h('select', { onchange: e => { setTerrain(e.target.value); env.render(); } },
+          TERRAINS.map(t => h('option', { value: t, selected: t === (w.terrain ?? 'None') }, t))), 'Also writes the "Terrain:" line of the text.'),
+        field('Text', text), inserts(insert),
+      ];
+    } else {
+      body = [
+        field('Kind', h('select', { onchange: e => set('traits', [e.target.value]) },
+          h('option', { value: '' }, '–'), CORE_KINDS.map(k => h('option', { value: k, selected: k === w.traits[0] }, k)))),
+        bonusRow(BONUS_KEYS.filter(([k]) => ['pwr', 'dmg', 'kb'].includes(k))),
+        field('Text', text, 'Only for a Core with an effect beyond its bonus.'),
+      ];
+    }
+
     const crop = (k, min, max, step) => h('input', { type: 'range', min, max, step, value: w.artCrop[k], oninput: e => { w.artCrop = { ...w.artCrop, [k]: Number(e.target.value) }; changed(); } });
+    const group = portrait ? PORTRAIT : [w.type];
     return h('form', { class: 'ce-form', onsubmit: e => { e.preventDefault(); env.guard(saveDraft); } },
       h('div', { class: 'ce-title' },
         h('h2', {}, `${w.id}`),
         ed.drafts?.cards?.[w.id] ? h('span', { class: 'chip warn' }, 'unpublished') : null,
-        h('label', { class: 'ce-who' }, 'I am ', h('select', { onchange: e => { try { localStorage.setItem(WHO_KEY, e.target.value); } catch {} } },
+        h('label', { class: 'ce-who' }, 'I am ', h('select', { onchange: e => { try { localStorage.setItem(WHO_KEY, e.target.value); } catch {} env.render(); } },
           ['', 'Marko', 'Tarik'].map(n => h('option', { value: n, selected: n === who() }, n || '–'))))),
-      field('Name', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
+      field('Name', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) }), w.type === 'Evolution' ? '"Hero, Evolution name": the part after the comma is the big title.' : null),
       h('div', { class: 'ce-row' },
-        field('Type', h('select', { onchange: e => set('type', e.target.value) }, EDIT_TYPES.map(t => h('option', { value: t, selected: t === w.type }, t)))),
-        field('Colour', h('select', { onchange: e => { set('color', e.target.value); env.render(); } }, COLORS.map(c => h('option', { value: c, selected: c === w.color }, c)))),
-        field('Cost', h('input', { type: 'number', min: 0, max: 10, value: w.cost ?? 0, oninput: e => set('cost', e.target.value === '' ? null : Number(e.target.value)) }))),
-      h('div', { class: 'ce-row' }, BONUS_KEYS.map(([k, label]) => field(label, h('input', {
-        type: 'number', step: k === 'pwr' ? 1000 : 1, value: w.bonus[k] ?? '', placeholder: '–',
-        oninput: e => { const b = { ...w.bonus }; if (e.target.value === '' || Number(e.target.value) === 0) delete b[k]; else b[k] = Number(e.target.value); set('bonus', b); },
-      })))),
-      h('div', { class: 'ce-row' },
-        field('First tag', h('select', { onchange: e => set('traits', [e.target.value, ...w.traits.slice(1)]) },
-          h('option', { value: '' }, '–'), firstOptions.map(t => h('option', { value: t, selected: t === w.traits[0] }, t))), 'Who may play it.'),
-        field('Other tags', h('input', { list: 'ce-traits', value: w.traits.slice(1).join(', '), placeholder: 'Sword, Devil Fruit',
-          oninput: e => set('traits', [w.traits[0] ?? '', ...e.target.value.split(',').map(s => s.trim()).filter(Boolean)]) }), 'For effects ("for every {Sword}"), comma between.'),
-        h('datalist', { id: 'ce-traits' }, traits.map(t => h('option', { value: t })))),
-      field('Text', text),
-      h('div', { class: 'ce-inserts' }, INSERTS.map(([label, s]) => h('button', { type: 'button', class: 'ghost', onclick: () => insert(s) }, label))),
+        field('Type', group.length > 1
+          ? h('select', { onchange: e => set('type', e.target.value) }, group.map(t => h('option', { value: t, selected: t === w.type }, t)))
+          : h('input', { value: w.type, disabled: true })),
+        portrait || heroish ? field('Colour', h('select', { onchange: e => { set('color', e.target.value); env.render(); } }, COLORS.map(c => h('option', { value: c, selected: c === w.color }, c)))) : null,
+        portrait || w.type === 'Evolution' ? field('Cost', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })) : null),
+      ...body,
+      h('datalist', { id: 'ce-traits' }, traits.map(t => h('option', { value: t }))),
       h('fieldset', { class: 'ce-art' },
-        h('legend', {}, 'Art'),
+        h('legend', {}, w.type === 'Core' ? 'Image' : 'Art'),
         h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', disabled: !canWrite(), onchange: e => env.guard(() => uploadArt(e.target.files[0])) }),
-        w.art ? h('small', { class: 'muted' }, `data/${w.art}`) : h('small', { class: 'warn' }, 'No art yet.'),
-        h('div', { class: 'ce-row' }, field('Zoom', crop('zoom', 0.5, 3, 0.01)), field('Left ↔ right', crop('x', 0, 1, 0.002)), field('Up ↕ down', crop('y', 0, 1, 0.002))),
-        h('small', { class: 'muted' }, 'Or drag the picture in the preview; the wheel zooms.')),
+        w.art ? h('small', { class: 'muted' }, `data/${w.art}`) : h('small', { class: 'warn' }, w.type === 'Core' ? 'No image yet: the hexagon on a clear background, 1500×2100.' : 'No art yet.'),
+        w.type === 'Core' ? null : [
+          h('div', { class: 'ce-row' }, field('Zoom', crop('zoom', 0.5, 3, 0.01)), field('Left ↔ right', crop('x', 0, 1, 0.002)), field('Up ↕ down', crop('y', 0, 1, 0.002))),
+          h('small', { class: 'muted' }, 'Or drag the picture in the preview; the wheel zooms.')]),
       h('div', { class: 'ce-row' },
         field('Status', h('select', { onchange: e => set('status', e.target.value) }, STATUSES.map(s => h('option', { value: s, selected: s === (w.status ?? 'draft') }, s)))),
         field('Notes', h('input', { value: w.notes ?? '', placeholder: 'For Marko or Tarik', oninput: e => set('notes', e.target.value) }))),
@@ -185,13 +259,25 @@ export function createEditor(env) {
         canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer).')));
   }
 
+  const inserts = insert => h('div', { class: 'ce-inserts' }, INSERTS.map(([label, s]) => h('button', { type: 'button', class: 'ghost', onclick: () => insert(s) }, label)));
+
+  // Terrain je i polje karte i zadnji red teksta ("Terrain: Ice"), kao na Card Engine kartama.
+  function setTerrain(t) {
+    const w = ed.work;
+    w.terrain = t;
+    const line = `Terrain: ${t}`;
+    const txt = w.text ?? '';
+    w.text = /^Terrain:.*$/m.test(txt) ? txt.replace(/^Terrain:.*$/m, line) : `${txt.trimEnd()}${txt.trim() ? '\n' : ''}${line}`;
+    changed();
+  }
+
   function renderPreview() {
-    ed.canvas = h('canvas', { class: 'ce-canvas', width: 1500, height: 2100 });
+    const wide = landscape(ed.work);
+    ed.canvas = h('canvas', { class: `ce-canvas${wide ? ' wide' : ''}`, width: wide ? 2100 : 1500, height: wide ? 1500 : 2100 });
     ed.warnBox = h('ul', { class: 'ce-warnings' });
     hookDrag(ed.canvas);
     queueDraw();
     return h('section', { class: 'ce-preview' }, ed.canvas, ed.warnBox,
-      ed.tpl.layers ? null : h('p', { class: 'muted small' }, 'Interim frame (worked out from the Card Engine cards) until the frame layers are exported.'),
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.'));
   }
 
@@ -215,12 +301,23 @@ export function createEditor(env) {
   async function draw() {
     const w = ed.work;
     if (!w || !ed.canvas) return;
+    const tpl = await templateFor(w);
+    ed.tpl = tpl;
     if (ed.artFor !== w.art) {
       ed.artFor = w.art;
       const url = w.art ? await store().dataUrl(w.art) : null;
       ed.art = url ? await loadImage(url).catch(() => null) : null;
     }
-    const warnings = renderCard(ed.canvas, w, ed.tpl, ed.art);
+    if (ed.emblemFor !== w.emblem) {
+      ed.emblemFor = w.emblem;
+      const url = w.emblem ? await store().dataUrl(w.emblem) : null;
+      ed.emblem = url ? await loadImage(url).catch(() => null) : null;
+    }
+    if (w !== ed.work || !ed.canvas) return;
+    // Predložak stiže tek sad: zadana boja pozadine heroja za ovu boju karte.
+    const bgInput = document.getElementById('ce-bg');
+    if (bgInput && !w.bg && tpl.layout.bg?.[w.color]) bgInput.value = tpl.layout.bg[w.color];
+    const warnings = renderCard(ed.canvas, w, tpl, ed.art, ed.emblem);
     warnings.push(...checks(w));
     ed.warnBox.replaceChildren(...warnings.map(x => h('li', {}, x)));
   }
@@ -228,12 +325,21 @@ export function createEditor(env) {
   // Provjere dok pišeš (uz upozorenja renderera).
   function checks(w) {
     const out = [];
-    const kind = firstTag(env.state.db, w, env.state.traits?.traits);
-    if (kind.kind === INVALID) out.push(`First tag: ${tagLabel(kind)}. Pick General, a hero of this colour or a trait.`);
-    const e = parseEffect(w.text);
-    if ((w.text ?? '').trim() && !e.phase && !/^(The equipped|Your|While|Each|All)\b/i.test(e.lines[0]?.text ?? '')) {
-      out.push('The text does not start with a phase ("Battle Phase:" …). Fine for Equipment and Assist that always work.');
+    if (PORTRAIT.includes(w.type)) {
+      const kind = firstTag(env.state.db, w, env.state.traits?.traits);
+      if (kind.kind === INVALID) out.push(`First tag: ${tagLabel(kind)}. Pick General, a hero of this colour or a trait.`);
+      const e = parseEffect(w.text);
+      if ((w.text ?? '').trim() && !e.phase && !/^(The equipped|Your|While|Each|All)\b/i.test(e.lines[0]?.text ?? '')) {
+        out.push('The text does not start with a phase ("Battle Phase:" …). Fine for Equipment and Assist that always work.');
+      }
     }
+    if (HEROISH.includes(w.type)) {
+      if (!w.abilityNames?.[0]) out.push('No ability name.');
+      if (!w.emblem) out.push('No emblem on the plate.');
+      if (w.type === 'Evolution' && !w.hero) out.push('Pick the hero this evolves from.');
+    }
+    if (w.type === 'Stage' && !/^Terrain:/m.test(w.text ?? '')) out.push('No "Terrain:" line: pick the terrain.');
+    if (w.type === 'Core' && !CORE_KINDS.includes(w.traits[0])) out.push('Pick Buff, Major or Debuff.');
     if (/\[(?!Range\]|PWR\]|DMG\]|HP\]|RNG\]|KB\])[^\]]*\]/i.test(w.text ?? '')) out.push('Unknown [icon] in the text: [Range], [PWR], [DMG], [HP], [RNG], [KB].');
     return out;
   }
@@ -243,8 +349,8 @@ export function createEditor(env) {
     let from = null;
     canvas.addEventListener('pointerdown', e => { from = { x: e.clientX, y: e.clientY, crop: { ...ed.work.artCrop } }; canvas.setPointerCapture(e.pointerId); });
     canvas.addEventListener('pointermove', e => {
-      if (!from || !ed.art) return;
-      const scale = 1500 / canvas.getBoundingClientRect().width;
+      if (!from || !ed.art || !ed.tpl?.layout.artBox) return;
+      const scale = canvas.width / canvas.getBoundingClientRect().width;
       const [, , bw, bh] = ed.tpl.layout.artBox;
       const k = Math.max(bw / ed.art.width, bh / ed.art.height) * from.crop.zoom;
       ed.work.artCrop = { ...from.crop, x: from.crop.x - ((e.clientX - from.x) * scale) / (ed.art.width * k), y: from.crop.y - ((e.clientY - from.y) * scale) / (ed.art.height * k) };
@@ -252,6 +358,7 @@ export function createEditor(env) {
     });
     canvas.addEventListener('pointerup', () => { from = null; env.render(); });
     canvas.addEventListener('wheel', e => {
+      if (ed.work.type === 'Core') return;
       e.preventDefault();
       const z = Math.min(3, Math.max(0.5, ed.work.artCrop.zoom * (e.deltaY < 0 ? 1.05 : 1 / 1.05)));
       ed.work.artCrop = { ...ed.work.artCrop, zoom: z };
@@ -304,6 +411,20 @@ export function createEditor(env) {
     ed.work.art = path;
     ed.work.artCrop = { x: 0.5, y: 0.5, zoom: 1 };
     ed.artFor = null;
+    changed();
+    env.render();
+  }
+
+  // Amblem u pločici heroja: data/art/emblems/<kod>.<ext>.
+  async function uploadEmblem(file) {
+    if (!file) return;
+    const ext = { 'image/png': 'png', 'image/webp': 'webp' }[file.type];
+    if (!ext) throw new Error('The emblem must be PNG or WebP (with a clear background).');
+    const path = `art/emblems/${ed.work.id}.${ext}`;
+    await fs.writeFile(store().root, `data/${path}`, new Uint8Array(await file.arrayBuffer()));
+    store().dropImageUrls?.();
+    ed.work.emblem = path;
+    ed.emblemFor = null;
     changed();
     env.render();
   }

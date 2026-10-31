@@ -23,7 +23,7 @@ const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}/g;
 
 // Predložak za kartu: zadan na karti (template) ili po tipu.
 export function templateName(card) {
-  return card.template ?? ({ Hero: 'hero', Evolution: 'evolution', Stage: 'stage' })[card.type] ?? 'action';
+  return card.template ?? ({ Hero: 'hero', Evolution: 'evolution', Stage: 'stage', Core: 'core' })[card.type] ?? 'action';
 }
 
 // Predložak iz data/card-frames/<name>/: layout.json i sve slike koje traži (slojevi, privremeni okviri, ikone).
@@ -43,6 +43,8 @@ export async function loadTemplate(name, load) {
   };
   const icons = {};
   for (const [k, rel] of Object.entries(layout.icons ?? {})) icons[k] = await get(rel);
+  // Core: samo slika, bez okvira.
+  if (layout.kind === 'image') return { name, layout, icons };
   // Heroj i evolucija: jedan gotov okvir po boji.
   if (layout.kind === 'hero') {
     const frames = {};
@@ -85,6 +87,7 @@ export async function fontsReady() {
 // Vraća upozorenja za editor: tekst na najmanjem fontu, naslov smanjen do kraja, nema arta.
 export function renderCard(canvas, card, tpl, art, emblem = null) {
   if (tpl.layout.kind === 'hero') return renderHero(canvas, card, tpl, art, emblem);
+  if (tpl.layout.kind === 'image') return renderImage(canvas, art, tpl.layout);
   canvas.width = CARD_W;
   canvas.height = CARD_H;
   const ctx = canvas.getContext('2d');
@@ -471,6 +474,19 @@ function drawChips(ctx, chips, cx, top, h, color, icons) {
   });
 }
 
+
+// Core: gotova slika (hexagon na prozirnom), cijela u karti.
+function renderImage(canvas, art, L) {
+  const [W, H] = L.size;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  if (!art) return ['No image yet.'];
+  const s = Math.min(W / art.width, H / art.height);
+  ctx.drawImage(art, (W - art.width * s) / 2, (H - art.height * s) / 2, art.width * s, art.height * s);
+  return [];
+}
 
 // ---------- heroji i evolucije (položene karte) ----------
 

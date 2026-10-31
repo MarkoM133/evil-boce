@@ -961,7 +961,7 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .card-editor { display: grid; grid-template-columns: 230px minmax(340px, 1fr) minmax(320px, 520px); gap: 18px; align-items: start; }
 .ce-list { position: sticky; top: 8px; max-height: calc(100vh - 120px); overflow: auto; }
 .ce-list-head { display: flex; gap: 6px; margin-bottom: 8px; }
-.ce-list-head input { flex: 1; min-width: 0; }
+.ce-list-head select { flex: 1; min-width: 0; }
 .ce-list ul { list-style: none; margin: 0; padding: 0; }
 .ce-item { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: 0; color: inherit; padding: 5px 6px; border-radius: 6px; cursor: pointer; font: inherit; }
 .ce-item:hover { background: rgba(255, 255, 255, 0.06); }
@@ -985,6 +985,8 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .ce-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .ce-preview { position: sticky; top: 8px; }
 .ce-canvas { width: 100%; height: auto; aspect-ratio: 1500 / 2100; display: block; cursor: grab; border-radius: 18px; }
+.ce-canvas.wide { aspect-ratio: 2100 / 1500; }
+.ce-find { width: 100%; margin-bottom: 8px; }
 .ce-warnings { margin: 8px 0 0; padding-left: 18px; color: #f4c22f; font-size: 13px; }
 .ce-warnings:empty { display: none; }
 .ce-empty { padding: 40px; }
