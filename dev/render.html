@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Card renderer check</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow+Condensed:wght@600&display=swap">
+  <style>
+    body { margin: 0; background: #15151a; color: #ddd; font: 14px sans-serif; }
+    .row { display: flex; gap: 16px; padding: 12px; }
+    figure { margin: 0; }
+    figcaption { padding: 4px 0; }
+    canvas, img { width: 600px; height: 840px; display: block; }
+  </style>
+</head>
+<body>
+  <!-- Development check for js/render.js through the local server (npm start):
+       /dev/render.html?ids=OP1-022,OP1-020&compare=1 puts the Card Engine PNG beside each render.
+       Card data and frames come from data/ in the shared folder, never from the repo. -->
+  <div id="out"></div>
+  <script type="module">
+    import { loadTemplate, renderCard, fontsReady, loadImage } from '../js/render.js';
+
+    const q = new URLSearchParams(location.search);
+    const ids = (q.get('ids') ?? '').split(',').filter(Boolean);
+    const out = document.getElementById('out');
+    const db = await (await fetch('/data/cards.json', { cache: 'no-store' })).json();
+    const drafts = await fetch('/data/editor/drafts.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : { cards: {} }));
+    const hasAgency = await fontsReady();
+    const tpl = await loadTemplate('action', async rel => `/data/${rel}`);
+    if (!hasAgency) out.append(Object.assign(document.createElement('p'), { textContent: 'Agency FB is not installed: a stand-in font is used.' }));
+    for (const id of ids) {
+      const base = db.cards.find(c => c.id === id);
+      if (!base) continue;
+      const card = { ...base, ...(drafts.cards?.[id] ?? {}) };
+      const row = document.createElement('div');
+      row.className = 'row';
+      if (q.get('compare')) {
+        const fig = document.createElement('figure');
+        const img = document.createElement('img');
+        const ce = n => `/data/card-engine/Za Poslat/Sve Karte Portrait/${encodeURIComponent(n)}.png`;
+        img.src = ce(card.name);
+        img.onerror = () => { img.onerror = null; img.src = ce(`${card.id} ${card.name}`); };
+        fig.append(img, Object.assign(document.createElement('figcaption'), { textContent: `Card Engine · ${card.name}` }));
+        row.append(fig);
+      }
+      const fig = document.createElement('figure');
+      const canvas = document.createElement('canvas');
+      const art = card.art ? await loadImage(`/data/${card.art}`).catch(() => null) : null;
+      const warnings = renderCard(canvas, card, tpl, art);
+      fig.append(canvas, Object.assign(document.createElement('figcaption'), { textContent: `Editor renderer${tpl.layers ? '' : ' (interim frame)'} · ${warnings.join(' ') || 'no warnings'}` }));
+      row.append(fig);
+      out.append(row);
+    }
+    document.body.dataset.ready = '1';
+  </script>
+</body>
+</html>

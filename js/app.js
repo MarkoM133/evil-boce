@@ -8,6 +8,7 @@ import { BALL_COLORS, DEFAULT_ACCENT, heroDefaultColor, ballColors } from './loo
 import { renderTools } from './tools.js';
 import { aggregate, filterMatches, ranked, cardsVersions, RESULTS } from './stats.js';
 import * as fs from './fsdir.js';
+import { createEditor, EDIT_TYPES } from './editor.js';
 
 const DB_PATH = 'data/cards.json';
 
@@ -33,6 +34,7 @@ const state = {
   fxProposals: null, // kako igra čita tekst karata (data/fx-proposals.json), za karticu Effect
   stats: null, // sažeci partija iz stats/ (kartica Balance); null = još nisu učitani
   statsFilter: { withBots: true, version: 0 },
+  editId: null, // karta otvorena u Card editoru (#/editor/<id>)
 };
 
 const pngUrls = new Map();
@@ -539,7 +541,7 @@ function render() {
 // ---------- adresa: svaki pogled ima svoj #/…, pa gesta ili tipka Natrag vraća korak unatrag ----------
 
 // history nije u izborniku: otvara se klikom na verziju u zaglavlju ili u detalju karte.
-const TAB_SLUG = { import: 'import', browse: 'browse', decks: 'decks', balance: 'balance', traits: 'traits', coverage: 'coverage', tools: 'tools', history: 'history' };
+const TAB_SLUG = { import: 'import', browse: 'browse', editor: 'editor', decks: 'decks', balance: 'balance', traits: 'traits', coverage: 'coverage', tools: 'tools', history: 'history' };
 const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]));
 // Stare hrvatske adrese (#/uvoz, #/pregled, #/deckovi/novi) i dalje rade.
 const OLD_SLUG_TAB = { uvoz: 'import', pregled: 'browse', deckovi: 'decks' };
@@ -550,6 +552,7 @@ let cardPushed = false; // karta je otvorena iz mreže, pa je Zatvori isto što 
 function currentHash() {
   const parts = [TAB_SLUG[state.tab]];
   if (state.tab === 'browse' && state.selected) parts.push(state.selected);
+  if (state.tab === 'editor' && state.editId) parts.push(state.editId);
   if (state.tab === 'decks' && state.deck) {
     parts.push(state.deck.slug ?? NEW_DECK);
     if (state.deckView === 'deck') parts.push('deck');
@@ -586,6 +589,7 @@ async function applyHash() {
     state.deckView = view === 'deck' ? 'deck' : 'pool';
   }
   if (tab === 'browse') state.selected = id && cardById(id) ? id : null;
+  if (tab === 'editor') state.editId = id && cardById(id) ? id : null;
   state.tab = tab;
   return true;
 }
@@ -770,13 +774,14 @@ function importButton() {
 function renderMain() {
   const tabs = [
     ['browse', 'Browse'],
+    ['editor', 'Card editor'],
     ['decks', 'Decks'],
     ['balance', 'Balance'],
     ['traits', 'Traits'],
     ['coverage', 'Coverage'],
     ['tools', 'Tools'],
   ];
-  const view = { import: renderImport, browse: renderBrowse, decks: renderDecks, balance: renderBalance, traits: renderTraits, coverage: renderCoverage, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
+  const view = { import: renderImport, browse: renderBrowse, editor: () => cardEditor.render(), decks: renderDecks, balance: renderBalance, traits: renderTraits, coverage: renderCoverage, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
@@ -786,6 +791,12 @@ function renderMain() {
     sideData(),
     h('main', {}, view));
 }
+
+// Card editor (js/editor.js): adresa #/editor/<id>, a odabir karte je korak u povijesti preglednika.
+const cardEditor = createEditor({
+  state, h, toast, guard, render,
+  go: id => { state.editId = id; replaceNext = false; render(); },
+});
 
 // LaMa za alat Erase text: tools/lama.onnx iz zajedničkog foldera (folder) ili sa servera.
 async function lamaModel() {
@@ -1364,7 +1375,10 @@ function renderDetail() {
     } }, h('span', {}, label)))) : null;
   box.className = tabs ? 'detail has-rail' : 'detail';
   const content = h('div', { class: 'detail-content' },
-    h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)), h('button', { class: 'ghost', onclick: closeCard }, 'Close')),
+    h('div', { class: 'detail-head' }, h('div', {}, h('code', {}, c.id), h('h2', {}, c.name)),
+      // Card editor: zasad Action, Equipment i Assist (ostali predlošci dolaze u idućem koraku).
+      EDIT_TYPES.includes(c.type) ? h('button', { class: 'ghost', onclick: () => { state.tab = 'editor'; state.editId = c.id; replaceNext = false; render(); } }, 'Edit') : null,
+      h('button', { class: 'ghost', onclick: closeCard }, 'Close')),
     ...Object.values(panes));
   box.replaceChildren(...[tabs, content].filter(Boolean));
 }

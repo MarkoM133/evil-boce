@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Card editor check</title>
+  <base href="/">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;1,700;1,800;1,900&family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Development check: the Card editor on its own over the local server (read only), without the
+       app's start-up (headless browsers never answer its IndexedDB call). /dev/editor.html?id=OP1-028 -->
+  <main id="app" style="padding: 16px"></main>
+  <div id="toasts"></div>
+  <script type="module">
+    import { probeServer, serverStore } from './js/store.js';
+    import { createEditor } from './js/editor.js';
+
+    const h = (tag, props = {}, ...kids) => {
+      const el = document.createElement(tag);
+      for (const [k, v] of Object.entries(props)) {
+        if (v === undefined || v === null || v === false) continue;
+        if (k === 'class') el.className = v;
+        else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+        else if (k in el && k !== 'list') el[k] = v;
+        else el.setAttribute(k, v === true ? '' : v);
+      }
+      for (const kid of kids.flat()) if (kid !== null && kid !== undefined && kid !== false) el.append(kid instanceof Node ? kid : String(kid));
+      return el;
+    };
+    const store = serverStore(await probeServer());
+    const state = { store, db: await store.readDb(), traits: await store.readTraits(), editId: new URLSearchParams(location.search).get('id') };
+    const app = document.getElementById('app');
+    const toast = m => console.log(m);
+    const guard = async fn => { try { await fn(); } catch (e) { toast(e.message); } };
+    let editor;
+    const render = () => app.replaceChildren(editor.render());
+    editor = createEditor({ state, h, toast, guard, render, go: id => { state.editId = id; render(); } });
+    render();
+  </script>
+</body>
+</html>

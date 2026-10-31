@@ -956,3 +956,36 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .ratebar .fillbar { position: absolute; inset: 0 auto 0 0; background: var(--red); opacity: 0.55; }
 .ratebar em { position: relative; padding-left: 8px; font: italic 700 15px/22px var(--display); }
 .ratebar.thin { opacity: 0.55; }
+
+/* ---------- Card editor (js/editor.js) ---------- */
+.card-editor { display: grid; grid-template-columns: 230px minmax(340px, 1fr) minmax(320px, 520px); gap: 18px; align-items: start; }
+.ce-list { position: sticky; top: 8px; max-height: calc(100vh - 120px); overflow: auto; }
+.ce-list-head { display: flex; gap: 6px; margin-bottom: 8px; }
+.ce-list-head input { flex: 1; min-width: 0; }
+.ce-list ul { list-style: none; margin: 0; padding: 0; }
+.ce-item { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: 0; color: inherit; padding: 5px 6px; border-radius: 6px; cursor: pointer; font: inherit; }
+.ce-item:hover { background: rgba(255, 255, 255, 0.06); }
+.ce-item.active { background: rgba(255, 255, 255, 0.12); }
+.ce-id { opacity: 0.6; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ce-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--edge, #888); }
+.c-bg-Cyan { background: var(--c-Cyan); } .c-bg-Yellow { background: var(--c-Yellow); } .c-bg-Purple { background: var(--c-Purple); }
+.c-bg-Red { background: var(--c-Red); } .c-bg-Blue { background: var(--c-Blue); } .c-bg-Green { background: var(--c-Green); }
+.ce-draft { margin-left: auto; color: #f4c22f; }
+.ce-form { display: flex; flex-direction: column; gap: 10px; }
+.ce-title { display: flex; align-items: center; gap: 10px; }
+.ce-title h2 { margin: 0; }
+.ce-who { margin-left: auto; font-size: 13px; }
+.ce-field { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.ce-field > span { font-size: 12px; opacity: 0.7; }
+.ce-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.ce-row .ce-field { min-width: 90px; }
+.ce-inserts { display: flex; flex-wrap: wrap; gap: 4px; }
+.ce-inserts button { padding: 2px 8px; font-size: 13px; }
+.ce-art { border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ce-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ce-preview { position: sticky; top: 8px; }
+.ce-canvas { width: 100%; height: auto; aspect-ratio: 1500 / 2100; display: block; cursor: grab; border-radius: 18px; }
+.ce-warnings { margin: 8px 0 0; padding-left: 18px; color: #f4c22f; font-size: 13px; }
+.ce-warnings:empty { display: none; }
+.ce-empty { padding: 40px; }
+@media (max-width: 1100px) { .card-editor { grid-template-columns: 1fr; } .ce-list, .ce-preview { position: static; max-height: none; } }

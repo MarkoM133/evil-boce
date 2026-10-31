@@ -1,0 +1,29 @@
+// Rastavljanje teksta efekta za renderer karata (oznake faze, RANGE, uvjet, natuknice).
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseEffect } from '../js/render.js';
+
+test('range, phase and the rest of the text', () => {
+  const e = parseEffect('[Range] Postroll Phase: Knockback an Opponent\'s Hero 3 spaces.');
+  assert.equal(e.range, true);
+  assert.equal(e.phase, 'POSTROLL PHASE');
+  assert.equal(e.once, false);
+  assert.deepEqual(e.lines, [{ bullet: false, text: 'Knockback an Opponent\'s Hero 3 spaces.' }]);
+});
+
+test('once per turn, a condition and a short phase word', () => {
+  const e = parseEffect('Battle Phase Once Per Turn: If you win this Battle, draw a card.');
+  assert.equal(e.phase, 'BATTLE PHASE');
+  assert.equal(e.once, true);
+  assert.equal(e.cond, 'If you win this Battle,');
+  assert.equal(e.lines[0].text, 'draw a card.');
+  assert.equal(parseEffect('[Range] Postroll: All cards cost 2 more.').phase, 'POSTROLL PHASE');
+});
+
+test('a list becomes bullets; a phase alone has no lines', () => {
+  const e = parseEffect('Postroll Phase: Your Opponent chooses:\n- You charge 2 Energy\n- Your Hero heals 3 HP');
+  assert.deepEqual(e.lines.map(l => l.bullet), [false, true, true]);
+  assert.equal(e.lines[2].text, 'Your Hero heals 3 HP');
+  assert.deepEqual(parseEffect('Battle Phase:').lines, []);
+  assert.equal(parseEffect('The equipped Hero takes +1 DMG.').phase, null);
+});
