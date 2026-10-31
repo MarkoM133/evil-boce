@@ -534,7 +534,9 @@ function render() {
     // Izlaz iz Card editora: nespremljena karta pita (ostaje u editoru ako ne), lock se otpušta.
     if (state.tab !== 'editor' && !cardEditor.leave()) state.tab = 'editor';
     // Stranice Card editora (i otvorena karta) su u istom okviru s izbornikom, bez trake heroja.
-    if (state.tab === 'editor') app.replaceChildren(renderMain());
+    // Tko radi na ovom računalu: pita se jednom, kad je folder otvoren (samo tada se sprema), i pamti se na računalu.
+    if (state.store.kind === 'folder' && !cardEditor.who() && !state.whoLater) app.replaceChildren(renderWhoPick());
+    else if (state.tab === 'editor') app.replaceChildren(renderMain());
     else app.replaceChildren(renderHeader(), renderMain());
     updateStrip();
     cardPushed = false;
@@ -748,6 +750,19 @@ function renderHeader() {
   return h('header', { class: 'top' },
     heroStrip(),
     h('div', { class: 'top-bar' }, brand(), h('div', { class: 'folder' }, folderInfo())));
+}
+
+// "Tko radi na ovom računalu?": dvije pločice, odabir se pamti; kasnije se mijenja u izborniku (Signed in as).
+const PEOPLE = [['Marko', 'Publishes cards into the game, edits the frames'], ['Tarik', 'Makes and edits the cards']];
+function renderWhoPick() {
+  const pick = name => { cardEditor.setWho(name); render(); };
+  return h('section', { class: 'who-pick' },
+    state.logo ? h('img', { class: 'who-logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('big'),
+    h('h1', {}, 'Who works on this computer?'),
+    h('p', { class: 'muted' }, 'The Card editor locks the card you edit under your name, and notes and history show who changed what. Asked once; change it later under "Signed in as" in the menu.'),
+    h('div', { class: 'who-tiles' }, PEOPLE.map(([name, role]) => h('button', { class: 'who-tile', type: 'button', onclick: () => pick(name) },
+      h('span', { class: 'who-initial', 'aria-hidden': 'true' }, name[0]), h('strong', {}, name), h('span', { class: 'muted' }, role)))),
+    h('button', { class: 'link', type: 'button', onclick: () => { state.whoLater = true; render(); } }, 'Just looking for now'));
 }
 
 function renderWelcome() {

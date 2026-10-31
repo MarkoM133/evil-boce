@@ -225,3 +225,14 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-stage.core { max-width: 430px; background: repeating-conic-gradient(#1b1b1b 0 25%, #101010 0 50%) 0 0 / 28px 28px; }
 .ce-stage.core .ce-canvas { border-radius: 0; }
 .ce-row.ce-stats input { padding: 9px 8px; }
+
+/* "Tko radi na ovom računalu?" (app.js renderWhoPick) */
+.who-pick { min-height: calc(100vh / var(--z)); display: grid; place-content: center; justify-items: center; gap: 18px; text-align: center; padding: 32px 0; }
+.who-pick h1 { font-size: 48px; margin-top: 18px; }
+.who-pick p { max-width: 560px; margin: 0; }
+.who-tiles { display: flex; gap: 22px; flex-wrap: wrap; justify-content: center; margin: 10px 0; }
+.who-tile { clip-path: none; width: 250px; padding: 28px 22px; background: var(--surface); display: grid; gap: 8px; justify-items: center; font: 500 15px var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.who-tile:hover { background: var(--surface-2); box-shadow: inset 0 0 0 2px var(--red); }
+.who-tile strong { font: italic 800 34px/1 var(--display); }
+.who-initial { width: 76px; height: 76px; border-radius: 50%; background: var(--red); display: grid; place-items: center; font: italic 900 40px var(--display); color: var(--bone); }
+.who-logo { width: 180px; height: auto; }
