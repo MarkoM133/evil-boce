@@ -746,6 +746,7 @@ function folderInfo() {
     h('span', { class: 'folder-db' },
       h('button', { class: `version-link${state.tab === 'history' ? ' active' : ''}`, title: 'Change history', onclick: () => openHistory() }, `Version ${state.db.version}`),
       h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
+    signedIn(),
     h('span', { class: 'folder-actions' },
       state.store.canImport ? importButton() : null,
       server && state.savedRoot ? h('button', { class: 'ghost', title: 'Folder for Import and editing', onclick: () => guard(() => resume(state.savedRoot)) }, `Continue with "${state.savedRoot.name}"`) : null,
@@ -846,8 +847,7 @@ function renderMain() {
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
       renderNav(),
-      state.tab === 'decks' ? renderDeckList() : null,
-      signedIn()),
+      state.tab === 'decks' ? renderDeckList() : null),
     sideData(),
     h('main', {}, view));
 }
