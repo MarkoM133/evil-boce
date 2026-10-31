@@ -60,7 +60,7 @@ const MODE_LINES: Dictionary[String, String] = {
 	"fast": "30 seconds a move, 20 cards, two stages to win, a 17 × 17 map.",
 	"chaos": "Random heroes and decks, random stages and cores dropped on a random map.",
 	"bo3": "Best of 3: first to two wins. The loser starts the next game; stages and cores are picked again.",
-	"draft": "Draft: heroes in turn, then four packs of ten cards picked one by one; decks of 20.",
+	"draft": "Draft: heroes in turn, then four packs of cards picked one by one; decks of 20.",
 	"custom": "Your own mix of rules.",
 }
 ## Map size 0 stands for "drawn when the match starts" (resolve_map).

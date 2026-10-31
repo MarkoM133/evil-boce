@@ -53,9 +53,11 @@ export function createSetsView(ctx) {
     return v.urls[key];
   }
 
-  async function save(sets) {
+  // def: { packSize } of the default pack (a Draft that mixes sets); left as it is when not given.
+  async function save(sets, def = null) {
     const fresh = JSON.parse((await fs.readText(ctx.store().root, SETS_PATH)) ?? '{"sets":[]}');
     fresh.sets = sets.map(({ code, name, number, packSize }) => ({ code, name, number, packSize }));
+    if (def) fresh.default = def;
     fresh.updated = new Date().toISOString();
     fresh.who = ctx.who() || undefined;
     await fs.writeFile(ctx.store().root, SETS_PATH, JSON.stringify(fresh, null, 2) + '\n');
@@ -199,13 +201,25 @@ export function createSetsView(ctx) {
   }
 
   function renderDefault() {
+    const size = { packSize: v.saved?.default?.packSize ?? DEFAULT_PACK };
     return h('section', { class: 'ce-set' },
       h('header', { class: 'ce-set-head' }, packImg('default', 'ce-set-pack'),
         h('div', { class: 'ce-set-title' }, h('p', { class: 'muted small' }, 'Card editor / Sets / default'), h('h1', {}, 'Default pack'),
           h('p', { class: 'muted' }, 'The pack for a Draft that mixes several sets (black, with the logo).'))),
-      h('section', { class: 'ce-panel ce-set-settings' }, h('div', { class: 'ce-row' },
-        imageField('default', 'pack.png', 'PACK'),
-        imageField('default', 'draft-bg.png', 'DRAFT BACKGROUND'))));
+      h('section', { class: 'ce-panel ce-set-settings' },
+        h('div', { class: 'ce-row' },
+          h('label', { class: 'ce-field' }, h('span', {}, 'CARDS PER PACK'),
+            h('input', { type: 'number', min: 1, max: 30, value: size.packSize, oninput: e => { size.packSize = Number(e.target.value) || DEFAULT_PACK; } }),
+            h('small', { class: 'muted' }, 'When the cards of a Draft come from several sets.'))),
+        h('div', { class: 'ce-row' },
+          imageField('default', 'pack.png', 'PACK'),
+          imageField('default', 'draft-bg.png', 'DRAFT BACKGROUND')),
+        h('div', { class: 'ce-actions' },
+          h('button', { class: 'primary', type: 'button', disabled: !ctx.canWrite(), onclick: () => ctx.guard(async () => {
+            await save(sets(), size);
+            ctx.toast('Default pack saved.');
+            ctx.render();
+          }) }, 'Save'))));
   }
 
   return {

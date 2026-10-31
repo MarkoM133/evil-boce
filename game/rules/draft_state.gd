@@ -1,7 +1,7 @@
 class_name DraftState
 extends RefCounted
 ## The Draft mode (GDD 13, 2026-10-26), pure logic: a snake draft of heroes (A B B A A B, no
-## hero on both sides), then four packs of ten cards drawn from the copy pool of both players'
+## hero on both sides), then four packs of cards (ten, or the pack size of the set, data/sets) drawn from the copy pool of both players'
 ## colours (every deck card as many times as its limit allows, evolutions only of drafted
 ## heroes). The players open the packs in turn and pick one card in turn; the rest of a pack
 ## goes to the other player. A card of the other's colour, or over its limit, or past the deck
@@ -15,6 +15,7 @@ const PHASE_DONE: String = "done"
 ## Who picks a hero, relative to `first` (0 = first, 1 = the other).
 const HERO_ORDER: Array[int] = [0, 1, 1, 0, 0, 1]
 const PACKS: int = 4
+## Cards per pack when the set list (CardCatalog.pack_sizes) does not say.
 const PACK_SIZE: int = 10
 
 var catalog: CardCatalog
@@ -27,6 +28,10 @@ var heroes: Array[PackedStringArray] = [PackedStringArray(), PackedStringArray()
 var hero_picks: int = 0
 ## The packs still to pick from, each the ids left in it.
 var packs: Array[PackedStringArray] = []
+## The set whose packs these are (its pack picture on the draft screen): the one set every
+## card in the pool comes from, or "default" when the pool mixes sets. Set when the packs open.
+var pack_set: String = ""
+var pack_size: int = PACK_SIZE
 var pack_index: int = 0
 var pack_turn: int = 0
 ## Per player: card id -> copies.
@@ -205,11 +210,13 @@ func _open_packs() -> void:
 			for _n: int in DeckCode.LIMITS[t]:
 				pool.append(c.id)
 	_sort(pool)
+	pack_set = pool_set(pool)
+	pack_size = JsonUtil.as_int(catalog.pack_sizes.get(pack_set, catalog.pack_sizes.get("default", PACK_SIZE)), PACK_SIZE) if catalog != null else PACK_SIZE
 	_shuffle(pool)
 	packs.clear()
 	for k: int in PACKS:
 		var pack := PackedStringArray()
-		while pack.size() < PACK_SIZE and not pool.is_empty():
+		while pack.size() < pack_size and not pool.is_empty():
 			pack.append(pool[pool.size() - 1])
 			pool.remove_at(pool.size() - 1)
 		if not pack.is_empty():
@@ -218,6 +225,18 @@ func _open_packs() -> void:
 	pack_index = 0
 	pack_turn = first
 	_advance()
+
+
+## The one set all of `ids` come from, or "default" when they mix sets (or there are none).
+static func pool_set(ids: PackedStringArray) -> String:
+	var code: String = ""
+	for id: String in ids:
+		var c: String = CardCatalog.set_of(id)
+		if code.is_empty():
+			code = c
+		elif c != code:
+			return "default"
+	return code if not code.is_empty() else "default"
 
 
 ## Whether either player could take `c` (with every Evolution card of its heroes).
@@ -301,7 +320,7 @@ func to_dict() -> Dictionary:
 		ps.append(Array(p))
 	return {"deck_size": deck_size, "first": first, "phase": phase, "hero_pool": Array(hero_pool),
 		"heroes": [Array(heroes[0]), Array(heroes[1])], "hero_picks": hero_picks, "packs": ps,
-		"pack_index": pack_index, "pack_turn": pack_turn, "cards": [JsonUtil.as_dict(cards[0]).duplicate(), JsonUtil.as_dict(cards[1]).duplicate()],
+		"pack_index": pack_index, "pack_turn": pack_turn, "pack_set": pack_set, "pack_size": pack_size, "cards": [JsonUtil.as_dict(cards[0]).duplicate(), JsonUtil.as_dict(cards[1]).duplicate()],
 		"rng_state": rng_state}
 
 
@@ -332,6 +351,8 @@ static func from_dict(d: Dictionary, catalog_: CardCatalog) -> DraftState:
 		s.packs.append(JsonUtil.as_strings(p))
 	s.pack_index = JsonUtil.as_int(d.get("pack_index", 0))
 	s.pack_turn = JsonUtil.as_int(d.get("pack_turn", 0))
+	s.pack_set = str(d.get("pack_set", ""))
+	s.pack_size = JsonUtil.as_int(d.get("pack_size", PACK_SIZE), PACK_SIZE)
 	var cs: Array = JsonUtil.as_array(d.get("cards", []))
 	s.cards = [JsonUtil.as_dict(cs[0] if cs.size() > 0 else {}), JsonUtil.as_dict(cs[1] if cs.size() > 1 else {})] as Array[Dictionary]
 	s.rng_state = JsonUtil.as_int(d.get("rng_state", 0))

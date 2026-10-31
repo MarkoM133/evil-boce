@@ -105,3 +105,22 @@ func test_the_public_dict_shows_the_open_pack_only() -> void:
 	assert_eq(JsonUtil.as_int(pub["rng_state"]), 0, "no rng state goes out")
 	var seen: DraftState = DraftState.from_dict(pub, catalog)
 	assert_eq(seen.options(seen.waiting_on()), d.options(d.waiting_on()), "a guest sees the same picks")
+
+
+func test_packs_take_the_set_pack_size_and_the_set_of_the_pool() -> void:
+	assert_eq(DraftState.pool_set(PackedStringArray(["OP1-001", "OP1-020"])), "OP1")
+	assert_eq(DraftState.pool_set(PackedStringArray(["OP1-001", "JO1-002"])), "default")
+	assert_eq(DraftState.pool_set(PackedStringArray()), "default")
+	catalog.set_sets({"sets": [{"code": "OP1", "packSize": 6}], "default": {"packSize": 7}})
+	var d: DraftState = DraftState.start(catalog, 5, 0, 20)
+	var guard: int = 0
+	while d.phase == DraftState.PHASE_HEROES and guard < 20:
+		guard += 1
+		var slot: int = d.waiting_on()
+		d.pick(slot, d.timeout_pick(slot, rng))
+	assert_eq(d.phase, DraftState.PHASE_PACKS)
+	var want: int = 6 if d.pack_set == "OP1" else 7
+	assert_eq(d.pack_size, want, "the pack size of the pool's set")
+	assert_true(d.current_pack().size() <= want)
+	var back: DraftState = DraftState.from_dict(d.to_dict(), catalog)
+	assert_eq([back.pack_set, back.pack_size], [d.pack_set, d.pack_size], "sent to the guests")

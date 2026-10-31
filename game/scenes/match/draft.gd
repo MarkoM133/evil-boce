@@ -1,6 +1,6 @@
 class_name DraftScreen
 extends Control
-## The Draft mode (GDD 13): heroes in snake order, then four packs of ten picked one card at a
+## The Draft mode (GDD 13): heroes in snake order, then four packs (ten cards, or the set's pack size) picked one card at a
 ## time; the rest of a pack goes to the other player. Each side's heroes and cards fill a panel
 ## on its side, the heroes on offer or the open pack sit in the middle. Local: the Play setup
 ## leaves the match it would start in `local`, a bot picks at random after a short wait, two
@@ -40,6 +40,8 @@ var _status: Label
 var _clock: Label
 var _steps: HBoxContainer
 var _center: VBoxContainer
+## The set's Draft background behind the screen while the packs are open (web app › Sets).
+var _bg: TextureRect
 var _sides: Array[VBoxContainer] = []
 
 
@@ -115,7 +117,7 @@ func _take_local() -> void:
 
 func _build() -> void:
 	var frame: Dictionary = MenuScreen.build(self, db, "Draft",
-		"Heroes in turn, then four packs of ten: take one card, the rest goes to the other player.", _back, 1440.0)
+		"Heroes in turn, then four packs: take one card, the rest goes to the other player.", _back, 1440.0)
 	var content: VBoxContainer = frame["content"]
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 16)
@@ -177,6 +179,7 @@ func _refresh() -> void:
 	if draft.phase == DraftState.PHASE_HEROES:
 		_fill_heroes(who, mine)
 	elif draft.phase == DraftState.PHASE_PACKS:
+		_show_background()
 		_fill_pack(who, mine)
 	if draft.phase == DraftState.PHASE_DONE and not _local.is_empty() and not _done:
 		_done = true
@@ -296,9 +299,41 @@ func _fill_heroes(who: int, mine: bool) -> void:
 		grid.add_child(tile)
 
 
-## The open pack: the cards the picker may take are lit, the others dim with the reason.
+## The set's Draft background (data/sets/<set>/draft-bg.png), dimmed, over the plain one.
+func _show_background() -> void:
+	if _bg != null:
+		return
+	var tex: Texture2D = db.draft_background(draft.pack_set)
+	if tex == null:
+		return
+	_bg = TextureRect.new()
+	_bg.texture = tex
+	_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_bg.modulate = Color(1, 1, 1, 0.35)
+	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_bg)
+	move_child(_bg, 1)
+
+
+## The open pack: the set's pack picture, then the cards; those the picker may take are lit,
+## the others dim with the reason.
 func _fill_pack(who: int, mine: bool) -> void:
-	_center.add_child(UiTheme.label(("TAKE ONE CARD" if mine else "THE PACK") + "  ·  THE REST GOES TO %s" % names[1 - who].to_upper(), 18, Palette.GOLD))
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 14)
+	_center.add_child(head)
+	var pack_tex: Texture2D = db.pack_image(draft.pack_set)
+	if pack_tex != null:
+		var pic := TextureRect.new()
+		pic.texture = pack_tex
+		pic.custom_minimum_size = Vector2(64, 90)
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		head.add_child(pic)
+	var title := UiTheme.label(("TAKE ONE CARD" if mine else "THE PACK") + "  ·  THE REST GOES TO %s" % names[1 - who].to_upper(), 18, Palette.GOLD)
+	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(title)
 	var grid := GridContainer.new()
 	grid.columns = 5
 	grid.add_theme_constant_override("h_separation", 10)

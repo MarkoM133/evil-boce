@@ -7,6 +7,9 @@ var version: int = 0
 var cards: Dictionary[String, CardDef] = {}
 ## The traits a first tag may name (data/traits.json, or "traits" in the doc), as written there.
 var trait_names: PackedStringArray = PackedStringArray()
+## Cards per Draft pack by set code (data/sets/sets.json, edited in the web app's Card editor
+## › Sets); "default" is the pack of a Draft that mixes sets.
+var pack_sizes: Dictionary[String, int] = {}
 
 
 static func from_doc(doc: Dictionary, with_placeholders: bool = true) -> CardCatalog:
@@ -33,6 +36,25 @@ func set_traits(list: Array) -> void:
 		var n: String = str(JsonUtil.as_dict(t).get("name", "")) if t is Dictionary else str(t)
 		if not n.strip_edges().is_empty():
 			trait_names.append(n.strip_edges())
+
+
+## The set list: {"sets": [{code, name, number, packSize}], "default": {packSize}} (data/sets/sets.json).
+func set_sets(doc: Dictionary) -> void:
+	pack_sizes = {}
+	for s: Variant in JsonUtil.as_array(doc.get("sets", [])):
+		var sd: Dictionary = JsonUtil.as_dict(s)
+		var code: String = str(sd.get("code", "")).strip_edges()
+		var size: int = JsonUtil.as_int(sd.get("packSize", 0))
+		if not code.is_empty() and size > 0:
+			pack_sizes[code] = size
+	var def_size: int = JsonUtil.as_int(JsonUtil.as_dict(doc.get("default", {})).get("packSize", 0))
+	if def_size > 0:
+		pack_sizes["default"] = def_size
+
+
+## The set code of a card id ("OP1-012" → "OP1").
+static func set_of(card_id: String) -> String:
+	return card_id.get_slice("-", 0)
 
 
 static func from_json_text(text: String, with_placeholders: bool = true) -> CardCatalog:

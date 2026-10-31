@@ -56,6 +56,10 @@ func parse(text: String) -> void:
 	if FileAccess.file_exists(traits_path):
 		var td: Variant = JSON.parse_string(FileAccess.get_file_as_string(traits_path))
 		catalog.set_traits(JsonUtil.as_array(JsonUtil.as_dict(td).get("traits", [])))
+	# Sets: cards per Draft pack (web app, Card editor › Sets).
+	var sets_path: String = data_dir().path_join("sets/sets.json")
+	if FileAccess.file_exists(sets_path):
+		catalog.set_sets(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(sets_path))))
 	var cards: Array = JsonUtil.as_array(doc.get("cards", []))
 	card_count = 0
 	for c: Variant in cards:
@@ -114,6 +118,18 @@ func core_back(card: CardDef) -> Texture2D:
 ## Where the hex sits on a core image: a 1500 × 2100 page with the token (white rim included)
 ## right in the middle, measured off the pixels.
 const CORE_HEX := Rect2(370.0 / 1500.0, 618.0 / 2100.0, 744.0 / 1500.0, 862.0 / 2100.0)
+
+
+## A set's Draft pack picture (data/sets/<code>/pack.png), else the default pack, or null.
+func pack_image(set_code: String) -> Texture2D:
+	var tex: Texture2D = texture(data_dir().path_join("sets/%s/pack.png" % set_code)) if not set_code.is_empty() else null
+	return tex if tex != null else texture(data_dir().path_join("sets/default/pack.png"))
+
+
+## What sits behind the pack while a Draft runs (data/sets/<code>/draft-bg.png, else the default one), or null.
+func draft_background(set_code: String) -> Texture2D:
+	var tex: Texture2D = texture(data_dir().path_join("sets/%s/draft-bg.png" % set_code)) if not set_code.is_empty() else null
+	return tex if tex != null else texture(data_dir().path_join("sets/default/draft-bg.png"))
 
 
 func logo() -> Texture2D:
