@@ -13,7 +13,7 @@ export const APP_FIELDS = ['wt', 'aliases', 'bakugan', 'bakuganShape', 'bakuganC
 // Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
 // fxStatus je samo oznaka za pregled, pa ni on ne diže verziju.
 export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fxStatus', 'figure', 'ballColor', 'ballColor2', 'heroSfx'];
-const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
+const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'art', 'artCrop', 'emblem', 'bg', 'template', 'status', 'notes', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
 
@@ -375,6 +375,38 @@ export function applyAppEdits(db, edits, now = new Date()) {
   });
   if (!changed) return { db, changed, bumped: false };
   return { db: { version: db.version + (game ? 1 : 0), updated: now.toISOString(), cards }, changed, bumped: game > 0 };
+}
+
+// Nacrti iz Card editora (data/editor/drafts.json) u bazu. Polja igre dižu rev karte i verziju baze;
+// polja izgleda (art, izrez, amblem, pozadina, predložak, status, bilješke) i nova slika ne dižu.
+// images: { id: imageHash } za karte kojima je Objava nacrtala novi PNG (data/images/ID.hash.png).
+export const DRAFT_GAME_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'traits', 'text', 'abilityNames', 'terrain'];
+export const DRAFT_LOOK_FIELDS = ['art', 'artCrop', 'emblem', 'bg', 'template', 'status', 'notes'];
+
+export function applyDrafts(db, drafts, images = {}, now = new Date()) {
+  let changed = 0;
+  let game = 0;
+  const ids = [];
+  const cards = db.cards.map(c => {
+    const d = drafts[c.id];
+    if (!d && !images[c.id]) return c;
+    const next = { ...c };
+    for (const k of [...DRAFT_GAME_FIELDS, ...DRAFT_LOOK_FIELDS]) if (d && k in d) { if (d[k] == null) delete next[k]; else next[k] = d[k]; }
+    if (images[c.id]) {
+      next.image = `images/${c.id}.${images[c.id]}.png`;
+      next.imageHash = images[c.id];
+    }
+    if (same(next, c)) return c;
+    changed++;
+    ids.push(c.id);
+    if (DRAFT_GAME_FIELDS.some(k => !same(next[k], c[k]))) {
+      game++;
+      next.rev = (c.rev ?? 0) + 1;
+    }
+    return ordered(next);
+  });
+  if (!changed) return { db, changed, bumped: false, ids };
+  return { db: { version: db.version + (game ? 1 : 0), updated: now.toISOString(), cards }, changed, bumped: game > 0, ids };
 }
 
 // Stare verzije slika (data/images/ID.hash.png) koje se smiju obrisati: karta ima noviju sliku.

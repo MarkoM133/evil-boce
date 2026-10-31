@@ -589,7 +589,7 @@ async function applyHash() {
     state.deckView = view === 'deck' ? 'deck' : 'pool';
   }
   if (tab === 'browse') state.selected = id && cardById(id) ? id : null;
-  if (tab === 'editor') state.editId = id && cardById(id) ? id : null;
+  if (tab === 'editor') state.editId = id === 'publish' || (id && cardById(id)) ? id : null;
   state.tab = tab;
   return true;
 }
@@ -796,6 +796,16 @@ function renderMain() {
 const cardEditor = createEditor({
   state, h, toast, guard, render,
   go: id => { state.editId = id; replaceNext = false; render(); },
+  // Objava nacrta: baza i povijest, pa stare slike van i umanjene slike za nove.
+  assertFresh,
+  async commitDb(db) {
+    await writeDb(db);
+    const old = obsoleteImages(db, await fs.listFileNames(root(), 'data/images'));
+    for (const f of old) await fs.removeFile(root(), `data/images/${f}`);
+    const thumbs = await updateThumbs(db);
+    state.store.dropImageUrls();
+    return { old: old.length, thumbs };
+  },
 });
 
 // LaMa za alat Erase text: tools/lama.onnx iz zajedničkog foldera (folder) ili sa servera.

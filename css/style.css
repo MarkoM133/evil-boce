@@ -991,3 +991,7 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .ce-warnings:empty { display: none; }
 .ce-empty { padding: 40px; }
 @media (max-width: 1100px) { .card-editor { grid-template-columns: 1fr; } .ce-list, .ce-preview { position: static; max-height: none; } }
+.ce-nav { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+.ce-publish { display: flex; flex-direction: column; gap: 12px; }
+.ce-pub-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ce-pub-table th, .ce-pub-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); vertical-align: top; }

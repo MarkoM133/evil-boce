@@ -5,6 +5,7 @@
 import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, TINTS } from './render.js';
 import { firstTag, tagLabel, traitNames, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
+import { applyDrafts, imageHashOf } from './importer.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -105,9 +106,25 @@ export function createEditor(env) {
     }
     if (ed.error) return h('section', { class: 'panel' }, h('p', { class: 'warn' }, ed.error));
     const want = env.state.editId;
+    if (want === 'publish') {
+      ed.id = null;
+      ed.work = null;
+      return h('div', {}, renderNav(true), renderPublish());
+    }
     if (want && want !== ed.id) open(want);
     if (!want) { ed.id = null; ed.work = null; }
-    return h('div', { class: 'card-editor' }, renderList(), ed.work ? renderForm() : h('p', { class: 'muted ce-empty' }, 'Pick a card on the left.'), ed.work ? renderPreview() : null);
+    return h('div', {}, renderNav(false),
+      h('div', { class: 'card-editor' }, renderList(), ed.work ? renderForm() : h('p', { class: 'muted ce-empty' }, 'Pick a card on the left.'), ed.work ? renderPreview() : null));
+  }
+
+  // Edit | Publish (broj nacrta) i "Ja sam" (Objavu klika samo Marko; dogovor, ne zaštita).
+  function renderNav(publishing) {
+    const n = Object.keys(ed.drafts?.cards ?? {}).length;
+    return h('div', { class: 'ce-nav' },
+      h('button', { class: publishing ? 'ghost' : 'primary', type: 'button', onclick: () => go(ed.lastId ?? null) }, 'Edit'),
+      h('button', { class: publishing ? 'primary' : 'ghost', type: 'button', onclick: () => go('publish') }, `Publish${n ? ` (${n})` : ''}`),
+      h('label', { class: 'ce-who' }, 'I am ', h('select', { onchange: e => { try { localStorage.setItem(WHO_KEY, e.target.value); } catch {} env.render(); } },
+        ['', 'Marko', 'Tarik'].map(x => h('option', { value: x, selected: x === who() }, x || '–')))));
   }
 
   const shown = () => {
@@ -145,6 +162,7 @@ export function createEditor(env) {
   function go(id) {
     if (ed.dirty && id !== ed.id && !confirm('Discard the unsaved changes to this card?')) return;
     ed.dirty = false;
+    if (ed.id) ed.lastId = ed.id;
     env.go(id);
   }
 
@@ -230,9 +248,7 @@ export function createEditor(env) {
     return h('form', { class: 'ce-form', onsubmit: e => { e.preventDefault(); env.guard(saveDraft); } },
       h('div', { class: 'ce-title' },
         h('h2', {}, `${w.id}`),
-        ed.drafts?.cards?.[w.id] ? h('span', { class: 'chip warn' }, 'unpublished') : null,
-        h('label', { class: 'ce-who' }, 'I am ', h('select', { onchange: e => { try { localStorage.setItem(WHO_KEY, e.target.value); } catch {} env.render(); } },
-          ['', 'Marko', 'Tarik'].map(n => h('option', { value: n, selected: n === who() }, n || '–'))))),
+        ed.drafts?.cards?.[w.id] ? h('span', { class: 'chip warn' }, 'unpublished') : null),
       field('Name', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) }), w.type === 'Evolution' ? '"Hero, Evolution name": the part after the comma is the big title.' : null),
       h('div', { class: 'ce-row' },
         field('Type', group.length > 1
@@ -279,6 +295,84 @@ export function createEditor(env) {
     queueDraw();
     return h('section', { class: 'ce-preview' }, ed.canvas, ed.warnBox,
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.'));
+  }
+
+  // ---------- objava ----------
+
+  const KEEP = new Set(['updated', 'who']);
+  const draftList = () => Object.entries(ed.drafts?.cards ?? {})
+    .map(([id, d]) => ({ id, d, base: env.state.db.cards.find(c => c.id === id) }))
+    .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+
+  function renderPublish() {
+    const list = draftList();
+    const marko = who() === 'Marko';
+    const why = !canWrite() ? 'Publishing needs the shared folder (Chrome or Edge on a computer).'
+      : !marko ? 'Only Marko publishes (set "I am" to Marko).'
+      : !ed.agency ? 'Agency FB is not on this computer: the card PNGs must be made on a computer that has it.'
+      : !list.length ? 'Nothing waits for Publish.' : null;
+    return h('section', { class: 'panel ce-publish' },
+      h('h2', {}, 'Waiting for Publish'),
+      h('p', { class: 'muted' }, 'Drafts saved in the Card editor. Publish draws each card\'s PNG, writes the cards into cards.json (with history) and makes the small and large images. The game sees them after that.'),
+      list.length ? h('table', { class: 'ce-pub-table' },
+        h('thead', {}, h('tr', {}, ['Card', 'Changes', 'By', 'Saved', 'Status', ''].map(t => h('th', {}, t)))),
+        h('tbody', {}, list.map(({ id, d, base }) => {
+          const card = { ...(base ?? {}), ...d };
+          const fields = Object.keys(d).filter(k => !KEEP.has(k));
+          return h('tr', {},
+            h('td', {}, h('span', { class: 'ce-id' }, id), ' ', card.name ?? '?', base ? null : h('small', { class: 'warn' }, ' (not in cards.json)')),
+            h('td', {}, fields.join(', ') || '–', card.art ? null : h('small', { class: 'muted' }, ' · no art: the old picture stays')),
+            h('td', {}, d.who || '–'),
+            h('td', {}, d.updated ? new Date(d.updated).toLocaleString() : '–'),
+            h('td', {}, h('span', { class: `chip${card.status === 'done' ? '' : ' warn'}` }, card.status ?? 'draft')),
+            h('td', {}, h('button', { class: 'ghost', type: 'button', onclick: () => go(id) }, 'Open')));
+        }))) : null,
+      h('div', { class: 'ce-actions' },
+        h('button', { class: 'primary', type: 'button', disabled: !!why, onclick: () => env.guard(publishAll) }, `Publish ${list.length} ${list.length === 1 ? 'card' : 'cards'}`),
+        why ? h('small', { class: 'muted' }, why) : null));
+  }
+
+  // Objava: PNG svake karte s artom (renderer), baza i povijest (env.commitDb), pa se nacrti brišu.
+  // Karta bez arta zadržava staru sliku (Card Engine PNG); mijenjaju joj se samo polja.
+  async function publishAll() {
+    await env.assertFresh();
+    const fresh = await readDrafts();
+    const drafts = fresh.cards ?? {};
+    const ids = Object.keys(drafts);
+    if (!ids.length) throw new Error('Nothing waits for Publish.');
+    if (!confirm(`Publish ${ids.length} ${ids.length === 1 ? 'card' : 'cards'} into the game?`)) return;
+    const images = {};
+    const kept = [];
+    for (const id of ids) {
+      const base = env.state.db.cards.find(c => c.id === id);
+      if (!base) continue;
+      const card = { ...base, ...drafts[id] };
+      const url = card.art ? await store().dataUrl(card.art) : null;
+      const art = url ? await loadImage(url).catch(() => null) : null;
+      if (!art) { kept.push(id); continue; }
+      const eUrl = card.emblem ? await store().dataUrl(card.emblem) : null;
+      const emblem = eUrl ? await loadImage(eUrl).catch(() => null) : null;
+      const canvas = document.createElement('canvas');
+      renderCard(canvas, card, await templateFor(card), art, emblem);
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const hash = await imageHashOf(bytes);
+      if (hash === base.imageHash) continue;
+      await fs.writeFile(store().root, `data/images/${id}.${hash}.png`, bytes);
+      images[id] = hash;
+    }
+    const { db, changed, bumped } = applyDrafts(env.state.db, drafts, images);
+    const done = changed ? await env.commitDb(db) : { old: 0, thumbs: 0 };
+    // Nacrti spremljeni dok je Objava trajala ostaju za iduću.
+    const after = await readDrafts();
+    for (const id of ids) if (after.cards?.[id]?.updated === drafts[id].updated) delete after.cards[id];
+    await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(after, null, 2) + '\n');
+    ed.drafts = after;
+    const parts = [`${changed} ${changed === 1 ? 'card' : 'cards'}`, `${Object.keys(images).length} new PNGs`];
+    if (done.thumbs) parts.push(`${done.thumbs} resized images`);
+    if (kept.length) parts.push(`no art yet, old picture kept: ${kept.join(', ')}`);
+    env.toast(`Published${bumped ? ` (version ${db.version})` : changed ? ' (look only)' : ''}: ${parts.join(', ')}. Next: fx proposals for the Effect tab.`);
+    env.render();
   }
 
   // ---------- crtanje ----------

@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCardEngineXml, cleanText } from '../js/parse.js';
-import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, emptyDb, normalizeDb, thumbPlan, archiveFolder, archivePath, emptyChangelog, changelogEntry, appendChangelog, changesSince, describeChange, publishedPngPaths } from '../js/importer.js';
+import { analyzeExport, buildPublish, applyAppEdits, applyDrafts, obsoleteImages, emptyDb, normalizeDb, thumbPlan, archiveFolder, archivePath, emptyChangelog, changelogEntry, appendChangelog, changesSince, describeChange, publishedPngPaths } from '../js/importer.js';
 import { deckChanges } from '../js/deck.js';
 
 const RGB = { Cyan: [0, 255, 255], Red: [255, 0, 0], White: [255, 255, 255], Odd: [10, 20, 30] };
@@ -606,4 +606,28 @@ test('fx: diže verziju, fxStatus ne; promijenjen tekst karte s fx-om dobije "ch
   const sameText = await reimport(ACTION.text);
   assert.equal(sameText.fxStatus, 'ok');
   assert.deepEqual(changelogEntry(pub.db, withFx.db).cards.map(c => [c.id, c.fields, c.look]), [['OP9-002', ['fx'], ['fxStatus']]]);
+});
+
+test('Card editor drafts: game fields bump rev and version, look fields and a new image do not', () => {
+  const db = { version: 4, updated: null, cards: [
+    { id: 'OP9-001', name: 'Punch', type: 'Action', color: 'Red', cost: 2, text: 'Battle Phase: Hit.', image: 'images/OP9-001.aaaa1111.png', imageHash: 'aaaa1111', rev: 1 },
+    { id: 'OP9-002', name: 'Kick', type: 'Action', color: 'Red', cost: 1, rev: 1 },
+  ] };
+  const look = applyDrafts(db, { 'OP9-001': { art: 'art/OP9-001.png', artCrop: { x: 0.5, y: 0.4, zoom: 1.2 }, status: 'done' } }, { 'OP9-001': 'bbbb2222' });
+  assert.equal(look.bumped, false);
+  assert.equal(look.db.version, 4);
+  const c = look.db.cards[0];
+  assert.equal(c.rev, 1);
+  assert.equal(c.art, 'art/OP9-001.png');
+  assert.equal(c.image, 'images/OP9-001.bbbb2222.png');
+  assert.equal(c.imageHash, 'bbbb2222');
+  assert.ok(Object.keys(c).indexOf('art') < Object.keys(c).indexOf('image'));
+  const game = applyDrafts(db, { 'OP9-002': { cost: 2, updated: '2026-10-31', who: 'Tarik' } });
+  assert.equal(game.bumped, true);
+  assert.equal(game.db.version, 5);
+  assert.deepEqual(game.ids, ['OP9-002']);
+  assert.equal(game.db.cards[1].rev, 2);
+  assert.equal(game.db.cards[1].updated, undefined);
+  assert.equal(game.db.cards[1].who, undefined);
+  assert.equal(applyDrafts(db, { 'OP9-002': { cost: 1 } }).changed, 0);
 });
