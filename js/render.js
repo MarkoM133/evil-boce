@@ -17,7 +17,10 @@ const TEXT_FONT = '"Barlow Semi Condensed", "Barlow Condensed", "Arial Narrow", 
 const PHASE_RE = /^((?:Start|Preroll|Roll|Postroll|Battle|End)(?: Phase)?)(\s+Once Per Turn)?\s*:\s*/i;
 const RANGE_RE = /^\[Range\]\s*/i;
 const COND_RE = /^(If [^,]+,)\s*/;
-const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}/g;
+// Ikone u tekstu: riječ stata iza broja ili iza more/less (kako je Card Engine crtao sprite: "heals 3 HP",
+// "+2000 Power", "more HP"), stari tokeni [PWR]…, i {Trait} podebljano. Tekst karte ostaje u riječima (igra ih čita).
+const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}|(?<=\d|\bmore|\bless)\s?(HP|DMG|Power|Range|Knockback)\b/g;
+const WORD_ICON = { HP: 'hp', DMG: 'dmg', Power: 'pwr', Range: 'rng', Knockback: 'kb' };
 
 // ---------- predložak ----------
 
@@ -337,13 +340,14 @@ function drawEffect(ctx, text, color, box, icons, heading = '') {
   return { atMin };
 }
 
-// "{Sword}" je podebljano ime taga, [PWR]… ikone statova; ostalo običan tekst.
-function richRuns(s) {
+// "{Sword}" je podebljano ime taga, "3 HP" i [PWR]… ikone statova; ostalo običan tekst.
+export function richRuns(s) {
   const runs = [];
   let last = 0;
   for (const m of s.matchAll(ICON_RE)) {
     if (m.index > last) runs.push({ text: s.slice(last, m.index) });
     if (m[1]) runs.push({ icon: m[1].toLowerCase() });
+    else if (m[3]) runs.push({ icon: WORD_ICON[m[3]] });
     else runs.push({ text: m[2], bold: true });
     last = m.index + m[0].length;
   }

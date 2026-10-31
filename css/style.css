@@ -1003,3 +1003,10 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .ce-set-img.empty { height: 120px; display: grid; place-items: center; font-size: 13px; opacity: 0.6; }
 .ce-set-cards { list-style: none; margin: 0; padding: 0; columns: 2 260px; }
 .ce-new-form input { width: 100%; margin-bottom: 6px; }
+.ce-suggest { display: flex; flex-wrap: wrap; gap: 4px; margin-top: -4px; }
+.ce-suggest:empty { display: none; }
+.ce-suggest button { padding: 2px 8px; font-size: 13px; text-transform: none; }
+.ce-inserts select { font-size: 13px; padding: 2px 6px; max-width: 260px; }
+.ce-fx { margin-top: 10px; font-size: 13px; }
+.ce-fx-box summary { cursor: pointer; }
+.ce-guide input { width: 100%; }

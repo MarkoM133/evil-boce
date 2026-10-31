@@ -8,6 +8,7 @@ import { TERRAINS } from './parse.js';
 import { applyDrafts, imageHashOf } from './importer.js';
 import { lockPath, lockState, newLock, HEARTBEAT_MS, SETTLE_MS } from './locks.js';
 import { createSetsView } from './editor-sets.js';
+import { createGuideView, readGuide, avoidWarnings, suggest } from './editor-guide.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -26,10 +27,11 @@ const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'Power'], ['rng', 'Rang
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
 const FIELDS = ['name', 'type', 'color', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'text', 'terrain',
   'art', 'artCrop', 'emblem', 'bg', 'template', 'status', 'notes'];
+// Statovi se pišu riječima iza broja ("3 HP", "+2000 Power"): igra čita riječi, a karta ih crta kao ikone.
 const INSERTS = [
-  ['[Range]', '[Range] '], ['Preroll', 'Preroll Phase: '], ['Roll', 'Roll Phase: '], ['Postroll', 'Postroll Phase: '],
-  ['Battle', 'Battle Phase: '], ['Once per turn', ' Once Per Turn'], ['[PWR]', '[PWR]'], ['[DMG]', '[DMG]'],
-  ['[HP]', '[HP]'], ['[RNG]', '[RNG]'], ['[KB]', '[KB]'],
+  ['[Range]', '[Range] '], ['Start', 'Start Phase: '], ['Preroll', 'Preroll Phase: '], ['Roll', 'Roll Phase: '], ['Postroll', 'Postroll Phase: '],
+  ['Battle', 'Battle Phase: '], ['End', 'End Phase: '], ['Once per turn', ' Once Per Turn'], ['Power', ' Power'], ['DMG', ' DMG'],
+  ['HP', ' HP'], ['Range', ' Range'], ['Knockback', ' Knockback'],
 ];
 
 // Prazan objekt ili popis je isto što i polje kojeg nema (Stage bez bonusa, karta bez tagova).
@@ -54,6 +56,7 @@ export function createEditor(env) {
     try {
       ed.agency = await fontsReady();
       ed.drafts = await readDrafts();
+      ed.guide = await readGuide(store());
       ed.ready = true;
     } catch (e) {
       ed.error = e.message || String(e);
@@ -121,11 +124,11 @@ export function createEditor(env) {
     }
     if (ed.error) return h('section', { class: 'panel' }, h('p', { class: 'warn' }, ed.error));
     const want = env.state.editId;
-    if (want === 'publish' || want === 'sets') {
+    if (['publish', 'sets', 'guide'].includes(want)) {
       ed.id = null;
       ed.work = null;
       syncLock();
-      return h('div', {}, renderNav(want), want === 'sets' ? sets.render() : renderPublish());
+      return h('div', {}, renderNav(want), { sets: sets.render, guide: guide.render, publish: renderPublish }[want]());
     }
     if (want && want !== ed.id) open(want);
     if (!want) { ed.id = null; ed.work = null; }
@@ -141,6 +144,7 @@ export function createEditor(env) {
     return h('div', { class: 'ce-nav' },
       tab('edit', 'Edit', ed.lastId ?? null),
       tab('sets', 'Sets', 'sets'),
+      tab('guide', 'Text guide', 'guide'),
       tab('publish', `Publish${n ? ` (${n})` : ''}`, 'publish'),
       h('label', { class: 'ce-who' }, 'I am ', h('select', { onchange: e => { try { localStorage.setItem(WHO_KEY, e.target.value); } catch {} env.render(); } },
         ['', 'Marko', 'Tarik'].map(x => h('option', { value: x, selected: x === who() }, x || '–')))));
@@ -280,7 +284,25 @@ export function createEditor(env) {
     const set = (k, v) => { w[k] = v; changed(); };
     const field = (label, input, hint) => h('label', { class: 'ce-field' }, h('span', {}, label), input, hint ? h('small', { class: 'muted' }, hint) : null);
     const num = (value, oninput, opts = {}) => h('input', { type: 'number', value: value ?? '', placeholder: '–', oninput, ...opts });
-    const text = h('textarea', { rows: 5, value: w.text ?? '', oninput: e => set('text', e.target.value) });
+    const sugBox = h('div', { class: 'ce-suggest' });
+    const text = h('textarea', { rows: 5, value: w.text ?? '', oninput: e => { set('text', e.target.value); showSuggest(); } });
+    // Prijedlozi iz vodiča za riječ ispred kursora; klik ili Tab zamijeni započeti dio frazom.
+    let sug = { from: 0, items: [] };
+    const take = item => {
+      const at = text.selectionStart ?? text.value.length;
+      text.value = text.value.slice(0, sug.from) + item.insert + text.value.slice(at);
+      text.selectionStart = text.selectionEnd = sug.from + item.insert.length;
+      text.focus();
+      set('text', text.value);
+      showSuggest();
+    };
+    const showSuggest = () => {
+      sug = suggest(ed.guide, text.value, text.selectionStart ?? text.value.length);
+      sugBox.replaceChildren(...sug.items.map((it, i) => h('button', { type: 'button', class: 'ghost', title: i ? '' : 'Tab', onclick: () => take(it) }, it.label)));
+    };
+    text.addEventListener('keydown', e => { if (e.key === 'Tab' && sug.items.length) { e.preventDefault(); take(sug.items[0]); } });
+    text.addEventListener('click', showSuggest);
+    text.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== text && !sugBox.contains(document.activeElement)) sugBox.replaceChildren(); }, 150));
     const insert = s => {
       const a = text.selectionStart ?? text.value.length;
       const b = text.selectionEnd ?? a;
@@ -308,7 +330,7 @@ export function createEditor(env) {
           field('First tag', h('select', { onchange: e => set('traits', [e.target.value, ...w.traits.slice(1)]) },
             h('option', { value: '' }, '–'), firstOptions.map(t => h('option', { value: t, selected: t === w.traits[0] }, t))), 'Who may play it.'),
           tagsList('Other tags', 1, 'For effects ("for every {Sword}"), comma between.')),
-        field('Text', text), inserts(insert),
+        field('Text', text), sugBox, inserts(insert),
       ];
     } else if (heroish) {
       const evoHeroes = db.cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === w.color);
@@ -322,7 +344,7 @@ export function createEditor(env) {
           w.type === 'Evolution' ? field('Hero', h('select', { onchange: e => set('hero', e.target.value) },
             h('option', { value: '' }, '–'), evoHeroes.map(x => h('option', { value: x.name, selected: x.name === w.hero }, x.name)))) : null),
         tagsList('Tags', 0, 'Comma between.'),
-        field('Text', text), inserts(insert),
+        field('Text', text), sugBox, inserts(insert),
         h('fieldset', { class: 'ce-art' },
           h('legend', {}, 'Plate and background'),
           h('div', { class: 'ce-row' },
@@ -336,7 +358,7 @@ export function createEditor(env) {
       body = [
         field('Terrain', h('select', { onchange: e => { setTerrain(e.target.value); env.render(); } },
           TERRAINS.map(t => h('option', { value: t, selected: t === (w.terrain ?? 'None') }, t))), 'Also writes the "Terrain:" line of the text.'),
-        field('Text', text), inserts(insert),
+        field('Text', text), sugBox, inserts(insert),
       ];
     } else {
       body = [
@@ -382,7 +404,9 @@ export function createEditor(env) {
         canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer).')));
   }
 
-  const inserts = insert => h('div', { class: 'ce-inserts' }, INSERTS.map(([label, s]) => h('button', { type: 'button', class: 'ghost', onclick: () => insert(s) }, label)));
+  const inserts = insert => h('div', { class: 'ce-inserts' }, INSERTS.map(([label, s]) => h('button', { type: 'button', class: 'ghost', onclick: () => insert(s) }, label)),
+    ed.guide?.phrases?.length ? h('select', { 'aria-label': 'Insert a phrase', onchange: e => { const p = ed.guide.phrases[Number(e.target.value)]; e.target.value = ''; if (p) insert(p.text); } },
+      h('option', { value: '' }, 'Phrase from the guide…'), ed.guide.phrases.map((p, i) => h('option', { value: i, title: p.note ?? '' }, `${p.label}: ${p.text.trim()}`))) : null);
 
   // Terrain je i polje karte i zadnji red teksta ("Terrain: Ice"), kao na Card Engine kartama.
   function setTerrain(t) {
@@ -399,9 +423,10 @@ export function createEditor(env) {
     ed.canvas = h('canvas', { class: `ce-canvas${wide ? ' wide' : ''}`, width: wide ? 2100 : 1500, height: wide ? 1500 : 2100 });
     ed.warnBox = h('ul', { class: 'ce-warnings' });
     ed.diffBox = h('div', { class: 'ce-diff' });
+    ed.fxBox = h('div', { class: 'ce-fx' });
     hookDrag(ed.canvas);
     queueDraw();
-    return h('section', { class: 'ce-preview' }, ed.canvas, ed.warnBox, ed.diffBox,
+    return h('section', { class: 'ce-preview' }, ed.canvas, ed.warnBox, ed.fxBox, ed.diffBox,
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.'));
   }
 
@@ -638,6 +663,25 @@ export function createEditor(env) {
     warnings.push(...checks(w));
     ed.warnBox.replaceChildren(...warnings.map(x => h('li', {}, x)));
     ed.diffBox.replaceChildren(...renderDiff(w));
+    ed.fxBox.replaceChildren(...renderFx(w));
+  }
+
+  // Kako igra čita tekst (data/fx-proposals.json, piše ga game/tools/fx_proposals.gd nakon Objave).
+  // fx se potvrđuje na kartici Effect u pregledu karte (GDD 14), ne ovdje.
+  function renderFx(w) {
+    if (['Stage', 'Core'].includes(w.type) || !(w.text ?? '').trim()) return [];
+    const p = env.state.fxProposals?.cards?.[w.id];
+    const changed = !w.new && (w.text ?? '') !== (ed.base.text ?? '');
+    const code = t => h('pre', { class: 'fx-code' }, t);
+    let body;
+    if (w.new || changed) body = [h('p', { class: 'small' }, 'The text is new or changed: the game reads it again after Publish (Claude runs the fx proposals), then the Effect tab shows whether it needs an fx.')];
+    else if (ed.base.fx) body = [h('p', { class: 'small' }, ed.base.fxStatus === 'check' ? 'Confirmed fx, but the text changed after it: check it on the Effect tab.' : 'Confirmed fx (the game uses it):'), code(ed.base.fx)];
+    else if (!p) body = [h('p', { class: 'small muted' }, 'No report from the game for this card yet.')];
+    else if (p.unparsed?.length) body = [h('p', { class: 'small warn' }, 'The game does not understand part of the text:'), h('ul', { class: 'small' }, p.unparsed.map(u => h('li', {}, u))), p.proposal ? code(p.proposal) : null];
+    else body = [h('p', { class: 'small' }, 'The game reads the text by itself:'), code(p.read)];
+    return [h('details', { class: 'ce-fx-box', open: !!(p?.unparsed?.length && !changed) },
+      h('summary', {}, 'Effect in the game'), ...body,
+      env.openEffect && !w.new ? h('button', { class: 'ghost', type: 'button', onclick: () => env.openEffect(w.id) }, 'Open the Effect tab') : null)];
   }
 
   // Razlike prema objavljenoj karti (cards.json): staro → novo, po polju.
@@ -670,7 +714,8 @@ export function createEditor(env) {
     }
     if (w.type === 'Stage' && !/^Terrain:/m.test(w.text ?? '')) out.push('No "Terrain:" line: pick the terrain.');
     if (w.type === 'Core' && !CORE_KINDS.includes(w.traits[0])) out.push('Pick Buff, Major or Debuff.');
-    if (/\[(?!Range\]|PWR\]|DMG\]|HP\]|RNG\]|KB\])[^\]]*\]/i.test(w.text ?? '')) out.push('Unknown [icon] in the text: [Range], [PWR], [DMG], [HP], [RNG], [KB].');
+    out.push(...avoidWarnings(ed.guide, w.text));
+    if (/\[(?!Range\])[^\]]*\]/i.test(w.text ?? '')) out.push('Only [Range] goes in brackets. Stats are words after the number ("3 HP", "+2000 Power"); the card shows the icon.');
     return out;
   }
 
@@ -771,6 +816,7 @@ export function createEditor(env) {
     }, 'image/png');
   }
 
+  const guide = createGuideView({ h, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast, onSaved: g => { ed.guide = g; } });
   const sets = createSetsView({ h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast, go: id => go(id), newCard: (set, type) => newCard(set, type) });
 
   return { render, isDirty: () => ed.dirty, newCard };

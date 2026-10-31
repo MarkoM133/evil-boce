@@ -30,7 +30,7 @@
       return el;
     };
     const store = serverStore(await probeServer());
-    const state = { store, db: await store.readDb(), traits: await store.readTraits(), editId: new URLSearchParams(location.search).get('id') };
+    const state = { store, db: await store.readDb(), traits: await store.readTraits(), fxProposals: await store.readFxProposals().catch(() => null), editId: new URLSearchParams(location.search).get('id') };
     const app = document.getElementById('app');
     const toast = m => console.log(m);
     const guard = async fn => { try { await fn(); } catch (e) { toast(e.message); } };

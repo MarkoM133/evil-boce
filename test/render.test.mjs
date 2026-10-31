@@ -1,7 +1,7 @@
 // Rastavljanje teksta efekta za renderer karata (oznake faze, RANGE, uvjet, natuknice).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEffect } from '../js/render.js';
+import { parseEffect, richRuns } from '../js/render.js';
 
 test('range, phase and the rest of the text', () => {
   const e = parseEffect('[Range] Postroll Phase: Knockback an Opponent\'s Hero 3 spaces.');
@@ -26,4 +26,11 @@ test('a list becomes bullets; a phase alone has no lines', () => {
   assert.equal(e.lines[2].text, 'Your Hero heals 3 HP');
   assert.deepEqual(parseEffect('Battle Phase:').lines, []);
   assert.equal(parseEffect('The equipped Hero takes +1 DMG.').phase, null);
+});
+
+test('stat words after a number or more/less are icons, the rest stays text', () => {
+  assert.deepEqual(richRuns('heals 3 HP and takes 3 DMG'), [{ text: 'heals 3' }, { icon: 'hp' }, { text: ' and takes 3' }, { icon: 'dmg' }]);
+  assert.deepEqual(richRuns('the Hero with more HP gains +3000 Power.'), [{ text: 'the Hero with more' }, { icon: 'hp' }, { text: ' gains +3000' }, { icon: 'pwr' }, { text: '.' }]);
+  assert.deepEqual(richRuns("Knockback an Opponent's Hero 3 spaces"), [{ text: "Knockback an Opponent's Hero 3 spaces" }]);
+  assert.deepEqual(richRuns('for every {Sword}'), [{ text: 'for every ' }, { text: 'Sword', bold: true }]);
 });
