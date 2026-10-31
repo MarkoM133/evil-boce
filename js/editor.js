@@ -7,6 +7,7 @@ import { firstTag, tagLabel, traitNames, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
 import { applyDrafts, imageHashOf } from './importer.js';
 import { lockPath, lockState, newLock, HEARTBEAT_MS, SETTLE_MS } from './locks.js';
+import { createSetsView } from './editor-sets.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -120,25 +121,27 @@ export function createEditor(env) {
     }
     if (ed.error) return h('section', { class: 'panel' }, h('p', { class: 'warn' }, ed.error));
     const want = env.state.editId;
-    if (want === 'publish') {
+    if (want === 'publish' || want === 'sets') {
       ed.id = null;
       ed.work = null;
       syncLock();
-      return h('div', {}, renderNav(true), renderPublish());
+      return h('div', {}, renderNav(want), want === 'sets' ? sets.render() : renderPublish());
     }
     if (want && want !== ed.id) open(want);
     if (!want) { ed.id = null; ed.work = null; }
     syncLock();
-    return h('div', {}, renderNav(false),
+    return h('div', {}, renderNav('edit'),
       h('div', { class: 'card-editor' }, renderList(), ed.work ? renderForm() : h('p', { class: 'muted ce-empty' }, 'Pick a card on the left.'), ed.work ? renderPreview() : null));
   }
 
   // Edit | Publish (broj nacrta) i "Ja sam" (Objavu klika samo Marko; dogovor, ne zaštita).
-  function renderNav(publishing) {
+  function renderNav(view) {
     const n = Object.keys(ed.drafts?.cards ?? {}).length;
+    const tab = (name, label, to) => h('button', { class: view === name ? 'primary' : 'ghost', type: 'button', onclick: () => go(to) }, label);
     return h('div', { class: 'ce-nav' },
-      h('button', { class: publishing ? 'ghost' : 'primary', type: 'button', onclick: () => go(ed.lastId ?? null) }, 'Edit'),
-      h('button', { class: publishing ? 'primary' : 'ghost', type: 'button', onclick: () => go('publish') }, `Publish${n ? ` (${n})` : ''}`),
+      tab('edit', 'Edit', ed.lastId ?? null),
+      tab('sets', 'Sets', 'sets'),
+      tab('publish', `Publish${n ? ` (${n})` : ''}`, 'publish'),
       h('label', { class: 'ce-who' }, 'I am ', h('select', { onchange: e => { try { localStorage.setItem(WHO_KEY, e.target.value); } catch {} env.render(); } },
         ['', 'Marko', 'Tarik'].map(x => h('option', { value: x, selected: x === who() }, x || '–')))));
   }
@@ -767,6 +770,8 @@ export function createEditor(env) {
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     }, 'image/png');
   }
+
+  const sets = createSetsView({ h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast, go: id => go(id), newCard: (set, type) => newCard(set, type) });
 
   return { render, isDirty: () => ed.dirty, newCard };
 }
