@@ -148,6 +148,8 @@ export function createEditor(env) {
     ed.base = base;
     ed.work = workOf({ ...base, ...(draft ?? {}) });
     ed.opened = cardOf(ed.work);
+    ed.canvas = null;
+    ed.artCv = null;
     ed.dirty = false;
     ed.undo = [];
     ed.artMode = false;
@@ -180,7 +182,7 @@ export function createEditor(env) {
       if (Date.now() - ed.locksAt > HEARTBEAT_MS) {
         Promise.all([readLocks(), refreshDb()]).then(([a, b]) => { if (a || b) env.render(); }).catch(() => {});
       }
-      return { sets: sets.render, guide: guide.render, traits: renderTraitsPage, frames: frames.render, publish: renderPublish }[want]();
+      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, frames: frames.render, publish: renderPublish }[want]());
     }
     if (want !== ed.id) {
       if (!leaveOk()) return renderCardPage();
@@ -238,8 +240,16 @@ export function createEditor(env) {
         w.type === 'Core' ? null : h('button', { class: 'ghost', type: 'button', disabled: !ed.undo.length, onclick: undo }, 'Undo'),
         h('button', { class: 'ghost', type: 'button', onclick: () => go(ed.from) }, 'Close'),
         h('button', { class: 'primary', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(saveDraft) }, 'Save')));
-    return h('div', { class: 'ce-full' }, top,
+    return h('div', { class: 'ce-full' }, top, readOnlyNote(),
       h('div', { class: `ce-cols${HEROISH.includes(w.type) ? ' wide' : ''}` }, renderSide(), renderCentre(), renderForm()));
+  }
+
+  // Podaci preko servera su samo za gledanje: spremanje, upload i Objava trebaju otvoren zajednički folder.
+  function readOnlyNote() {
+    if (canWrite()) return null;
+    return h('div', { class: 'ce-readonly' },
+      h('span', {}, h('strong', {}, 'View only.'), ' The cards come through the server, so Save, art upload and Publish are off. Open the shared folder to edit (Chrome or Edge on a computer).'),
+      env.openFolder ? h('button', { class: 'primary', type: 'button', onclick: () => env.openFolder() }, 'Open the folder') : null);
   }
 
   // ---------- lijevi paneli ----------
@@ -344,10 +354,13 @@ export function createEditor(env) {
 
   function renderCentre() {
     const w = ed.work;
-    const views = w.type === 'Core' ? [] : HEROISH.includes(w.type) ? [['card', 'Card'], ['board', 'On the board'], ['hover', 'Hover'], ['old', 'Old vs new']]
-      : w.type === 'Stage' ? [['card', 'Card'], ['map', 'On the map'], ['old', 'Old vs new']] : [['card', 'Card'], ['hand', 'In hand'], ['hover', 'Hover'], ['old', 'Old vs new']];
+    const views = w.type === 'Core' ? [] : HEROISH.includes(w.type) ? [['card', 'Card'], ['board', 'On the board'], ['old', 'Old vs new']]
+      : w.type === 'Stage' ? [['card', 'Card'], ['map', 'On the map'], ['old', 'Old vs new']] : [['card', 'Card'], ['old', 'Old vs new']];
+    if (!views.some(([k]) => k === ed.view)) ed.view = 'card';
     const wide = HEROISH.includes(w.type);
-    ed.canvas = h('canvas', { width: wide ? 2100 : 1500, height: wide ? 1500 : 2100 });
+    // Isto platno između crtanja: novo prazno platno bi na trenutak bljesnulo.
+    const [cw, chh] = wide ? [2100, 1500] : [1500, 2100];
+    if (!ed.canvas || ed.canvas.width !== cw || ed.canvas.height !== chh) ed.canvas = h('canvas', { width: cw, height: chh });
     ed.stage = h('div', { class: `ce-stage${wide ? ' wide' : ''}${ed.artMode ? ' art-mode' : ''}${w.type === 'Core' ? ' core' : ''}` });
     ed.warn = [];
     queueDraw();
@@ -360,7 +373,11 @@ export function createEditor(env) {
       h('button', { class: 'ghost', type: 'button', onclick: downloadPng }, 'Download PNG'),
     ];
     return h('section', { class: 'ce-centre' },
-      views.length > 1 && !ed.artMode ? h('div', { class: 'ce-views' }, views.map(([k, label]) => h('button', { type: 'button', class: ed.view === k ? 'active' : '', onclick: () => { ed.view = k; env.render(); } }, label))) : null,
+      views.length > 1 && !ed.artMode ? h('div', { class: 'ce-views' }, views.map(([k, label]) => h('button', { type: 'button', class: ed.view === k ? 'active' : '', onclick: e => {
+        ed.view = k;
+        for (const b of e.currentTarget.parentNode.children) b.classList.toggle('active', b === e.currentTarget);
+        paintStage(cardOf(ed.work));
+      } }, label))) : null,
       ed.stage,
       ed.artMode ? h('div', { class: 'ce-zoom' }, h('span', {}, 'ZOOM'),
         h('input', { type: 'range', min: 0.5, max: 3, step: 0.01, value: w.artCrop.zoom, oninput: e => { snap(); w.artCrop = { ...w.artCrop, zoom: Number(e.target.value) }; changed(); } }),
@@ -420,7 +437,11 @@ export function createEditor(env) {
   function paintStage(card) {
     const st = ed.stage;
     if (!st) return;
-    if (ed.artMode) { st.replaceChildren(artCanvas()); return; }
+    if (ed.artMode) {
+      const c = artCanvas();
+      if (c.parentNode !== st) st.replaceChildren(c);
+      return;
+    }
     const view = ed.view;
     if (view === 'card') { st.replaceChildren(ed.canvas); ed.canvas.className = 'ce-canvas'; return; }
     const scaled = px => {
@@ -602,8 +623,14 @@ export function createEditor(env) {
     const W = ed.canvas.width;
     const H = ed.canvas.height;
     const M = Math.round(W * 0.07);
-    const c = h('canvas', { class: 'ce-canvas ce-artcanvas', width: W + M * 2, height: H + M * 2 });
+    // Jedno platno dok traje Edit art: povlačenje drži pointer na njemu, crta se samo iznova.
+    let c = ed.artCv;
+    if (!c || c.width !== W + M * 2 || c.height !== H + M * 2) {
+      c = ed.artCv = h('canvas', { class: 'ce-canvas ce-artcanvas', width: W + M * 2, height: H + M * 2 });
+      hookDrag(c);
+    }
     const g = c.getContext('2d');
+    g.setLineDash([]);
     g.fillStyle = '#141418';
     g.fillRect(0, 0, c.width, c.height);
     const art = ed.art;
@@ -623,7 +650,6 @@ export function createEditor(env) {
     g.lineWidth = 5;
     g.strokeStyle = '#f4c22f';
     g.strokeRect(M + win[0], M + win[1], win[2], win[3]);
-    hookDrag(c);
     return c;
   }
 
@@ -758,7 +784,7 @@ export function createEditor(env) {
         field('TYPE', seg(PORTRAIT.map(t => [t, t]), w.type, v => { set('type', v); env.render(); })),
         field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
         h('div', { class: 'ce-row' }, field('COST', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })), code),
-        field('COLOR', h('div', { class: 'ce-swatches' }, COLORS.map(c => h('button', { type: 'button', class: `ce-swatch c-bg-${c}${c === w.color ? ' active' : ''}`, title: c, 'aria-label': c, onclick: () => { set('color', c); env.render(); } })))),
+        field('COLOR', h('div', { class: 'ce-swatches' }, COLORS.map(c => h('button', { type: 'button', class: `ce-swatch${c === w.color ? ' active' : ''}`, style: `--sw: var(--c-${c})`, title: c, 'aria-label': c, onclick: () => { set('color', c); env.render(); } })))),
         field('BONUS', h('div', { class: 'ce-row ce-stats' }, STAT_KEYS.map(([k, label]) => field(h('span', { class: `stat-${k}` }, label), num(w.bonus[k], e => {
           const b = { ...w.bonus };
           if (e.target.value === '' || Number(e.target.value) === 0) delete b[k]; else b[k] = Number(e.target.value);
@@ -805,27 +831,31 @@ export function createEditor(env) {
 
   // Tagovi kao čipovi (× makne), polje "Add trait…" s prijedlozima iz popisa traitova. from: 1 = bez prvog taga.
   function chips(w, from, traits, accent) {
-    const add = h('input', { list: 'ce-traits', placeholder: from ? 'Add tag…' : 'Add trait…', onkeydown: e => {
-      if (e.key !== 'Enter' || !e.target.value.trim()) return;
-      e.preventDefault();
+    const addTag = () => {
+      const t = add.value.trim();
+      if (!t) return;
       snap(true);
-      const t = e.target.value.trim();
       if (!w.traits.includes(t)) w.traits = [...(from && !w.traits.length ? [''] : []), ...w.traits, t];
       changed();
       env.render();
-    } });
+    };
+    const add = h('input', { list: 'ce-traits', placeholder: from ? 'Add tag…' : 'Add trait…', onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } } });
     return h('div', { class: 'ce-chips' },
       w.traits.slice(from).map((t, i) => h('span', { class: `ce-chip${accent.includes(t) ? ' accent' : ''}` }, t,
         h('button', { type: 'button', 'aria-label': `Remove ${t}`, onclick: () => { snap(true); w.traits = w.traits.filter((_, j) => j !== i + from); changed(); env.render(); } }, '×'))),
-      add, h('datalist', { id: 'ce-traits' }, traits.map(t => h('option', { value: t }))));
+      add, h('button', { class: 'ghost ce-chip-add', type: 'button', onclick: addTag }, '+ Add'),
+      h('datalist', { id: 'ce-traits' }, traits.map(t => h('option', { value: t }))));
   }
 
   // Tekst s prekidačima faze, Once per turn i Range, tokenima statova i prijedlozima iz vodiča.
   function textEditor(w) {
     const stage = w.type === 'Stage';
     const area = h('textarea', { rows: 4, value: w.text ?? '' });
-    const sugBox = h('div', { class: 'ce-suggest' });
+    // Prijedlozi dok pišeš: padajući izbornik ispod teksta (↑ ↓, Enter ili Tab uzme, Esc zatvori).
+    // "[" nudi ikone statova; dva ili više slova nude fraze iz vodiča koje tako počinju.
+    const pop = h('ul', { class: 'ce-ac', role: 'listbox', hidden: true });
     let sug = { from: 0, items: [] };
+    let pick = 0;
     const sync = () => {
       snap();
       w.text = area.value;
@@ -833,21 +863,56 @@ export function createEditor(env) {
       changed();
       refreshToggles();
     };
+    const close = () => { pop.hidden = true; sug = { from: 0, items: [] }; };
     const take = item => {
       const at = area.selectionStart ?? area.value.length;
-      area.value = area.value.slice(0, sug.from) + item.insert + area.value.slice(at);
-      area.selectionStart = area.selectionEnd = sug.from + item.insert.length;
+      const before = area.value.slice(0, sug.from);
+      const after = area.value.slice(at);
+      // Razmak ispred fraze (ne iza broja ili zagrade) i iza nje, ako ga nema.
+      const lead = item.token || !before || /[\s([]$/.test(before) ? '' : ' ';
+      const trail = item.token || /[\s:]$/.test(item.insert) || /^[\s.,;:!?]/.test(after) ? '' : ' ';
+      const text = lead + item.insert + trail;
+      area.value = before + text + after;
+      area.selectionStart = area.selectionEnd = before.length + text.length;
       area.focus();
+      close();
       sync();
-      showSuggest();
+    };
+    const paint = () => {
+      pop.replaceChildren(...sug.items.map((it, i) => h('li', { role: 'option', 'aria-selected': String(i === pick), class: i === pick ? 'on' : '',
+        onmousedown: e => { e.preventDefault(); take(it); } },
+      h('span', { class: it.token ? `tok tok-${it.token.toLowerCase()}` : '' }, it.label), it.note ? h('small', { class: 'muted' }, it.note) : null)));
+      pop.hidden = !sug.items.length;
     };
     const showSuggest = () => {
-      sug = suggest(ed.guide, area.value, area.selectionStart ?? area.value.length);
-      sugBox.replaceChildren(...sug.items.map(it => h('button', { type: 'button', class: 'ghost', onclick: () => take(it) }, it.label)));
+      const caret = area.selectionStart ?? area.value.length;
+      const before = area.value.slice(0, caret);
+      if (before.endsWith('[')) {
+        sug = { from: caret - 1, items: TOKENS.map(t => ({ label: `[${t}]`, insert: `[${t}]`, token: t, note: { HP: 'heal / health', DMG: 'damage', PWR: 'Power', RNG: 'Range', KB: 'Knockback' }[t] })) };
+      } else {
+        const g = suggest(ed.guide, area.value, caret);
+        const notes = new Map((ed.guide?.phrases ?? []).map(p => [p.text, p.label]));
+        sug = { from: g.from, items: g.items.map(it => ({ label: toTokens(it.insert).trim(), insert: toTokens(it.insert).replace(/\s+$/, ''), note: notes.get(it.insert) })) };
+      }
+      pick = 0;
+      paint();
     };
     area.addEventListener('input', () => { sync(); showSuggest(); });
-    area.addEventListener('click', showSuggest);
-    area.addEventListener('keydown', e => { if (e.key === 'Tab' && sug.items.length) { e.preventDefault(); take(sug.items[0]); } });
+    area.addEventListener('blur', () => setTimeout(close, 120));
+    area.addEventListener('keydown', e => {
+      if (pop.hidden || !sug.items.length) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        pick = (pick + (e.key === 'ArrowDown' ? 1 : -1) + sug.items.length) % sug.items.length;
+        paint();
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        take(sug.items[pick]);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      }
+    });
     const insert = s => {
       snap(true);
       const a = area.selectionStart ?? area.value.length;
@@ -864,7 +929,7 @@ export function createEditor(env) {
     const revealed = stage ? h('button', { type: 'button', onclick: () => { if (!/^When this Stage is revealed/i.test(area.value)) { area.value = `When this Stage is revealed, ${area.value}`; area.selectionStart = area.selectionEnd = area.value.length; sync(); } } }, 'When revealed') : null;
     const toks = TOKENS.map(t => h('button', { type: 'button', class: `tok tok-${t.toLowerCase()}`, onclick: () => insert(`[${t}]`) }, `[${t}]`));
     const trait = PORTRAIT.includes(w.type) ? h('button', { type: 'button', class: 'tok', title: 'A trait in the text, e.g. {Sword}', onclick: () => insert('{}') }, '{Trait}') : null;
-    const phrase = ed.guide?.phrases?.length ? h('select', { class: 'ce-phrase', 'aria-label': 'Insert a phrase', onchange: e => { const p = ed.guide.phrases[Number(e.target.value)]; e.target.value = ''; if (p) insert(p.text.replace(/(\d)\s?(HP|DMG|Power|Range|Knockback)\b/g, (_, d, x) => `${d}[${{ HP: 'HP', DMG: 'DMG', Power: 'PWR', Range: 'RNG', Knockback: 'KB' }[x]}]`)); } },
+    const phrase = ed.guide?.phrases?.length ? h('select', { class: 'ce-phrase', 'aria-label': 'Insert a phrase', onchange: e => { const p = ed.guide.phrases[Number(e.target.value)]; e.target.value = ''; if (p) insert(toTokens(p.text)); } },
       h('option', { value: '' }, 'Phrase from the guide…'), ed.guide.phrases.map((p, i) => h('option', { value: i, title: p.note ?? '' }, `${p.label}: ${p.text.trim()}`))) : null;
     const tools = h('div', { class: 'ce-tools' }, revealed, phaseBtns, once, range, toks, trait, phrase);
     function refreshToggles() {
@@ -874,7 +939,8 @@ export function createEditor(env) {
       tools.querySelector('[data-range]')?.classList.toggle('on', hd.range);
     }
     refreshToggles();
-    return [tools, h('label', { class: 'ce-field' }, h('span', {}, 'TEXT'), area), sugBox];
+    return [tools, h('label', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-ac-wrap' }, area, pop)),
+      h('p', { class: 'muted small ce-ac-hint' }, 'Type [ for a stat icon, or the start of a phrase from the Text guide: a list opens under the text.')];
   }
 
   // ---------- izmjene, Undo ----------
@@ -1127,6 +1193,8 @@ export function createEditor(env) {
     ed.id = id;
     ed.base = { id };
     ed.work = workOf({ ...card, id, new: true, status: 'draft' });
+    ed.canvas = null;
+    ed.artCv = null;
     ed.dirty = true;
     ed.undo = [];
     ed.artMode = false;
@@ -1388,7 +1456,7 @@ export function createEditor(env) {
       h('header', { class: 'ce-page-head' },
         h('div', {}, h('h1', {}, 'Publish'), h('p', { class: 'muted' }, 'Changes saved in the editor. The game sees them only after you publish.')),
         h('div', { class: 'ce-page-actions' },
-          h('button', { class: 'ghost', type: 'button', onclick: () => newCard(sets.current() ?? 'OP1', 'Action') }, 'New card'),
+          sets.newCardButton(sets.current() ?? 'OP1', ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist'], 'ghost'),
           h('button', { class: 'publish', type: 'button', disabled: !!why, title: why ?? '', onclick: () => env.guard(() => publishAll(selected.map(x => x.id))) }, `Publish ${selected.length} ${selected.length === 1 ? 'card' : 'cards'}`))),
       why && list.length ? h('p', { class: 'muted small' }, why) : null,
       renderLast(marko),

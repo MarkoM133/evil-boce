@@ -54,6 +54,8 @@
     const click = label => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === label)?.click();
     if (q.get('view')) setTimeout(() => click({ old: 'Old vs new', hand: 'In hand', hover: 'Hover', board: 'On the board', map: 'On the map' }[q.get('view')]), 2500);
     if (q.get('art')) setTimeout(() => click('Edit art'), 2500);
+    // Prijedlozi u tekstu: &type=tak upiše na kraj teksta.
+    if (q.get('type')) setTimeout(() => { const t = document.querySelector('.ce-ac-wrap textarea'); t.focus(); t.value += q.get('type'); t.selectionStart = t.selectionEnd = t.value.length; t.dispatchEvent(new Event('input')); }, 2500);
   </script>
 </body>
 </html>

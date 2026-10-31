@@ -857,6 +857,8 @@ const cardEditor = createEditor({
   state, h, toast, guard, render,
   go: id => { state.editId = id; replaceNext = false; render(); },
   renderTraits: () => renderTraits(),
+  // Iz editora u Folder način: zapamćeni folder ili odabir foldera (klik je korisnikova gesta).
+  openFolder: () => guard(() => (state.savedRoot ? resume(state.savedRoot) : pickFolder())),
   // cards.json s diska, ako ga je drugi stroj u međuvremenu objavio; true kad je stigla nova verzija.
   async reloadDb() {
     const disk = await state.store.readDb();

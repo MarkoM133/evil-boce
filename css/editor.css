@@ -251,3 +251,21 @@ button.link.accent, .accent { color: var(--straw); }
 .studio-logo.small .sl-card { width: 32px; height: 46px; border-width: 2px; }
 .studio-logo.small .wordmark { font-size: 19px; }
 .who-pick .studio-logo { margin-bottom: -10px; }
+.ce-swatch, .ce-swatch:hover { background: var(--sw); }
+.ce-swatch:hover { filter: brightness(1.15); }
+.ce-chip-add { padding: 9px 14px; font-size: 15px; }
+.ce-newwrap { position: relative; }
+.ce-newmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; display: grid; min-width: 180px; background: var(--surface-2); box-shadow: 0 12px 30px rgba(0,0,0,.6); }
+.ce-newmenu button { clip-path: none; background: none; text-align: left; padding: 11px 16px; }
+.ce-newmenu button:hover { background: var(--surface); }
+.ce-newtypes { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 6px 10px; }
+.ce-newtypes button { font-size: 14px; padding: 7px 10px; }
+.ce-page-wrap { display: grid; gap: 16px; }
+.ce-readonly { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: var(--straw-wash); border: 1px solid var(--straw); padding: 12px 16px; color: var(--bone); }
+.ce-ac-wrap { position: relative; }
+.ce-ac { position: absolute; left: 0; top: 100%; margin: 4px 0 0; padding: 4px 0; list-style: none; z-index: 6; min-width: 320px; max-width: 100%; max-height: 260px; overflow-y: auto; background: var(--surface-2); box-shadow: 0 14px 34px rgba(0,0,0,.65); border: 1px solid #3a3a3a; }
+.ce-ac li { display: flex; justify-content: space-between; gap: 16px; padding: 8px 12px; cursor: pointer; font: 500 15px ui-monospace, Consolas, monospace; }
+.ce-ac li.on, .ce-ac li:hover { background: #2f2f2f; }
+.ce-ac li small { font-family: var(--text); }
+.ce-ac .tok { font-weight: 700; padding: 0 4px; }
+.ce-ac-hint { margin: -6px 0 0; }

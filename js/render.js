@@ -18,8 +18,8 @@ const PHASE_RE = /^((?:Start|Preroll|Roll|Postroll|Battle|End)(?: Phase)?)(\s+On
 const RANGE_RE = /^\[Range\]\s*/i;
 const COND_RE = /^(If [^,]+,)\s*/;
 // Ikone u tekstu: riječ stata iza broja ili iza more/less (kako je Card Engine crtao sprite: "heals 3 HP",
-// "+2000 Power", "more HP"), stari tokeni [PWR]…, i {Trait} podebljano. Tekst karte ostaje u riječima (igra ih čita).
-const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}|(?<=\d|\bmore|\bless)\s?(HP|DMG|Power|Range|Knockback)\b/g;
+// "+2000 Power", "more HP"; HP i DMG su ikona i bez broja), stari tokeni [PWR]…, i {Trait} podebljano. Tekst karte ostaje u riječima (igra ih čita).
+const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}|(?<=\d|\bmore|\bless)\s?(HP|DMG|Power|Range|Knockback)\b|\b(HP|DMG)\b/g;
 const WORD_ICON = { HP: 'hp', DMG: 'dmg', Power: 'pwr', Range: 'rng', Knockback: 'kb' };
 
 // ---------- predložak ----------
@@ -347,7 +347,7 @@ export function richRuns(s) {
   for (const m of s.matchAll(ICON_RE)) {
     if (m.index > last) runs.push({ text: s.slice(last, m.index) });
     if (m[1]) runs.push({ icon: m[1].toLowerCase() });
-    else if (m[3]) runs.push({ icon: WORD_ICON[m[3]] });
+    else if (m[3] || m[4]) runs.push({ icon: WORD_ICON[m[3] || m[4]] });
     else runs.push({ text: m[2], bold: true });
     last = m.index + m[0].length;
   }

@@ -9,6 +9,7 @@ const NOT_SETS = ['Stage', 'Core'];
 const CODE_RE = /^[A-Z]{2,4}\d{1,2}$/;
 const DEFAULT_PACK = 10;
 const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist'];
+const NEW_TYPES = TYPES;
 const COLORS = ['Cyan', 'Yellow', 'Purple', 'Red', 'Blue', 'Green'];
 const STATUS_FILTERS = [['', 'All statuses'], ['draft', 'Draft'], ['review', 'Review'], ['done', 'Done'], ['fx', 'Needs fx'], ['edited', 'Unpublished changes'], ['noart', 'No art']];
 
@@ -153,7 +154,7 @@ export function createSetsView(ctx) {
           h('p', { class: 'muted' }, special ? `${all.length} cards` : `Set ${String(s.number).padStart(2, '0')} · ${all.length} cards · ${s.packSize ?? DEFAULT_PACK} per pack`)),
         h('div', { class: 'ce-page-actions' },
           special ? null : h('button', { class: 'ghost', type: 'button', onclick: () => { v.settings = !v.settings; ctx.render(); } }, 'Set settings'),
-          h('button', { class: 'primary', type: 'button', onclick: () => ctx.newCard(s.code, newType) }, 'New card'))),
+          newCardButton(s.code, special ? [newType] : NEW_TYPES, 'primary'))),
       v.settings && !special ? renderSettings(s, list) : null,
       h('div', { class: 'ce-filters' },
         h('input', { type: 'search', placeholder: 'Search name, text or tag…', value: v.q, oninput: e => { v.q = e.target.value; clearTimeout(v.qt); v.qt = setTimeout(ctx.render, 250); } }),
@@ -162,8 +163,18 @@ export function createSetsView(ctx) {
         sel(v.status, STATUS_FILTERS, x => { v.status = x; ctx.render(); })),
       h('div', { class: 'ce-grid' },
         shown.map(c => tile(c, drafts[c.id])),
-        h('button', { class: 'ce-tile ce-tile-new', type: 'button', onclick: () => ctx.newCard(s.code, newType) },
-          h('span', { class: 'plus' }, '+'), h('span', {}, 'New card'), h('small', { class: 'muted' }, `Next code: ${next}`))));
+        h('div', { class: 'ce-tile ce-tile-new' },
+          h('span', { class: 'plus' }, '+'), h('span', {}, 'New card'),
+          h('div', { class: 'ce-newtypes' }, (special ? [newType] : NEW_TYPES).map(t => h('button', { type: 'button', class: 'ghost', onclick: () => ctx.newCard(s.code, t) }, t))),
+          h('small', { class: 'muted' }, `Next code: ${next}`))));
+  }
+
+  // Nova karta: tip se bira (Hero, Evolution, Action, Equipment, Assist); Stage i Core imaju svoj.
+  function newCardButton(code, types, cls) {
+    if (types.length === 1) return h('button', { class: cls, type: 'button', onclick: () => ctx.newCard(code, types[0]) }, 'New card');
+    const menu = h('div', { class: 'ce-newmenu', hidden: true }, types.map(t => h('button', { type: 'button', onclick: () => ctx.newCard(code, t) }, t)));
+    return h('div', { class: 'ce-newwrap' },
+      h('button', { class: cls, type: 'button', 'aria-haspopup': 'menu', onclick: () => { menu.hidden = !menu.hidden; } }, 'New card ▾'), menu);
   }
 
   function tile(c, draft) {
@@ -233,7 +244,7 @@ export function createSetsView(ctx) {
   }
 
   return {
-    render, nameOf, ensure: () => (v.saved ? null : load()),
+    render, nameOf, newCardButton, ensure: () => (v.saved ? null : load()),
     pick: code => { v.code = code; },
     current: () => (v.code && !NOT_SETS.includes(v.code) && v.code !== 'default' ? v.code : null),
     reload: () => { v.saved = null; v.urls = {}; },
