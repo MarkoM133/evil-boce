@@ -16,6 +16,7 @@
   <script type="module">
     import { probeServer, serverStore } from './js/store.js';
     import { createEditor } from './js/editor.js';
+    import { setTraits } from './js/deck.js';
 
     const h = (tag, props = {}, ...kids) => {
       const el = document.createElement(tag);
@@ -31,6 +32,7 @@
     };
     const store = serverStore(await probeServer());
     const state = { store, db: await store.readDb(), traits: await store.readTraits(), fxProposals: await store.readFxProposals().catch(() => null), editId: new URLSearchParams(location.search).get('id') };
+    setTraits(state.db, state.traits?.traits);
     const app = document.getElementById('app');
     const toast = m => console.log(m);
     const guard = async fn => { try { await fn(); } catch (e) { toast(e.message); } };

@@ -10,6 +10,7 @@ import { lockPath, lockState, newLock, HEARTBEAT_MS, SETTLE_MS } from './locks.j
 import { createSetsView } from './editor-sets.js';
 import { createGuideView, readGuide, avoidWarnings, suggest } from './editor-guide.js';
 import { createFramesView } from './editor-frames.js';
+import { deckPool, heroEvolutions, setTraits } from './deck.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -45,7 +46,7 @@ export function createEditor(env) {
   const ed = {
     drafts: null, tpl: null, tpls: {}, ready: false, agency: true, loading: false, error: null,
     id: null, work: null, base: null, art: null, artFor: null, emblem: null, emblemFor: null,
-    dirty: false, q: '', set: '', type: '', color: '', hero: '', show: '', canvas: null, warnBox: null, frame: 0,
+    balOpen: true, dirty: false, q: '', set: '', type: '', color: '', hero: '', show: '', canvas: null, warnBox: null, frame: 0,
   };
   const store = () => env.state.store;
   const canWrite = () => store()?.kind === 'folder';
@@ -429,9 +430,11 @@ export function createEditor(env) {
     ed.warnBox = h('ul', { class: 'ce-warnings' });
     ed.diffBox = h('div', { class: 'ce-diff' });
     ed.fxBox = h('div', { class: 'ce-fx' });
+    ed.ctxBox = h('div', { class: 'ce-context' });
+    ed.balBox = h('div', { class: 'ce-balance' });
     hookDrag(ed.canvas);
     queueDraw();
-    return h('section', { class: 'ce-preview' }, ed.canvas, ed.warnBox, ed.fxBox, ed.diffBox,
+    return h('section', { class: 'ce-preview' }, ed.canvas, ed.ctxBox, ed.warnBox, ed.fxBox, ed.balBox, ed.diffBox,
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.'));
   }
 
@@ -727,6 +730,55 @@ export function createEditor(env) {
     ed.warnBox.replaceChildren(...warnings.map(x => h('li', {}, x)));
     ed.diffBox.replaceChildren(...renderDiff(w));
     ed.fxBox.replaceChildren(...renderFx(w));
+    drawContext();
+    ed.balBox.replaceChildren(...renderBalance(w));
+  }
+
+  // Karta u veličini u kojoj je igrač vidi: u ruci i uvećana (hover).
+  function drawContext() {
+    const wide = ed.canvas.width > ed.canvas.height;
+    const sizes = [['In hand', wide ? 168 : 120], ['Hover', wide ? 392 : 280]];
+    ed.ctxBox.replaceChildren(...sizes.map(([label, wpx]) => {
+      const c = h('canvas', { width: wpx * 2, height: Math.round((wpx * 2 * ed.canvas.height) / ed.canvas.width) });
+      c.style.width = `${wpx}px`;
+      const g = c.getContext('2d');
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(ed.canvas, 0, 0, c.width, c.height);
+      return h('figure', {}, c, h('figcaption', { class: 'muted small' }, label));
+    }));
+  }
+
+  // Balans dok uređuješ: krivulja costa boje, slične karte (ista boja i cost), heroji koji je smiju uzeti
+  // i koliko karata svoje boje tada imaju (prije → poslije izmjene).
+  function renderBalance(w) {
+    if (!PORTRAIT.includes(w.type) || !w.color) return [];
+    const db = env.state.db;
+    const merged = c => ({ ...c, ...(ed.drafts?.cards?.[c.id] ?? {}) });
+    const pool = [...db.cards.filter(c => !c.deleted && c.id !== w.id).map(merged), w].filter(c => PORTRAIT.includes(c.type) && c.color === w.color);
+    const costs = new Map();
+    for (const c of pool) costs.set(c.cost ?? 0, (costs.get(c.cost ?? 0) ?? 0) + 1);
+    const max = Math.max(1, ...costs.values());
+    const top = Math.max(6, ...costs.keys());
+    const curve = h('div', { class: 'ce-curve' }, Array.from({ length: top + 1 }, (_, k) => h('div', { class: `ce-bar${k === (w.cost ?? 0) ? ' mine' : ''}`, title: `Cost ${k}: ${costs.get(k) ?? 0}` },
+      h('span', { style: `height:${((costs.get(k) ?? 0) / max) * 100}%` }), h('small', {}, String(k)))));
+    const similar = pool.filter(c => c.id !== w.id && (c.cost ?? 0) === (w.cost ?? 0));
+    // Heroji boje: smije li ova karta uz njih i koliko karata svoje boje imaju, objavljeno → s izmjenom.
+    const live = setTraits({ ...db, cards: [...db.cards.filter(c => c.id !== w.id), w] }, db.traitList);
+    const heroes = db.cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === w.color);
+    const own = (d, hero) => deckPool(d, [hero.id], heroEvolutions(d, [hero.id])).filter(c => c.color === hero.color);
+    const rows = heroes.map(hero => {
+      const before = own(db, hero);
+      const after = own(live, hero);
+      return { hero, before: before.length, after: after.length, takes: after.some(c => c.id === w.id) };
+    });
+    return [h('details', { class: 'ce-fx-box', open: ed.balOpen, ontoggle: e => { ed.balOpen = e.target.open; } },
+      h('summary', {}, `Balance: ${w.color} cards, cost ${w.cost ?? 0}`),
+      h('p', { class: 'small muted' }, `Cost curve of ${w.color} Action, Equipment and Assist cards (this card highlighted):`), curve,
+      h('p', { class: 'small' }, similar.length ? `Same colour and cost (${similar.length}):` : 'No other card of this colour has this cost.'),
+      similar.length ? h('ul', { class: 'small ce-similar' }, similar.slice(0, 8).map(c => h('li', {},
+        h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, c.name), ` · ${c.type} · ${(c.text ?? '').slice(0, 80)}${(c.text ?? '').length > 80 ? '…' : ''}`))) : null,
+      h('p', { class: 'small' }, 'Heroes of this colour (own-colour cards they may take, published → with this card):'),
+      h('ul', { class: 'small' }, rows.map(r => h('li', { class: r.takes ? '' : 'muted' }, `${r.takes ? '✓' : '–'} ${r.hero.name}: ${r.before}${r.after !== r.before ? ` → ${r.after}` : ''}`))))];
   }
 
   // Kako igra čita tekst (data/fx-proposals.json, piše ga game/tools/fx_proposals.gd nakon Objave).

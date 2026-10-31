@@ -1012,3 +1012,12 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .ce-guide input { width: 100%; }
 .ce-frames { grid-template-columns: 160px minmax(340px, 1fr) minmax(320px, 560px); }
 .ce-frames-json { font: 12px/1.4 ui-monospace, Consolas, monospace; width: 100%; }
+.ce-context { display: flex; gap: 14px; align-items: flex-end; margin-top: 10px; }
+.ce-context figure { margin: 0; }
+.ce-context canvas { display: block; border-radius: 6px; }
+.ce-balance { margin-top: 10px; font-size: 13px; }
+.ce-curve { display: flex; gap: 6px; align-items: flex-end; height: 70px; margin: 4px 0 8px; }
+.ce-bar { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.ce-bar span { width: 100%; background: rgba(255, 255, 255, 0.25); border-radius: 3px 3px 0 0; min-height: 2px; }
+.ce-bar.mine span { background: #f4c22f; }
+.ce-similar button.link { background: none; border: 0; color: inherit; text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
