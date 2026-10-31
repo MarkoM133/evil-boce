@@ -19,7 +19,7 @@
        Card data and frames come from data/ in the shared folder, never from the repo. -->
   <div id="out"></div>
   <script type="module">
-    import { loadTemplate, renderCard, fontsReady, loadImage } from '../js/render.js';
+    import { loadTemplate, renderCard, fontsReady, loadImage, templateName } from '../js/render.js';
 
     const q = new URLSearchParams(location.search);
     const ids = (q.get('ids') ?? '').split(',').filter(Boolean);
@@ -29,7 +29,7 @@
     const hasAgency = await fontsReady();
     const templates = {};
     const templateOf = async card => {
-      const name = card.template ?? (card.type === 'Hero' ? 'hero' : card.type === 'Evolution' ? 'evolution' : 'action');
+      const name = templateName(card);
       templates[name] ??= await loadTemplate(name, async rel => `/data/${rel}`);
       return templates[name];
     };

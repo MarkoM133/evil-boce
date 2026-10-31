@@ -21,6 +21,11 @@ const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}/g;
 
 // ---------- predložak ----------
 
+// Predložak za kartu: zadan na karti (template) ili po tipu.
+export function templateName(card) {
+  return card.template ?? ({ Hero: 'hero', Evolution: 'evolution', Stage: 'stage' })[card.type] ?? 'action';
+}
+
 // Predložak iz data/card-frames/<name>/: layout.json i sve slike koje traži (slojevi, privremeni okviri, ikone).
 // load(path) vraća URL za datoteku u data/ ili null.
 export async function loadTemplate(name, load) {
@@ -90,7 +95,7 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   if (tpl.layers) {
     for (const l of tpl.layers) {
       if (l.art) drawArt(ctx, art, card.artCrop, L, true);
-      else if (l.img) ctx.drawImage(tinted(l.img, l.tint ? TINTS[color] : null), 0, 0, CARD_W, CARD_H);
+      else if (l.img) ctx.drawImage(tinted(l.img, l.tint === true ? TINTS[color] : l.tint || null), 0, 0, CARD_W, CARD_H);
     }
   } else {
     drawArt(ctx, art, card.artCrop, L);
@@ -99,13 +104,14 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   }
   if (!art) warnings.push('No art yet.');
 
-  const white = '#ffffff';
-  if (!fitLine(ctx, card.name ?? '', L.title, { font: TITLE_FONT, color: white })) warnings.push('The name is too long for the title bar.');
-  fitLine(ctx, card.cost == null ? '' : String(card.cost), L.cost, { font: TITLE_FONT, color: white });
-  fitLine(ctx, card.type ?? '', L.type, { font: TITLE_FONT, color: white });
-  fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: white });
+  // Boja teksta po kućici (Stage: crni naslov i tekst); kućice koje predložak nema se preskaču.
+  const ink = box => box?.color ?? '#ffffff';
+  if (!fitLine(ctx, card.name ?? '', L.title, { font: TITLE_FONT, color: ink(L.title) })) warnings.push('The name is too long for the title bar.');
+  fitLine(ctx, card.cost == null ? '' : String(card.cost), L.cost, { font: TITLE_FONT, color: ink(L.cost) });
+  fitLine(ctx, card.type ?? '', L.type, { font: TITLE_FONT, color: ink(L.type) });
+  fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: ink(L.code) });
   drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
-  if (!drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag bar.');
+  if (L.tags && !drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag bar.');
   const t = drawEffect(ctx, card.text ?? '', color, L.effect, tpl.icons);
   if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
   return warnings;
@@ -295,7 +301,7 @@ function drawEffect(ctx, text, color, box, icons, heading = '') {
     // Naziv sposobnosti heroja: podebljan i podvučen, iznad teksta.
     if (heading) paras.push({ bullet: false, runs: [{ text: heading, bold: true, underline: true }] });
     if (e.cond) paras.push({ bullet: false, runs: [{ text: e.cond, bold: true }] });
-    for (const l of e.lines) paras.push({ bullet: l.bullet, runs: richRuns(l.text) });
+    for (const l of e.lines) paras.push({ bullet: l.bullet, runs: /^Terrain:/i.test(l.text) ? [{ text: l.text, bold: true }] : richRuns(l.text) });
     return paras;
   };
   const paras = runsFor();
@@ -314,12 +320,14 @@ function drawEffect(ctx, text, color, box, icons, heading = '') {
   if (paras.length) {
     const blockH = laid.height + 32;
     const by = textTop + (textH - blockH) / 2;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
-    roundRect(ctx, x + 8, by, w - 16, blockH, 22);
-    ctx.fill();
+    if (box.plate !== false) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+      roundRect(ctx, x + 8, by, w - 16, blockH, 22);
+      ctx.fill();
+    }
     let ly = by + 16;
     for (const line of laid.lines) {
-      drawRich(ctx, line, x + w / 2, ly + line.h / 2, size, icons);
+      drawRich(ctx, line, x + w / 2, ly + line.h / 2, size, icons, box.color ?? '#ffffff');
       ly += line.h;
     }
   }
@@ -389,7 +397,7 @@ function layoutParas(ctx, paras, maxW, size, icons) {
   return { lines, height: lines.reduce((s, l) => s + l.h, 0) };
 }
 
-function drawRich(ctx, line, cx, cy, size, icons) {
+function drawRich(ctx, line, cx, cy, size, icons, ink = '#ffffff') {
   let x = cx - line.w / 2;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -402,7 +410,7 @@ function drawRich(ctx, line, cx, cy, size, icons) {
       }
     } else {
       ctx.font = `${p.bold ? 'bold' : '500'} ${size}px ${TEXT_FONT}`;
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = ink;
       ctx.fillText(p.text, x, cy + size * 0.03);
       if (p.underline) ctx.fillRect(x, cy + size * 0.42, p.w, Math.max(2, size * 0.06));
     }
