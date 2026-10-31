@@ -36,6 +36,14 @@ export async function loadTemplate(name, load) {
     }
     return images.get(rel);
   };
+  const icons = {};
+  for (const [k, rel] of Object.entries(layout.icons ?? {})) icons[k] = await get(rel);
+  // Heroj i evolucija: jedan gotov okvir po boji.
+  if (layout.kind === 'hero') {
+    const frames = {};
+    for (const x of Object.values(FRAME_LETTER)) frames[x] = await get(layout.frame.replace('{letter}', x));
+    return { name, layout, frames, icons };
+  }
   // Pravi slojevi, ako su svi tu; inače privremeni okvir po boji.
   const layers = [];
   let real = true;
@@ -47,8 +55,6 @@ export async function loadTemplate(name, load) {
   }
   const interim = {};
   if (!real) for (const c of Object.keys(TINTS)) interim[c] = await get(layout.interim.replace('{color}', c));
-  const icons = {};
-  for (const [k, rel] of Object.entries(layout.icons ?? {})) icons[k] = await get(rel);
   return { name, layout, layers: real ? layers : null, interim, icons };
 }
 
@@ -72,7 +78,8 @@ export async function fontsReady() {
 
 // Nacrta kartu na canvas (veličine CARD_W×CARD_H). art: učitana slika ili null.
 // Vraća upozorenja za editor: tekst na najmanjem fontu, naslov smanjen do kraja, nema arta.
-export function renderCard(canvas, card, tpl, art) {
+export function renderCard(canvas, card, tpl, art, emblem = null) {
+  if (tpl.layout.kind === 'hero') return renderHero(canvas, card, tpl, art, emblem);
   canvas.width = CARD_W;
   canvas.height = CARD_H;
   const ctx = canvas.getContext('2d');
@@ -274,7 +281,7 @@ export function parseEffect(text) {
 
 // Uvjeti kao oznake u redu iznad teksta (faza i Once per turn jedna oznaka u dva dijela, RANGE),
 // zatim tamna ploča s tekstom koji se smanjuje od najvećeg do najmanjeg fonta dok ne stane.
-function drawEffect(ctx, text, color, box, icons) {
+function drawEffect(ctx, text, color, box, icons, heading = '') {
   const e = parseEffect(text);
   const [x, y, w, h] = box.box;
   const chipH = box.chip ?? 64;
@@ -284,6 +291,8 @@ function drawEffect(ctx, text, color, box, icons) {
   if (e.range) chips.push({ kind: 'range', text: 'RANGE' });
   const runsFor = () => {
     const paras = [];
+    // Naziv sposobnosti heroja: podebljan i podvučen, iznad teksta.
+    if (heading) paras.push({ bullet: false, runs: [{ text: heading, bold: true, underline: true }] });
     if (e.cond) paras.push({ bullet: false, runs: [{ text: e.cond, bold: true }] });
     for (const l of e.lines) paras.push({ bullet: l.bullet, runs: richRuns(l.text) });
     return paras;
@@ -350,7 +359,7 @@ function layoutParas(ctx, paras, maxW, size, icons) {
         if (/^\s+$/.test(b)) { words.push({ space: true }); continue; }
         ctx.font = `${r.bold ? 'bold' : '500'} ${size}px ${TEXT_FONT}`;
         const prev = words.at(-1);
-        const part = { text: b, bold: !!r.bold, w: ctx.measureText(b).width };
+        const part = { text: b, bold: !!r.bold, underline: !!r.underline, w: ctx.measureText(b).width };
         if (prev && !prev.space) prev.parts.push(part);
         else words.push({ parts: [part] });
       }
@@ -394,6 +403,7 @@ function drawRich(ctx, line, cx, cy, size, icons) {
       ctx.font = `${p.bold ? 'bold' : '500'} ${size}px ${TEXT_FONT}`;
       ctx.fillStyle = '#ffffff';
       ctx.fillText(p.text, x, cy + size * 0.03);
+      if (p.underline) ctx.fillRect(x, cy + size * 0.42, p.w, Math.max(2, size * 0.06));
     }
     x += p.w;
   }
@@ -450,4 +460,90 @@ function drawChips(ctx, chips, cx, top, h, color, icons) {
     }
     x += m.w + gap;
   });
+}
+
+
+// ---------- heroji i evolucije (položene karte) ----------
+
+// Slovo okvira po boji karte (Card Engine: Hero_templates_hero_frame_<X>).
+export const FRAME_LETTER = { Cyan: 'C', Yellow: 'Y', Purple: 'M', Red: 'R', Blue: 'B', Green: 'G' };
+const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
+
+// Heroj ili evolucija: boja pozadine i art u prozoru, okvir u boji heroja, pločica s amblemom, oznakom
+// (HERO, ili ime heroja kod evolucije) i nazivom, statsi u kućicama, naziv sposobnosti i tekst, RNG/KB,
+// tagovi, kod. Evolucija ima i razinu u hexu lijevo od naziva i cost u pločici.
+function renderHero(canvas, card, tpl, art, emblem) {
+  const L = tpl.layout;
+  const [W, H] = L.size;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const warnings = [];
+  ctx.clearRect(0, 0, W, H);
+  const color = FRAME_LETTER[card.color] ? card.color : 'Purple';
+  const evo = L.name === 'evolution';
+  const [wx, wy, ww, wh, wr] = L.artWindow;
+  ctx.save();
+  roundRect(ctx, wx, wy, ww, wh, wr);
+  ctx.clip();
+  ctx.fillStyle = card.bg || L.bg[color];
+  ctx.fillRect(wx, wy, ww, wh);
+  if (art) {
+    const [bx, by, bw, bh] = L.artBox;
+    const c = { x: 0.5, y: 0.5, zoom: 1, ...(card.artCrop ?? {}) };
+    const s = Math.max(bw / art.width, bh / art.height) * Math.max(c.zoom, 0.05);
+    ctx.drawImage(art, bx + bw / 2 - c.x * art.width * s, by + bh / 2 - c.y * art.height * s, art.width * s, art.height * s);
+  } else warnings.push('No art yet.');
+  ctx.restore();
+  const frame = tpl.frames?.[FRAME_LETTER[color]];
+  if (frame) ctx.drawImage(frame, 0, 0, W, H);
+  if (emblem) {
+    const [ex, ey, ew, eh] = L.emblem;
+    const s = Math.min(ew / emblem.width, eh / emblem.height);
+    ctx.drawImage(emblem, ex + (ew - emblem.width * s) / 2, ey + (eh - emblem.height * s) / 2, emblem.width * s, emblem.height * s);
+  }
+  const plate = L.plateColor;
+  const [heroName, evoName] = evo && (card.name ?? '').includes(',') ? card.name.split(/,\s*/, 2) : [card.hero ?? '', card.name ?? ''];
+  ctx.save();
+  ctx.letterSpacing = `${L.label.spacing ?? 0}px`;
+  fitLine(ctx, evo ? (card.hero || heroName).toUpperCase() : 'HERO', L.label, { font: TITLE_FONT, color: plate, bold: true });
+  ctx.restore();
+  const title = evo ? evoName : card.name ?? '';
+  if (!fitLine(ctx, title, L.title, { font: TITLE_FONT, color: plate, bold: true })) warnings.push('The name is too long for the plate.');
+  if (evo) {
+    // Razina u hexu, odmah lijevo od naziva.
+    const [tx, ty, tw, th] = L.title.box;
+    const textW = Math.min(ctx.measureText(title).width, tw);
+    const r = th * 0.42;
+    const cx = tx + tw / 2 - textW / 2 - r - 22;
+    const cy = ty + th / 2;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 6 + (i * Math.PI) / 3;
+      ctx[i ? 'lineTo' : 'moveTo'](cx + r * Math.cos(a), cy + r * Math.sin(a));
+    }
+    ctx.closePath();
+    ctx.fillStyle = plate;
+    ctx.fill();
+    fitLine(ctx, ROMAN[card.evo ?? 1] ?? String(card.evo), { box: [cx - r, cy - r, r * 2, r * 2], size: r * 1.05, min: 20 }, { font: TITLE_FONT, color: '#ffffff', bold: true });
+    if (L.cost && card.cost != null) fitLine(ctx, String(card.cost), L.cost, { font: TITLE_FONT, color: '#ffffff' });
+  }
+  const tints = { ...STAT_TINTS, ...(L.statTints ?? {}) };
+  for (const [k, slot] of Object.entries(L.stats)) {
+    const v = card.stats?.[k];
+    if (v == null) continue;
+    const icon = tpl.icons[`stat-${k}`];
+    if (icon) {
+      const [ix, iy, iw, ih] = slot.icon;
+      const s = Math.min(iw / icon.width, ih / icon.height) * 0.8;
+      ctx.drawImage(tinted(icon, tints[k]), ix + (iw - icon.width * s) / 2, iy + (ih - icon.height * s) / 2, icon.width * s, icon.height * s);
+    }
+    fitLine(ctx, String(v), { box: slot.value, size: L.statSize ?? 84, min: 40 }, { font: TITLE_FONT, color: '#ffffff' });
+  }
+  const ability = card.ability ?? card.abilityNames?.[0] ?? '';
+  const t = drawEffect(ctx, card.text ?? '', color, L.effect, tpl.icons, ability);
+  if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
+  if (!drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag box.');
+  fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: plate, bold: true });
+  return warnings;
 }

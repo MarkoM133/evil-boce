@@ -10,6 +10,7 @@
     figure { margin: 0; }
     figcaption { padding: 4px 0; }
     canvas, img { width: 600px; height: 840px; display: block; }
+    .wide canvas, .wide img { width: 840px; height: 600px; }
   </style>
 </head>
 <body>
@@ -26,28 +27,38 @@
     const db = await (await fetch('/data/cards.json', { cache: 'no-store' })).json();
     const drafts = await fetch('/data/editor/drafts.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : { cards: {} }));
     const hasAgency = await fontsReady();
-    const tpl = await loadTemplate('action', async rel => `/data/${rel}`);
+    const templates = {};
+    const templateOf = async card => {
+      const name = card.template ?? (card.type === 'Hero' ? 'hero' : card.type === 'Evolution' ? 'evolution' : 'action');
+      templates[name] ??= await loadTemplate(name, async rel => `/data/${rel}`);
+      return templates[name];
+    };
     if (!hasAgency) out.append(Object.assign(document.createElement('p'), { textContent: 'Agency FB is not installed: a stand-in font is used.' }));
     for (const id of ids) {
       const base = db.cards.find(c => c.id === id);
       if (!base) continue;
       const card = { ...base, ...(drafts.cards?.[id] ?? {}) };
+      const tpl = await templateOf(card);
       const row = document.createElement('div');
-      row.className = 'row';
+      row.className = tpl.layout.kind === 'hero' ? 'row wide' : 'row';
       if (q.get('compare')) {
         const fig = document.createElement('figure');
         const img = document.createElement('img');
-        const ce = n => `/data/card-engine/Za Poslat/Sve Karte Portrait/${encodeURIComponent(n)}.png`;
-        img.src = ce(card.name);
-        img.onerror = () => { img.onerror = null; img.src = ce(`${card.id} ${card.name}`); };
+        const dir = tpl.layout.kind === 'hero' ? 'Sve Karte Landscape' : 'Sve Karte Portrait';
+        const ce = n => `/data/card-engine/Za Poslat/${dir}/${encodeURIComponent(n)}.png`;
+        const names = [card.name, `${card.id} ${card.name} Hero`, `${card.id} ${card.name}`];
+        let k = 0;
+        img.src = ce(names[k]);
+        img.onerror = () => { if (++k < names.length) img.src = ce(names[k]); else img.onerror = null; };
         fig.append(img, Object.assign(document.createElement('figcaption'), { textContent: `Card Engine · ${card.name}` }));
         row.append(fig);
       }
       const fig = document.createElement('figure');
       const canvas = document.createElement('canvas');
       const art = card.art ? await loadImage(`/data/${card.art}`).catch(() => null) : null;
-      const warnings = renderCard(canvas, card, tpl, art);
-      fig.append(canvas, Object.assign(document.createElement('figcaption'), { textContent: `Editor renderer${tpl.layers ? '' : ' (interim frame)'} · ${warnings.join(' ') || 'no warnings'}` }));
+      const emblem = card.emblem ? await loadImage(`/data/${card.emblem}`).catch(() => null) : null;
+      const warnings = renderCard(canvas, card, tpl, art, emblem);
+      fig.append(canvas, Object.assign(document.createElement('figcaption'), { textContent: `Editor renderer${tpl.layers || tpl.frames ? '' : ' (interim frame)'} · ${warnings.join(' ') || 'no warnings'}` }));
       row.append(fig);
       out.append(row);
     }
