@@ -9,6 +9,7 @@ import { applyDrafts, imageHashOf } from './importer.js';
 import { lockPath, lockState, newLock, HEARTBEAT_MS, SETTLE_MS } from './locks.js';
 import { createSetsView } from './editor-sets.js';
 import { createGuideView, readGuide, avoidWarnings, suggest } from './editor-guide.js';
+import { createFramesView } from './editor-frames.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -124,11 +125,11 @@ export function createEditor(env) {
     }
     if (ed.error) return h('section', { class: 'panel' }, h('p', { class: 'warn' }, ed.error));
     const want = env.state.editId;
-    if (['publish', 'sets', 'guide', 'tags'].includes(want)) {
+    if (['publish', 'sets', 'guide', 'tags', 'frames'].includes(want)) {
       ed.id = null;
       ed.work = null;
       syncLock();
-      return h('div', {}, renderNav(want), { sets: sets.render, guide: guide.render, tags: renderTags, publish: renderPublish }[want]());
+      return h('div', {}, renderNav(want), { sets: sets.render, guide: guide.render, tags: renderTags, frames: frames.render, publish: renderPublish }[want]());
     }
     if (want && want !== ed.id) open(want);
     if (!want) { ed.id = null; ed.work = null; }
@@ -146,6 +147,7 @@ export function createEditor(env) {
       tab('sets', 'Sets', 'sets'),
       tab('tags', 'Tags', 'tags'),
       tab('guide', 'Text guide', 'guide'),
+      tab('frames', 'Frames', 'frames'),
       tab('publish', `Publish${n ? ` (${n})` : ''}`, 'publish'),
       h('label', { class: 'ce-who' }, 'I am ', h('select', { onchange: e => { try { localStorage.setItem(WHO_KEY, e.target.value); } catch {} env.render(); } },
         ['', 'Marko', 'Tarik'].map(x => h('option', { value: x, selected: x === who() }, x || '–')))));
@@ -878,6 +880,8 @@ export function createEditor(env) {
   }
 
   const guide = createGuideView({ h, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast, onSaved: g => { ed.guide = g; } });
+  // Spremljen okvir: editor ga učita iznova.
+  const frames = createFramesView({ h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast, drafts: () => ed.drafts, onSaved: name => { delete ed.tpls[name]; } });
   const sets = createSetsView({ h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast, go: id => go(id), newCard: (set, type) => newCard(set, type) });
 
   return { render, isDirty: () => ed.dirty, newCard };

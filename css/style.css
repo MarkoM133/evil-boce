@@ -1010,3 +1010,5 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .ce-fx { margin-top: 10px; font-size: 13px; }
 .ce-fx-box summary { cursor: pointer; }
 .ce-guide input { width: 100%; }
+.ce-frames { grid-template-columns: 160px minmax(340px, 1fr) minmax(320px, 560px); }
+.ce-frames-json { font: 12px/1.4 ui-monospace, Consolas, monospace; width: 100%; }

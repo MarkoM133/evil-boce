@@ -589,7 +589,7 @@ async function applyHash() {
     state.deckView = view === 'deck' ? 'deck' : 'pool';
   }
   if (tab === 'browse') state.selected = id && cardById(id) ? id : null;
-  if (tab === 'editor') state.editId = ['publish', 'sets', 'guide', 'tags'].includes(id) || (id && (cardById(id) || /^[A-Za-z0-9]+-\d+$/.test(id))) ? id : null;
+  if (tab === 'editor') state.editId = ['publish', 'sets', 'guide', 'tags', 'frames'].includes(id) || (id && (cardById(id) || /^[A-Za-z0-9]+-\d+$/.test(id))) ? id : null;
   state.tab = tab;
   return true;
 }
