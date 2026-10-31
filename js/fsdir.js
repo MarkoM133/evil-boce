@@ -18,7 +18,8 @@ function idb(mode, fn) {
 }
 
 export const saveRoot = handle => idb('readwrite', s => s.put(handle, 'root'));
-export const loadRoot = () => idb('readonly', s => s.get('root')).catch(() => undefined);
+// Preglednik koji ne odgovori na IndexedDB (headless, blokirani podaci) ne smije zaustaviti start: nakon 2 s bez foldera.
+export const loadRoot = () => Promise.race([idb('readonly', s => s.get('root')).catch(() => undefined), new Promise(r => setTimeout(() => r(undefined), 2000))]);
 
 export async function pickRoot() {
   const handle = await window.showDirectoryPicker({ id: 'evil-boce', mode: 'readwrite' });

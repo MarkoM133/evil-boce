@@ -8,7 +8,7 @@ import { BALL_COLORS, DEFAULT_ACCENT, heroDefaultColor, ballColors } from './loo
 import { renderTools } from './tools.js';
 import { aggregate, filterMatches, ranked, cardsVersions, RESULTS } from './stats.js';
 import * as fs from './fsdir.js';
-import { createEditor, EDIT_TYPES } from './editor.js';
+import { createEditor, EDIT_TYPES, PAGES as EDITOR_PAGE_IDS } from './editor.js';
 
 const DB_PATH = 'data/cards.json';
 
@@ -531,7 +531,12 @@ function render() {
   const app = $('#app');
   if (state.store) {
     document.body.classList.remove('detail-open'); // pregled ga vrati kad nacrta detalj
-    app.replaceChildren(renderHeader(), renderMain());
+    // Otvorena karta u Card editoru je cijeli ekran sa svojom trakom (mockup); stranice Card editora su bez trake heroja.
+    const full = state.tab === 'editor' && cardEditor.isCardPage();
+    document.body.classList.toggle('editor-full', full);
+    if (full) app.replaceChildren(cardEditor.render());
+    else if (state.tab === 'editor') app.replaceChildren(renderMain());
+    else app.replaceChildren(renderHeader(), renderMain());
     updateStrip();
     cardPushed = false;
     syncHash();
@@ -589,7 +594,9 @@ async function applyHash() {
     state.deckView = view === 'deck' ? 'deck' : 'pool';
   }
   if (tab === 'browse') state.selected = id && cardById(id) ? id : null;
-  if (tab === 'editor') state.editId = ['publish', 'sets', 'guide', 'tags', 'frames'].includes(id) || (id && (cardById(id) || /^[A-Za-z0-9]+-\d+$/.test(id))) ? id : null;
+  if (tab === 'editor') state.editId = EDITOR_PAGE_IDS.includes(id) || (id && (cardById(id) || /^[A-Za-z0-9]+-\d+$/.test(id))) ? id : 'sets';
+  // Traits je sad Card editor › Traits & aliases.
+  if (tab === 'traits') { state.tab = 'editor'; state.editId = 'traits'; return true; }
   state.tab = tab;
   return true;
 }
@@ -771,23 +778,55 @@ function importButton() {
   }, 'Import', n ? h('span', { class: 'tab-badge' }, n) : null);
 }
 
+// Izbornik kao u mockupu Card editora: Cards, Card editor (Sets, Publish, Traits & aliases, Text guide, Frames),
+// Decks, Balance (i Coverage), Tools. Podstavke se vide dok je njihova stavka otvorena.
+const EDITOR_PAGES = [['sets', 'Sets'], ['publish', 'Publish'], ['traits', 'Traits & aliases'], ['guide', 'Text guide'], ['frames', 'Frames']];
+const NAV = [
+  ['browse', 'Cards'],
+  ['editor', 'Card editor', EDITOR_PAGES],
+  ['decks', 'Decks'],
+  ['balance', 'Balance', [['balance', 'Balance'], ['coverage', 'Coverage']]],
+  ['tools', 'Tools'],
+];
+const navOf = tab => (tab === 'coverage' ? 'balance' : tab === 'import' || tab === 'history' ? 'browse' : tab);
+
+function renderNav() {
+  const cur = navOf(state.tab);
+  const sub = (key, items) => h('div', { class: 'tabs-sub' }, items.map(([k, label]) => {
+    const active = key === 'editor' ? (state.editId ?? 'sets') === k : state.tab === k;
+    const n = key === 'editor' && k === 'publish' ? cardEditor.waiting() : 0;
+    return h('button', { class: active ? 'active' : '', onclick: () => {
+      if (key === 'editor') { state.tab = 'editor'; state.editId = k; } else state.tab = k;
+      replaceNext = false;
+      render();
+    } }, label, n ? h('span', { class: 'tab-badge' }, n) : null);
+  }));
+  return h('nav', { class: 'tabs', role: 'tablist' }, NAV.map(([key, label, items]) => [
+    h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(cur === key), class: cur === key ? 'active' : '', onclick: () => {
+      state.tab = key;
+      if (key === 'editor') state.editId = 'sets';
+      replaceNext = false;
+      render();
+    } }, label),
+    items && cur === key ? sub(key, items) : null,
+  ]).flat());
+}
+
+// "Signed in as": tko radi na ovom računalu (Marko ili Tarik). Služi za lock, povijest i gumb Publish; dogovor, ne zaštita.
+function signedIn() {
+  return h('label', { class: 'signed-in' }, 'Signed in as ',
+    h('select', { onchange: e => { cardEditor.setWho(e.target.value); render(); } },
+      ['', 'Marko', 'Tarik'].map(n => h('option', { value: n, selected: n === cardEditor.who() }, n || '–'))));
+}
+
 function renderMain() {
-  const tabs = [
-    ['browse', 'Browse'],
-    ['editor', 'Card editor'],
-    ['decks', 'Decks'],
-    ['balance', 'Balance'],
-    ['traits', 'Traits'],
-    ['coverage', 'Coverage'],
-    ['tools', 'Tools'],
-  ];
   const view = { import: renderImport, browse: renderBrowse, editor: () => cardEditor.render(), decks: renderDecks, balance: renderBalance, traits: renderTraits, coverage: renderCoverage, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
-      h('nav', { class: 'tabs', role: 'tablist' },
-        tabs.map(([key, label]) => h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(state.tab === key), class: state.tab === key ? 'active' : '', onclick: () => { state.tab = key; render(); } }, label))),
-      state.tab === 'decks' ? renderDeckList() : null),
+      renderNav(),
+      state.tab === 'decks' ? renderDeckList() : null,
+      signedIn()),
     sideData(),
     h('main', {}, view));
 }
@@ -796,6 +835,7 @@ function renderMain() {
 const cardEditor = createEditor({
   state, h, toast, guard, render,
   go: id => { state.editId = id; replaceNext = false; render(); },
+  renderTraits: () => renderTraits(),
   openTab: tab => { state.tab = tab; replaceNext = false; render(); },
   openEffect: id => { state.tab = 'browse'; state.selected = id; state.detailTab = 'effect'; replaceNext = false; render(); },
   // Objava nacrta: baza i povijest, pa umanjene slike za nove. keepOld: stare slike ostaju za Undo.

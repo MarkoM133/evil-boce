@@ -1,64 +1,75 @@
-// Card editor (zamjena za Card Engine): Edit za sve tipove karata (Action, Equipment, Assist, Hero,
-// Evolution, Stage, Core). Forma i živi preview jedno uz drugo; izmjene se spremaju kao nacrti u
-// data/editor/drafts.json, a igra ih vidi tek kad ih Objava prebaci u cards.json (Card editor › Publish).
-// Art je u data/art/<kod>.<ext> (puna rezolucija), izrez je u karti (artCrop); amblemi u data/art/emblems/.
-import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, TINTS } from './render.js';
-import { firstTag, tagLabel, traitNames, INVALID } from './tags.js';
+// Card editor (zamjena za Card Engine), po Markovim mockupima (docs/private/mockups/card-editor/).
+// Stranice: Sets (mreža karata seta), Publish, Traits & aliases, Text guide, Frames; otvorena karta je cijeli ekran
+// s trakom (breadcrumb, lock, Undo, Close, Save), lijevo paneli (Checks, panel tipa, fx, Balance, Notes & history),
+// u sredini karta, desno forma. Izmjene se spremaju kao nacrti (data/editor/drafts.json); igra ih vidi tek nakon Objave.
+// Tekst je u editoru s tokenima ([HP], [PWR]…), u bazi riječima (js/card-text.js).
+import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, coreMode, TINTS } from './render.js';
+import { firstTag, traitNames, norm, GENERAL, HEROES, TRAIT, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
 import { applyDrafts, imageHashOf } from './importer.js';
-import { lockPath, lockState, newLock, HEARTBEAT_MS, SETTLE_MS } from './locks.js';
+import { lockPath, lockState, newLock, LOCK_DIR, HEARTBEAT_MS, SETTLE_MS } from './locks.js';
 import { createSetsView } from './editor-sets.js';
 import { createGuideView, readGuide, avoidWarnings, suggest } from './editor-guide.js';
 import { createFramesView } from './editor-frames.js';
+import { toTokens, toWords, head, withHead, stripTerrain, withTerrain, coreBonus, coreEffect, PHASES } from './card-text.js';
 import { deckPool, heroEvolutions, setTraits } from './deck.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
+const NOTES_PATH = 'data/editor/notes.json';
+const HISTORY_PATH = 'data/editor/history.json';
 // Zadnja Objava iz editora: baza prije nje i objavljeni nacrti, za Undo.
 const LAST_PUBLISH_PATH = 'data/editor/last-publish.json';
 export const EDIT_TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core'];
-// Tip se mijenja samo unutar iste vrste karte (isti predložak i ista polja).
+export const PAGES = ['sets', 'publish', 'traits', 'guide', 'frames'];
 const PORTRAIT = ['Action', 'Equipment', 'Assist'];
 const HEROISH = ['Hero', 'Evolution'];
 const COLORS = Object.keys(TINTS);
 const STATUSES = ['draft', 'review', 'done'];
 const CORE_KINDS = ['Buff', 'Major', 'Debuff'];
+const ROMAN = ['I', 'II', 'III'];
 const WHO_KEY = 'evil-boce-who';
-const BONUS_KEYS = [['pwr', 'Power'], ['dmg', 'DMG'], ['hp', 'HP'], ['rng', 'Range'], ['kb', 'KB']];
-const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'Power'], ['rng', 'Range'], ['kb', 'KB']];
+const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'PWR'], ['rng', 'RNG'], ['kb', 'KB']];
+const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
 const FIELDS = ['name', 'type', 'color', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain',
-  'art', 'artCrop', 'emblem', 'bg', 'template', 'status', 'notes'];
-// Statovi se pišu riječima iza broja ("3 HP", "+2000 Power"): igra čita riječi, a karta ih crta kao ikone.
-const INSERTS = [
-  ['[Range]', '[Range] '], ['Start', 'Start Phase: '], ['Preroll', 'Preroll Phase: '], ['Roll', 'Roll Phase: '], ['Postroll', 'Postroll Phase: '],
-  ['Battle', 'Battle Phase: '], ['End', 'End Phase: '], ['Once per turn', ' Once Per Turn'], ['Power', ' Power'], ['DMG', ' DMG'],
-  ['HP', ' HP'], ['Range', ' Range'], ['Knockback', ' Knockback'],
-];
+  'fx', 'fxStatus', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status'];
+const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equipment: 'action', Assist: 'action', Stage: 'stage', Core: 'core' };
 
 // Prazan objekt ili popis je isto što i polje kojeg nema (Stage bez bonusa, karta bez tagova).
-const empty = v => v == null || (typeof v === 'object' && Object.keys(v).length === 0);
+const empty = v => v == null || v === '' || (typeof v === 'object' && Object.keys(v).length === 0);
 const sameVal = (a, b) => (empty(a) && empty(b)) || JSON.stringify(a) === JSON.stringify(b);
+const setOf = id => id.split('-')[0];
+const when = iso => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date().toDateString() === d.toDateString();
+  return today ? `today ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : `${d.getDate()}.${d.getMonth() + 1}.`;
+};
 
-// env: { state, h, toast, guard, render, go(id) }.
+// env: { state, h, toast, guard, render, go(id), openTab(tab), openEffect(id), assertFresh, commitDb, dropOldImages, renderTraits }
 export function createEditor(env) {
   const { h } = env;
   const ed = {
-    drafts: null, tpl: null, tpls: {}, ready: false, agency: true, loading: false, error: null,
-    id: null, work: null, base: null, art: null, artFor: null, emblem: null, emblemFor: null,
-    balOpen: true, dirty: false, q: '', set: '', type: '', color: '', hero: '', show: '', canvas: null, warnBox: null, frame: 0,
+    drafts: null, guide: null, notes: null, history: null, locks: {}, locksAt: 0, tpls: {}, ready: false, agency: true, loading: false, error: null,
+    id: null, base: null, work: null, art: null, artFor: null, emblem: null, emblemFor: null, dirty: false,
+    undo: [], snapAt: 0, view: 'card', artMode: false, lock: null, last: undefined, balOpen: true, pubOff: new Set(),
+    canvas: null, frame: 0, from: 'sets', thumbs: new Map(),
   };
   const store = () => env.state.store;
   const canWrite = () => store()?.kind === 'folder';
   const who = () => { try { return localStorage.getItem(WHO_KEY) || ''; } catch { return ''; } };
+  const setWho = name => { try { localStorage.setItem(WHO_KEY, name); } catch {} };
+  const db = () => env.state.db;
 
   async function load() {
     if (ed.loading) return;
     ed.loading = true;
     try {
       ed.agency = await fontsReady();
-      ed.drafts = await readDrafts();
-      ed.guide = await readGuide(store());
+      [ed.drafts, ed.guide, ed.notes, ed.history] = await Promise.all([readJson(DRAFTS_PATH, { version: 1, cards: {} }), readGuide(store()), readJson(NOTES_PATH, { cards: {} }), readJson(HISTORY_PATH, { cards: {} })]);
+      await readLocks();
+      await sets.ensure();
       ed.ready = true;
     } catch (e) {
       ed.error = e.message || String(e);
@@ -67,55 +78,79 @@ export function createEditor(env) {
     env.render();
   }
 
+  // Uvijek s diska (drugi stroj je mogao spremiti u međuvremenu; Syncthing donese datoteku).
+  async function readJson(path, fallback) {
+    try {
+      if (store().kind === 'folder') {
+        const t = await fs.readText(store().root, path);
+        return t ? JSON.parse(t) : structuredClone(fallback);
+      }
+      const r = await fetch(path, { cache: 'no-store' });
+      return r.ok ? await r.json() : structuredClone(fallback);
+    } catch {
+      return structuredClone(fallback);
+    }
+  }
+  const readDrafts = () => readJson(DRAFTS_PATH, { version: 1, cards: {} });
+  const writeJson = (path, data) => fs.writeFile(store().root, path, JSON.stringify(data, null, 2) + '\n');
+
   // Predlošci se učitavaju kad zatrebaju (data/card-frames/<ime>/).
   function templateFor(card) {
     const name = templateName(card);
     ed.tpls[name] ??= loadTemplate(name, rel => store().dataUrl(rel));
     return ed.tpls[name];
   }
-  const landscape = card => ['hero', 'evolution'].includes(templateName(card));
 
-  // Uvijek s diska (drugi stroj je mogao spremiti u međuvremenu; Syncthing donese datoteku).
-  async function readDrafts() {
-    try {
-      if (store().kind === 'folder') {
-        const t = await fs.readText(store().root, DRAFTS_PATH);
-        return t ? JSON.parse(t) : { version: 1, cards: {} };
-      }
-      const r = await fetch(DRAFTS_PATH, { cache: 'no-store' });
-      return r.ok ? await r.json() : { version: 1, cards: {} };
-    } catch {
-      return { version: 1, cards: {} };
-    }
+  // Karte iz cards.json s nacrtima, i nove karte iz nacrta (new: true).
+  const merged = c => ({ ...c, ...(ed.drafts?.cards?.[c.id] ?? {}) });
+  function allCards() {
+    const list = db().cards.filter(c => EDIT_TYPES.includes(c.type) && !c.deleted).map(merged);
+    for (const [id, d] of Object.entries(ed.drafts?.cards ?? {})) if (d.new && !db().cards.some(c => c.id === id)) list.push({ id, ...d });
+    if (ed.work?.new && !list.some(c => c.id === ed.work.id)) list.push(cardOf(ed.work));
+    return list.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   }
 
-  // Karte iz cards.json, nove karte iz nacrta (new: true) i nova karta koja još nije spremljena.
-  const cards = () => {
-    const db = env.state.db.cards;
-    const fresh = Object.entries(ed.drafts?.cards ?? {}).filter(([id, d]) => d.new && !db.some(c => c.id === id)).map(([id, d]) => ({ id, ...d }));
-    if (ed.work?.new && !fresh.some(c => c.id === ed.work.id)) fresh.push(ed.work);
-    return [...db.filter(c => EDIT_TYPES.includes(c.type) && !c.deleted), ...fresh]
-      .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  };
-  const setOf = c => c.id.split('-')[0];
+  // ---------- radna kopija karte ----------
+
+  // Forma drži tekst s tokenima; Stage bez reda "Terrain:", Core s efektom umjesto bonusa.
+  function workOf(card) {
+    const w = structuredClone(card);
+    w.text = toTokens(card.type === 'Stage' ? stripTerrain(card.text) : card.text);
+    w.traits ??= [];
+    w.artCrop ??= { x: 0.5, y: 0.5, zoom: 1 };
+    if (PORTRAIT.includes(card.type)) w.bonus ??= {};
+    if (HEROISH.includes(card.type)) w.stats ??= {};
+    if (card.type === 'Core') w.effect = coreEffect(card.bonus);
+    return w;
+  }
+
+  // Karta kakvu vide renderer, nacrt i igra: riječi, red "Terrain:", bonus Corea iz efekta.
+  function cardOf(w) {
+    const c = { ...w, text: toWords(w.text) };
+    if (w.type === 'Stage') c.text = withTerrain(c.text, w.terrain ?? 'None');
+    if (w.type === 'Core') { c.bonus = coreBonus(w.effect); c.text = ''; c.template = 'core'; }
+    delete c.effect;
+    return c;
+  }
 
   function open(id) {
     const draft = ed.drafts?.cards?.[id];
-    const base = env.state.db.cards.find(c => c.id === id) ?? (draft?.new ? { id } : null);
+    const base = db().cards.find(c => c.id === id) ?? (draft?.new ? { id } : null);
     if (!base) { ed.id = null; ed.work = null; return; }
     ed.id = id;
     ed.base = base;
-    ed.work = structuredClone({ ...base, ...(ed.drafts?.cards?.[id] ?? {}) });
-    if (PORTRAIT.includes(base.type) || base.type === 'Core') ed.work.bonus ??= {};
-    ed.work.traits ??= [];
-    ed.work.artCrop ??= { x: 0.5, y: 0.5, zoom: 1 };
-    if (HEROISH.includes(base.type)) ed.work.stats ??= {};
+    ed.work = workOf({ ...base, ...(draft ?? {}) });
     ed.dirty = false;
-    ed.art = null;
-    ed.artFor = null;
-    ed.emblem = null;
-    ed.emblemFor = null;
+    ed.undo = [];
+    ed.artMode = false;
+    ed.view = 'card';
+    ed.art = ed.artFor = ed.emblem = ed.emblemFor = null;
   }
+
+  const isCardPage = () => {
+    const want = env.state.editId;
+    return !!want && !PAGES.includes(want);
+  };
 
   // ---------- prikaz ----------
 
@@ -125,111 +160,732 @@ export function createEditor(env) {
       return h('section', { class: 'panel' }, h('p', { class: 'muted' }, 'Loading the card editor…'));
     }
     if (ed.error) return h('section', { class: 'panel' }, h('p', { class: 'warn' }, ed.error));
-    const want = env.state.editId;
-    if (['publish', 'sets', 'guide', 'tags', 'frames'].includes(want)) {
-      ed.id = null;
-      ed.work = null;
+    const want = env.state.editId ?? 'sets';
+    if (PAGES.includes(want)) {
+      if (ed.id) { ed.id = null; ed.work = null; }
       syncLock();
-      return h('div', {}, renderNav(want), { sets: sets.render, guide: guide.render, tags: renderTags, frames: frames.render, publish: renderPublish }[want]());
+      if (Date.now() - ed.locksAt > HEARTBEAT_MS) readLocks().then(changed => { if (changed) env.render(); });
+      return { sets: sets.render, guide: guide.render, traits: renderTraitsPage, frames: frames.render, publish: renderPublish }[want]();
     }
-    if (want && want !== ed.id) open(want);
-    if (!want) { ed.id = null; ed.work = null; }
+    if (want !== ed.id) open(want);
     syncLock();
-    return h('div', {}, renderNav('edit'),
-      h('div', { class: 'card-editor' }, renderList(), ed.work ? renderForm() : h('p', { class: 'muted ce-empty' }, 'Pick a card on the left.'), ed.work ? renderPreview() : null));
+    if (!ed.work) return h('section', { class: 'panel' }, h('p', { class: 'warn' }, `No card ${want}.`), h('button', { class: 'ghost', onclick: () => go('sets') }, 'Back to Sets'));
+    return renderCardPage();
   }
 
-  // Edit | Publish (broj nacrta) i "Ja sam" (Objavu klika samo Marko; dogovor, ne zaštita).
-  function renderNav(view) {
-    const n = Object.keys(ed.drafts?.cards ?? {}).length;
-    const tab = (name, label, to) => h('button', { class: view === name ? 'primary' : 'ghost', type: 'button', onclick: () => go(to) }, label);
-    return h('div', { class: 'ce-nav' },
-      tab('edit', 'Edit', ed.lastId ?? null),
-      tab('sets', 'Sets', 'sets'),
-      tab('tags', 'Tags', 'tags'),
-      tab('guide', 'Text guide', 'guide'),
-      tab('frames', 'Frames', 'frames'),
-      tab('publish', `Publish${n ? ` (${n})` : ''}`, 'publish'),
-      h('label', { class: 'ce-who' }, 'I am ', h('select', { onchange: e => { try { localStorage.setItem(WHO_KEY, e.target.value); } catch {} env.render(); } },
-        ['', 'Marko', 'Tarik'].map(x => h('option', { value: x, selected: x === who() }, x || '–')))));
-  }
-
-  // Filteri popisa gledaju kartu s nacrtom (art i status se mijenjaju u nacrtu).
-  const SHOW = [['', 'Everything'], ['noart', 'No art'], ['fx', 'Needs fx'], ['draft', 'Status: draft'], ['review', 'Status: review'], ['done', 'Status: done'], ['unpublished', 'Unpublished changes']];
-  const needsFx = c => !!(c.text ?? '').trim() && !['Stage', 'Core'].includes(c.type) && (!c.fx || c.fxStatus === 'check');
-  const heroOf = c => (HEROISH.includes(c.type) ? c.hero || c.name : c.traits?.[0]);
-  const shown = () => {
-    const q = ed.q.trim().toLowerCase();
-    return cards().filter(c => {
-      const m = { ...c, ...(ed.drafts?.cards?.[c.id] ?? {}) };
-      if (ed.set && setOf(c) !== ed.set) return false;
-      if (ed.type && c.type !== ed.type) return false;
-      if (ed.color && m.color !== ed.color) return false;
-      if (ed.hero && heroOf(m) !== ed.hero) return false;
-      if (ed.show === 'noart' && m.art) return false;
-      if (ed.show === 'fx' && !needsFx(m)) return false;
-      if (['draft', 'review', 'done'].includes(ed.show) && (m.status ?? 'draft') !== ed.show) return false;
-      if (ed.show === 'unpublished' && !ed.drafts?.cards?.[c.id]) return false;
-      return !q || `${c.id} ${m.name}`.toLowerCase().includes(q);
-    });
-  };
-
-  function renderList() {
-    const sets = [...new Set(cards().map(setOf))];
-    return h('aside', { class: 'ce-list' },
-      h('div', { class: 'ce-list-head' },
-        h('select', { 'aria-label': 'Set', onchange: e => { ed.set = e.target.value; env.render(); } },
-          h('option', { value: '' }, 'All sets'), sets.map(s => h('option', { value: s, selected: s === ed.set }, s))),
-        h('select', { 'aria-label': 'Type', onchange: e => { ed.type = e.target.value; env.render(); } },
-          h('option', { value: '' }, 'All types'), EDIT_TYPES.map(t => h('option', { value: t, selected: t === ed.type }, t)))),
-      h('input', { class: 'ce-find', type: 'search', placeholder: 'Find', value: ed.q, oninput: e => { ed.q = e.target.value; refreshList(); } }),
-      h('div', { class: 'ce-list-head' },
-        h('select', { 'aria-label': 'Colour', onchange: e => { ed.color = e.target.value; env.render(); } },
-          h('option', { value: '' }, 'All colours'), COLORS.map(c => h('option', { value: c, selected: c === ed.color }, c))),
-        h('select', { 'aria-label': 'Hero', onchange: e => { ed.hero = e.target.value; env.render(); } },
-          h('option', { value: '' }, 'All heroes'), heroNames().map(n => h('option', { value: n, selected: n === ed.hero }, n)))),
-      h('select', { class: 'ce-find', 'aria-label': 'Show', onchange: e => { ed.show = e.target.value; env.render(); } },
-        SHOW.map(([v, label]) => h('option', { value: v, selected: v === ed.show }, label))),
-      h('p', { class: 'muted small' }, `${shown().length} of ${cards().length}`),
-      renderNew(sets),
-      h('ul', { id: 'ce-items' }, shown().map(c => item(c))));
-  }
-
-  // Nova karta: set i tip; kod je sljedeći slobodni broj u setu (cards.json i nacrti).
-  function renderNew(sets) {
-    if (!ed.newOpen) return h('button', { class: 'ghost ce-new', type: 'button', onclick: () => { ed.newOpen = true; env.render(); } }, '+ New card');
-    const setSel = h('select', { 'aria-label': 'Set' }, sets.map(x => h('option', { value: x, selected: x === (ed.set || sets.find(y => !['Stage', 'Core'].includes(y))) }, x)));
-    const typeSel = h('select', { 'aria-label': 'Type' }, EDIT_TYPES.map(t => h('option', { value: t, selected: t === (ed.type || 'Action') }, t)));
-    // Stage i Core imaju svoje setove (Stage-001, Core-001).
-    const sync = () => { if (['Stage', 'Core'].includes(typeSel.value)) setSel.value = typeSel.value; else if (['Stage', 'Core'].includes(setSel.value)) setSel.value = sets.find(y => !['Stage', 'Core'].includes(y)) ?? setSel.value; };
-    typeSel.addEventListener('change', sync);
-    sync();
-    return h('div', { class: 'ce-new-form' },
-      h('div', { class: 'ce-list-head' }, setSel, typeSel),
-      h('div', { class: 'ce-list-head' },
-        h('button', { class: 'primary', type: 'button', onclick: () => newCard(setSel.value, typeSel.value) }, 'Create'),
-        h('button', { class: 'ghost', type: 'button', onclick: () => { ed.newOpen = false; env.render(); } }, 'Cancel')));
-  }
-
-  const heroNames = () => env.state.db.cards.filter(c => c.type === 'Hero' && !c.deleted).map(c => c.name).sort();
-
-  // Duplikat: ista karta pod sljedećim kodom u istom setu, kao nova karta (nacrt do Objave).
-  function duplicate() {
-    const w = ed.work;
-    if (ed.dirty && !confirm('Discard the unsaved changes to this card?')) return;
-    const id = nextId(setOf(w));
-    const copy = structuredClone(w);
-    for (const k of ['image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted', 'fx', 'fxStatus', 'aliases']) delete copy[k];
-    ed.id = id;
-    ed.base = { id };
-    ed.work = { ...copy, id, new: true, name: `${w.name ?? ''} (copy)`, status: 'draft' };
-    ed.dirty = true;
-    ed.art = ed.artFor = ed.emblem = ed.emblemFor = null;
+  function go(id) {
+    if (ed.dirty && id !== ed.id && !confirm('Discard the unsaved changes to this card?')) return;
+    ed.dirty = false;
+    if (id && !PAGES.includes(id) && (!ed.id || PAGES.includes(env.state.editId ?? 'sets'))) ed.from = env.state.editId ?? 'sets';
     env.go(id);
   }
 
+  // ---------- stranica karte ----------
+
+  function renderCardPage() {
+    const w = ed.work;
+    const setName = sets.nameOf(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id));
+    const lockChip = ed.lock?.state === 'other'
+      ? h('span', { class: 'ce-lockchip other' }, `🔒 ${ed.lock.other?.who ?? 'Someone'} is editing`,
+        h('button', { class: 'ghost', type: 'button', onclick: () => env.guard(() => { releaseLock(); return claimLock(ed.id, who(), true); }) }, 'Take over'))
+      : ed.lock?.state === 'mine' ? h('span', { class: 'ce-lockchip' }, '🔒 You are editing')
+        : canWrite() && !who() ? h('span', { class: 'ce-lockchip muted' }, 'Set "Signed in as" to lock the card') : null;
+    const top = h('header', { class: 'ce-top' },
+      h('button', { class: 'ce-logo', type: 'button', title: 'Back to Sets', onclick: () => go(ed.from) },
+        h('span', { class: 'wordmark small', role: 'img', 'aria-label': 'Evil Boće' }, h('span', { class: 'w-evil' }, 'Evil'), h('span', { class: 'w-boce' }, 'Boće'))),
+      h('nav', { class: 'ce-crumbs' },
+        h('button', { class: 'link', type: 'button', onclick: () => go('sets') }, 'Card editor'), ' / ',
+        h('button', { class: 'link', type: 'button', onclick: () => { sets.pick(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id)); go('sets'); } }, setName), ' / ',
+        h('strong', {}, `${w.id} ${w.name || 'New card'}`),
+        h('span', { class: `ce-badge ${TYPE_BADGE[w.type]}${w.type === 'Action' || w.type === 'Equipment' || w.type === 'Assist' ? ` c-bg-${w.color}` : ''}` }, w.type.toUpperCase())),
+      h('div', { class: 'ce-top-actions' }, lockChip,
+        w.type === 'Core' ? null : h('button', { class: 'ghost', type: 'button', disabled: !ed.undo.length, onclick: undo }, 'Undo'),
+        h('button', { class: 'ghost', type: 'button', onclick: () => go(ed.from) }, 'Close'),
+        h('button', { class: 'primary', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(saveDraft) }, 'Save')));
+    return h('div', { class: 'ce-full' }, top,
+      h('div', { class: `ce-cols${HEROISH.includes(w.type) ? ' wide' : ''}` }, renderSide(), renderCentre(), renderForm()));
+  }
+
+  // ---------- lijevi paneli ----------
+
+  function panel(title, ...kids) {
+    return h('section', { class: 'ce-panel' }, h('h3', {}, title), ...kids);
+  }
+
+  function renderSide() {
+    const w = ed.work;
+    ed.checkBox = h('ul', { class: 'ce-checks' });
+    const parts = [panel('Checks', ed.checkBox)];
+    if (w.type === 'Hero') parts.push(heroPanel(w));
+    if (PORTRAIT.includes(w.type)) parts.push(sameFramePanel(w));
+    if (w.type === 'Stage') parts.push(panel('Terrain', h('p', { class: 'small' }, 'The terrain line is added to the card by the editor, under the text. It is not typed in the text.')));
+    if (w.type === 'Core') parts.push(panel('Cores', h('p', { class: 'small' }, 'Cores are not in a set. They have their own list in Card editor › Sets.')));
+    if (!['Stage', 'Core'].includes(w.type)) parts.push(fxPanel(w));
+    if (PORTRAIT.includes(w.type)) { ed.balBox = h('div', {}); parts.push(ed.balBox); } else ed.balBox = null;
+    parts.push(notesPanel(w));
+    return h('aside', { class: 'ce-side' }, ...parts);
+  }
+
+  function heroPanel(w) {
+    const evos = db().cards.filter(c => c.type === 'Evolution' && !c.deleted && c.hero === w.name);
+    return panel('Hero cards',
+      h('p', { class: 'small' }, 'Aliases: ', h('strong', {}, (w.aliases ?? []).join(', ') || '–')),
+      h('p', { class: 'small' }, 'Evolutions: ', evos.length ? evos.map((e, i) => [i ? ', ' : null, h('button', { class: 'link', type: 'button', onclick: () => go(e.id) }, e.name.split(/,\s*/).pop())]).flat().filter(Boolean) : 'none yet',
+        ' · ', h('button', { class: 'link accent', type: 'button', onclick: () => newCard(setOf(w.id), 'Evolution', { hero: w.name, color: w.color }) }, 'New evolution')));
+  }
+
+  // Action, Equipment i Assist dijele okvir; sličice iste karte s drugim tipom (klik promijeni tip).
+  function sameFramePanel(w) {
+    const others = PORTRAIT.filter(t => t !== w.type);
+    const figs = others.map(t => {
+      const c = h('canvas', { class: 'ce-mini' });
+      thumbInto(c, { ...cardOf(w), type: t }, 96);
+      return h('button', { class: 'ce-mini-fig', type: 'button', title: `Make it ${t}`, onclick: () => { snap(true); w.type = t; changed(); env.render(); } }, c, h('span', {}, t));
+    });
+    return panel('Same frame', h('p', { class: 'small' }, `${PORTRAIT.join(', ').replace(/, (?=[^,]*$)/, ' and ')} share this frame. Only the small type label changes.`), h('div', { class: 'ce-minis' }, figs));
+  }
+
+  // fx za igru: prijedlog iz data/fx-proposals.json (igrin alat nakon Objave), potvrđuje se ovdje (GDD 14).
+  function fxPanel(w) {
+    const p = env.state.fxProposals?.cards?.[w.id];
+    const textChanged = !w.new && toWords(w.text ?? '') !== (ed.base.type === 'Stage' ? stripTerrain(ed.base.text) : ed.base.text ?? '');
+    const box = h('textarea', { class: 'ce-fx-code', rows: 4, spellcheck: false, placeholder: p?.unparsed?.length ? 'The game needs an fx for this card.' : 'No fx: the game reads the text by itself.', value: w.fx ?? '',
+      oninput: e => { snap(); w.fx = e.target.value.trim() ? e.target.value : undefined; w.fxStatus = w.fx ? 'ok' : undefined; changed(); } });
+    const propose = () => {
+      if (!p?.proposal) return;
+      snap(true);
+      w.fx = p.proposal;
+      w.fxStatus = 'ok';
+      box.value = p.proposal;
+      changed();
+    };
+    const note = textChanged ? 'The text changed: the game reads it again after Publish, and a new proposal comes with it.'
+      : !p ? 'No report from the game for this card yet (it comes after Publish).'
+        : p.unparsed?.length ? `The game does not understand: ${p.unparsed.join(' · ')}` : 'The game reads the text by itself.';
+    return h('section', { class: 'ce-panel' },
+      h('div', { class: 'ce-panel-head' }, h('h3', {}, 'fx for the game'),
+        h('button', { class: 'ghost', type: 'button', disabled: textChanged || !p?.proposal, title: textChanged ? 'Publish first: the proposal is for the published text' : '', onclick: propose }, 'Propose fx')),
+      box, h('p', { class: `small ${p?.unparsed?.length && !w.fx ? 'warn' : 'muted'}` }, note),
+      w.fx && w.fxStatus === 'check' ? h('p', { class: 'small warn' }, 'The text changed after this fx was confirmed: check it, then edit or confirm.') : null,
+      w.fx && w.fxStatus === 'check' ? h('button', { class: 'ghost', type: 'button', onclick: () => { snap(true); w.fxStatus = 'ok'; changed(); env.render(); } }, 'Confirm fx') : null,
+      !w.new && env.openEffect ? h('button', { class: 'link small', type: 'button', onclick: () => env.openEffect(w.id) }, 'What the game reads →') : null);
+  }
+
+  function notesPanel(w) {
+    const notes = [...(ed.notes?.cards?.[w.id] ?? [])];
+    if (typeof ed.base.notes === 'string' && ed.base.notes) notes.unshift({ who: '', at: '', text: ed.base.notes });
+    const hist = [...(ed.history?.cards?.[w.id] ?? [])].reverse();
+    // Objave prije povijesti editora: iz changelog.json (bez imena).
+    const published = (env.state.changelog?.entries ?? []).filter(e => e.cards?.some(c => c.id === w.id)).map(e => ({ at: e.date, what: `published v${e.version}` })).reverse();
+    const lines = [...hist, ...published.filter(p => !hist.some(x => x.what === p.what))].slice(0, 8);
+    const input = h('input', { placeholder: 'Add a note…', onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); env.guard(() => addNote(e.target.value)); } } });
+    return panel('Notes & history',
+      ...notes.map(n => h('div', { class: 'ce-note' }, h('p', { class: 'small' }, h('strong', { class: n.who === 'Marko' ? 'red' : '' }, n.who || 'Note'), n.at ? ` · ${when(n.at)}` : ''), h('p', {}, n.text))),
+      canWrite() ? input : null,
+      ...lines.map(x => h('p', { class: 'small' }, h('strong', {}, x.who || ''), `${x.who ? ' · ' : ''}${when(x.at)} · ${x.what}`)),
+      lines.length || notes.length ? null : h('p', { class: 'small muted' }, 'Nothing yet.'),
+      ed.drafts?.cards?.[w.id] ? h('button', { class: 'link small', type: 'button', disabled: !canWrite(), onclick: () => env.guard(discardDraft) }, w.new ? 'Throw away this new card' : 'Discard the unpublished changes') : null);
+  }
+
+  async function addNote(text) {
+    if (!text.trim()) return;
+    const fresh = await readJson(NOTES_PATH, { cards: {} });
+    (fresh.cards[ed.id] ??= []).push({ who: who() || '', at: new Date().toISOString(), text: text.trim() });
+    await writeJson(NOTES_PATH, fresh);
+    ed.notes = fresh;
+    env.render();
+  }
+
+  async function logHistory(id, what) {
+    const fresh = await readJson(HISTORY_PATH, { cards: {} });
+    (fresh.cards[id] ??= []).push({ who: who() || '', at: new Date().toISOString(), what });
+    if (fresh.cards[id].length > 50) fresh.cards[id] = fresh.cards[id].slice(-50);
+    await writeJson(HISTORY_PATH, fresh);
+    ed.history = fresh;
+  }
+
+  // ---------- sredina: karta ----------
+
+  function renderCentre() {
+    const w = ed.work;
+    const views = w.type === 'Core' ? [] : HEROISH.includes(w.type) ? [['card', 'Card'], ['hover', 'Hover'], ['old', 'Old vs new']]
+      : w.type === 'Stage' ? [['card', 'Card'], ['old', 'Old vs new']] : [['card', 'Card'], ['hand', 'In hand'], ['hover', 'Hover'], ['old', 'Old vs new']];
+    const wide = HEROISH.includes(w.type);
+    ed.canvas = h('canvas', { width: wide ? 2100 : 1500, height: wide ? 1500 : 2100 });
+    ed.stage = h('div', { class: `ce-stage${wide ? ' wide' : ''}${ed.artMode ? ' art-mode' : ''}${w.type === 'Core' ? ' core' : ''}` });
+    ed.warn = [];
+    queueDraw();
+    const fileIn = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', hidden: true, onchange: e => env.guard(() => uploadArt(e.target.files[0])) });
+    const buttons = w.type === 'Core' ? [] : ed.artMode ? [] : [
+      h('button', { class: 'ghost', type: 'button', disabled: !ed.artFor && !w.art, onclick: () => { ed.artMode = true; env.render(); } }, 'Edit art'),
+      h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => fileIn.click() }, w.art ? 'Replace art' : 'Add art'),
+      w.type === 'Stage' ? null : h('button', { class: 'ghost', type: 'button', onclick: () => { env.toast('Remove background works on a plain background colour: save the PNG there, then Replace art.'); env.openTab('tools'); } }, 'Remove background'),
+      h('button', { class: 'ghost', type: 'button', title: 'A new card with the next code in this set', onclick: duplicate }, 'Duplicate'),
+      h('button', { class: 'ghost', type: 'button', onclick: downloadPng }, 'Download PNG'),
+    ];
+    return h('section', { class: 'ce-centre' },
+      views.length > 1 && !ed.artMode ? h('div', { class: 'ce-views' }, views.map(([k, label]) => h('button', { type: 'button', class: ed.view === k ? 'active' : '', onclick: () => { ed.view = k; env.render(); } }, label))) : null,
+      ed.stage,
+      ed.artMode ? h('div', { class: 'ce-zoom' }, h('span', {}, 'ZOOM'),
+        h('input', { type: 'range', min: 0.5, max: 3, step: 0.01, value: w.artCrop.zoom, oninput: e => { snap(); w.artCrop = { ...w.artCrop, zoom: Number(e.target.value) }; changed(); } }),
+        h('button', { class: 'primary', type: 'button', onclick: () => { ed.artMode = false; env.render(); } }, 'Done')) : null,
+      ed.artMode ? h('p', { class: 'muted small ce-hint' }, HEROISH.includes(w.type) ? 'Drag the art to move it, scroll to zoom. The frame covers the right edge of the art.' : 'Drag the art to move it, scroll to zoom. The dashed line is the art window.') : null,
+      w.type === 'Core' ? h('p', { class: 'muted small ce-hint' }, 'Image only, no frame') : null,
+      buttons.length ? h('div', { class: 'ce-art-buttons' }, buttons, fileIn) : null,
+      ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.'));
+  }
+
+  // Više izmjena u istom trenutku daje jedno crtanje.
+  function queueDraw() {
+    if (ed.frame) return;
+    ed.frame = 1;
+    setTimeout(async () => {
+      ed.frame = 0;
+      await draw().catch(e => console.error(e));
+    }, 0);
+  }
+
+  async function draw() {
+    const w = ed.work;
+    if (!w || !ed.canvas) return;
+    const card = cardOf(w);
+    const tpl = await templateFor(card);
+    // Forma heroja čita zadanu boju pozadine iz predloška: kad predložak stigne prvi put, nacrta se iznova.
+    const first = ed.tpl?.name !== tpl.name;
+    ed.tpl = tpl;
+    if (first && HEROISH.includes(w.type) && !w.bg) { env.render(); return; }
+    if (ed.artFor !== w.art) {
+      ed.artFor = w.art;
+      const url = w.art ? await store().dataUrl(w.art) : null;
+      ed.art = url ? await loadImage(url).catch(() => null) : null;
+    }
+    const emblemPath = w.emblem ?? (w.type === 'Evolution' ? heroCard(w)?.emblem ?? ed.drafts?.cards?.[heroCard(w)?.id]?.emblem : null);
+    if (ed.emblemFor !== emblemPath) {
+      ed.emblemFor = emblemPath;
+      const url = emblemPath ? await store().dataUrl(emblemPath) : null;
+      ed.emblem = url ? await loadImage(url).catch(() => null) : null;
+    }
+    if (w !== ed.work) return;
+    ed.warn = renderCard(ed.canvas, card, tpl, ed.art, ed.emblem);
+    paintStage(card);
+    if (ed.checkBox) ed.checkBox.replaceChildren(...checks(w, card).map(([ok, text]) => h('li', { class: ok ? 'ok' : 'bad' }, h('span', { class: 'mark' }, ok ? '✓' : '!'), text)));
+    if (ed.balBox) ed.balBox.replaceChildren(...renderBalance(card));
+  }
+
+  const heroCard = w => {
+    const name = w.hero;
+    const c = db().cards.find(x => x.type === 'Hero' && !x.deleted && x.name === name);
+    return c ? merged(c) : null;
+  };
+
+  // Pogled u sredini: karta, u ruci, uvećana, stara i nova, ili način uređivanja arta (slika i izvan karte).
+  function paintStage(card) {
+    const st = ed.stage;
+    if (!st) return;
+    if (ed.artMode) { st.replaceChildren(artCanvas()); return; }
+    const view = ed.view;
+    if (view === 'card') { st.replaceChildren(ed.canvas); ed.canvas.className = 'ce-canvas'; return; }
+    const scaled = px => {
+      const c = h('canvas', { width: px * 2, height: Math.round((px * 2 * ed.canvas.height) / ed.canvas.width) });
+      c.style.width = `${px}px`;
+      const g = c.getContext('2d');
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(ed.canvas, 0, 0, c.width, c.height);
+      return c;
+    };
+    const wide = ed.canvas.width > ed.canvas.height;
+    if (view === 'hand') st.replaceChildren(h('figure', { class: 'ce-ctx' }, scaled(wide ? 168 : 120), h('figcaption', { class: 'muted small' }, 'Size in the hand')));
+    else if (view === 'hover') st.replaceChildren(h('figure', { class: 'ce-ctx' }, scaled(wide ? 392 : 280), h('figcaption', { class: 'muted small' }, 'Size when you hover it in the game')));
+    else {
+      const old = h('img', { class: 'ce-old', alt: 'Published' });
+      if (ed.base.image) store().imageUrl(ed.base).then(u => { if (u) old.src = u; });
+      st.replaceChildren(h('div', { class: 'ce-oldnew' },
+        h('figure', {}, ed.base.image ? old : h('div', { class: 'ce-old empty' }, 'Not published yet'), h('figcaption', { class: 'muted small' }, 'Published')),
+        h('figure', {}, scaled(wide ? 360 : 260), h('figcaption', { class: 'muted small' }, 'New'))));
+    }
+  }
+
+  // Edit art: cijela slika (zatamnjena izvan karte), karta preko nje, isprekidani prozor arta; povlačenje i kotačić.
+  function artCanvas() {
+    const L = ed.tpl.layout;
+    const W = ed.canvas.width;
+    const H = ed.canvas.height;
+    const M = Math.round(W * 0.07);
+    const c = h('canvas', { class: 'ce-canvas ce-artcanvas', width: W + M * 2, height: H + M * 2 });
+    const g = c.getContext('2d');
+    g.fillStyle = '#141418';
+    g.fillRect(0, 0, c.width, c.height);
+    const art = ed.art;
+    if (art) {
+      const [bx, by, bw, bh] = L.artBox;
+      const cr = { x: 0.5, y: 0.5, zoom: 1, ...ed.work.artCrop };
+      const s = Math.max(bw / art.width, bh / art.height) * Math.max(cr.zoom, 0.05);
+      const dw = art.width * s;
+      const dh = art.height * s;
+      g.globalAlpha = 0.45;
+      g.drawImage(art, M + bx + bw / 2 - cr.x * dw, M + by + bh / 2 - cr.y * dh, dw, dh);
+      g.globalAlpha = 1;
+    }
+    g.drawImage(ed.canvas, M, M);
+    const win = L.artWindow ?? L.artBox;
+    g.setLineDash([22, 14]);
+    g.lineWidth = 5;
+    g.strokeStyle = '#f4c22f';
+    g.strokeRect(M + win[0], M + win[1], win[2], win[3]);
+    hookDrag(c);
+    return c;
+  }
+
+  // Povlačenje arta pomiče izrez, kotačić zumira (samo u načinu Edit art).
+  function hookDrag(canvas) {
+    let from = null;
+    canvas.addEventListener('pointerdown', e => { from = { x: e.clientX, y: e.clientY, crop: { ...ed.work.artCrop } }; snap(true); canvas.setPointerCapture(e.pointerId); });
+    canvas.addEventListener('pointermove', e => {
+      if (!from || !ed.art) return;
+      const scale = canvas.width / canvas.getBoundingClientRect().width;
+      const [, , bw, bh] = ed.tpl.layout.artBox;
+      const k = Math.max(bw / ed.art.width, bh / ed.art.height) * from.crop.zoom;
+      ed.work.artCrop = { ...from.crop, x: from.crop.x - ((e.clientX - from.x) * scale) / (ed.art.width * k), y: from.crop.y - ((e.clientY - from.y) * scale) / (ed.art.height * k) };
+      changed();
+    });
+    canvas.addEventListener('pointerup', () => { from = null; });
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      snap();
+      const z = Math.min(3, Math.max(0.5, ed.work.artCrop.zoom * (e.deltaY < 0 ? 1.05 : 1 / 1.05)));
+      ed.work.artCrop = { ...ed.work.artCrop, zoom: z };
+      const slider = document.querySelector('.ce-zoom input');
+      if (slider) slider.value = z;
+      changed();
+    }, { passive: false });
+  }
+
+  // Sličica karte (Sets, Same frame, Publish): nacrta se jednom po verziji karte i čuva.
+  const thumbQueue = [];
+  let thumbBusy = false;
+  function thumbInto(canvas, card, px) {
+    const key = JSON.stringify([card.id, card.type, card.updated ?? card.rev, card.art, card.artCrop, card.text, card.name, card.color, card.cost, card.traits, card.bonus, card.stats, card.emblem, card.coreImage]);
+    const wide = HEROISH.includes(card.type);
+    canvas.width = px * 2;
+    canvas.height = Math.round(px * 2 * (wide ? 1500 / 2100 : 2100 / 1500));
+    canvas.style.width = `${px}px`;
+    const paint = src => canvas.getContext('2d').drawImage(src, 0, 0, canvas.width, canvas.height);
+    const done = ed.thumbs.get(key);
+    if (done) { paint(done); return; }
+    thumbQueue.push({ canvas, card, key, paint });
+    pumpThumbs();
+  }
+  async function pumpThumbs() {
+    if (thumbBusy) return;
+    thumbBusy = true;
+    while (thumbQueue.length) {
+      const { card, key, paint } = thumbQueue.shift();
+      try {
+        if (!ed.thumbs.has(key)) {
+          const tpl = await templateFor(card);
+          const url = card.art ? await store().dataUrl(card.art) : null;
+          const art = url ? await loadImage(url).catch(() => null) : null;
+          const eu = card.emblem ? await store().dataUrl(card.emblem) : null;
+          const emblem = eu ? await loadImage(eu).catch(() => null) : null;
+          const full = document.createElement('canvas');
+          renderCard(full, card, tpl, art, emblem);
+          const small = document.createElement('canvas');
+          small.width = 360;
+          small.height = Math.round((360 * full.height) / full.width);
+          const g = small.getContext('2d');
+          g.imageSmoothingQuality = 'high';
+          g.drawImage(full, 0, 0, small.width, small.height);
+          ed.thumbs.set(key, small);
+        }
+        paint(ed.thumbs.get(key));
+      } catch (e) {
+        console.error(e);
+      }
+      await new Promise(r => setTimeout(r, 0));
+    }
+    thumbBusy = false;
+  }
+
+  // ---------- desna forma ----------
+
+  function renderForm() {
+    const w = ed.work;
+    const traits = traitNames(env.state.traits?.traits);
+    const set = (k, v) => { snap(true); w[k] = v; changed(); };
+    const field = (label, input, extra) => h('label', { class: 'ce-field' }, h('span', {}, label), input, extra ?? null);
+    const num = (value, oninput, opts = {}) => h('input', { type: 'number', value: value ?? '', placeholder: '–', oninput, ...opts });
+    const code = field('CODE', h('input', { value: w.id, disabled: true }));
+    const seg = (items, value, onpick) => h('div', { class: 'ce-seg' }, items.map(([v, label]) => h('button', { type: 'button', class: v === value ? 'active' : '', onclick: () => onpick(v) }, label)));
+    const text = textEditor(w);
+    const statusRow = w.type === 'Core' ? null : h('div', { class: 'ce-status' }, h('span', { class: 'small muted' }, 'STATUS'),
+      seg(STATUSES.map(s => [s, s]), w.status ?? 'draft', v => { set('status', v); env.render(); }));
+    let body;
+    if (w.type === 'Hero' || w.type === 'Evolution') {
+      const evo = w.type === 'Evolution';
+      const heroes = db().cards.filter(c => c.type === 'Hero' && !c.deleted);
+      const bgVal = w.bg || ed.tpl?.layout?.bg?.[w.color] || '';
+      const hc = evo ? heroCard(w) : null;
+      const emblemFile = h('input', { type: 'file', accept: 'image/png,image/webp', hidden: true, onchange: e => env.guard(() => uploadEmblem(e.target.files[0])) });
+      const unlock = evo && hc ? w.traits.filter(t => !(hc.traits ?? []).some(x => norm(x) === norm(t))) : [];
+      body = [
+        h('h2', {}, w.type),
+        field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
+        evo ? h('div', { class: 'ce-row' },
+          field('BASE HERO', h('select', { onchange: e => { const x = heroes.find(c => c.name === e.target.value); snap(true); w.hero = e.target.value; if (x) w.color = x.color; changed(); env.render(); } },
+            h('option', { value: '' }, '–'), heroes.map(x => h('option', { value: x.name, selected: x.name === w.hero }, `${x.name} (${x.id})`)))),
+          field('LEVEL', h('select', { onchange: e => set('evo', Number(e.target.value)) }, ROMAN.map((r, i) => h('option', { value: i + 1, selected: i + 1 === (w.evo ?? 1) }, r))))) : null,
+        h('div', { class: 'ce-row' },
+          evo ? field('COST', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 }))
+            : field('COLOR', h('select', { onchange: e => { set('color', e.target.value); env.render(); } }, COLORS.map(c => h('option', { value: c, selected: c === w.color }, c)))),
+          field('BACKGROUND', h('div', { class: 'ce-bg' },
+            h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(bgVal) ? bgVal : '#000000', oninput: e => { set('bg', e.target.value); const t = e.target.nextSibling; if (t) t.value = e.target.value; } }),
+            h('input', { value: bgVal, placeholder: 'colour default', oninput: e => { if (/^#[0-9a-f]{6}$/i.test(e.target.value)) set('bg', e.target.value); else if (!e.target.value) { snap(true); delete w.bg; changed(); } } }))),
+          code),
+        h('div', { class: 'ce-emblem' },
+          h('span', { class: 'ce-emblem-dot' }, ed.emblem ? h('img', { src: ed.emblem.src, alt: '' }) : 'LOGO'),
+          h('div', {}, h('span', { class: 'small muted' }, 'EMBLEM'),
+            h('p', { class: 'small' }, w.emblem ? w.emblem.split('/').pop() : evo ? 'Taken from base hero' : 'None yet', ' · ',
+              h('button', { class: 'link accent', type: 'button', disabled: !canWrite(), onclick: () => emblemFile.click() }, w.emblem || evo ? 'replace' : 'add'),
+              w.emblem && evo ? [' · ', h('button', { class: 'link', type: 'button', onclick: () => { snap(true); delete w.emblem; ed.emblemFor = undefined; changed(); env.render(); } }, 'use base hero')] : null)),
+          emblemFile),
+        h('h2', {}, 'Stats'),
+        h('div', { class: 'ce-row ce-stats' }, STAT_KEYS.map(([k, label]) => field(h('span', { class: `stat-${k}` }, label), num(w.stats[k], e => set('stats', { ...w.stats, [k]: e.target.value === '' ? undefined : Number(e.target.value) }), { step: k === 'pwr' ? 1000 : 1 })))),
+        w.type === 'Hero' ? field('ALIASES', h('input', { value: (w.aliases ?? []).join(', '), placeholder: 'Trish', oninput: e => set('aliases', e.target.value.split(',').map(x => x.trim()).filter(Boolean)) }), h('small', { class: 'muted' }, 'Other names a card\'s first tag may use for this hero.')) : null,
+        h('h2', {}, 'Ability'),
+        field('ABILITY NAME', h('input', { value: w.abilityNames?.[0] ?? '', oninput: e => set('abilityNames', [e.target.value, ...(w.abilityNames ?? []).slice(1)]) })),
+        ...text,
+        h('h2', {}, 'Traits'),
+        chips(w, 0, traits, unlock),
+        unlock.length ? h('p', { class: 'small muted' }, 'Cards with first tag ', h('strong', { class: 'accent' }, unlock.join(', ')), ' need this evolution in the deck.') : null,
+      ];
+    } else if (PORTRAIT.includes(w.type)) {
+      const heroes = db().cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === w.color);
+      const firstOptions = [['General', 'General'], ...heroes.map(x => [x.name, `${x.name} (hero)`]), ...traits.map(t => [t, `${t} (trait)`])];
+      if (w.traits[0] && !firstOptions.some(([v]) => v === w.traits[0])) firstOptions.push([w.traits[0], `${w.traits[0]} (unknown)`]);
+      body = [
+        h('h2', {}, 'Card'),
+        field('TYPE', seg(PORTRAIT.map(t => [t, t]), w.type, v => { set('type', v); env.render(); })),
+        field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
+        h('div', { class: 'ce-row' }, field('COST', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })), code),
+        field('COLOR', h('div', { class: 'ce-swatches' }, COLORS.map(c => h('button', { type: 'button', class: `ce-swatch c-bg-${c}${c === w.color ? ' active' : ''}`, title: c, 'aria-label': c, onclick: () => { set('color', c); env.render(); } })))),
+        field('BONUS', h('div', { class: 'ce-row ce-stats' }, STAT_KEYS.map(([k, label]) => field(h('span', { class: `stat-${k}` }, label), num(w.bonus[k], e => {
+          const b = { ...w.bonus };
+          if (e.target.value === '' || Number(e.target.value) === 0) delete b[k]; else b[k] = Number(e.target.value);
+          set('bonus', b);
+        }, { step: k === 'pwr' ? 1000 : 1 }))))),
+        h('h2', {}, 'Effect text'),
+        ...text,
+        h('h2', {}, 'Tags'),
+        field('FIRST TAG (WHO MAY PLAY THE CARD)', h('select', { onchange: e => set('traits', [e.target.value, ...w.traits.slice(1)]) },
+          h('option', { value: '' }, '–'), firstOptions.map(([v, label]) => h('option', { value: v, selected: v === w.traits[0] }, label)))),
+        chips(w, 1, traits, []),
+      ];
+    } else if (w.type === 'Stage') {
+      body = [
+        h('h2', {}, 'Stage'),
+        field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
+        h('div', { class: 'ce-row' }, field('TERRAIN', h('select', { onchange: e => set('terrain', e.target.value) }, TERRAINS.map(t => h('option', { value: t, selected: t === (w.terrain ?? 'None') }, t)))), code),
+        h('p', { class: 'small muted' }, 'No cost, color or tags on Stage cards.'),
+        h('h2', {}, 'Effect text'),
+        ...text,
+      ];
+    } else {
+      const mode = coreMode(cardOf(w));
+      const fileIn = h('input', { type: 'file', accept: 'image/png,image/webp', hidden: true, onchange: e => env.guard(() => uploadArt(e.target.files[0])) });
+      const effect = h('input', { class: 'mono', value: w.effect ?? '', oninput: e => { snap(); w.effect = e.target.value; changed(); } });
+      const tok = t => { snap(true); const a = effect.selectionStart ?? effect.value.length; effect.value = `${effect.value.slice(0, a)}[${t}]${effect.value.slice(a)}`; w.effect = effect.value; changed(); };
+      body = [
+        h('h2', {}, 'Core'),
+        field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
+        code,
+        field('KIND', seg(CORE_KINDS.map(k => [k, k]), w.traits[0], v => { set('traits', [v]); env.render(); })),
+        h('h2', {}, 'Effect'),
+        h('div', { class: 'ce-tools' }, TOKENS.map(t => h('button', { type: 'button', class: `tok tok-${t.toLowerCase()}`, onclick: () => tok(t) }, `[${t}]`))),
+        field('TEXT', effect),
+        h('h2', {}, 'Image'),
+        seg([['effect', 'Made from the effect'], ['upload', 'Upload image']], mode, v => { if (v === 'upload' && !w.art) { fileIn.click(); return; } set('coreImage', v); env.render(); }),
+        h('p', { class: 'small muted' }, 'The editor draws the hexagon with the effect text and icon. Upload replaces it with your own picture.'),
+        fileIn,
+      ];
+    }
+    return h('section', { class: `ce-form c-tint-${w.color ?? 'none'}` }, ...body, statusRow,
+      canWrite() ? null : h('p', { class: 'small muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer).'));
+  }
+
+  // Tagovi kao čipovi (× makne), polje "Add trait…" s prijedlozima iz popisa traitova. from: 1 = bez prvog taga.
+  function chips(w, from, traits, accent) {
+    const add = h('input', { list: 'ce-traits', placeholder: from ? 'Add tag…' : 'Add trait…', onkeydown: e => {
+      if (e.key !== 'Enter' || !e.target.value.trim()) return;
+      e.preventDefault();
+      snap(true);
+      const t = e.target.value.trim();
+      if (!w.traits.includes(t)) w.traits = [...(from && !w.traits.length ? [''] : []), ...w.traits, t];
+      changed();
+      env.render();
+    } });
+    return h('div', { class: 'ce-chips' },
+      w.traits.slice(from).map((t, i) => h('span', { class: `ce-chip${accent.includes(t) ? ' accent' : ''}` }, t,
+        h('button', { type: 'button', 'aria-label': `Remove ${t}`, onclick: () => { snap(true); w.traits = w.traits.filter((_, j) => j !== i + from); changed(); env.render(); } }, '×'))),
+      add, h('datalist', { id: 'ce-traits' }, traits.map(t => h('option', { value: t }))));
+  }
+
+  // Tekst s prekidačima faze, Once per turn i Range, tokenima statova i prijedlozima iz vodiča.
+  function textEditor(w) {
+    const stage = w.type === 'Stage';
+    const area = h('textarea', { rows: 4, value: w.text ?? '' });
+    const sugBox = h('div', { class: 'ce-suggest' });
+    let sug = { from: 0, items: [] };
+    const sync = () => { snap(); w.text = area.value; changed(); refreshToggles(); };
+    const take = item => {
+      const at = area.selectionStart ?? area.value.length;
+      area.value = area.value.slice(0, sug.from) + item.insert + area.value.slice(at);
+      area.selectionStart = area.selectionEnd = sug.from + item.insert.length;
+      area.focus();
+      sync();
+      showSuggest();
+    };
+    const showSuggest = () => {
+      sug = suggest(ed.guide, area.value, area.selectionStart ?? area.value.length);
+      sugBox.replaceChildren(...sug.items.map(it => h('button', { type: 'button', class: 'ghost', onclick: () => take(it) }, it.label)));
+    };
+    area.addEventListener('input', () => { sync(); showSuggest(); });
+    area.addEventListener('click', showSuggest);
+    area.addEventListener('keydown', e => { if (e.key === 'Tab' && sug.items.length) { e.preventDefault(); take(sug.items[0]); } });
+    const insert = s => {
+      snap(true);
+      const a = area.selectionStart ?? area.value.length;
+      const b = area.selectionEnd ?? a;
+      area.value = area.value.slice(0, a) + s + area.value.slice(b);
+      area.selectionStart = area.selectionEnd = a + s.length;
+      area.focus();
+      sync();
+    };
+    const setHead = patch => { snap(true); area.value = withHead(area.value, { ...head(area.value), ...patch }); sync(); };
+    const phaseBtns = PHASES.filter(p => !stage || ['Start', 'Battle', 'End'].includes(p)).map(p => h('button', { type: 'button', 'data-phase': p, onclick: () => setHead({ phase: head(area.value).phase === p ? null : p }) }, p));
+    const once = stage ? null : h('button', { type: 'button', 'data-once': '1', onclick: () => { const hd = head(area.value); setHead({ once: !hd.once, phase: hd.phase ?? 'Battle' }); } }, 'Once per turn');
+    const range = stage ? null : h('button', { type: 'button', 'data-range': '1', onclick: () => setHead({ range: !head(area.value).range }) }, '◎ Range');
+    const revealed = stage ? h('button', { type: 'button', onclick: () => { if (!/^When this Stage is revealed/i.test(area.value)) { area.value = `When this Stage is revealed, ${area.value}`; area.selectionStart = area.selectionEnd = area.value.length; sync(); } } }, 'When revealed') : null;
+    const toks = TOKENS.map(t => h('button', { type: 'button', class: `tok tok-${t.toLowerCase()}`, onclick: () => insert(`[${t}]`) }, `[${t}]`));
+    const trait = PORTRAIT.includes(w.type) ? h('button', { type: 'button', class: 'tok', title: 'A trait in the text, e.g. {Sword}', onclick: () => insert('{}') }, '{Trait}') : null;
+    const phrase = ed.guide?.phrases?.length ? h('select', { class: 'ce-phrase', 'aria-label': 'Insert a phrase', onchange: e => { const p = ed.guide.phrases[Number(e.target.value)]; e.target.value = ''; if (p) insert(p.text.replace(/(\d)\s?(HP|DMG|Power|Range|Knockback)\b/g, (_, d, x) => `${d}[${{ HP: 'HP', DMG: 'DMG', Power: 'PWR', Range: 'RNG', Knockback: 'KB' }[x]}]`)); } },
+      h('option', { value: '' }, 'Phrase from the guide…'), ed.guide.phrases.map((p, i) => h('option', { value: i, title: p.note ?? '' }, `${p.label}: ${p.text.trim()}`))) : null;
+    const tools = h('div', { class: 'ce-tools' }, revealed, phaseBtns, once, range, toks, trait, phrase);
+    function refreshToggles() {
+      const hd = head(area.value);
+      for (const b of tools.querySelectorAll('[data-phase]')) b.classList.toggle('on', b.dataset.phase === hd.phase);
+      tools.querySelector('[data-once]')?.classList.toggle('on', hd.once);
+      tools.querySelector('[data-range]')?.classList.toggle('on', hd.range);
+    }
+    refreshToggles();
+    return [tools, h('label', { class: 'ce-field' }, h('span', {}, 'TEXT'), area), sugBox];
+  }
+
+  // ---------- izmjene, Undo ----------
+
+  // Snimka prije izmjene; tipkanje u nizu (do 1,5 s) je jedna snimka. force: svaka radnja svoja.
+  function snap(force = false) {
+    const now = Date.now();
+    if (!force && now - ed.snapAt < 1500) { ed.snapAt = now; return; }
+    ed.snapAt = now;
+    ed.undo.push(JSON.stringify(ed.work));
+    if (ed.undo.length > 100) ed.undo.shift();
+    const btn = document.querySelector('.ce-top-actions button[disabled]');
+    if (btn?.textContent === 'Undo') btn.disabled = false;
+  }
+
+  function undo() {
+    const prev = ed.undo.pop();
+    if (!prev) return;
+    ed.work = JSON.parse(prev);
+    ed.snapAt = 0;
+    ed.dirty = true;
+    env.render();
+  }
+
+  function changed() {
+    ed.dirty = true;
+    queueDraw();
+  }
+
+  // ---------- provjere ----------
+
+  // [ok, tekst]: kvačice za ono što je u redu, ! za ono što treba pogledati.
+  function checks(w, card) {
+    const out = [];
+    const traitList = env.state.traits?.traits;
+    const fxp = env.state.fxProposals?.cards?.[w.id];
+    const textChanged = !w.new && toWords(w.text ?? '') !== (ed.base.type === 'Stage' ? stripTerrain(ed.base.text) : ed.base.text ?? '');
+    const gameReads = () => {
+      if (!(card.text ?? '').trim()) return;
+      if (w.fx) out.push([w.fxStatus !== 'check', w.fxStatus === 'check' ? 'The fx needs a check (the text changed)' : 'fx confirmed for the game']);
+      else if (textChanged || w.new) out.push([false, 'The game reads the text after Publish']);
+      else if (!fxp) out.push([false, 'No report from the game yet']);
+      else if (fxp.unparsed?.length) out.push([false, `"${fxp.unparsed[0]}" needs fx`]);
+      else out.push([true, 'The game reads the text']);
+    };
+    if (!(w.name ?? '').trim()) out.push([false, 'No name yet']);
+    if (PORTRAIT.includes(w.type)) {
+      const k = firstTag(db(), card, traitList);
+      if (k.kind === HEROES) out.push([true, `First tag "${k.tag}" is a hero${k.heroes.length > 1 ? 'es' : ''}${k.heroes.some(n => n !== k.tag) ? ' alias' : ''}`]);
+      else if (k.kind === TRAIT) out.push([true, `First tag "${k.tag}" is a trait`]);
+      else if (k.kind === GENERAL) out.push([true, 'First tag General: any hero of this colour']);
+      else out.push([false, k.tag ? `First tag "${k.tag}" is not a hero, alias or trait` : 'No first tag: who may play it?']);
+      const avoid = avoidWarnings(ed.guide, card.text);
+      out.push(avoid.length ? [false, avoid[0]] : [true, 'Phrases match the text guide']);
+      gameReads();
+    }
+    if (HEROISH.includes(w.type)) {
+      if (w.type === 'Evolution') {
+        const hc = heroCard(w);
+        out.push(hc ? [true, `Base hero ${hc.name} is in the set`] : [false, 'Pick the base hero']);
+      }
+      const names = traitNames(traitList).map(norm);
+      for (const t of w.traits.filter(t => names.includes(norm(t))).slice(0, 2)) out.push([true, `Trait "${t}" known`]);
+      if (!w.abilityNames?.[0]) out.push([false, 'No ability name']);
+      if (!w.emblem && !(w.type === 'Evolution' && heroCard(w)?.emblem)) out.push([false, 'No emblem on the plate']);
+    }
+    if (w.type === 'Stage') out.push([!!w.terrain && w.terrain !== '', `Terrain set (${w.terrain ?? 'None'})`]);
+    if (w.type === 'Core') {
+      out.push(Object.keys(card.bonus ?? {}).length ? [true, 'The game reads the effect'] : [false, 'Write the bonus, e.g. +2000[PWR]']);
+      if (!CORE_KINDS.includes(w.traits[0])) out.push([false, 'Pick Buff, Major or Debuff']);
+    }
+    if (w.type !== 'Core') {
+      const atMin = ed.warn.some(x => /smallest size/.test(x));
+      if ((card.text ?? '').trim()) out.push(atMin ? [false, 'The text only fits at the smallest size'] : [true, 'Text fits']);
+      if (!w.art) out.push([false, 'No art yet']);
+    }
+    for (const x of ed.warn.filter(x => !/smallest size|No art yet/.test(x))) out.push([false, x.replace(/\.$/, '')]);
+    if (w.type === 'Stage' || HEROISH.includes(w.type)) gameReads();
+    if (w.type === 'Hero') {
+      const n = deckPool(liveDb(card), [w.id], heroEvolutions(liveDb(card), [w.id])).filter(c => c.color === w.color).length;
+      out.push([n >= 8, `${w.name || 'This hero'} has ${n} cards to play`]);
+    }
+    if (/\[(?!HP\]|DMG\]|PWR\]|RNG\]|KB\])[^\]]*\]/i.test(w.text ?? '')) out.push([false, 'Only [HP] [DMG] [PWR] [RNG] [KB] go in brackets']);
+    return out;
+  }
+
+  const liveDb = card => setTraits({ ...db(), cards: [...db().cards.filter(c => c.id !== card.id).map(merged), card] }, db().traitList ?? env.state.traits?.traits);
+
+  // Balans dok uređuješ: krivulja costa boje, slične karte (ista boja i cost), heroji koji je smiju uzeti
+  // i koliko karata svoje boje tada imaju (prije → poslije izmjene).
+  function renderBalance(card) {
+    if (!card.color) return [];
+    const pool = [...db().cards.filter(c => !c.deleted && c.id !== card.id).map(merged), card].filter(c => PORTRAIT.includes(c.type) && c.color === card.color);
+    const costs = new Map();
+    for (const c of pool) costs.set(c.cost ?? 0, (costs.get(c.cost ?? 0) ?? 0) + 1);
+    const max = Math.max(1, ...costs.values());
+    const top = Math.max(6, ...costs.keys());
+    const curve = h('div', { class: 'ce-curve' }, Array.from({ length: top + 1 }, (_, k) => h('div', { class: `ce-bar${k === (card.cost ?? 0) ? ' mine' : ''}`, title: `Cost ${k}: ${costs.get(k) ?? 0}` },
+      h('span', { style: `height:${((costs.get(k) ?? 0) / max) * 100}%` }), h('small', {}, String(k)))));
+    const similar = pool.filter(c => c.id !== card.id && (c.cost ?? 0) === (card.cost ?? 0));
+    const live = liveDb(card);
+    const pub = setTraits({ ...db(), cards: db().cards.map(merged) }, db().traitList ?? env.state.traits?.traits);
+    const heroes = db().cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === card.color);
+    const own = (d, hero) => deckPool(d, [hero.id], heroEvolutions(d, [hero.id])).filter(c => c.color === hero.color);
+    const rows = heroes.map(hero => {
+      const before = own(pub, hero).length;
+      const after = own(live, hero);
+      return { hero, before, after: after.length, takes: after.some(c => c.id === card.id) };
+    });
+    return [h('details', { class: 'ce-panel', open: ed.balOpen, ontoggle: e => { ed.balOpen = e.target.open; } },
+      h('summary', {}, h('h3', {}, 'Balance')),
+      h('p', { class: 'small muted' }, `Cost curve of ${card.color} cards:`), curve,
+      h('p', { class: 'small' }, similar.length ? `Same colour and cost (${similar.length}):` : 'No other card of this colour has this cost.'),
+      similar.length ? h('ul', { class: 'small ce-similar' }, similar.slice(0, 6).map(c => h('li', {}, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, c.name), ` · ${c.type}`))) : null,
+      h('p', { class: 'small' }, 'Heroes of this colour (cards they may take):'),
+      h('ul', { class: 'small' }, rows.map(r => h('li', { class: r.takes ? '' : 'muted' }, `${r.takes ? '✓' : '–'} ${r.hero.name}: ${r.before}${r.after !== r.before ? ` → ${r.after}` : ''}`))))];
+  }
+
+  // ---------- spremanje ----------
+
+  // Nacrt: polja koja se razlikuju od cards.json, tko i kad. Drugi nacrti se čitaju iznova prije pisanja.
+  async function saveDraft() {
+    const w = ed.work;
+    if (ed.lock?.state === 'other') throw new Error(`${ed.lock.other?.who ?? 'Someone'} is editing this card.`);
+    const card = cardOf(w);
+    // fx potvrđen za stari tekst: tekst se promijenio, pa ga treba provjeriti.
+    if (card.fx && card.fxStatus !== 'check' && !w.new && card.text !== (ed.base.text ?? '') && sameVal(card.fx, ed.base.fx)) card.fxStatus = 'check';
+    const diff = {};
+    for (const k of FIELDS) {
+      if (card[k] === undefined && ed.base[k] === undefined) continue;
+      if (!sameVal(card[k], ed.base[k])) diff[k] = card[k] ?? null;
+    }
+    const fresh = await readDrafts();
+    const before = ed.drafts?.cards?.[w.id]?.updated;
+    const now = fresh.cards?.[w.id]?.updated;
+    if (now && now !== before && !confirm(`${fresh.cards[w.id].who || 'Someone'} saved this card in the meantime. Overwrite?`)) return;
+    fresh.cards ??= {};
+    if (w.new) diff.new = true;
+    const fields = Object.keys(diff).filter(k => k !== 'new');
+    if (fields.length || w.new) fresh.cards[w.id] = { ...diff, updated: new Date().toISOString(), who: who() || undefined };
+    else delete fresh.cards[w.id];
+    await writeJson(DRAFTS_PATH, fresh);
+    const prevFields = Object.keys(ed.drafts?.cards?.[w.id] ?? {});
+    ed.drafts = fresh;
+    ed.dirty = false;
+    const what = w.new && !prevFields.length ? 'new card' : fields.filter(k => !prevFields.includes(k) || true).map(k => ({ artCrop: 'art crop', abilityNames: 'ability', traits: 'tags' }[k] ?? k)).join(', ') || 'no changes';
+    await logHistory(w.id, `${what.replace(/\btext\b/, 'text changed')}`).catch(() => {});
+    env.toast(fields.length || w.new ? `Saved: ${w.name || w.id}. It goes into the game with the next Publish.` : 'No changes against the published card.');
+    env.render();
+  }
+
+  async function discardDraft() {
+    if (!confirm(ed.work?.new ? 'Throw away this new card?' : 'Throw away the unpublished changes to this card?')) return;
+    const fresh = await readDrafts();
+    delete fresh.cards?.[ed.id];
+    await writeJson(DRAFTS_PATH, fresh);
+    ed.drafts = fresh;
+    if (ed.work?.new) { ed.dirty = false; const back = ed.from; ed.work = null; ed.id = null; env.go(back); return; }
+    await logHistory(ed.id, 'unpublished changes discarded').catch(() => {});
+    open(ed.id);
+    env.render();
+  }
+
+  // Izvorni art ide u data/art/<kod>.<ext> u punoj rezoluciji; izrez se vraća na sredinu.
+  async function uploadArt(file) {
+    if (!file) return;
+    const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[file.type];
+    if (!ext) throw new Error('Art must be PNG, JPEG or WebP.');
+    const path = `art/${ed.work.id}.${ext}`;
+    await fs.writeFile(store().root, `data/${path}`, new Uint8Array(await file.arrayBuffer()));
+    store().dropImageUrls?.();
+    snap(true);
+    ed.work.art = path;
+    ed.work.artCrop = { x: 0.5, y: 0.5, zoom: 1 };
+    if (ed.work.type === 'Core') ed.work.coreImage = 'upload';
+    ed.artFor = null;
+    changed();
+    env.render();
+  }
+
+  // Amblem u pločici heroja: data/art/emblems/<kod>.<ext>.
+  async function uploadEmblem(file) {
+    if (!file) return;
+    const ext = { 'image/png': 'png', 'image/webp': 'webp' }[file.type];
+    if (!ext) throw new Error('The emblem must be PNG or WebP (with a clear background).');
+    const path = `art/emblems/${ed.work.id}.${ext}`;
+    await fs.writeFile(store().root, `data/${path}`, new Uint8Array(await file.arrayBuffer()));
+    store().dropImageUrls?.();
+    snap(true);
+    ed.work.emblem = path;
+    ed.emblemFor = undefined;
+    changed();
+    env.render();
+  }
+
+  function downloadPng() {
+    if (!ed.canvas) return;
+    ed.canvas.toBlob(b => {
+      const a = h('a', { href: URL.createObjectURL(b), download: `${ed.work.id} ${ed.work.name}.png` });
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }, 'image/png');
+  }
+
+  // ---------- nova karta, duplikat ----------
+
   function nextId(set) {
-    const ids = [...env.state.db.cards.map(c => c.id), ...Object.keys(ed.drafts?.cards ?? {})];
+    const ids = [...db().cards.map(c => c.id), ...Object.keys(ed.drafts?.cards ?? {})];
     const nums = ids.filter(id => id.startsWith(`${set}-`)).map(id => Number(id.slice(set.length + 1))).filter(Number.isFinite);
     return `${set}-${String(Math.max(0, ...nums) + 1).padStart(3, '0')}`;
   }
@@ -238,211 +894,59 @@ export function createEditor(env) {
     Action: { color: 'Cyan', cost: 1, bonus: {}, traits: ['General'], text: '' },
     Hero: { color: 'Cyan', stats: { hp: 8, dmg: 3, pwr: 2000, rng: 2, kb: 2 }, traits: [], abilityNames: [''], text: '' },
     Evolution: { color: 'Cyan', cost: 4, evo: 1, hero: '', stats: { hp: 8, dmg: 4, pwr: 3000, rng: 2, kb: 2 }, traits: [], abilityNames: [''], text: '' },
-    Stage: { color: null, traits: [], text: 'Terrain: None', terrain: 'None' },
-    Core: { color: null, traits: ['Buff'], bonus: { pwr: 1000 }, text: '' },
+    Stage: { color: null, traits: [], text: '', terrain: 'None' },
+    Core: { color: null, traits: ['Buff'], bonus: { pwr: 1000 }, text: '', coreImage: 'effect' },
   };
 
-  function newCard(set, type) {
-    if (ed.dirty && !confirm('Discard the unsaved changes to this card?')) return;
-    const id = nextId(set);
-    const defaults = NEW_DEFAULTS[type] ?? NEW_DEFAULTS.Action;
+  function startCard(id, card) {
     ed.id = id;
     ed.base = { id };
-    ed.work = { id, new: true, name: '', type, ...structuredClone(defaults), artCrop: { x: 0.5, y: 0.5, zoom: 1 }, status: 'draft' };
-    ed.work.bonus ??= {};
+    ed.work = workOf({ ...card, id, new: true, status: 'draft' });
     ed.dirty = true;
+    ed.undo = [];
+    ed.artMode = false;
+    ed.view = 'card';
     ed.art = ed.artFor = ed.emblem = ed.emblemFor = null;
-    ed.newOpen = false;
+    if (!PAGES.includes(env.state.editId ?? 'sets')) ed.from = ed.from ?? 'sets';
+    else ed.from = env.state.editId ?? 'sets';
     env.go(id);
   }
 
-  function item(c) {
-    const draft = ed.drafts?.cards?.[c.id];
-    return h('li', {},
-      h('button', { class: `ce-item${c.id === ed.id ? ' active' : ''}`, onclick: () => go(c.id) },
-        h('span', { class: `ce-dot c-bg-${c.color}` }),
-        h('span', { class: 'ce-id' }, c.id), ' ', c.name,
-        draft ? h('span', { class: 'ce-draft', title: `Unpublished changes${draft.who ? ` by ${draft.who}` : ''}` }, '●') : null));
+  function newCard(set, type, extra = {}) {
+    if (ed.dirty && !confirm('Discard the unsaved changes to this card?')) return;
+    startCard(nextId(set), { name: '', type, ...structuredClone(NEW_DEFAULTS[type] ?? NEW_DEFAULTS.Action), ...extra });
   }
 
-  function refreshList() {
-    const ul = document.getElementById('ce-items');
-    if (!ul) return;
-    ul.replaceChildren(...shown().map(item));
-  }
-
-  function go(id) {
-    if (ed.dirty && id !== ed.id && !confirm('Discard the unsaved changes to this card?')) return;
-    ed.dirty = false;
-    if (ed.id) ed.lastId = ed.id;
-    env.go(id);
-  }
-
-  function renderForm() {
+  // Duplikat: ista karta pod sljedećim kodom u istom setu, kao nova karta (nacrt do Objave).
+  function duplicate() {
     const w = ed.work;
-    const db = env.state.db;
-    const traits = traitNames(env.state.traits?.traits);
-    const heroes = db.cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === w.color);
-    const portrait = PORTRAIT.includes(w.type);
-    const heroish = HEROISH.includes(w.type);
-    const set = (k, v) => { w[k] = v; changed(); };
-    const field = (label, input, hint) => h('label', { class: 'ce-field' }, h('span', {}, label), input, hint ? h('small', { class: 'muted' }, hint) : null);
-    const num = (value, oninput, opts = {}) => h('input', { type: 'number', value: value ?? '', placeholder: '–', oninput, ...opts });
-    const sugBox = h('div', { class: 'ce-suggest' });
-    const text = h('textarea', { rows: 5, value: w.text ?? '', oninput: e => { set('text', e.target.value); showSuggest(); } });
-    // Prijedlozi iz vodiča za riječ ispred kursora; klik ili Tab zamijeni započeti dio frazom.
-    let sug = { from: 0, items: [] };
-    const take = item => {
-      const at = text.selectionStart ?? text.value.length;
-      text.value = text.value.slice(0, sug.from) + item.insert + text.value.slice(at);
-      text.selectionStart = text.selectionEnd = sug.from + item.insert.length;
-      text.focus();
-      set('text', text.value);
-      showSuggest();
-    };
-    const showSuggest = () => {
-      sug = suggest(ed.guide, text.value, text.selectionStart ?? text.value.length);
-      sugBox.replaceChildren(...sug.items.map((it, i) => h('button', { type: 'button', class: 'ghost', title: i ? '' : 'Tab', onclick: () => take(it) }, it.label)));
-    };
-    text.addEventListener('keydown', e => { if (e.key === 'Tab' && sug.items.length) { e.preventDefault(); take(sug.items[0]); } });
-    text.addEventListener('click', showSuggest);
-    text.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== text && !sugBox.contains(document.activeElement)) sugBox.replaceChildren(); }, 150));
-    const insert = s => {
-      const a = text.selectionStart ?? text.value.length;
-      const b = text.selectionEnd ?? a;
-      text.value = text.value.slice(0, a) + s + text.value.slice(b);
-      text.selectionStart = text.selectionEnd = a + s.length;
-      text.focus();
-      set('text', text.value);
-    };
-    const bonusRow = keys => h('div', { class: 'ce-row' }, keys.map(([k, label]) => field(label, num(w.bonus[k], e => {
-      const b = { ...w.bonus };
-      if (e.target.value === '' || Number(e.target.value) === 0) delete b[k]; else b[k] = Number(e.target.value);
-      set('bonus', b);
-    }, { step: k === 'pwr' ? 1000 : 1 }))));
-    const tagsList = (label, from, hint) => field(label, h('input', { list: 'ce-traits', value: w.traits.slice(from).join(', '), placeholder: 'Sword, Devil Fruit',
-      oninput: e => set('traits', [...w.traits.slice(0, from), ...e.target.value.split(',').map(s => s.trim()).filter(Boolean)]) }), hint);
-
-    // Vrsta karte određuje polja: uspravne akcije, heroji i evolucije, Stage, Core.
-    let body;
-    if (portrait) {
-      const firstOptions = ['General', ...heroes.map(x => x.name), ...traits];
-      if (w.traits[0] && !firstOptions.includes(w.traits[0])) firstOptions.push(w.traits[0]);
-      body = [
-        bonusRow(BONUS_KEYS),
-        h('div', { class: 'ce-row' },
-          field('First tag', h('select', { onchange: e => set('traits', [e.target.value, ...w.traits.slice(1)]) },
-            h('option', { value: '' }, '–'), firstOptions.map(t => h('option', { value: t, selected: t === w.traits[0] }, t))), 'Who may play it.'),
-          tagsList('Other tags', 1, 'For effects ("for every {Sword}"), comma between.')),
-        field('Text', text), sugBox, inserts(insert),
-      ];
-    } else if (heroish) {
-      const evoHeroes = db.cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === w.color);
-      body = [
-        h('div', { class: 'ce-row' }, STAT_KEYS.map(([k, label]) => field(label, num(w.stats[k], e => {
-          set('stats', { ...w.stats, [k]: e.target.value === '' ? undefined : Number(e.target.value) });
-        }, { step: k === 'pwr' ? 1000 : 1 })))),
-        h('div', { class: 'ce-row' },
-          field('Ability name', h('input', { value: w.abilityNames?.[0] ?? '', oninput: e => set('abilityNames', [e.target.value, ...(w.abilityNames ?? []).slice(1)]) }), 'Bold and underlined above the text.'),
-          w.type === 'Evolution' ? field('Level', h('select', { onchange: e => set('evo', Number(e.target.value)) }, [1, 2, 3].map(n => h('option', { value: n, selected: n === (w.evo ?? 1) }, `EVO ${n}`)))) : null,
-          w.type === 'Evolution' ? field('Hero', h('select', { onchange: e => set('hero', e.target.value) },
-            h('option', { value: '' }, '–'), evoHeroes.map(x => h('option', { value: x.name, selected: x.name === w.hero }, x.name)))) : null),
-        tagsList('Tags', 0, 'Comma between.'),
-        w.type === 'Hero' ? field('Aliases', h('input', { value: (w.aliases ?? []).join(', '), placeholder: 'Luffy, Straw Hat',
-          oninput: e => set('aliases', e.target.value.split(',').map(x => x.trim()).filter(Boolean)) }), 'Other names a card\'s first tag may use for this hero.') : null,
-        field('Text', text), sugBox, inserts(insert),
-        h('fieldset', { class: 'ce-art' },
-          h('legend', {}, 'Plate and background'),
-          h('div', { class: 'ce-row' },
-            field('Emblem', h('input', { type: 'file', accept: 'image/png,image/webp', disabled: !canWrite(), onchange: e => env.guard(() => uploadEmblem(e.target.files[0])) }),
-              w.emblem ? `data/${w.emblem}` : 'None yet: a PNG with a clear background.'),
-            field('Background behind the art', h('div', { class: 'ce-row' },
-              h('input', { id: 'ce-bg', type: 'color', value: w.bg || ed.tpl?.layout?.bg?.[w.color] || '#000000', oninput: e => set('bg', e.target.value) }),
-              w.bg ? h('button', { type: 'button', class: 'ghost', onclick: () => { delete w.bg; changed(); env.render(); } }, 'Colour default') : null)))),
-      ];
-    } else if (w.type === 'Stage') {
-      body = [
-        field('Terrain', h('select', { onchange: e => { setTerrain(e.target.value); env.render(); } },
-          TERRAINS.map(t => h('option', { value: t, selected: t === (w.terrain ?? 'None') }, t))), 'Also writes the "Terrain:" line of the text.'),
-        field('Text', text), sugBox, inserts(insert),
-      ];
-    } else {
-      body = [
-        field('Kind', h('select', { onchange: e => set('traits', [e.target.value]) },
-          h('option', { value: '' }, '–'), CORE_KINDS.map(k => h('option', { value: k, selected: k === w.traits[0] }, k)))),
-        bonusRow(BONUS_KEYS.filter(([k]) => ['pwr', 'dmg', 'kb'].includes(k))),
-        field('Text', text, 'Only for a Core with an effect beyond its bonus.'),
-      ];
-    }
-
-    const crop = (k, min, max, step) => h('input', { type: 'range', min, max, step, value: w.artCrop[k], oninput: e => { w.artCrop = { ...w.artCrop, [k]: Number(e.target.value) }; changed(); } });
-    const group = portrait ? PORTRAIT : [w.type];
-    return h('form', { class: 'ce-form', onsubmit: e => { e.preventDefault(); env.guard(saveDraft); } },
-      h('div', { class: 'ce-title' },
-        h('h2', {}, `${w.id}`),
-        ed.drafts?.cards?.[w.id] ? h('span', { class: 'chip warn' }, 'unpublished') : null,
-        ed.lock?.state === 'mine' ? h('span', { class: 'chip', title: 'Locked for you while it is open' }, '🔒 yours') : null),
-      renderLock(),
-      field('Name', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) }), w.type === 'Evolution' ? '"Hero, Evolution name": the part after the comma is the big title.' : null),
-      h('div', { class: 'ce-row' },
-        field('Type', group.length > 1
-          ? h('select', { onchange: e => set('type', e.target.value) }, group.map(t => h('option', { value: t, selected: t === w.type }, t)))
-          : h('input', { value: w.type, disabled: true })),
-        portrait || heroish ? field('Colour', h('select', { onchange: e => { set('color', e.target.value); env.render(); } }, COLORS.map(c => h('option', { value: c, selected: c === w.color }, c)))) : null,
-        portrait || w.type === 'Evolution' ? field('Cost', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })) : null),
-      ...body,
-      h('datalist', { id: 'ce-traits' }, traits.map(t => h('option', { value: t }))),
-      h('fieldset', { class: 'ce-art' },
-        h('legend', {}, w.type === 'Core' ? 'Image' : 'Art'),
-        h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', disabled: !canWrite(), onchange: e => env.guard(() => uploadArt(e.target.files[0])) }),
-        w.art ? h('small', { class: 'muted' }, `data/${w.art}`) : h('small', { class: 'warn' }, w.type === 'Core' ? 'No image yet: the hexagon on a clear background, 1500×2100.' : 'No art yet.'),
-        w.type === 'Core' ? null : [
-          h('div', { class: 'ce-row' }, field('Zoom', crop('zoom', 0.5, 3, 0.01)), field('Left ↔ right', crop('x', 0, 1, 0.002)), field('Up ↕ down', crop('y', 0, 1, 0.002))),
-          h('small', { class: 'muted' }, 'Or drag the picture in the preview; the wheel zooms.')]),
-      h('div', { class: 'ce-row' },
-        field('Status', h('select', { onchange: e => set('status', e.target.value) }, STATUSES.map(s => h('option', { value: s, selected: s === (w.status ?? 'draft') }, s)))),
-        field('Notes', h('input', { value: w.notes ?? '', placeholder: 'For Marko or Tarik', oninput: e => set('notes', e.target.value) }))),
-      h('div', { class: 'ce-actions' },
-        h('button', { class: 'primary', type: 'submit', disabled: !canWrite() || ed.lock?.state === 'other' }, 'Save draft'),
-        ed.drafts?.cards?.[w.id] ? h('button', { type: 'button', class: 'ghost', disabled: !canWrite(), onclick: () => env.guard(discardDraft) }, 'Discard draft') : null,
-        h('button', { type: 'button', class: 'ghost', onclick: () => downloadPng() }, 'Download PNG'),
-        h('button', { type: 'button', class: 'ghost', onclick: () => duplicate(), title: 'A new card with the next code in this set' }, 'Duplicate'),
-        canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer).')));
-  }
-
-  const inserts = insert => h('div', { class: 'ce-inserts' }, INSERTS.map(([label, s]) => h('button', { type: 'button', class: 'ghost', onclick: () => insert(s) }, label)),
-    ed.guide?.phrases?.length ? h('select', { 'aria-label': 'Insert a phrase', onchange: e => { const p = ed.guide.phrases[Number(e.target.value)]; e.target.value = ''; if (p) insert(p.text); } },
-      h('option', { value: '' }, 'Phrase from the guide…'), ed.guide.phrases.map((p, i) => h('option', { value: i, title: p.note ?? '' }, `${p.label}: ${p.text.trim()}`))) : null);
-
-  // Terrain je i polje karte i zadnji red teksta ("Terrain: Ice"), kao na Card Engine kartama.
-  function setTerrain(t) {
-    const w = ed.work;
-    w.terrain = t;
-    const line = `Terrain: ${t}`;
-    const txt = w.text ?? '';
-    w.text = /^Terrain:.*$/m.test(txt) ? txt.replace(/^Terrain:.*$/m, line) : `${txt.trimEnd()}${txt.trim() ? '\n' : ''}${line}`;
-    changed();
-  }
-
-  function renderPreview() {
-    const wide = landscape(ed.work);
-    ed.canvas = h('canvas', { class: `ce-canvas${wide ? ' wide' : ''}`, width: wide ? 2100 : 1500, height: wide ? 1500 : 2100 });
-    ed.warnBox = h('ul', { class: 'ce-warnings' });
-    ed.diffBox = h('div', { class: 'ce-diff' });
-    ed.fxBox = h('div', { class: 'ce-fx' });
-    ed.ctxBox = h('div', { class: 'ce-context' });
-    ed.balBox = h('div', { class: 'ce-balance' });
-    hookDrag(ed.canvas);
-    queueDraw();
-    return h('section', { class: 'ce-preview' }, ed.canvas, ed.ctxBox, ed.warnBox, ed.fxBox, ed.balBox, ed.diffBox,
-      ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.'));
+    if (ed.dirty && !confirm('Discard the unsaved changes to this card?')) return;
+    const copy = cardOf(w);
+    for (const k of ['image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted', 'fx', 'fxStatus', 'aliases', 'updated', 'who', 'new']) delete copy[k];
+    startCard(nextId(setOf(w.id)), { ...copy, name: `${w.name ?? ''} (copy)` });
   }
 
   // ---------- zaključavanje ----------
 
-  // Otvorena karta je zaključana na "Ja sam" dok je otvorena; tuđi lock gasi spremanje.
+  // Otvorena karta je zaključana na "Signed in as" dok je otvorena; tuđi lock gasi spremanje.
   async function readLock(id) {
     try { return JSON.parse((await fs.readText(store().root, lockPath(id))) ?? 'null'); } catch { return null; }
+  }
+
+  // Svi lockovi (za Sets i Publish); u server načinu ih nema.
+  async function readLocks() {
+    ed.locksAt = Date.now();
+    if (!canWrite()) return false;
+    const next = {};
+    for (const f of await fs.listFileNames(store().root, LOCK_DIR).catch(() => [])) {
+      if (!f.endsWith('.json')) continue;
+      const id = f.slice(0, -5);
+      const l = await readLock(id);
+      if (lockState(l, who()) === 'other') next[id] = l;
+    }
+    const changed = JSON.stringify(next) !== JSON.stringify(ed.locks);
+    ed.locks = next;
+    return changed;
   }
 
   function syncLock() {
@@ -490,59 +994,52 @@ export function createEditor(env) {
   }
   window.addEventListener('beforeunload', () => releaseLock());
 
-  function renderLock() {
-    const l = ed.lock;
-    if (canWrite() && !who()) return h('p', { class: 'muted small' }, 'Set "I am" at the top: the card is then locked for you while you edit it.');
-    if (l?.state !== 'other') return null;
-    const since = l.other?.since ? new Date(l.other.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '?';
-    return h('div', { class: 'ce-lock warn' },
-      `${l.other?.who ?? 'Someone'} is editing this card (since ${since}). Saving is off until they leave it.`,
-      h('button', { type: 'button', class: 'ghost', onclick: () => env.guard(() => { releaseLock(); return claimLock(ed.id, who(), true); }) }, 'Take over'));
-  }
+  // ---------- Traits & aliases ----------
 
-  // ---------- tagovi ----------
-
-  // Svi tagovi na kartama (s nacrtima): koliko karata ga ima prvog (tko smije) i koliko među ostalima.
-  function renderTags() {
+  // Popis traitova (kartica Traits iz appa), svi tagovi na kartama s preimenovanjem, i aliasi heroja.
+  function renderTraitsPage() {
     const counts = new Map();
-    for (const c of cards()) {
-      const m = { ...c, ...(ed.drafts?.cards?.[c.id] ?? {}) };
-      (m.traits ?? []).forEach((t, i) => {
+    for (const c of allCards()) {
+      (c.traits ?? []).forEach((t, i) => {
         if (!t) return;
         const row = counts.get(t) ?? { first: 0, other: 0 };
-        if (i === 0 && !HEROISH.includes(m.type)) row.first++; else row.other++;
+        if (i === 0 && PORTRAIT.includes(c.type)) row.first++; else row.other++;
         counts.set(t, row);
       });
     }
     const rows = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    return h('section', { class: 'panel ce-tags' },
-      h('div', { class: 'ce-title' }, h('h2', {}, 'Tags'),
-        env.openTab ? h('button', { class: 'ghost', type: 'button', onclick: () => env.openTab('traits') }, 'Trait list and descriptions →') : null),
-      h('p', { class: 'muted' }, 'Every tag on the cards. Renaming changes it on every card as drafts (Publish puts them into the game). The trait list with descriptions, which the first tag rule uses, is on the Traits tab; hero aliases are on each hero card here.'),
-      h('table', { class: 'ce-pub-table' },
-        h('thead', {}, h('tr', {}, ['Tag', 'First tag on', 'Other tag on', 'Rename to', ''].map(t => h('th', {}, t)))),
-        h('tbody', {}, rows.map(([tag, n]) => {
-          const to = h('input', { placeholder: tag });
-          return h('tr', {}, h('td', {}, h('strong', {}, tag)), h('td', { class: 'num' }, n.first || '–'), h('td', { class: 'num' }, n.other || '–'),
-            h('td', {}, to),
-            h('td', {}, h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(() => renameTag(tag, to.value.trim())) }, 'Rename')));
-        }))));
+    const heroes = allCards().filter(c => c.type === 'Hero');
+    return h('div', { class: 'ce-page' },
+      env.renderTraits(),
+      h('section', { class: 'panel' },
+        h('h2', {}, 'Hero aliases'),
+        h('p', { class: 'muted' }, 'Other names a card\'s first tag may use for a hero. Change them on the hero card.'),
+        h('table', { class: 'ce-pub-table' }, h('tbody', {}, heroes.map(c => h('tr', {},
+          h('td', {}, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, c.name)), h('td', {}, (c.aliases ?? []).join(', ') || h('span', { class: 'muted' }, '–'))))))),
+      h('section', { class: 'panel' },
+        h('h2', {}, 'Tags on the cards'),
+        h('p', { class: 'muted' }, 'Every tag on the cards. Renaming changes it on every card as drafts (Publish puts them into the game).'),
+        h('table', { class: 'ce-pub-table' },
+          h('thead', {}, h('tr', {}, ['Tag', 'First tag on', 'Other tag on', 'Rename to', ''].map(t => h('th', {}, t)))),
+          h('tbody', {}, rows.map(([tag, n]) => {
+            const to = h('input', { placeholder: tag });
+            return h('tr', {}, h('td', {}, h('strong', {}, tag)), h('td', { class: 'num' }, n.first || '–'), h('td', { class: 'num' }, n.other || '–'), h('td', {}, to),
+              h('td', {}, h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(() => renameTag(tag, to.value.trim())) }, 'Rename')));
+          })))));
   }
 
   // Preimenovanje taga na svim kartama kao nacrti (karta kojoj se vrati objavljeni popis ostane bez nacrta za tagove).
   async function renameTag(from, to) {
     if (!to || to === from) throw new Error('Write the new name first.');
-    if (ed.dirty) throw new Error('Save or discard the open card first.');
     const fresh = await readDrafts();
     fresh.cards ??= {};
-    const db = env.state.db.cards;
     let n = 0;
-    for (const c of cards()) {
+    for (const c of allCards()) {
       const d = fresh.cards[c.id] ?? {};
-      const traits = d.traits ?? c.traits ?? [];
+      const traits = d.traits ?? db().cards.find(x => x.id === c.id)?.traits ?? c.traits ?? [];
       if (!traits.includes(from)) continue;
       const next = [...new Set(traits.map(t => (t === from ? to : t)))];
-      const base = db.find(x => x.id === c.id);
+      const base = db().cards.find(x => x.id === c.id);
       const nd = { ...d, traits: next, updated: new Date().toISOString(), who: who() || undefined };
       if (base && sameVal(next, base.traits)) delete nd.traits;
       if (Object.keys(nd).every(k => k === 'updated' || k === 'who')) delete fresh.cards[c.id];
@@ -550,69 +1047,145 @@ export function createEditor(env) {
       n++;
     }
     if (!n) throw new Error(`No card has the tag ${from}.`);
-    await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(fresh, null, 2) + '\n');
+    await writeJson(DRAFTS_PATH, fresh);
     ed.drafts = fresh;
-    if (ed.id) open(ed.id);
     const inList = (env.state.traits?.traits ?? []).some(t => t.name === from);
-    env.toast(`${from} → ${to} on ${n} ${n === 1 ? 'card' : 'cards'} (drafts).${inList ? ` ${from} is on the trait list: rename it on the Traits tab too.` : ''}`);
+    env.toast(`${from} → ${to} on ${n} ${n === 1 ? 'card' : 'cards'} (drafts).${inList ? ` ${from} is on the trait list above: rename it there too.` : ''}`);
     env.render();
   }
 
   // ---------- objava ----------
 
-  const KEEP = new Set(['updated', 'who']);
   const draftList = () => Object.entries(ed.drafts?.cards ?? {})
-    .map(([id, d]) => ({ id, d, base: env.state.db.cards.find(c => c.id === id) }))
+    .map(([id, d]) => ({ id, d, base: db().cards.find(c => c.id === id) ?? null }))
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-  // Zadnja Objava i Undo (samo Marko, dok se baza nije mijenjala).
-  function renderLast(marko) {
-    if (!canWrite()) return null;
-    if (ed.last === undefined || ed.last === null) {
-      ed.last = false;
-      readLast().then(l => { ed.last = l ?? false; if (l) env.render(); });
-      return null;
+  // Razlike nacrta prema objavljenoj karti kao oznake (TEXT s riječima precrtano/zeleno, TAGS, FX, FRAME…).
+  function changeChips(d, base) {
+    const out = [];
+    const card = { ...(base ?? {}), ...d };
+    const chip = (label, ...body) => h('div', { class: 'ce-change' }, h('span', { class: 'ce-change-tag' }, label), h('span', {}, ...body));
+    if (d.new) out.push(chip('NEW', 'new card'));
+    if ('name' in d && base) out.push(chip('NAME', h('s', {}, base.name ?? ''), ' → ', h('span', { class: 'add' }, d.name ?? '')));
+    if ('text' in d && base) out.push(chip('TEXT', ...wordDiff(base.text ?? '', d.text ?? '')));
+    if ('traits' in d && base) {
+      const a = base.traits ?? [];
+      const b = d.traits ?? [];
+      out.push(a[0] !== b[0] && PORTRAIT.includes(card.type) ? chip('TAGS', 'first tag ', h('s', {}, a[0] ?? '–'), ' → ', h('span', { class: 'add' }, b[0] ?? '–'))
+        : chip('TAGS', b.filter(t => !a.includes(t)).map(t => `+${t}`).concat(a.filter(t => !b.includes(t)).map(t => `−${t}`)).join(' ')));
     }
-    const l = ed.last;
-    if (!l) return null;
-    const ok = env.state.db.updated === l.after.updated;
-    return h('div', { class: 'ce-last' },
-      h('span', {}, `Last Publish: ${new Date(l.at).toLocaleString()}${l.who ? ` by ${l.who}` : ''}, ${Object.keys(l.drafts).length} cards${l.bumped ? `, version ${l.after.version}` : ''}.`),
-      ok ? h('button', { class: 'ghost', type: 'button', disabled: !marko, onclick: () => env.guard(undoPublish) }, 'Undo last Publish')
-        : h('small', { class: 'muted' }, 'Cards changed since then, so it can no longer be undone.'));
+    for (const k of ['cost', 'color', 'type', 'evo', 'hero', 'terrain']) if (k in d && base) out.push(chip(k.toUpperCase(), h('s', {}, String(base[k] ?? '–')), ' → ', h('span', { class: 'add' }, String(d[k] ?? '–'))));
+    for (const k of ['stats', 'bonus']) if (k in d && base) out.push(chip(k.toUpperCase(), Object.entries(d[k] ?? {}).filter(([s, v]) => (base[k] ?? {})[s] !== v).map(([s, v]) => `${s.toUpperCase()} ${(base[k] ?? {})[s] ?? '–'} → ${v}`).join(', ') || 'changed'));
+    if ('abilityNames' in d && base) out.push(chip('ABILITY', h('s', {}, base.abilityNames?.[0] ?? '–'), ' → ', h('span', { class: 'add' }, d.abilityNames?.[0] ?? '–')));
+    if ('aliases' in d) out.push(chip('ALIASES', (d.aliases ?? []).join(', ')));
+    if ('fx' in d || 'fxStatus' in d) out.push(chip('FX', d.fx ? `confirmed${d.who ? ` by ${d.who}` : ''}` : 'removed'));
+    if (('art' in d || 'template' in d) && !base?.art) out.push(chip('FRAME', 'new frame (editor), art from Card Engine'));
+    else if ('art' in d) out.push(chip('ART', 'new art'));
+    else if ('artCrop' in d) out.push(chip('ART', 'art crop'));
+    if ('emblem' in d || 'bg' in d) out.push(chip('PLATE', [d.emblem ? 'emblem' : null, d.bg ? `background ${d.bg}` : null].filter(Boolean).join(', ')));
+    if ('coreImage' in d) out.push(chip('IMAGE', d.coreImage === 'effect' ? 'drawn from the effect' : 'uploaded'));
+    if ('status' in d && Object.keys(d).length <= 4) out.push(chip('STATUS', d.status));
+    return out;
   }
 
   function renderPublish() {
     const list = draftList();
     const marko = who() === 'Marko';
+    const locked = id => ed.locks[id] && lockState(ed.locks[id], who()) === 'other';
+    const selected = list.filter(x => !locked(x.id) && !ed.pubOff.has(x.id));
     const why = !canWrite() ? 'Publishing needs the shared folder (Chrome or Edge on a computer).'
-      : !marko ? 'Only Marko publishes (set "I am" to Marko).'
-      : !ed.agency ? 'Agency FB is not on this computer: the card PNGs must be made on a computer that has it.'
-      : !list.length ? 'Nothing waits for Publish.' : null;
-    return h('section', { class: 'panel ce-publish' },
-      h('h2', {}, 'Waiting for Publish'),
-      h('p', { class: 'muted' }, 'Drafts saved in the Card editor. Publish draws each card\'s PNG, writes the cards into cards.json (with history) and makes the small and large images. The game sees them after that.'),
-      list.length ? h('table', { class: 'ce-pub-table' },
-        h('thead', {}, h('tr', {}, ['Card', 'Changes', 'By', 'Saved', 'Status', ''].map(t => h('th', {}, t)))),
-        h('tbody', {}, list.map(({ id, d, base }) => {
-          const card = { ...(base ?? {}), ...d };
-          const fields = Object.keys(d).filter(k => !KEEP.has(k));
-          return h('tr', {},
-            h('td', {}, h('span', { class: 'ce-id' }, id), ' ', card.name ?? '?', base ? null : h('small', { class: 'chip' }, ' new')),
-            h('td', {}, d.new ? 'new card' : fields.join(', ') || '–', card.art ? null : h('small', { class: d.new ? 'warn' : 'muted' }, d.new ? ' · no art: waits until it has art' : ' · no art: the old picture stays')),
-            h('td', {}, d.who || '–'),
-            h('td', {}, d.updated ? new Date(d.updated).toLocaleString() : '–'),
-            h('td', {}, h('span', { class: `chip${card.status === 'done' ? '' : ' warn'}` }, card.status ?? 'draft')),
-            h('td', {}, h('button', { class: 'ghost', type: 'button', onclick: () => go(id) }, 'Open')));
-        }))) : null,
+      : !marko ? 'Only Marko publishes (Signed in as Marko).'
+        : !ed.agency ? 'Agency FB is not on this computer: the card PNGs must be made on a computer that has it.'
+          : !selected.length ? 'Nothing selected.' : null;
+    const thumb = (card, px) => { const c = h('canvas', { class: 'ce-pub-thumb' }); thumbInto(c, card, px); return c; };
+    const oldThumb = (base, px) => {
+      const img = h('img', { class: 'ce-pub-thumb', alt: '' });
+      img.style.width = `${px}px`;
+      store().imageUrl(base, { thumb: true }).then(u => { if (u) img.src = u; });
+      return img;
+    };
+    const rows = list.map(({ id, d, base }) => {
+      const card = { ...(base ?? {}), ...d, id };
+      const px = HEROISH.includes(card.type) ? 168 : 120;
+      if (locked(id)) {
+        const l = ed.locks[id];
+        return h('div', { class: 'ce-pub-row locked' },
+          h('span', { class: 'ce-pub-check' }, '🔒'),
+          h('div', { class: 'ce-pub-imgs' }, h('figure', {}, thumb(card, px))),
+          h('div', { class: 'ce-pub-body' }, h('h3', {}, card.name || id, h('small', {}, ` ${id}`)),
+            h('p', { class: 'warn' }, `${l.who} is editing it now. It can be published after they save and close it.`)));
+      }
+      return h('div', { class: 'ce-pub-row' },
+        h('label', { class: 'ce-pub-check' }, h('input', { type: 'checkbox', checked: !ed.pubOff.has(id), onchange: e => { if (e.target.checked) ed.pubOff.delete(id); else ed.pubOff.add(id); env.render(); } })),
+        h('div', { class: 'ce-pub-imgs' },
+          base?.image ? h('figure', {}, oldThumb(base, px), h('figcaption', { class: 'muted small' }, 'Published')) : null,
+          base?.image ? h('span', { class: 'ce-arrow' }, '→') : null,
+          h('figure', {}, thumb(card, px), h('figcaption', { class: 'muted small' }, 'New'))),
+        h('div', { class: 'ce-pub-body' },
+          h('h3', {}, card.name || id, h('small', {}, ` ${id}`)),
+          h('p', { class: 'muted small' }, `${d.who || '–'} · ${when(d.updated)}`),
+          ...changeChips(d, base),
+          !card.art && card.type !== 'Core' ? h('p', { class: d.new ? 'warn small' : 'muted small' }, d.new ? 'No art: a new card waits until it has art.' : 'No art: the old picture stays.') : null),
+        h('button', { class: 'link accent', type: 'button', onclick: () => go(id) }, 'Open in editor'));
+    });
+    return h('div', { class: 'ce-page ce-publish' },
+      h('header', { class: 'ce-page-head' },
+        h('div', {}, h('h1', {}, 'Publish'), h('p', { class: 'muted' }, 'Changes saved in the editor. The game sees them only after you publish.')),
+        h('div', { class: 'ce-page-actions' },
+          h('button', { class: 'ghost', type: 'button', onclick: () => newCard(sets.current() ?? 'OP1', 'Action') }, 'New card'),
+          h('button', { class: 'publish', type: 'button', disabled: !!why, title: why ?? '', onclick: () => env.guard(() => publishAll(selected.map(x => x.id))) }, `Publish ${selected.length} ${selected.length === 1 ? 'card' : 'cards'}`))),
+      why && list.length ? h('p', { class: 'muted small' }, why) : null,
       renderLast(marko),
-      h('div', { class: 'ce-actions' },
-        h('button', { class: 'primary', type: 'button', disabled: !!why, onclick: () => env.guard(publishAll) }, `Publish ${list.length} ${list.length === 1 ? 'card' : 'cards'}`),
-        why ? h('small', { class: 'muted' }, why) : null));
+      list.length ? rows : h('p', { class: 'muted' }, 'Nothing waits for Publish.'));
+  }
+
+  // Riječi koje su otpale precrtane, nove zelene; isti dio sažet na "…" s ponešto riječi oko izmjene.
+  function wordDiff(a, b) {
+    const x = a.split(/\s+/).filter(Boolean);
+    const y = b.split(/\s+/).filter(Boolean);
+    const m = x.length;
+    const n = y.length;
+    const L = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = m - 1; i >= 0; i--) for (let j = n - 1; j >= 0; j--) L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    const ops = [];
+    let i = 0;
+    let j = 0;
+    while (i < m || j < n) {
+      if (i < m && j < n && x[i] === y[j]) { ops.push(['=', x[i]]); i++; j++; } else if (j < n && (i >= m || L[i][j + 1] >= L[i + 1][j])) { ops.push(['+', y[j]]); j++; } else { ops.push(['-', x[i]]); i++; }
+    }
+    const keep = new Set();
+    ops.forEach((o, k) => { if (o[0] !== '=') for (let d = -3; d <= 3; d++) keep.add(k + d); });
+    const out = [];
+    let gap = false;
+    ops.forEach((o, k) => {
+      if (!keep.has(k)) { if (!gap && out.length) out.push('… '); gap = true; return; }
+      if (gap && !out.length) out.push('… ');
+      gap = false;
+      out.push(o[0] === '=' ? `${o[1]} ` : h(o[0] === '+' ? 'span' : 's', { class: o[0] === '+' ? 'add' : '' }, o[1]), o[0] === '=' ? null : ' ');
+    });
+    if (gap) out.push('…');
+    return out.filter(v => v !== null);
   }
 
   async function readLast() {
-    try { return JSON.parse((await fs.readText(store().root, LAST_PUBLISH_PATH)) ?? 'null'); } catch { return null; }
+    return readJson(LAST_PUBLISH_PATH, null);
+  }
+
+  // Zadnja Objava i Undo (samo Marko, dok se baza nije mijenjala).
+  function renderLast(marko) {
+    if (!canWrite()) return null;
+    if (ed.last === undefined) {
+      ed.last = null;
+      readLast().then(l => { ed.last = l ?? false; if (l) env.render(); });
+      return null;
+    }
+    const l = ed.last;
+    if (!l) return null;
+    const ok = db().updated === l.after.updated;
+    return h('div', { class: 'ce-last' },
+      h('span', { class: 'small' }, `Last Publish: ${new Date(l.at).toLocaleString()}${l.who ? ` by ${l.who}` : ''}, ${Object.keys(l.drafts).length} cards${l.bumped ? `, version ${l.after.version}` : ''}.`),
+      ok ? h('button', { class: 'ghost', type: 'button', disabled: !marko, onclick: () => env.guard(undoPublish) }, 'Undo last Publish')
+        : h('small', { class: 'muted' }, 'Cards changed since then, so it can no longer be undone.'));
   }
 
   // Undo zadnje Objave: baza kakva je bila prije nje (pod novom verzijom, da igra i deckovi vide promjenu),
@@ -621,45 +1194,49 @@ export function createEditor(env) {
     await env.assertFresh();
     const last = await readLast();
     if (!last) throw new Error('No Publish to undo.');
-    const db = env.state.db;
-    if (db.updated !== last.after.updated) throw new Error('The cards changed after that Publish (Import or another save), so it can no longer be undone.');
+    if (db().updated !== last.after.updated) throw new Error('The cards changed after that Publish (Import or another save), so it can no longer be undone.');
     if (!confirm(`Undo the Publish of ${new Date(last.at).toLocaleString()} (${Object.keys(last.drafts).length} cards)? The cards go back to how they were and wait as drafts again.`)) return;
-    const restored = { ...last.before, version: db.version + (last.bumped ? 1 : 0), updated: new Date().toISOString() };
+    const restored = { ...last.before, version: db().version + (last.bumped ? 1 : 0), updated: new Date().toISOString() };
     await env.commitDb(restored);
     const after = await readDrafts();
     after.cards ??= {};
     for (const [id, d] of Object.entries(last.drafts)) after.cards[id] ??= d;
-    await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(after, null, 2) + '\n');
+    await writeJson(DRAFTS_PATH, after);
     await fs.removeFile(store().root, LAST_PUBLISH_PATH).catch(() => {});
     ed.drafts = after;
-    ed.last = null;
+    ed.last = false;
+    for (const id of Object.keys(last.drafts)) await logHistory(id, 'Publish undone').catch(() => {});
     env.toast(`Publish undone: ${Object.keys(last.drafts).length} cards are drafts again${last.bumped ? ` (version ${restored.version})` : ''}.`);
     env.render();
   }
 
-  // Objava: PNG svake karte s artom (renderer), baza i povijest (env.commitDb), pa se nacrti brišu.
-  // Karta bez arta zadržava staru sliku (Card Engine PNG); mijenjaju joj se samo polja.
-  async function publishAll() {
+  // Objava odabranih nacrta: PNG svake karte s artom (renderer), baza i povijest (env.commitDb), nacrti van.
+  // Karta bez arta zadržava staru sliku (Card Engine PNG); nova karta bez arta čeka.
+  async function publishAll(ids) {
     await env.assertFresh();
     const fresh = await readDrafts();
-    const drafts = fresh.cards ?? {};
-    const ids = Object.keys(drafts);
-    if (!ids.length) throw new Error('Nothing waits for Publish.');
-    if (!confirm(`Publish ${ids.length} ${ids.length === 1 ? 'card' : 'cards'} into the game?`)) return;
+    await readLocks();
+    const drafts = {};
+    for (const id of ids) if (fresh.cards?.[id] && !ed.locks[id]) drafts[id] = fresh.cards[id];
+    const list = Object.keys(drafts);
+    if (!list.length) throw new Error('Nothing to publish.');
+    if (!confirm(`Publish ${list.length} ${list.length === 1 ? 'card' : 'cards'} into the game?`)) return;
     // Nova Objava: Undo prethodne više nije moguć, pa njene stare slike mogu van.
     await env.dropOldImages();
-    const before = env.state.db;
+    const before = db();
     const images = {};
     const kept = [];
-    for (const id of ids) {
-      const base = env.state.db.cards.find(c => c.id === id) ?? (drafts[id].new ? { id } : null);
+    for (const id of list) {
+      const base = db().cards.find(c => c.id === id) ?? (drafts[id].new ? { id } : null);
       if (!base) continue;
       const card = { ...base, ...drafts[id] };
+      const core = card.type === 'Core' && coreMode(card) === 'effect';
       const url = card.art ? await store().dataUrl(card.art) : null;
       const art = url ? await loadImage(url).catch(() => null) : null;
-      // Nova karta bez arta čeka (igra treba sliku); postojeća zadrži staru.
-      if (!art) { if (drafts[id].new) delete drafts[id]; kept.push(id); continue; }
-      const eUrl = card.emblem ? await store().dataUrl(card.emblem) : null;
+      if (!art && !core) { if (drafts[id].new) delete drafts[id]; kept.push(id); continue; }
+      const heroOfCard = card.type === 'Evolution' ? db().cards.find(x => x.type === 'Hero' && x.name === card.hero) : null;
+      const emblemPath = card.emblem ?? (heroOfCard ? merged(heroOfCard).emblem : null);
+      const eUrl = emblemPath ? await store().dataUrl(emblemPath) : null;
       const emblem = eUrl ? await loadImage(eUrl).catch(() => null) : null;
       const canvas = document.createElement('canvas');
       renderCard(canvas, card, await templateFor(card), art, emblem);
@@ -670,271 +1247,36 @@ export function createEditor(env) {
       await fs.writeFile(store().root, `data/images/${id}.${hash}.png`, bytes);
       images[id] = hash;
     }
-    const { db, changed, bumped } = applyDrafts(env.state.db, drafts, images);
-    const done = changed ? await env.commitDb(db, { keepOld: true }) : { old: 0, thumbs: 0 };
+    const { db: next, changed, bumped } = applyDrafts(db(), drafts, images);
     if (changed) {
-      const published = Object.fromEntries(ids.filter(id => drafts[id]).map(id => [id, drafts[id]]));
-      await fs.writeFile(store().root, LAST_PUBLISH_PATH, JSON.stringify({ at: new Date().toISOString(), who: who(), bumped, after: { version: db.version, updated: db.updated }, drafts: published, before }) + '\n');
-      ed.last = null;
+      await env.commitDb(next, { keepOld: true });
+      await writeJson(LAST_PUBLISH_PATH, { at: new Date().toISOString(), who: who(), bumped, after: { version: next.version, updated: next.updated }, drafts, before });
+      ed.last = undefined;
     }
     // Nacrti spremljeni dok je Objava trajala ostaju za iduću.
     const after = await readDrafts();
-    for (const id of ids) if (drafts[id] && after.cards?.[id]?.updated === drafts[id].updated) delete after.cards[id];
-    await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(after, null, 2) + '\n');
+    for (const id of Object.keys(drafts)) if (after.cards?.[id]?.updated === drafts[id].updated) delete after.cards[id];
+    await writeJson(DRAFTS_PATH, after);
     ed.drafts = after;
+    for (const id of Object.keys(drafts)) await logHistory(id, `published${bumped ? ` v${next.version}` : ''}`).catch(() => {});
     const parts = [`${changed} ${changed === 1 ? 'card' : 'cards'}`, `${Object.keys(images).length} new PNGs`];
-    if (done.thumbs) parts.push(`${done.thumbs} resized images`);
     if (kept.length) parts.push(`no art yet (old picture kept, new cards wait): ${kept.join(', ')}`);
-    env.toast(`Published${bumped ? ` (version ${db.version})` : changed ? ' (look only)' : ''}: ${parts.join(', ')}. Next: fx proposals for the Effect tab.`);
+    env.toast(`Published${bumped ? ` (version ${next.version})` : changed ? ' (look only)' : ''}: ${parts.join(', ')}. Next: fx proposals for the game (ask Claude Code to run them).`);
     env.render();
   }
 
-  // ---------- crtanje ----------
-
-  function changed() {
-    ed.dirty = true;
-    queueDraw();
-  }
-
-  // Više izmjena u istom trenutku daje jedno crtanje.
-  function queueDraw() {
-    if (ed.frame) return;
-    ed.frame = 1;
-    setTimeout(async () => {
-      ed.frame = 0;
-      await draw();
-    }, 0);
-  }
-
-  async function draw() {
-    const w = ed.work;
-    if (!w || !ed.canvas) return;
-    const tpl = await templateFor(w);
-    ed.tpl = tpl;
-    if (ed.artFor !== w.art) {
-      ed.artFor = w.art;
-      const url = w.art ? await store().dataUrl(w.art) : null;
-      ed.art = url ? await loadImage(url).catch(() => null) : null;
-    }
-    if (ed.emblemFor !== w.emblem) {
-      ed.emblemFor = w.emblem;
-      const url = w.emblem ? await store().dataUrl(w.emblem) : null;
-      ed.emblem = url ? await loadImage(url).catch(() => null) : null;
-    }
-    if (w !== ed.work || !ed.canvas) return;
-    // Predložak stiže tek sad: zadana boja pozadine heroja za ovu boju karte.
-    const bgInput = document.getElementById('ce-bg');
-    if (bgInput && !w.bg && tpl.layout.bg?.[w.color]) bgInput.value = tpl.layout.bg[w.color];
-    const warnings = renderCard(ed.canvas, w, tpl, ed.art, ed.emblem);
-    warnings.push(...checks(w));
-    ed.warnBox.replaceChildren(...warnings.map(x => h('li', {}, x)));
-    ed.diffBox.replaceChildren(...renderDiff(w));
-    ed.fxBox.replaceChildren(...renderFx(w));
-    drawContext();
-    ed.balBox.replaceChildren(...renderBalance(w));
-  }
-
-  // Karta u veličini u kojoj je igrač vidi: u ruci i uvećana (hover).
-  function drawContext() {
-    const wide = ed.canvas.width > ed.canvas.height;
-    const sizes = [['In hand', wide ? 168 : 120], ['Hover', wide ? 392 : 280]];
-    ed.ctxBox.replaceChildren(...sizes.map(([label, wpx]) => {
-      const c = h('canvas', { width: wpx * 2, height: Math.round((wpx * 2 * ed.canvas.height) / ed.canvas.width) });
-      c.style.width = `${wpx}px`;
-      const g = c.getContext('2d');
-      g.imageSmoothingQuality = 'high';
-      g.drawImage(ed.canvas, 0, 0, c.width, c.height);
-      return h('figure', {}, c, h('figcaption', { class: 'muted small' }, label));
-    }));
-  }
-
-  // Balans dok uređuješ: krivulja costa boje, slične karte (ista boja i cost), heroji koji je smiju uzeti
-  // i koliko karata svoje boje tada imaju (prije → poslije izmjene).
-  function renderBalance(w) {
-    if (!PORTRAIT.includes(w.type) || !w.color) return [];
-    const db = env.state.db;
-    const merged = c => ({ ...c, ...(ed.drafts?.cards?.[c.id] ?? {}) });
-    const pool = [...db.cards.filter(c => !c.deleted && c.id !== w.id).map(merged), w].filter(c => PORTRAIT.includes(c.type) && c.color === w.color);
-    const costs = new Map();
-    for (const c of pool) costs.set(c.cost ?? 0, (costs.get(c.cost ?? 0) ?? 0) + 1);
-    const max = Math.max(1, ...costs.values());
-    const top = Math.max(6, ...costs.keys());
-    const curve = h('div', { class: 'ce-curve' }, Array.from({ length: top + 1 }, (_, k) => h('div', { class: `ce-bar${k === (w.cost ?? 0) ? ' mine' : ''}`, title: `Cost ${k}: ${costs.get(k) ?? 0}` },
-      h('span', { style: `height:${((costs.get(k) ?? 0) / max) * 100}%` }), h('small', {}, String(k)))));
-    const similar = pool.filter(c => c.id !== w.id && (c.cost ?? 0) === (w.cost ?? 0));
-    // Heroji boje: smije li ova karta uz njih i koliko karata svoje boje imaju, objavljeno → s izmjenom.
-    const live = setTraits({ ...db, cards: [...db.cards.filter(c => c.id !== w.id), w] }, db.traitList);
-    const heroes = db.cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === w.color);
-    const own = (d, hero) => deckPool(d, [hero.id], heroEvolutions(d, [hero.id])).filter(c => c.color === hero.color);
-    const rows = heroes.map(hero => {
-      const before = own(db, hero);
-      const after = own(live, hero);
-      return { hero, before: before.length, after: after.length, takes: after.some(c => c.id === w.id) };
-    });
-    return [h('details', { class: 'ce-fx-box', open: ed.balOpen, ontoggle: e => { ed.balOpen = e.target.open; } },
-      h('summary', {}, `Balance: ${w.color} cards, cost ${w.cost ?? 0}`),
-      h('p', { class: 'small muted' }, `Cost curve of ${w.color} Action, Equipment and Assist cards (this card highlighted):`), curve,
-      h('p', { class: 'small' }, similar.length ? `Same colour and cost (${similar.length}):` : 'No other card of this colour has this cost.'),
-      similar.length ? h('ul', { class: 'small ce-similar' }, similar.slice(0, 8).map(c => h('li', {},
-        h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, c.name), ` · ${c.type} · ${(c.text ?? '').slice(0, 80)}${(c.text ?? '').length > 80 ? '…' : ''}`))) : null,
-      h('p', { class: 'small' }, 'Heroes of this colour (own-colour cards they may take, published → with this card):'),
-      h('ul', { class: 'small' }, rows.map(r => h('li', { class: r.takes ? '' : 'muted' }, `${r.takes ? '✓' : '–'} ${r.hero.name}: ${r.before}${r.after !== r.before ? ` → ${r.after}` : ''}`))))];
-  }
-
-  // Kako igra čita tekst (data/fx-proposals.json, piše ga game/tools/fx_proposals.gd nakon Objave).
-  // fx se potvrđuje na kartici Effect u pregledu karte (GDD 14), ne ovdje.
-  function renderFx(w) {
-    if (['Stage', 'Core'].includes(w.type) || !(w.text ?? '').trim()) return [];
-    const p = env.state.fxProposals?.cards?.[w.id];
-    const changed = !w.new && (w.text ?? '') !== (ed.base.text ?? '');
-    const code = t => h('pre', { class: 'fx-code' }, t);
-    let body;
-    if (w.new || changed) body = [h('p', { class: 'small' }, 'The text is new or changed: the game reads it again after Publish (Claude runs the fx proposals), then the Effect tab shows whether it needs an fx.')];
-    else if (ed.base.fx) body = [h('p', { class: 'small' }, ed.base.fxStatus === 'check' ? 'Confirmed fx, but the text changed after it: check it on the Effect tab.' : 'Confirmed fx (the game uses it):'), code(ed.base.fx)];
-    else if (!p) body = [h('p', { class: 'small muted' }, 'No report from the game for this card yet.')];
-    else if (p.unparsed?.length) body = [h('p', { class: 'small warn' }, 'The game does not understand part of the text:'), h('ul', { class: 'small' }, p.unparsed.map(u => h('li', {}, u))), p.proposal ? code(p.proposal) : null];
-    else body = [h('p', { class: 'small' }, 'The game reads the text by itself:'), code(p.read)];
-    return [h('details', { class: 'ce-fx-box', open: !!(p?.unparsed?.length && !changed) },
-      h('summary', {}, 'Effect in the game'), ...body,
-      env.openEffect && !w.new ? h('button', { class: 'ghost', type: 'button', onclick: () => env.openEffect(w.id) }, 'Open the Effect tab') : null)];
-  }
-
-  // Razlike prema objavljenoj karti (cards.json): staro → novo, po polju.
-  function renderDiff(w) {
-    if (w.new) return [h('p', { class: 'muted small' }, 'A new card: it is not in the game until Publish.')];
-    const short = v => { const t = typeof v === 'string' ? v : JSON.stringify(v); return t === undefined ? '–' : t.length > 90 ? `${t.slice(0, 88)}…` : t; };
-    const rows = FIELDS.filter(k => w[k] !== undefined && !sameVal(w[k], ed.base[k]));
-    if (!rows.length) return [];
-    return [h('p', { class: 'small' }, 'Against the published card:'),
-      h('table', { class: 'ce-pub-table' }, h('tbody', {}, rows.map(k => h('tr', {},
-        h('td', {}, k), h('td', { class: 'muted' }, short(ed.base[k])), h('td', {}, '→ ', short(w[k]))))))];
-  }
-
-  // Provjere dok pišeš (uz upozorenja renderera).
-  function checks(w) {
-    const out = [];
-    if (!(w.name ?? '').trim()) out.push('No name yet.');
-    if (PORTRAIT.includes(w.type)) {
-      const kind = firstTag(env.state.db, w, env.state.traits?.traits);
-      if (kind.kind === INVALID) out.push(`First tag: ${tagLabel(kind)}. Pick General, a hero of this colour or a trait.`);
-      const e = parseEffect(w.text);
-      if ((w.text ?? '').trim() && !e.phase && !/^(The equipped|Your|While|Each|All)\b/i.test(e.lines[0]?.text ?? '')) {
-        out.push('The text does not start with a phase ("Battle Phase:" …). Fine for Equipment and Assist that always work.');
-      }
-    }
-    if (HEROISH.includes(w.type)) {
-      if (!w.abilityNames?.[0]) out.push('No ability name.');
-      if (!w.emblem) out.push('No emblem on the plate.');
-      if (w.type === 'Evolution' && !w.hero) out.push('Pick the hero this evolves from.');
-    }
-    if (w.type === 'Stage' && !/^Terrain:/m.test(w.text ?? '')) out.push('No "Terrain:" line: pick the terrain.');
-    if (w.type === 'Core' && !CORE_KINDS.includes(w.traits[0])) out.push('Pick Buff, Major or Debuff.');
-    out.push(...avoidWarnings(ed.guide, w.text));
-    if (/\[(?!Range\])[^\]]*\]/i.test(w.text ?? '')) out.push('Only [Range] goes in brackets. Stats are words after the number ("3 HP", "+2000 Power"); the card shows the icon.');
-    return out;
-  }
-
-  // Povlačenje arta mišem pomiče izrez, kotačić zumira.
-  function hookDrag(canvas) {
-    let from = null;
-    canvas.addEventListener('pointerdown', e => { from = { x: e.clientX, y: e.clientY, crop: { ...ed.work.artCrop } }; canvas.setPointerCapture(e.pointerId); });
-    canvas.addEventListener('pointermove', e => {
-      if (!from || !ed.art || !ed.tpl?.layout.artBox) return;
-      const scale = canvas.width / canvas.getBoundingClientRect().width;
-      const [, , bw, bh] = ed.tpl.layout.artBox;
-      const k = Math.max(bw / ed.art.width, bh / ed.art.height) * from.crop.zoom;
-      ed.work.artCrop = { ...from.crop, x: from.crop.x - ((e.clientX - from.x) * scale) / (ed.art.width * k), y: from.crop.y - ((e.clientY - from.y) * scale) / (ed.art.height * k) };
-      changed();
-    });
-    canvas.addEventListener('pointerup', () => { from = null; env.render(); });
-    canvas.addEventListener('wheel', e => {
-      if (ed.work.type === 'Core') return;
-      e.preventDefault();
-      const z = Math.min(3, Math.max(0.5, ed.work.artCrop.zoom * (e.deltaY < 0 ? 1.05 : 1 / 1.05)));
-      ed.work.artCrop = { ...ed.work.artCrop, zoom: z };
-      changed();
-    }, { passive: false });
-  }
-
-  // ---------- spremanje ----------
-
-  // Nacrt: polja koja se razlikuju od cards.json, tko i kad. Drugi nacrti se čitaju iznova prije pisanja.
-  async function saveDraft() {
-    const w = ed.work;
-    if (ed.lock?.state === 'other') throw new Error(`${ed.lock.other?.who ?? 'Someone'} is editing this card.`);
-    const diff = {};
-    for (const k of FIELDS) {
-      if (w[k] === undefined) continue;
-      if (!sameVal(w[k], ed.base[k])) diff[k] = w[k];
-    }
-    const fresh = await readDrafts();
-    const before = ed.drafts?.cards?.[w.id]?.updated;
-    const now = fresh.cards?.[w.id]?.updated;
-    if (now && now !== before && !confirm(`${fresh.cards[w.id].who || 'Someone'} saved this card in the meantime. Overwrite?`)) return;
-    fresh.cards ??= {};
-    if (w.new) diff.new = true;
-    if (Object.keys(diff).length) fresh.cards[w.id] = { ...diff, updated: new Date().toISOString(), who: who() || undefined };
-    else delete fresh.cards[w.id];
-    await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(fresh, null, 2) + '\n');
-    ed.drafts = fresh;
-    ed.dirty = false;
-    env.toast(Object.keys(diff).length ? `Draft saved: ${w.name}. It goes into the game with the next Publish.` : 'No changes against the published card.');
-    env.render();
-  }
-
-  async function discardDraft() {
-    if (!confirm(ed.work?.new ? 'Throw away this new card?' : 'Throw away the unpublished changes to this card?')) return;
-    const fresh = await readDrafts();
-    delete fresh.cards?.[ed.id];
-    await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(fresh, null, 2) + '\n');
-    ed.drafts = fresh;
-    if (ed.work?.new) { ed.dirty = false; ed.work = null; env.go(null); return; }
-    open(ed.id);
-    env.render();
-  }
-
-  // Izvorni art ide u data/art/<kod>.<ext> u punoj rezoluciji; izrez se vraća na sredinu.
-  async function uploadArt(file) {
-    if (!file) return;
-    const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[file.type];
-    if (!ext) throw new Error('Art must be PNG, JPEG or WebP.');
-    const path = `art/${ed.work.id}.${ext}`;
-    await fs.writeFile(store().root, `data/${path}`, new Uint8Array(await file.arrayBuffer()));
-    store().dropImageUrls?.();
-    ed.work.art = path;
-    ed.work.artCrop = { x: 0.5, y: 0.5, zoom: 1 };
-    ed.artFor = null;
-    changed();
-    env.render();
-  }
-
-  // Amblem u pločici heroja: data/art/emblems/<kod>.<ext>.
-  async function uploadEmblem(file) {
-    if (!file) return;
-    const ext = { 'image/png': 'png', 'image/webp': 'webp' }[file.type];
-    if (!ext) throw new Error('The emblem must be PNG or WebP (with a clear background).');
-    const path = `art/emblems/${ed.work.id}.${ext}`;
-    await fs.writeFile(store().root, `data/${path}`, new Uint8Array(await file.arrayBuffer()));
-    store().dropImageUrls?.();
-    ed.work.emblem = path;
-    ed.emblemFor = null;
-    changed();
-    env.render();
-  }
-
-  function downloadPng() {
-    if (!ed.canvas) return;
-    ed.canvas.toBlob(b => {
-      const a = h('a', { href: URL.createObjectURL(b), download: `${ed.work.id} ${ed.work.name}.png` });
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    }, 'image/png');
-  }
+  // ---------- podstranice ----------
 
   const guide = createGuideView({ h, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast, onSaved: g => { ed.guide = g; } });
-  // Spremljen okvir: editor ga učita iznova.
-  const frames = createFramesView({ h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast, drafts: () => ed.drafts, onSaved: name => { delete ed.tpls[name]; } });
-  const sets = createSetsView({ h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast, go: id => go(id), newCard: (set, type) => newCard(set, type) });
+  // Spremljen okvir: editor ga učita iznova, sličice se crtaju iznova.
+  const frames = createFramesView({ h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast, drafts: () => ed.drafts, onSaved: name => { delete ed.tpls[name]; ed.thumbs.clear(); } });
+  const sets = createSetsView({
+    h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast,
+    cards: allCards, drafts: () => ed.drafts, locks: () => ed.locks, thumbInto, go: id => go(id), newCard, nextId,
+  });
 
-  return { render, isDirty: () => ed.dirty, newCard };
+  return {
+    render, isCardPage, isDirty: () => ed.dirty, newCard, who, setWho,
+    waiting: () => Object.keys(ed.drafts?.cards ?? {}).length,
+  };
 }

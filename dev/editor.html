@@ -6,11 +6,12 @@
   <base href="/">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;1,700;1,800;1,900&family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/editor.css">
 </head>
 <body>
   <!-- Development check: the Card editor on its own over the local server (read only), without the
        app's start-up (headless browsers never answer its IndexedDB call). /dev/editor.html?id=OP1-028,
-       or ?new=OP1,Hero for a new card. -->
+       ?id=sets, ?id=publish, or ?new=OP1,Hero for a new card; &view=old, &art=1 for the other views. -->
   <main id="app" style="padding: 16px"></main>
   <div id="toasts"></div>
   <script type="module">
@@ -30,18 +31,29 @@
       for (const kid of kids.flat()) if (kid !== null && kid !== undefined && kid !== false) el.append(kid instanceof Node ? kid : String(kid));
       return el;
     };
+    const q = new URLSearchParams(location.search);
     const store = serverStore(await probeServer());
-    const state = { store, db: await store.readDb(), traits: await store.readTraits(), fxProposals: await store.readFxProposals().catch(() => null), editId: new URLSearchParams(location.search).get('id') };
+    const state = {
+      store, db: await store.readDb(), traits: await store.readTraits(), changelog: await store.readChangelog().catch(() => null),
+      fxProposals: await store.readFxProposals().catch(() => null), editId: q.get('id'),
+    };
     setTraits(state.db, state.traits?.traits);
     const app = document.getElementById('app');
     const toast = m => console.log(m);
     const guard = async fn => { try { await fn(); } catch (e) { toast(e.message); } };
     let editor;
     const render = () => app.replaceChildren(editor.render());
-    editor = createEditor({ state, h, toast, guard, render, go: id => { state.editId = id; render(); } });
+    editor = createEditor({
+      state, h, toast, guard, render, go: id => { state.editId = id; render(); },
+      renderTraits: () => h('p', { class: 'muted' }, 'The trait list is drawn by the app.'), openTab: () => {}, openEffect: () => {},
+    });
     render();
-    const want = new URLSearchParams(location.search).get('new');
+    const want = q.get('new');
     if (want) setTimeout(() => editor.newCard(...want.split(',')), 2000);
+    // Pogled ili Edit art za snimke: klik na gumb kad se stranica nacrta.
+    const click = label => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === label)?.click();
+    if (q.get('view')) setTimeout(() => click({ old: 'Old vs new', hand: 'In hand', hover: 'Hover' }[q.get('view')]), 2500);
+    if (q.get('art')) setTimeout(() => click('Edit art'), 2500);
   </script>
 </body>
 </html>

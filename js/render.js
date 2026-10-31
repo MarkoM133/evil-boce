@@ -46,8 +46,8 @@ export async function loadTemplate(name, load) {
   };
   const icons = {};
   for (const [k, rel] of Object.entries(layout.icons ?? {})) icons[k] = await get(rel);
-  // Core: samo slika, bez okvira.
-  if (layout.kind === 'image') return { name, layout, icons };
+  // Core: slika, ili heksagon s efektom.
+  if (layout.kind === 'image') return { name, layout, icons, hexagon: layout.hexagon ? await get(layout.hexagon) : null };
   // Heroj i evolucija: jedan gotov okvir po boji.
   if (layout.kind === 'hero') {
     const frames = {};
@@ -90,7 +90,7 @@ export async function fontsReady() {
 // Vraća upozorenja za editor: tekst na najmanjem fontu, naslov smanjen do kraja, nema arta.
 export function renderCard(canvas, card, tpl, art, emblem = null) {
   if (tpl.layout.kind === 'hero') return renderHero(canvas, card, tpl, art, emblem);
-  if (tpl.layout.kind === 'image') return renderImage(canvas, art, tpl.layout);
+  if (tpl.layout.kind === 'image') return renderImage(canvas, card, tpl, art);
   canvas.width = CARD_W;
   canvas.height = CARD_H;
   const ctx = canvas.getContext('2d');
@@ -480,16 +480,45 @@ function drawChips(ctx, chips, cx, top, h, color, icons) {
 
 
 // Core: gotova slika (hexagon na prozirnom), cijela u karti.
-function renderImage(canvas, art, L) {
+// Core: uploadana slika (coreImage 'upload'), ili heksagon s bonusom ("+2000" i ikona stata), kao u Card Engineu.
+// Bez izbora: uploadana ako je ima.
+export const coreMode = card => card.coreImage ?? (card.art ? 'upload' : 'effect');
+
+function renderImage(canvas, card, tpl, art) {
+  const L = tpl.layout;
   const [W, H] = L.size;
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, W, H);
-  if (!art) return ['No image yet.'];
-  const s = Math.min(W / art.width, H / art.height);
-  ctx.drawImage(art, (W - art.width * s) / 2, (H - art.height * s) / 2, art.width * s, art.height * s);
-  return [];
+  if (coreMode(card) === 'upload') {
+    if (!art) return ['No image yet.'];
+    const s = Math.min(W / art.width, H / art.height);
+    ctx.drawImage(art, (W - art.width * s) / 2, (H - art.height * s) / 2, art.width * s, art.height * s);
+    return [];
+  }
+  if (tpl.hexagon) ctx.drawImage(tpl.hexagon, 0, 0, W, H);
+  const entries = Object.entries(card.bonus ?? {}).filter(([, v]) => v);
+  if (!entries.length) return ['No effect yet: write the bonus, e.g. +2000[PWR].'];
+  const [k, v] = entries[0];
+  const [x, y, w, bh] = L.effect.box;
+  const num = `${v > 0 ? '+' : ''}${v}`;
+  const icon = tpl.icons[`text-${k}`];
+  let size = L.effect.size;
+  ctx.font = `${size}px ${TITLE_FONT}`;
+  while (size > L.effect.min && ctx.measureText(num).width + size * 1.05 > w) ctx.font = `${(size -= 4)}px ${TITLE_FONT}`;
+  const tw = ctx.measureText(num).width;
+  const iw = size * 0.85;
+  const left = x + (w - tw - iw - size * 0.08) / 2;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(num, left, y + bh / 2 + size * 0.04);
+  if (icon) {
+    const s = iw / Math.max(icon.width, icon.height);
+    ctx.drawImage(tinted(icon, STAT_TINTS[k]), left + tw + size * 0.08, y + bh / 2 - (icon.height * s) / 2, icon.width * s, icon.height * s);
+  }
+  return entries.length > 1 ? ['A Core shows one bonus; only the first is drawn.'] : [];
 }
 
 // ---------- heroji i evolucije (položene karte) ----------
