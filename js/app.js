@@ -706,10 +706,17 @@ function wordmark(size) {
 
 // Logo i podaci: folder, verzija (link na povijest), broj karata, Import i odabir foldera. Na računalu stoje u bloku
 // dolje lijevo (side-data), na mobitelu u traci ispod heroja (top-bar); CSS pokaže jedno od dvoje.
+// Logo studija (web app = "Card Studio", kao gumb u igri): znak Evil Boće preko dvije nagnute karte, na crvenoj
+// piše CARD STUDIO. Logo igre (slika iz brandinga) ostaje igri.
+function studioLogo(size) {
+  return h('span', { class: `studio-logo ${size}`, role: 'img', 'aria-label': 'Evil Boće Card Studio' },
+    h('span', { class: 'sl-card back', 'aria-hidden': 'true' }),
+    h('span', { class: 'sl-card front', 'aria-hidden': 'true' }, size === 'big' ? h('span', { class: 'sl-label' }, 'Card Studio') : null),
+    wordmark(size === 'big' ? 'studio-big' : 'studio-small'));
+}
+
 function brand() {
-  return h('div', { class: 'brand' },
-    state.logo ? h('img', { class: 'logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('small'),
-    h('span', { class: 'brand-sub' }, 'Evil Boće'));
+  return h('div', { class: 'brand' }, studioLogo('small'), h('span', { class: 'brand-sub' }, 'Card Studio'));
 }
 
 // Blok dolje lijevo (računalo): sklopljen je samo logo i ime (s crvenim jezičcem iznad, kao ladica), klik ga digne
@@ -757,7 +764,7 @@ const PEOPLE = [['Marko', 'Publishes cards into the game, edits the frames'], ['
 function renderWhoPick() {
   const pick = name => { cardEditor.setWho(name); render(); };
   return h('section', { class: 'who-pick' },
-    state.logo ? h('img', { class: 'who-logo', src: state.logo, alt: 'Evil Boće' }) : wordmark('big'),
+    studioLogo('big'),
     h('h1', {}, 'Who works on this computer?'),
     h('p', { class: 'muted' }, 'The Card editor locks the card you edit under your name, and notes and history show who changed what. Asked once; change it later under "Signed in as" in the menu.'),
     h('div', { class: 'who-tiles' }, PEOPLE.map(([name, role]) => h('button', { class: 'who-tile', type: 'button', onclick: () => pick(name) },

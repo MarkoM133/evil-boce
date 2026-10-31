@@ -236,3 +236,18 @@ button.link.accent, .accent { color: var(--straw); }
 .who-tile strong { font: italic 800 34px/1 var(--display); }
 .who-initial { width: 76px; height: 76px; border-radius: 50%; background: var(--red); display: grid; place-items: center; font: italic 900 40px var(--display); color: var(--bone); }
 .who-logo { width: 180px; height: auto; }
+
+/* Logo studija (app.js studioLogo): znak preko dvije nagnute karte, na prednjoj CARD STUDIO. */
+.studio-logo { position: relative; display: inline-grid; place-items: center; flex: none; }
+.studio-logo .sl-card { position: absolute; border-radius: 8%; box-sizing: border-box; }
+.studio-logo .sl-card.back { background: var(--surface-2); border: 3px solid var(--line); transform: rotate(-14deg) translate(-24%, 4%); }
+.studio-logo .sl-card.front { background: #140303; border: 4px solid var(--red); transform: rotate(6deg) translate(16%, -2%); display: flex; align-items: flex-end; justify-content: center; }
+.studio-logo .sl-label { font: italic 900 20px var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--straw); border-top: 2px solid var(--red); padding: 6px 0 16px; }
+.studio-logo .wordmark { position: relative; }
+.studio-logo.big { width: 300px; height: 290px; }
+.studio-logo.big .sl-card { width: 170px; height: 238px; }
+.studio-logo.big .wordmark { font-size: 84px; margin-bottom: 40px; }
+.studio-logo.small { width: 64px; height: 60px; }
+.studio-logo.small .sl-card { width: 32px; height: 46px; border-width: 2px; }
+.studio-logo.small .wordmark { font-size: 19px; }
+.who-pick .studio-logo { margin-bottom: -10px; }
