@@ -381,7 +381,7 @@ export function applyAppEdits(db, edits, now = new Date()) {
 // polja izgleda (art, izrez, amblem, pozadina, predložak, status, bilješke) i nova slika ne dižu.
 // images: { id: imageHash } za karte kojima je Objava nacrtala novi PNG (data/images/ID.hash.png).
 // Nacrt s new: true i kodom kojeg nema u bazi je nova karta (dodaje se na kraj, rev 1).
-export const DRAFT_GAME_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'traits', 'text', 'abilityNames', 'terrain'];
+export const DRAFT_GAME_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'traits', 'aliases', 'text', 'abilityNames', 'terrain'];
 export const DRAFT_LOOK_FIELDS = ['art', 'artCrop', 'emblem', 'bg', 'template', 'status', 'notes'];
 
 export function applyDrafts(db, drafts, images = {}, now = new Date()) {

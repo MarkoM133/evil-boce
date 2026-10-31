@@ -25,7 +25,7 @@ const WHO_KEY = 'evil-boce-who';
 const BONUS_KEYS = [['pwr', 'Power'], ['dmg', 'DMG'], ['hp', 'HP'], ['rng', 'Range'], ['kb', 'KB']];
 const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'Power'], ['rng', 'Range'], ['kb', 'KB']];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
-const FIELDS = ['name', 'type', 'color', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'text', 'terrain',
+const FIELDS = ['name', 'type', 'color', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain',
   'art', 'artCrop', 'emblem', 'bg', 'template', 'status', 'notes'];
 // Statovi se pišu riječima iza broja ("3 HP", "+2000 Power"): igra čita riječi, a karta ih crta kao ikone.
 const INSERTS = [
@@ -124,11 +124,11 @@ export function createEditor(env) {
     }
     if (ed.error) return h('section', { class: 'panel' }, h('p', { class: 'warn' }, ed.error));
     const want = env.state.editId;
-    if (['publish', 'sets', 'guide'].includes(want)) {
+    if (['publish', 'sets', 'guide', 'tags'].includes(want)) {
       ed.id = null;
       ed.work = null;
       syncLock();
-      return h('div', {}, renderNav(want), { sets: sets.render, guide: guide.render, publish: renderPublish }[want]());
+      return h('div', {}, renderNav(want), { sets: sets.render, guide: guide.render, tags: renderTags, publish: renderPublish }[want]());
     }
     if (want && want !== ed.id) open(want);
     if (!want) { ed.id = null; ed.work = null; }
@@ -144,6 +144,7 @@ export function createEditor(env) {
     return h('div', { class: 'ce-nav' },
       tab('edit', 'Edit', ed.lastId ?? null),
       tab('sets', 'Sets', 'sets'),
+      tab('tags', 'Tags', 'tags'),
       tab('guide', 'Text guide', 'guide'),
       tab('publish', `Publish${n ? ` (${n})` : ''}`, 'publish'),
       h('label', { class: 'ce-who' }, 'I am ', h('select', { onchange: e => { try { localStorage.setItem(WHO_KEY, e.target.value); } catch {} env.render(); } },
@@ -344,6 +345,8 @@ export function createEditor(env) {
           w.type === 'Evolution' ? field('Hero', h('select', { onchange: e => set('hero', e.target.value) },
             h('option', { value: '' }, '–'), evoHeroes.map(x => h('option', { value: x.name, selected: x.name === w.hero }, x.name)))) : null),
         tagsList('Tags', 0, 'Comma between.'),
+        w.type === 'Hero' ? field('Aliases', h('input', { value: (w.aliases ?? []).join(', '), placeholder: 'Luffy, Straw Hat',
+          oninput: e => set('aliases', e.target.value.split(',').map(x => x.trim()).filter(Boolean)) }), 'Other names a card\'s first tag may use for this hero.') : null,
         field('Text', text), sugBox, inserts(insert),
         h('fieldset', { class: 'ce-art' },
           h('legend', {}, 'Plate and background'),
@@ -490,6 +493,64 @@ export function createEditor(env) {
     return h('div', { class: 'ce-lock warn' },
       `${l.other?.who ?? 'Someone'} is editing this card (since ${since}). Saving is off until they leave it.`,
       h('button', { type: 'button', class: 'ghost', onclick: () => env.guard(() => { releaseLock(); return claimLock(ed.id, who(), true); }) }, 'Take over'));
+  }
+
+  // ---------- tagovi ----------
+
+  // Svi tagovi na kartama (s nacrtima): koliko karata ga ima prvog (tko smije) i koliko među ostalima.
+  function renderTags() {
+    const counts = new Map();
+    for (const c of cards()) {
+      const m = { ...c, ...(ed.drafts?.cards?.[c.id] ?? {}) };
+      (m.traits ?? []).forEach((t, i) => {
+        if (!t) return;
+        const row = counts.get(t) ?? { first: 0, other: 0 };
+        if (i === 0 && !HEROISH.includes(m.type)) row.first++; else row.other++;
+        counts.set(t, row);
+      });
+    }
+    const rows = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    return h('section', { class: 'panel ce-tags' },
+      h('div', { class: 'ce-title' }, h('h2', {}, 'Tags'),
+        env.openTab ? h('button', { class: 'ghost', type: 'button', onclick: () => env.openTab('traits') }, 'Trait list and descriptions →') : null),
+      h('p', { class: 'muted' }, 'Every tag on the cards. Renaming changes it on every card as drafts (Publish puts them into the game). The trait list with descriptions, which the first tag rule uses, is on the Traits tab; hero aliases are on each hero card here.'),
+      h('table', { class: 'ce-pub-table' },
+        h('thead', {}, h('tr', {}, ['Tag', 'First tag on', 'Other tag on', 'Rename to', ''].map(t => h('th', {}, t)))),
+        h('tbody', {}, rows.map(([tag, n]) => {
+          const to = h('input', { placeholder: tag });
+          return h('tr', {}, h('td', {}, h('strong', {}, tag)), h('td', { class: 'num' }, n.first || '–'), h('td', { class: 'num' }, n.other || '–'),
+            h('td', {}, to),
+            h('td', {}, h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(() => renameTag(tag, to.value.trim())) }, 'Rename')));
+        }))));
+  }
+
+  // Preimenovanje taga na svim kartama kao nacrti (karta kojoj se vrati objavljeni popis ostane bez nacrta za tagove).
+  async function renameTag(from, to) {
+    if (!to || to === from) throw new Error('Write the new name first.');
+    if (ed.dirty) throw new Error('Save or discard the open card first.');
+    const fresh = await readDrafts();
+    fresh.cards ??= {};
+    const db = env.state.db.cards;
+    let n = 0;
+    for (const c of cards()) {
+      const d = fresh.cards[c.id] ?? {};
+      const traits = d.traits ?? c.traits ?? [];
+      if (!traits.includes(from)) continue;
+      const next = [...new Set(traits.map(t => (t === from ? to : t)))];
+      const base = db.find(x => x.id === c.id);
+      const nd = { ...d, traits: next, updated: new Date().toISOString(), who: who() || undefined };
+      if (base && sameVal(next, base.traits)) delete nd.traits;
+      if (Object.keys(nd).every(k => k === 'updated' || k === 'who')) delete fresh.cards[c.id];
+      else fresh.cards[c.id] = nd;
+      n++;
+    }
+    if (!n) throw new Error(`No card has the tag ${from}.`);
+    await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(fresh, null, 2) + '\n');
+    ed.drafts = fresh;
+    if (ed.id) open(ed.id);
+    const inList = (env.state.traits?.traits ?? []).some(t => t.name === from);
+    env.toast(`${from} → ${to} on ${n} ${n === 1 ? 'card' : 'cards'} (drafts).${inList ? ` ${from} is on the trait list: rename it on the Traits tab too.` : ''}`);
+    env.render();
   }
 
   // ---------- objava ----------

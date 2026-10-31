@@ -589,7 +589,7 @@ async function applyHash() {
     state.deckView = view === 'deck' ? 'deck' : 'pool';
   }
   if (tab === 'browse') state.selected = id && cardById(id) ? id : null;
-  if (tab === 'editor') state.editId = ['publish', 'sets', 'guide'].includes(id) || (id && (cardById(id) || /^[A-Za-z0-9]+-\d+$/.test(id))) ? id : null;
+  if (tab === 'editor') state.editId = ['publish', 'sets', 'guide', 'tags'].includes(id) || (id && (cardById(id) || /^[A-Za-z0-9]+-\d+$/.test(id))) ? id : null;
   state.tab = tab;
   return true;
 }
@@ -796,6 +796,7 @@ function renderMain() {
 const cardEditor = createEditor({
   state, h, toast, guard, render,
   go: id => { state.editId = id; replaceNext = false; render(); },
+  openTab: tab => { state.tab = tab; replaceNext = false; render(); },
   openEffect: id => { state.tab = 'browse'; state.selected = id; state.detailTab = 'effect'; replaceNext = false; render(); },
   // Objava nacrta: baza i povijest, pa umanjene slike za nove. keepOld: stare slike ostaju za Undo.
   assertFresh,
