@@ -380,6 +380,7 @@ export function applyAppEdits(db, edits, now = new Date()) {
 // Nacrti iz Card editora (data/editor/drafts.json) u bazu. Polja igre dižu rev karte i verziju baze;
 // polja izgleda (art, izrez, amblem, pozadina, predložak, status, bilješke) i nova slika ne dižu.
 // images: { id: imageHash } za karte kojima je Objava nacrtala novi PNG (data/images/ID.hash.png).
+// Nacrt s new: true i kodom kojeg nema u bazi je nova karta (dodaje se na kraj, rev 1).
 export const DRAFT_GAME_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'traits', 'text', 'abilityNames', 'terrain'];
 export const DRAFT_LOOK_FIELDS = ['art', 'artCrop', 'emblem', 'bg', 'template', 'status', 'notes'];
 
@@ -405,6 +406,22 @@ export function applyDrafts(db, drafts, images = {}, now = new Date()) {
     }
     return ordered(next);
   });
+  for (const [id, d] of Object.entries(drafts)) {
+    if (!d.new || db.cards.some(c => c.id === id)) continue;
+    const card = { id };
+    for (const k of [...DRAFT_GAME_FIELDS, ...DRAFT_LOOK_FIELDS]) if (d[k] != null) card[k] = d[k];
+    if (['Hero', 'Evolution'].includes(card.type)) card.landscape = true;
+    if (images[id]) {
+      card.image = `images/${id}.${images[id]}.png`;
+      card.imageHash = images[id];
+    }
+    card.rev = 1;
+    card.deleted = false;
+    cards.push(ordered(card));
+    changed++;
+    game++;
+    ids.push(id);
+  }
   if (!changed) return { db, changed, bumped: false, ids };
   return { db: { version: db.version + (game ? 1 : 0), updated: now.toISOString(), cards }, changed, bumped: game > 0, ids };
 }

@@ -9,7 +9,8 @@
 </head>
 <body>
   <!-- Development check: the Card editor on its own over the local server (read only), without the
-       app's start-up (headless browsers never answer its IndexedDB call). /dev/editor.html?id=OP1-028 -->
+       app's start-up (headless browsers never answer its IndexedDB call). /dev/editor.html?id=OP1-028,
+       or ?new=OP1,Hero for a new card. -->
   <main id="app" style="padding: 16px"></main>
   <div id="toasts"></div>
   <script type="module">
@@ -37,6 +38,8 @@
     const render = () => app.replaceChildren(editor.render());
     editor = createEditor({ state, h, toast, guard, render, go: id => { state.editId = id; render(); } });
     render();
+    const want = new URLSearchParams(location.search).get('new');
+    if (want) setTimeout(() => editor.newCard(...want.split(',')), 2000);
   </script>
 </body>
 </html>

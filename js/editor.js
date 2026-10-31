@@ -76,13 +76,20 @@ export function createEditor(env) {
     }
   }
 
-  const cards = () => env.state.db.cards.filter(c => EDIT_TYPES.includes(c.type) && !c.deleted)
-    .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  // Karte iz cards.json, nove karte iz nacrta (new: true) i nova karta koja još nije spremljena.
+  const cards = () => {
+    const db = env.state.db.cards;
+    const fresh = Object.entries(ed.drafts?.cards ?? {}).filter(([id, d]) => d.new && !db.some(c => c.id === id)).map(([id, d]) => ({ id, ...d }));
+    if (ed.work?.new && !fresh.some(c => c.id === ed.work.id)) fresh.push(ed.work);
+    return [...db.filter(c => EDIT_TYPES.includes(c.type) && !c.deleted), ...fresh]
+      .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  };
   const setOf = c => c.id.split('-')[0];
 
   function open(id) {
-    const base = env.state.db.cards.find(c => c.id === id);
-    if (!base) return;
+    const draft = ed.drafts?.cards?.[id];
+    const base = env.state.db.cards.find(c => c.id === id) ?? (draft?.new ? { id } : null);
+    if (!base) { ed.id = null; ed.work = null; return; }
     ed.id = id;
     ed.base = base;
     ed.work = structuredClone({ ...base, ...(ed.drafts?.cards?.[id] ?? {}) });
@@ -141,7 +148,52 @@ export function createEditor(env) {
         h('select', { 'aria-label': 'Type', onchange: e => { ed.type = e.target.value; env.render(); } },
           h('option', { value: '' }, 'All types'), EDIT_TYPES.map(t => h('option', { value: t, selected: t === ed.type }, t)))),
       h('input', { class: 'ce-find', type: 'search', placeholder: 'Find', value: ed.q, oninput: e => { ed.q = e.target.value; refreshList(); } }),
+      renderNew(sets),
       h('ul', { id: 'ce-items' }, shown().map(c => item(c))));
+  }
+
+  // Nova karta: set i tip; kod je sljedeći slobodni broj u setu (cards.json i nacrti).
+  function renderNew(sets) {
+    if (!ed.newOpen) return h('button', { class: 'ghost ce-new', type: 'button', onclick: () => { ed.newOpen = true; env.render(); } }, '+ New card');
+    const setSel = h('select', { 'aria-label': 'Set' }, sets.map(x => h('option', { value: x, selected: x === (ed.set || sets.find(y => !['Stage', 'Core'].includes(y))) }, x)));
+    const typeSel = h('select', { 'aria-label': 'Type' }, EDIT_TYPES.map(t => h('option', { value: t, selected: t === (ed.type || 'Action') }, t)));
+    // Stage i Core imaju svoje setove (Stage-001, Core-001).
+    const sync = () => { if (['Stage', 'Core'].includes(typeSel.value)) setSel.value = typeSel.value; else if (['Stage', 'Core'].includes(setSel.value)) setSel.value = sets.find(y => !['Stage', 'Core'].includes(y)) ?? setSel.value; };
+    typeSel.addEventListener('change', sync);
+    sync();
+    return h('div', { class: 'ce-new-form' },
+      h('div', { class: 'ce-list-head' }, setSel, typeSel),
+      h('div', { class: 'ce-list-head' },
+        h('button', { class: 'primary', type: 'button', onclick: () => newCard(setSel.value, typeSel.value) }, 'Create'),
+        h('button', { class: 'ghost', type: 'button', onclick: () => { ed.newOpen = false; env.render(); } }, 'Cancel')));
+  }
+
+  function nextId(set) {
+    const ids = [...env.state.db.cards.map(c => c.id), ...Object.keys(ed.drafts?.cards ?? {})];
+    const nums = ids.filter(id => id.startsWith(`${set}-`)).map(id => Number(id.slice(set.length + 1))).filter(Number.isFinite);
+    return `${set}-${String(Math.max(0, ...nums) + 1).padStart(3, '0')}`;
+  }
+
+  const NEW_DEFAULTS = {
+    Action: { color: 'Cyan', cost: 1, bonus: {}, traits: ['General'], text: '' },
+    Hero: { color: 'Cyan', stats: { hp: 8, dmg: 3, pwr: 2000, rng: 2, kb: 2 }, traits: [], abilityNames: [''], text: '' },
+    Evolution: { color: 'Cyan', cost: 4, evo: 1, hero: '', stats: { hp: 8, dmg: 4, pwr: 3000, rng: 2, kb: 2 }, traits: [], abilityNames: [''], text: '' },
+    Stage: { color: null, traits: [], text: 'Terrain: None', terrain: 'None' },
+    Core: { color: null, traits: ['Buff'], bonus: { pwr: 1000 }, text: '' },
+  };
+
+  function newCard(set, type) {
+    if (ed.dirty && !confirm('Discard the unsaved changes to this card?')) return;
+    const id = nextId(set);
+    const defaults = NEW_DEFAULTS[type] ?? NEW_DEFAULTS.Action;
+    ed.id = id;
+    ed.base = { id };
+    ed.work = { id, new: true, name: '', type, ...structuredClone(defaults), artCrop: { x: 0.5, y: 0.5, zoom: 1 }, status: 'draft' };
+    ed.work.bonus ??= {};
+    ed.dirty = true;
+    ed.art = ed.artFor = ed.emblem = ed.emblemFor = null;
+    ed.newOpen = false;
+    env.go(id);
   }
 
   function item(c) {
@@ -320,8 +372,8 @@ export function createEditor(env) {
           const card = { ...(base ?? {}), ...d };
           const fields = Object.keys(d).filter(k => !KEEP.has(k));
           return h('tr', {},
-            h('td', {}, h('span', { class: 'ce-id' }, id), ' ', card.name ?? '?', base ? null : h('small', { class: 'warn' }, ' (not in cards.json)')),
-            h('td', {}, fields.join(', ') || '–', card.art ? null : h('small', { class: 'muted' }, ' · no art: the old picture stays')),
+            h('td', {}, h('span', { class: 'ce-id' }, id), ' ', card.name ?? '?', base ? null : h('small', { class: 'chip' }, ' new')),
+            h('td', {}, d.new ? 'new card' : fields.join(', ') || '–', card.art ? null : h('small', { class: d.new ? 'warn' : 'muted' }, d.new ? ' · no art: waits until it has art' : ' · no art: the old picture stays')),
             h('td', {}, d.who || '–'),
             h('td', {}, d.updated ? new Date(d.updated).toLocaleString() : '–'),
             h('td', {}, h('span', { class: `chip${card.status === 'done' ? '' : ' warn'}` }, card.status ?? 'draft')),
@@ -344,12 +396,13 @@ export function createEditor(env) {
     const images = {};
     const kept = [];
     for (const id of ids) {
-      const base = env.state.db.cards.find(c => c.id === id);
+      const base = env.state.db.cards.find(c => c.id === id) ?? (drafts[id].new ? { id } : null);
       if (!base) continue;
       const card = { ...base, ...drafts[id] };
       const url = card.art ? await store().dataUrl(card.art) : null;
       const art = url ? await loadImage(url).catch(() => null) : null;
-      if (!art) { kept.push(id); continue; }
+      // Nova karta bez arta čeka (igra treba sliku); postojeća zadrži staru.
+      if (!art) { if (drafts[id].new) delete drafts[id]; kept.push(id); continue; }
       const eUrl = card.emblem ? await store().dataUrl(card.emblem) : null;
       const emblem = eUrl ? await loadImage(eUrl).catch(() => null) : null;
       const canvas = document.createElement('canvas');
@@ -365,12 +418,12 @@ export function createEditor(env) {
     const done = changed ? await env.commitDb(db) : { old: 0, thumbs: 0 };
     // Nacrti spremljeni dok je Objava trajala ostaju za iduću.
     const after = await readDrafts();
-    for (const id of ids) if (after.cards?.[id]?.updated === drafts[id].updated) delete after.cards[id];
+    for (const id of ids) if (drafts[id] && after.cards?.[id]?.updated === drafts[id].updated) delete after.cards[id];
     await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(after, null, 2) + '\n');
     ed.drafts = after;
     const parts = [`${changed} ${changed === 1 ? 'card' : 'cards'}`, `${Object.keys(images).length} new PNGs`];
     if (done.thumbs) parts.push(`${done.thumbs} resized images`);
-    if (kept.length) parts.push(`no art yet, old picture kept: ${kept.join(', ')}`);
+    if (kept.length) parts.push(`no art yet (old picture kept, new cards wait): ${kept.join(', ')}`);
     env.toast(`Published${bumped ? ` (version ${db.version})` : changed ? ' (look only)' : ''}: ${parts.join(', ')}. Next: fx proposals for the Effect tab.`);
     env.render();
   }
@@ -419,6 +472,7 @@ export function createEditor(env) {
   // Provjere dok pišeš (uz upozorenja renderera).
   function checks(w) {
     const out = [];
+    if (!(w.name ?? '').trim()) out.push('No name yet.');
     if (PORTRAIT.includes(w.type)) {
       const kind = firstTag(env.state.db, w, env.state.traits?.traits);
       if (kind.kind === INVALID) out.push(`First tag: ${tagLabel(kind)}. Pick General, a hero of this colour or a trait.`);
@@ -475,6 +529,7 @@ export function createEditor(env) {
     const now = fresh.cards?.[w.id]?.updated;
     if (now && now !== before && !confirm(`${fresh.cards[w.id].who || 'Someone'} saved this card in the meantime. Overwrite?`)) return;
     fresh.cards ??= {};
+    if (w.new) diff.new = true;
     if (Object.keys(diff).length) fresh.cards[w.id] = { ...diff, updated: new Date().toISOString(), who: who() || undefined };
     else delete fresh.cards[w.id];
     await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(fresh, null, 2) + '\n');
@@ -485,11 +540,12 @@ export function createEditor(env) {
   }
 
   async function discardDraft() {
-    if (!confirm('Throw away the unpublished changes to this card?')) return;
+    if (!confirm(ed.work?.new ? 'Throw away this new card?' : 'Throw away the unpublished changes to this card?')) return;
     const fresh = await readDrafts();
     delete fresh.cards?.[ed.id];
     await fs.writeFile(store().root, DRAFTS_PATH, JSON.stringify(fresh, null, 2) + '\n');
     ed.drafts = fresh;
+    if (ed.work?.new) { ed.dirty = false; ed.work = null; env.go(null); return; }
     open(ed.id);
     env.render();
   }
@@ -532,5 +588,5 @@ export function createEditor(env) {
     }, 'image/png');
   }
 
-  return { render, isDirty: () => ed.dirty };
+  return { render, isDirty: () => ed.dirty, newCard };
 }
