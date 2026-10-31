@@ -276,6 +276,21 @@ function drawRunLine(ctx, line, cx, cy, size, font) {
 // ---------- tekst efekta ----------
 
 // Rastavi tekst: [Range], faza (+ Once Per Turn), uvjet na početku, zatim tekst s ikonama i natuknicama.
+// Karta može imati više efekata: svaki redak koji počinje fazom ili [Range] počinje novi efekt
+// (s natuknicama ispod sebe). Tekst prije prvog takvog retka je prvi efekt (trajni, bez oznake).
+export function parseEffects(text) {
+  const blocks = [];
+  let cur = [];
+  for (const raw of (text ?? '').split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if ((RANGE_RE.test(line) || PHASE_RE.test(line)) && cur.length) { blocks.push(cur.join('\n')); cur = []; }
+    cur.push(line);
+  }
+  if (cur.length) blocks.push(cur.join('\n'));
+  return blocks.map(parseEffect);
+}
+
 export function parseEffect(text) {
   let t = (text ?? '').trim();
   const out = { range: false, phase: null, once: false, cond: null, lines: [] };
@@ -292,51 +307,61 @@ export function parseEffect(text) {
   return out;
 }
 
-// Uvjeti kao oznake u redu iznad teksta (faza i Once per turn jedna oznaka u dva dijela, RANGE),
-// zatim tamna ploča s tekstom koji se smanjuje od najvećeg do najmanjeg fonta dok ne stane.
+// Efekti jedan ispod drugog: svaki ima svoj red oznaka (faza i Once per turn jedna oznaka u dva dijela, RANGE)
+// i svoj tekst. Font se smanjuje od najvećeg do najmanjeg dok sve ne stane; cijeli blok je okomito centriran.
 function drawEffect(ctx, text, color, box, icons, heading = '') {
-  const e = parseEffect(text);
+  const blocks = parseEffects(text);
   const [x, y, w, h] = box.box;
-  const chipH = box.chip ?? 64;
-  const gap = 18;
-  const chips = [];
-  if (e.phase) chips.push({ kind: 'phase', text: e.phase, once: e.once });
-  if (e.range) chips.push({ kind: 'range', text: 'RANGE' });
-  const runsFor = () => {
+  const chipFull = box.chip ?? 64;
+  const toParas = e => {
     const paras = [];
-    // Naziv sposobnosti heroja: podebljan i podvučen, iznad teksta.
-    if (heading) paras.push({ bullet: false, runs: [{ text: heading, bold: true, underline: true }] });
     if (e.cond) paras.push({ bullet: false, runs: [{ text: e.cond, bold: true }] });
     for (const l of e.lines) paras.push({ bullet: l.bullet, runs: /^Terrain:/i.test(l.text) ? [{ text: l.text, bold: true }] : richRuns(l.text) });
     return paras;
   };
-  const paras = runsFor();
-  const textTop = y + (chips.length ? chipH + gap : 0);
-  const textH = y + h - textTop;
+  const groups = blocks.map(e => {
+    const chips = [];
+    if (e.phase) chips.push({ kind: 'phase', text: e.phase, once: e.once });
+    if (e.range) chips.push({ kind: 'range', text: 'RANGE' });
+    return { chips, paras: toParas(e) };
+  });
+  // Naziv sposobnosti heroja: podebljan i podvučen, iznad svih efekata.
+  const head = heading ? [{ bullet: false, runs: [{ text: heading, bold: true, underline: true }] }] : [];
+  const layout = size => {
+    const chipH = Math.min(chipFull, Math.round(size * 1.05));
+    const gap = Math.round(size * 0.22);
+    const between = Math.round(size * 0.45);
+    const top = head.length ? layoutParas(ctx, head, w - 56, size, icons) : null;
+    let total = top ? top.height + between : 0;
+    const laid = groups.map((g, i) => {
+      const t = g.paras.length ? layoutParas(ctx, g.paras, w - 56, size, icons) : { lines: [], height: 0 };
+      const hgt = (g.chips.length ? chipH + (t.height ? gap : 0) : 0) + t.height;
+      total += hgt + (i ? between : 0);
+      return { ...g, t, hgt };
+    });
+    return { top, laid, total, chipH, gap, between };
+  };
   let size = box.size;
-  let laid = null;
-  for (; size >= box.min; size -= 2) {
-    laid = layoutParas(ctx, paras, w - 56, size, icons);
-    if (laid.height <= textH - 32) break;
-  }
-  const atMin = size < box.min;
-  if (atMin) { size = box.min; laid = layoutParas(ctx, paras, w - 56, size, icons); }
-  // Oznake, centrirane; bez teksta ("Battle Phase:" i bonus) stoje na sredini prostora za tekst.
-  if (chips.length) drawChips(ctx, chips, x + w / 2, paras.length ? y : y + (h - chipH) / 2, chipH, color, icons);
-  if (paras.length) {
-    const blockH = laid.height + 32;
-    const by = textTop + (textH - blockH) / 2;
-    if (box.plate !== false) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
-      roundRect(ctx, x + 8, by, w - 16, blockH, 22);
-      ctx.fill();
+  let L = layout(size);
+  for (; size > box.min && L.total > h - 16; size -= 2) L = layout(size);
+  const atMin = L.total > h - 16;
+  let cy = y + (h - L.total) / 2;
+  const ink = box.color ?? '#ffffff';
+  const drawLines = lines => {
+    for (const line of lines) {
+      drawRich(ctx, line, x + w / 2, cy + line.h / 2, size, icons, ink);
+      cy += line.h;
     }
-    let ly = by + 16;
-    for (const line of laid.lines) {
-      drawRich(ctx, line, x + w / 2, ly + line.h / 2, size, icons, box.color ?? '#ffffff');
-      ly += line.h;
+  };
+  if (L.top) { drawLines(L.top.lines); cy += L.between; }
+  L.laid.forEach((g, i) => {
+    if (i) cy += L.between;
+    if (g.chips.length) {
+      drawChips(ctx, g.chips, x + w / 2, cy, L.chipH, color, icons);
+      cy += L.chipH + (g.t.height ? L.gap : 0);
     }
-  }
+    drawLines(g.t.lines);
+  });
   return { atMin };
 }
 

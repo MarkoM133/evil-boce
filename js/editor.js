@@ -11,7 +11,7 @@ import { lockPath, lockState, newLock, LOCK_DIR, HEARTBEAT_MS, SETTLE_MS } from 
 import { createSetsView } from './editor-sets.js';
 import { createGuideView, readGuide, avoidWarnings, suggest } from './editor-guide.js';
 import { createFramesView } from './editor-frames.js';
-import { toTokens, toWords, head, withHead, stripTerrain, withTerrain, coreBonus, coreEffect, PHASES } from './card-text.js';
+import { toTokens, toWords, headAt, withHeadAt, stripTerrain, withTerrain, coreBonus, coreEffect, PHASES } from './card-text.js';
 import { deckPool, heroEvolutions, setTraits } from './deck.js';
 import * as fs from './fsdir.js';
 
@@ -854,6 +854,7 @@ export function createEditor(env) {
     // Prijedlozi dok pišeš: padajući izbornik ispod teksta (↑ ↓, Enter ili Tab uzme, Esc zatvori).
     // "[" nudi ikone statova; dva ili više slova nude fraze iz vodiča koje tako počinju.
     const pop = h('ul', { class: 'ce-ac', role: 'listbox', hidden: true });
+    let caret = area.value.length;
     let sug = { from: 0, items: [] };
     let pick = 0;
     const sync = () => {
@@ -897,7 +898,7 @@ export function createEditor(env) {
       pick = 0;
       paint();
     };
-    area.addEventListener('input', () => { sync(); showSuggest(); });
+    area.addEventListener('input', () => { caret = area.selectionStart ?? caret; sync(); showSuggest(); });
     area.addEventListener('blur', () => setTimeout(close, 120));
     area.addEventListener('keydown', e => {
       if (pop.hidden || !sug.items.length) return;
@@ -922,25 +923,46 @@ export function createEditor(env) {
       area.focus();
       sync();
     };
-    const setHead = patch => { snap(true); area.value = withHead(area.value, { ...head(area.value), ...patch }); sync(); };
-    const phaseBtns = PHASES.filter(p => !stage || ['Start', 'Battle', 'End'].includes(p)).map(p => h('button', { type: 'button', 'data-phase': p, onclick: () => setHead({ phase: head(area.value).phase === p ? null : p }) }, p));
-    const once = stage ? null : h('button', { type: 'button', 'data-once': '1', onclick: () => { const hd = head(area.value); setHead({ once: !hd.once, phase: hd.phase ?? 'Battle' }); } }, 'Once per turn');
-    const range = stage ? null : h('button', { type: 'button', 'data-range': '1', onclick: () => setHead({ range: !head(area.value).range }) }, '◎ Range');
+    // Prekidači rade na efektu u kojem je kursor (karta može imati više efekata, svaki u svom retku).
+    const here = () => headAt(area.value, caret);
+    const setHead = patch => {
+      snap(true);
+      const r = withHeadAt(area.value, caret, patch);
+      area.value = r.text;
+      caret = r.caret;
+      area.focus();
+      area.selectionStart = area.selectionEnd = caret;
+      sync();
+    };
+    const phaseBtns = PHASES.filter(p => !stage || ['Start', 'Battle', 'End'].includes(p)).map(p => h('button', { type: 'button', 'data-phase': p, onmousedown: e => e.preventDefault(), onclick: () => setHead({ phase: here().phase === p ? null : p }) }, p));
+    const once = stage ? null : h('button', { type: 'button', 'data-once': '1', onmousedown: e => e.preventDefault(), onclick: () => { const hd = here(); setHead({ once: !hd.once, phase: hd.phase ?? 'Battle' }); } }, 'Once per turn');
+    const range = stage ? null : h('button', { type: 'button', 'data-range': '1', onmousedown: e => e.preventDefault(), onclick: () => setHead({ range: !here().range }) }, '◎ Range');
+    // Novi efekt: novi redak na kraju, kursor u njemu (pa se bira njegova faza).
+    const addEffect = stage ? null : h('button', { type: 'button', class: 'ce-add-effect', onmousedown: e => e.preventDefault(), onclick: () => {
+      snap(true);
+      area.value = area.value.replace(/\s+$/, '') + (area.value.trim() ? '\n' : '');
+      caret = area.value.length;
+      area.focus();
+      area.selectionStart = area.selectionEnd = caret;
+      sync();
+    } }, '+ Effect');
+    for (const ev of ['click', 'keyup', 'select']) area.addEventListener(ev, () => { caret = area.selectionStart ?? caret; refreshToggles(); });
     const revealed = stage ? h('button', { type: 'button', onclick: () => { if (!/^When this Stage is revealed/i.test(area.value)) { area.value = `When this Stage is revealed, ${area.value}`; area.selectionStart = area.selectionEnd = area.value.length; sync(); } } }, 'When revealed') : null;
     const toks = TOKENS.map(t => h('button', { type: 'button', class: `tok tok-${t.toLowerCase()}`, onclick: () => insert(`[${t}]`) }, `[${t}]`));
     const trait = PORTRAIT.includes(w.type) ? h('button', { type: 'button', class: 'tok', title: 'A trait in the text, e.g. {Sword}', onclick: () => insert('{}') }, '{Trait}') : null;
     const phrase = ed.guide?.phrases?.length ? h('select', { class: 'ce-phrase', 'aria-label': 'Insert a phrase', onchange: e => { const p = ed.guide.phrases[Number(e.target.value)]; e.target.value = ''; if (p) insert(toTokens(p.text)); } },
       h('option', { value: '' }, 'Phrase from the guide…'), ed.guide.phrases.map((p, i) => h('option', { value: i, title: p.note ?? '' }, `${p.label}: ${p.text.trim()}`))) : null;
-    const tools = h('div', { class: 'ce-tools' }, revealed, phaseBtns, once, range, toks, trait, phrase);
+    const tools = h('div', { class: 'ce-tools' }, revealed, phaseBtns, once, range, addEffect, toks, trait, phrase);
     function refreshToggles() {
-      const hd = head(area.value);
+      const hd = here();
       for (const b of tools.querySelectorAll('[data-phase]')) b.classList.toggle('on', b.dataset.phase === hd.phase);
       tools.querySelector('[data-once]')?.classList.toggle('on', hd.once);
       tools.querySelector('[data-range]')?.classList.toggle('on', hd.range);
     }
     refreshToggles();
     return [tools, h('label', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-ac-wrap' }, area, pop)),
-      h('p', { class: 'muted small ce-ac-hint' }, 'Type [ for a stat icon, or the start of a phrase from the Text guide: a list opens under the text.')];
+      h('p', { class: 'muted small ce-ac-hint' }, stage ? 'Type [ for a stat icon, or the start of a phrase from the Text guide: a list opens under the text.'
+        : 'Each effect is its own line; the phase buttons set the effect the cursor is in (+ Effect starts a new one). Type [ for a stat icon or the start of a phrase for suggestions.')];
   }
 
   // ---------- izmjene, Undo ----------

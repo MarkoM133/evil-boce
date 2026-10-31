@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toTokens, toWords, head, withHead, stripTerrain, withTerrain, coreBonus, coreEffect } from '../js/card-text.js';
+import { toTokens, toWords, head, withHead, headAt, withHeadAt, stripTerrain, withTerrain, coreBonus, coreEffect } from '../js/card-text.js';
 
 test('card text: words in cards.json, tokens in the editor, and back', () => {
   const words = "[Range] Postroll Phase: Your Hero heals 3 HP and their Hero takes 3 DMG.";
@@ -27,4 +27,14 @@ test('card text: Stage terrain line and Core bonus', () => {
   assert.deepEqual(coreBonus('-1[KB]'), { kb: -1 });
   assert.equal(coreEffect({ pwr: -2000 }), '-2000[PWR]');
   assert.deepEqual(coreBonus('Lv2[DMG] x2000[PWR]'), {}, 'a number glued to a word is not a bonus');
+});
+
+test('card text: several effects, the toggles work on the effect under the caret', () => {
+  const t = 'Roll Phase: Roll again.\n[RNG]Postroll Phase Once Per Turn: Heal 2[HP].\n- or this';
+  assert.equal(headAt(t, 3).phase, 'Roll');
+  const at = headAt(t, t.length);
+  assert.deepEqual([at.phase, at.once, at.range], ['Postroll', true, true], 'a bullet belongs to the effect above it');
+  assert.equal(withHeadAt(t, 3, { phase: 'Battle' }).text.split('\n')[0], 'Battle Phase: Roll again.');
+  assert.equal(toWords('Roll Phase: x.\n[RNG]Battle Phase: y'), 'Roll Phase: x.\n[Range] Battle Phase: y');
+  assert.equal(toTokens('Roll Phase: x.\n[Range] Battle Phase: y'), 'Roll Phase: x.\n[RNG]Battle Phase: y');
 });

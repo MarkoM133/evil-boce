@@ -1,7 +1,7 @@
 // Rastavljanje teksta efekta za renderer karata (oznake faze, RANGE, uvjet, natuknice).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEffect, richRuns } from '../js/render.js';
+import { parseEffect, parseEffects, richRuns } from '../js/render.js';
 
 test('range, phase and the rest of the text', () => {
   const e = parseEffect('[Range] Postroll Phase: Knockback an Opponent\'s Hero 3 spaces.');
@@ -34,4 +34,10 @@ test('stat words after a number or more/less are icons, the rest stays text', ()
   assert.deepEqual(richRuns("Knockback an Opponent's Hero 3 spaces"), [{ text: "Knockback an Opponent's Hero 3 spaces" }]);
   assert.deepEqual(richRuns('for every {Sword}'), [{ text: 'for every ' }, { text: 'Sword', bold: true }]);
   assert.deepEqual(richRuns('hits for DMG 5'), [{ text: 'hits for ' }, { icon: 'dmg' }, { text: ' 5' }], 'HP and DMG are icons without a number too');
+});
+
+test('several effects: each line with a phase or [Range] starts its own effect', () => {
+  const blocks = parseEffects('Roll Phase: You may roll again.\nPostroll Phase Once Per Turn: Heal 2 HP.\n- or this');
+  assert.deepEqual(blocks.map(b => [b.phase, b.once, b.lines.length]), [['ROLL PHASE', false, 1], ['POSTROLL PHASE', true, 2]]);
+  assert.equal(parseEffects('The equipped Hero takes +1 DMG.').length, 1);
 });

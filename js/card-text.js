@@ -11,7 +11,7 @@ const HEAD_RE = /^(\[(?:RNG|Range)\]\s*)?(?:(Start|Preroll|Roll|Postroll|Battle|
 // iza more/less ostaje razmak ("more HP" → "more [HP]"), "[Range] " na početku je "[RNG]".
 export function toTokens(text) {
   return (text ?? '')
-    .replace(/^\[Range\]\s*/i, '[RNG]')
+    .replace(/^\[Range\]\s*/gim, '[RNG]')
     .replace(/(\d)\s?(HP|DMG|Power|Range|Knockback)\b/g, (_, d, w) => `${d}[${TOKEN[w]}]`)
     .replace(/\b(more|less)\s(HP|DMG|Power|Range|Knockback)\b/g, (_, m, w) => `${m} [${TOKEN[w]}]`);
 }
@@ -19,7 +19,7 @@ export function toTokens(text) {
 // Tokeni (editor) → riječi (baza): "2[DMG]" → "2 DMG", "more [HP]" → "more HP", "[RNG]" na početku → "[Range] ".
 export function toWords(text) {
   return (text ?? '')
-    .replace(/^\[RNG\]\s*/i, '[Range] ')
+    .replace(/^\[RNG\]\s*/gim, '[Range] ')
     .replace(/\[(HP|DMG|PWR|RNG|KB)\]/g, (_, k, off, s) => {
       const prev = s[off - 1];
       return (prev && !/\s/.test(prev) ? ' ' : '') + WORD[k];
@@ -38,6 +38,30 @@ export function withHead(text, { range, phase, once }) {
   const { rest } = head(text);
   const p = phase ? `${phase} Phase${once ? ' Once Per Turn' : ''}: ` : '';
   return `${range ? '[RNG]' : ''}${p}${rest}`;
+}
+
+// Više efekata: prekidači faze rade na efektu u kojem je kursor (njegov prvi redak; natuknice "- " pripadaju
+// retku iznad). Vraća { start, end } tog retka i njegov početak (range, phase, once).
+export function headAt(text, caret) {
+  const lines = (text ?? '').split('\n');
+  let pos = 0;
+  let idx = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (caret <= pos + lines[i].length) { idx = i; break; }
+    pos += lines[i].length + 1;
+    idx = i;
+  }
+  while (idx > 0 && /^\s*[-•]/.test(lines[idx])) idx--;
+  const start = lines.slice(0, idx).reduce((n, l) => n + l.length + 1, 0);
+  return { start, end: start + lines[idx].length, ...head(lines[idx]) };
+}
+
+export function withHeadAt(text, caret, patch) {
+  const t = text ?? '';
+  const at = headAt(t, caret);
+  const line = t.slice(at.start, at.end);
+  const next = withHead(line, { ...head(line), ...patch });
+  return { text: t.slice(0, at.start) + next + t.slice(at.end), caret: at.start + next.length - head(next).rest.length };
 }
 
 // Stage: red "Terrain: X" piše editor ispod teksta; u polju ga nema.
