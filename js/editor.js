@@ -6,6 +6,7 @@ import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateN
 import { firstTag, tagLabel, traitNames, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
 import { applyDrafts, imageHashOf } from './importer.js';
+import { lockPath, lockState, newLock, HEARTBEAT_MS, SETTLE_MS } from './locks.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -116,10 +117,12 @@ export function createEditor(env) {
     if (want === 'publish') {
       ed.id = null;
       ed.work = null;
+      syncLock();
       return h('div', {}, renderNav(true), renderPublish());
     }
     if (want && want !== ed.id) open(want);
     if (!want) { ed.id = null; ed.work = null; }
+    syncLock();
     return h('div', {}, renderNav(false),
       h('div', { class: 'card-editor' }, renderList(), ed.work ? renderForm() : h('p', { class: 'muted ce-empty' }, 'Pick a card on the left.'), ed.work ? renderPreview() : null));
   }
@@ -300,7 +303,9 @@ export function createEditor(env) {
     return h('form', { class: 'ce-form', onsubmit: e => { e.preventDefault(); env.guard(saveDraft); } },
       h('div', { class: 'ce-title' },
         h('h2', {}, `${w.id}`),
-        ed.drafts?.cards?.[w.id] ? h('span', { class: 'chip warn' }, 'unpublished') : null),
+        ed.drafts?.cards?.[w.id] ? h('span', { class: 'chip warn' }, 'unpublished') : null,
+        ed.lock?.state === 'mine' ? h('span', { class: 'chip', title: 'Locked for you while it is open' }, '🔒 yours') : null),
+      renderLock(),
       field('Name', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) }), w.type === 'Evolution' ? '"Hero, Evolution name": the part after the comma is the big title.' : null),
       h('div', { class: 'ce-row' },
         field('Type', group.length > 1
@@ -321,7 +326,7 @@ export function createEditor(env) {
         field('Status', h('select', { onchange: e => set('status', e.target.value) }, STATUSES.map(s => h('option', { value: s, selected: s === (w.status ?? 'draft') }, s)))),
         field('Notes', h('input', { value: w.notes ?? '', placeholder: 'For Marko or Tarik', oninput: e => set('notes', e.target.value) }))),
       h('div', { class: 'ce-actions' },
-        h('button', { class: 'primary', type: 'submit', disabled: !canWrite() }, 'Save draft'),
+        h('button', { class: 'primary', type: 'submit', disabled: !canWrite() || ed.lock?.state === 'other' }, 'Save draft'),
         ed.drafts?.cards?.[w.id] ? h('button', { type: 'button', class: 'ghost', disabled: !canWrite(), onclick: () => env.guard(discardDraft) }, 'Discard draft') : null,
         h('button', { type: 'button', class: 'ghost', onclick: () => downloadPng() }, 'Download PNG'),
         canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer).')));
@@ -347,6 +352,68 @@ export function createEditor(env) {
     queueDraw();
     return h('section', { class: 'ce-preview' }, ed.canvas, ed.warnBox,
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.'));
+  }
+
+  // ---------- zaključavanje ----------
+
+  // Otvorena karta je zaključana na "Ja sam" dok je otvorena; tuđi lock gasi spremanje.
+  async function readLock(id) {
+    try { return JSON.parse((await fs.readText(store().root, lockPath(id))) ?? 'null'); } catch { return null; }
+  }
+
+  function syncLock() {
+    const want = ed.id && canWrite() && who() ? { id: ed.id, who: who() } : null;
+    if (ed.lock?.id === want?.id && ed.lock?.who === want?.who) return;
+    releaseLock();
+    if (want) claimLock(want.id, want.who);
+  }
+
+  async function claimLock(id, me, force = false) {
+    ed.lock = { id, who: me, state: 'checking' };
+    const old = await readLock(id);
+    const st = lockState(old, me);
+    if (st === 'other' && !force) {
+      if (ed.lock?.id === id) { ed.lock = { id, who: me, state: 'other', other: old }; env.render(); }
+      return;
+    }
+    const since = st === 'mine' ? old.since : null;
+    await fs.writeFile(store().root, lockPath(id), JSON.stringify(newLock(me, new Date(), since)) + '\n');
+    if (ed.lock?.id !== id) return;
+    ed.lock = { id, who: me, state: 'mine', since: since ?? new Date().toISOString() };
+    ed.lock.beat = setInterval(() => {
+      if (ed.lock?.id === id && ed.lock.state === 'mine') fs.writeFile(store().root, lockPath(id), JSON.stringify(newLock(me, new Date(), ed.lock.since)) + '\n').catch(() => {});
+    }, HEARTBEAT_MS);
+    // Drugi stroj je možda zaključao u isto vrijeme: Syncthing to donese za par sekundi.
+    if (!force) setTimeout(async () => {
+      if (ed.lock?.id !== id || ed.lock.state !== 'mine') return;
+      const now = await readLock(id);
+      if (now?.who && now.who !== me && lockState(now, me) === 'other') {
+        clearInterval(ed.lock.beat);
+        ed.lock = { id, who: me, state: 'other', other: now };
+        env.render();
+      }
+    }, SETTLE_MS);
+    env.render();
+  }
+
+  function releaseLock() {
+    const l = ed.lock;
+    ed.lock = null;
+    if (!l) return;
+    clearInterval(l.beat);
+    if (l.state !== 'mine' || !canWrite()) return;
+    readLock(l.id).then(now => { if (now?.who === l.who) return fs.removeFile(store().root, lockPath(l.id)); }).catch(() => {});
+  }
+  window.addEventListener('beforeunload', () => releaseLock());
+
+  function renderLock() {
+    const l = ed.lock;
+    if (canWrite() && !who()) return h('p', { class: 'muted small' }, 'Set "I am" at the top: the card is then locked for you while you edit it.');
+    if (l?.state !== 'other') return null;
+    const since = l.other?.since ? new Date(l.other.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '?';
+    return h('div', { class: 'ce-lock warn' },
+      `${l.other?.who ?? 'Someone'} is editing this card (since ${since}). Saving is off until they leave it.`,
+      h('button', { type: 'button', class: 'ghost', onclick: () => env.guard(() => { releaseLock(); return claimLock(ed.id, who(), true); }) }, 'Take over'));
   }
 
   // ---------- objava ----------
@@ -519,6 +586,7 @@ export function createEditor(env) {
   // Nacrt: polja koja se razlikuju od cards.json, tko i kad. Drugi nacrti se čitaju iznova prije pisanja.
   async function saveDraft() {
     const w = ed.work;
+    if (ed.lock?.state === 'other') throw new Error(`${ed.lock.other?.who ?? 'Someone'} is editing this card.`);
     const diff = {};
     for (const k of FIELDS) {
       if (w[k] === undefined) continue;
