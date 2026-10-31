@@ -89,7 +89,7 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   const color = TINTS[card.color] ? card.color : 'Purple';
   if (tpl.layers) {
     for (const l of tpl.layers) {
-      if (l.art) drawArt(ctx, art, card.artCrop, L);
+      if (l.art) drawArt(ctx, art, card.artCrop, L, true);
       else if (l.img) ctx.drawImage(tinted(l.img, l.tint ? TINTS[color] : null), 0, 0, CARD_W, CARD_H);
     }
   } else {
@@ -112,9 +112,10 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
 }
 
 // Art u kutiji arta (cover), s izrezom {x, y, zoom}: točka slike (x, y) u sredini kutije, zoom na cover.
-// Izrezan na prozor okvira (zaobljeni pravokutnik), da ne viri ispod prozirnih dijelova okvira.
-function drawArt(ctx, art, crop, L) {
-  const [wx, wy, ww, wh, wr] = L.artWindow;
+// S pravim slojevima art pokriva cijelu kutiju (okvir iznad ga reže, kao u Card Engineu);
+// uz privremeni okvir izrezan je na prozor (zaobljeni pravokutnik), da ne viri ispod prozirnih dijelova.
+function drawArt(ctx, art, crop, L, full = false) {
+  const [wx, wy, ww, wh, wr] = full ? [...L.artBox, 0] : L.artWindow;
   ctx.save();
   roundRect(ctx, wx, wy, ww, wh, wr);
   ctx.clip();
