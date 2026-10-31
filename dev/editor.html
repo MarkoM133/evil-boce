@@ -52,7 +52,7 @@
     if (want) setTimeout(() => editor.newCard(...want.split(',')), 2000);
     // Pogled ili Edit art za snimke: klik na gumb kad se stranica nacrta.
     const click = label => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === label)?.click();
-    if (q.get('view')) setTimeout(() => click({ old: 'Old vs new', hand: 'In hand', hover: 'Hover' }[q.get('view')]), 2500);
+    if (q.get('view')) setTimeout(() => click({ old: 'Old vs new', hand: 'In hand', hover: 'Hover', board: 'On the board', map: 'On the map' }[q.get('view')]), 2500);
     if (q.get('art')) setTimeout(() => click('Edit art'), 2500);
   </script>
 </body>

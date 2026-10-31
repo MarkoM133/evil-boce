@@ -308,8 +308,8 @@ export function createEditor(env) {
 
   function renderCentre() {
     const w = ed.work;
-    const views = w.type === 'Core' ? [] : HEROISH.includes(w.type) ? [['card', 'Card'], ['hover', 'Hover'], ['old', 'Old vs new']]
-      : w.type === 'Stage' ? [['card', 'Card'], ['old', 'Old vs new']] : [['card', 'Card'], ['hand', 'In hand'], ['hover', 'Hover'], ['old', 'Old vs new']];
+    const views = w.type === 'Core' ? [] : HEROISH.includes(w.type) ? [['card', 'Card'], ['board', 'On the board'], ['hover', 'Hover'], ['old', 'Old vs new']]
+      : w.type === 'Stage' ? [['card', 'Card'], ['map', 'On the map'], ['old', 'Old vs new']] : [['card', 'Card'], ['hand', 'In hand'], ['hover', 'Hover'], ['old', 'Old vs new']];
     const wide = HEROISH.includes(w.type);
     ed.canvas = h('canvas', { width: wide ? 2100 : 1500, height: wide ? 1500 : 2100 });
     ed.stage = h('div', { class: `ce-stage${wide ? ' wide' : ''}${ed.artMode ? ' art-mode' : ''}${w.type === 'Core' ? ' core' : ''}` });
@@ -395,6 +395,8 @@ export function createEditor(env) {
     };
     const wide = ed.canvas.width > ed.canvas.height;
     if (view === 'hand') st.replaceChildren(h('figure', { class: 'ce-ctx' }, scaled(wide ? 168 : 120), h('figcaption', { class: 'muted small' }, 'Size in the hand')));
+    else if (view === 'board') boardView(card).then(c => { if (ed.view === 'board' && ed.stage === st) st.replaceChildren(c); });
+    else if (view === 'map') st.replaceChildren(mapView(card));
     else if (view === 'hover') st.replaceChildren(h('figure', { class: 'ce-ctx' }, scaled(wide ? 392 : 280), h('figcaption', { class: 'muted small' }, 'Size when you hover it in the game')));
     else {
       const old = h('img', { class: 'ce-old', alt: 'Published' });
@@ -403,6 +405,157 @@ export function createEditor(env) {
         h('figure', {}, ed.base.image ? old : h('div', { class: 'ce-old empty' }, 'Not published yet'), h('figcaption', { class: 'muted small' }, 'Published')),
         h('figure', {}, scaled(wide ? 360 : 260), h('figcaption', { class: 'muted small' }, 'New'))));
     }
+  }
+
+  // Ploča kao u igri: tamni heksi (šiljasti vrh), R polumjer, (cx, cy) središte; vraća središta.
+  function hexBoard(g, W, H, R) {
+    const dx = Math.sqrt(3) * R;
+    const dy = 1.5 * R;
+    const centres = [];
+    g.fillStyle = '#231e1a';
+    g.fillRect(0, 0, W, H);
+    for (let row = -1; row * dy < H + R; row++) {
+      for (let col = -1; col * dx < W + dx; col++) {
+        const x = col * dx + (row % 2 ? dx / 2 : 0);
+        const y = row * dy;
+        hexPath(g, x, y, R - 1.5);
+        g.fillStyle = '#3a312a';
+        g.fill();
+        centres.push([x, y]);
+      }
+    }
+    return { dx, dy, centres };
+  }
+
+  function hexPath(g, x, y, r) {
+    g.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 6 + (i * Math.PI) / 3;
+      g[i ? 'lineTo' : 'moveTo'](x + r * Math.cos(a), y + r * Math.sin(a));
+    }
+    g.closePath();
+  }
+
+  // On the board: figurica heroja (sprite iz igre) na heksu s prstenom tima, i ploča heroja kao u igri.
+  async function boardView(card) {
+    const W = 960;
+    const H = 600;
+    const c = h('canvas', { class: 'ce-canvas', width: W, height: H });
+    const g = c.getContext('2d');
+    const R = 46;
+    const { dx, dy } = hexBoard(g, W, H, R);
+    const row = Math.round(380 / dy);
+    const col = Math.round((W / 2 - (row % 2 ? dx / 2 : 0)) / dx);
+    const x = col * dx + (row % 2 ? dx / 2 : 0);
+    const y = row * dy;
+    hexPath(g, x, y, R - 1.5);
+    g.fillStyle = '#4a4036';
+    g.fill();
+    g.strokeStyle = '#2f6bff';
+    g.lineWidth = 6;
+    g.beginPath();
+    g.ellipse(x, y, R * 0.62, R * 0.3, 0, 0, Math.PI * 2);
+    g.stroke();
+    const base = db().cards.find(b => b.id === card.id);
+    const spritePath = card.sprite ?? base?.sprite ?? (card.type === 'Evolution' ? db().cards.find(b => b.type === 'Hero' && b.name === card.hero)?.sprite : null);
+    const url = spritePath ? await store().dataUrl(spritePath) : null;
+    const sprite = url ? await loadImage(url).catch(() => null) : null;
+    if (sprite) {
+      const sh = 230;
+      const sw = (sprite.width / sprite.height) * sh;
+      g.imageSmoothingEnabled = false;
+      g.drawImage(sprite, x - sw / 2, y - sh + R * 0.2, sw, sh);
+      g.imageSmoothingEnabled = true;
+    } else {
+      g.fillStyle = '#8d8a85';
+      g.font = '600 20px "Barlow Semi Condensed", sans-serif';
+      g.textAlign = 'center';
+      g.fillText('No standee sprite yet', x, y - R * 1.4);
+    }
+    // Ploča heroja (lijevo gore), kao u igri: lice s arta, ime, HP kao crtice, statsi.
+    const px = 24;
+    const py = 24;
+    g.fillStyle = 'rgba(12, 12, 12, 0.92)';
+    g.fillRect(px, py, 420, 112);
+    g.fillStyle = TINTS[card.color] ?? '#f4b62a';
+    g.fillRect(px + 416, py, 4, 112);
+    // Lice: kvadrat s vrha prozora arta na nacrtanoj karti.
+    const win = ed.tpl?.layout?.artWindow;
+    if (ed.art && win) g.drawImage(ed.canvas, win[0], win[1], win[2], win[2], px, py, 112, 112);
+    g.fillStyle = '#f3efe7';
+    g.textAlign = 'left';
+    g.font = 'italic 800 30px "Barlow Condensed", sans-serif';
+    const title = card.type === 'Evolution' ? (card.name ?? '').split(/,\s*/).pop() : card.name ?? '';
+    g.fillText(title, px + 126, py + 38);
+    const hp = card.stats?.hp ?? 0;
+    for (let i = 0; i < hp; i++) {
+      g.fillStyle = '#23b14d';
+      g.fillRect(px + 126 + i * (270 / Math.max(hp, 1)), py + 52, 270 / Math.max(hp, 1) - 4, 9);
+    }
+    g.font = '700 17px "Barlow Condensed", sans-serif';
+    const st = card.stats ?? {};
+    const parts = [['PWR', st.pwr, '#f4b62a'], ['DMG', st.dmg, '#ff5a4f'], ['RNG', st.rng, '#22c7dd'], ['KB', st.kb, '#7fa2ff']];
+    let tx = px + 126;
+    for (const [label, v, col] of parts) {
+      g.fillStyle = col;
+      g.fillText(`${label} ${v ?? '–'}`, tx, py + 92);
+      tx += g.measureText(`${label} ${v ?? '–'}`).width + 16;
+    }
+    return c;
+  }
+
+  // On the map: Stage kao cvijet od 7 heksa na ploči, art unutra, žuti obrub i oznaka terena kao u igri.
+  function mapView(card) {
+    const W = 960;
+    const H = 600;
+    const c = h('canvas', { class: 'ce-canvas', width: W, height: H });
+    const g = c.getContext('2d');
+    const R = 58;
+    const { dx, dy } = hexBoard(g, W, H, R);
+    const row = Math.round(300 / dy);
+    const col = Math.round((W / 2 - (row % 2 ? dx / 2 : 0)) / dx);
+    const cx = col * dx + (row % 2 ? dx / 2 : 0);
+    const cy = row * dy;
+    const flower = [[0, 0], [dx, 0], [-dx, 0], [dx / 2, dy], [-dx / 2, dy], [dx / 2, -dy], [-dx / 2, -dy]].map(([ox, oy]) => [cx + ox, cy + oy]);
+    g.strokeStyle = '#f4c22f';
+    g.lineWidth = 8;
+    for (const [x, y] of flower) { hexPath(g, x, y, R); g.stroke(); }
+    g.save();
+    g.beginPath();
+    for (const [x, y] of flower) {
+      for (let i = 0; i < 6; i++) {
+        const a = Math.PI / 6 + (i * Math.PI) / 3;
+        g[i ? 'lineTo' : 'moveTo'](x + R * Math.cos(a), y + R * Math.sin(a));
+      }
+      g.closePath();
+    }
+    g.clip();
+    const fw = dx * 3;
+    const fh = R * 2 + dy * 2;
+    if (ed.art) {
+      const k = Math.max(fw / ed.art.width, fh / ed.art.height);
+      g.drawImage(ed.art, cx - (ed.art.width * k) / 2, cy - (ed.art.height * k) / 2, ed.art.width * k, ed.art.height * k);
+    } else {
+      g.fillStyle = '#1b1b1f';
+      g.fillRect(cx - fw / 2, cy - fh / 2, fw, fh);
+    }
+    g.fillStyle = 'rgba(0, 0, 0, 0.18)';
+    g.fillRect(cx - fw / 2, cy - fh / 2, fw, fh);
+    g.restore();
+    const tc = { Ice: '#bfe9ff', Mud: '#c89a6a', Ramp: '#f4c22f', Wind: '#c8fff4' }[card.terrain];
+    g.textAlign = 'center';
+    if (tc) {
+      g.font = 'italic 800 34px "Barlow Condensed", sans-serif';
+      g.lineWidth = 6;
+      g.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+      g.strokeText(card.terrain.toUpperCase(), cx, cy + dy + 12);
+      g.fillStyle = tc;
+      g.fillText(card.terrain.toUpperCase(), cx, cy + dy + 12);
+    }
+    g.font = 'italic 800 30px "Barlow Condensed", sans-serif';
+    g.fillStyle = '#f3efe7';
+    g.fillText(card.name ?? '', cx, cy - dy - R - 18);
+    return c;
   }
 
   // Edit art: cijela slika (zatamnjena izvan karte), karta preko nje, isprekidani prozor arta; povlačenje i kotačić.
