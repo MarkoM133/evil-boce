@@ -9,7 +9,13 @@ export const CARD_H = 2100;
 // Boje karata kao u Card Engineu (tinta okvira) i za oznake faza.
 export const TINTS = { Cyan: '#00ffff', Yellow: '#ffff00', Purple: '#ff00ff', Red: '#ff0000', Blue: '#0000ff', Green: '#00ff00' };
 const STAT_TINTS = { pwr: '#ffff00', dmg: '#ff0000', kb: '#0000ff', rng: '#00ffff', hp: '#00ff00' };
-const LIGHT = new Set(['Cyan', 'Yellow', 'Green']);
+const LIGHT = new Set(['Cyan', 'Yellow', 'Green', 'None']);
+// Colorless karta (color "None"): siv okvir; boje bonusa (bonusColors) su na rubu costa i u oznaci bonusa.
+const CARD_TINTS = { ...TINTS, None: '#c4cad1' };
+const BONUS_DOT = { Cyan: '#00ffff', Yellow: '#ffee00', Purple: '#b040ff', Red: '#ff2a1f', Blue: '#2a6bff', Green: '#00ff40' };
+const COLOR_WORD = '(Cyan|Yellow|Purple|Red|Blue|Green)';
+// "Red Bonus:" ili "Cyan / Purple Bonus:" na početku retka: bonus za te boje.
+const BONUS_RE = new RegExp(`^${COLOR_WORD}(?:\\s*/\\s*${COLOR_WORD})?(?:\\s*/\\s*${COLOR_WORD})?\\s+Bonus\\s*:\\s*`, 'i');
 
 const TITLE_FONT = '"Agency FB", "Barlow Condensed", "Arial Narrow", sans-serif';
 const TEXT_FONT = '"Barlow Semi Condensed", "Barlow Condensed", "Arial Narrow", sans-serif';
@@ -97,11 +103,11 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   const L = tpl.layout;
   const warnings = [];
   ctx.clearRect(0, 0, CARD_W, CARD_H);
-  const color = TINTS[card.color] ? card.color : 'Purple';
+  const color = CARD_TINTS[card.color] ? card.color : 'Purple';
   if (tpl.layers) {
     for (const l of tpl.layers) {
       if (l.art) drawArt(ctx, art, card.artCrop, L, true);
-      else if (l.img) ctx.drawImage(tinted(l.img, l.tint === true ? TINTS[color] : l.tint || null), 0, 0, CARD_W, CARD_H);
+      else if (l.img) ctx.drawImage(tinted(l.img, l.tint === true ? CARD_TINTS[color] : l.tint || null), 0, 0, CARD_W, CARD_H);
     }
   } else {
     drawArt(ctx, art, card.artCrop, L);
@@ -114,6 +120,7 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   const ink = box => box?.color ?? '#ffffff';
   if (!fitLine(ctx, card.name ?? '', L.title, { font: TITLE_FONT, color: ink(L.title) })) warnings.push('The name is too long for the title bar.');
   fitLine(ctx, card.cost == null ? '' : String(card.cost), L.cost, { font: TITLE_FONT, color: ink(L.cost) });
+  if (color === 'None' && L.cost && card.cost != null) drawCostRim(ctx, L.cost.box, card.bonusColors ?? []);
   fitLine(ctx, card.type ?? '', L.type, { font: TITLE_FONT, color: ink(L.type) });
   fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: ink(L.code) });
   drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
@@ -275,6 +282,39 @@ function drawRunLine(ctx, line, cx, cy, size, font) {
 
 // ---------- tekst efekta ----------
 
+// Rub kućice costa u boji bonusa: cijeli za jednu boju, dijagonalno podijeljen za dvije ili tri (gore lijevo prva).
+function drawCostRim(ctx, box, colors) {
+  const cols = colors.filter(c => BONUS_DOT[c]).slice(0, 3);
+  if (!cols.length) return;
+  const [x, y, w, h] = box;
+  const pad = 22;
+  cols.forEach((c, i) => {
+    ctx.save();
+    ctx.beginPath();
+    if (cols.length === 1) ctx.rect(x - pad, y - pad, w + pad * 2, h + pad * 2);
+    else {
+      // Dijelovi duž dijagonale od gore desno prema dolje lijevo.
+      const n = cols.length;
+      const t0 = i / n;
+      const t1 = (i + 1) / n;
+      const pt = t => [x - pad + (w + pad * 2) * 2 * t, y - pad];
+      const pb = t => [x - pad, y - pad + (h + pad * 2) * 2 * t];
+      const [ax, ay] = pt(t0);
+      const [bx, by] = pt(t1);
+      const [cx2, cy2] = pb(t1);
+      const [dx, dy] = pb(t0);
+      ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx2, cy2); ctx.lineTo(dx, dy);
+      ctx.closePath();
+    }
+    ctx.clip();
+    roundRect(ctx, x + 4, y + 4, w - 8, h - 8, 14);
+    ctx.lineWidth = 14;
+    ctx.strokeStyle = BONUS_DOT[c];
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
 // Rastavi tekst: [Range], faza (+ Once Per Turn), uvjet na početku, zatim tekst s ikonama i natuknicama.
 // Karta može imati više efekata: svaki redak koji počinje fazom ili [Range] počinje novi efekt
 // (s natuknicama ispod sebe). Tekst prije prvog takvog retka je prvi efekt (trajni, bez oznake).
@@ -284,7 +324,7 @@ export function parseEffects(text) {
   for (const raw of (text ?? '').split('\n')) {
     const line = raw.trim();
     if (!line) continue;
-    if ((RANGE_RE.test(line) || PHASE_RE.test(line)) && cur.length) { blocks.push(cur.join('\n')); cur = []; }
+    if ((RANGE_RE.test(line) || PHASE_RE.test(line) || BONUS_RE.test(line)) && cur.length) { blocks.push(cur.join('\n')); cur = []; }
     cur.push(line);
   }
   if (cur.length) blocks.push(cur.join('\n'));
@@ -293,7 +333,13 @@ export function parseEffects(text) {
 
 export function parseEffect(text) {
   let t = (text ?? '').trim();
-  const out = { range: false, phase: null, once: false, cond: null, lines: [] };
+  const out = { range: false, phase: null, once: false, cond: null, bonus: null, lines: [] };
+  const b = t.match(BONUS_RE);
+  if (b) {
+    const cap = w => w[0].toUpperCase() + w.slice(1).toLowerCase();
+    out.bonus = b.slice(1).filter(Boolean).map(cap);
+    t = t.slice(b[0].length);
+  }
   if (RANGE_RE.test(t)) { out.range = true; t = t.replace(RANGE_RE, ''); }
   const m = t.match(PHASE_RE);
   if (m) {
@@ -321,6 +367,7 @@ function drawEffect(ctx, text, color, box, icons, heading = '') {
   };
   const groups = blocks.map(e => {
     const chips = [];
+    if (e.bonus) chips.push({ kind: 'bonus', text: `${e.bonus.join(' / ').toUpperCase()} BONUS`, colors: e.bonus });
     if (e.phase) chips.push({ kind: 'phase', text: e.phase, once: e.once });
     if (e.range) chips.push({ kind: 'range', text: 'RANGE' });
     return { chips, paras: toParas(e) };
@@ -461,6 +508,11 @@ function drawChips(ctx, chips, cx, top, h, color, icons) {
       const b = c.once ? ctx.measureText('ONCE PER TURN').width + pad * 2 : 0;
       return { a, b, w: a + b };
     }
+    if (c.kind === 'bonus') {
+      const dot = h * 0.4;
+      const dots = c.colors.length * dot + (c.colors.length - 1) * dot * 0.3;
+      return { w: ctx.measureText(c.text).width + pad * 2 + dots + 12, dot, dots };
+    }
     const iw = h * 0.7;
     return { w: ctx.measureText(c.text).width + pad * 2 + iw + 10, iw };
   });
@@ -472,13 +524,13 @@ function drawChips(ctx, chips, cx, top, h, color, icons) {
   chips.forEach((c, i) => {
     const m = widths[i];
     if (c.kind === 'phase') {
-      ctx.fillStyle = TINTS[color];
+      ctx.fillStyle = CARD_TINTS[color];
       roundRect(ctx, x, top, m.a + (m.b ? 12 : 0), h, m.b ? [12, 0, 0, 12] : 12);
       ctx.fill();
       ctx.fillStyle = LIGHT.has(color) ? '#000000' : '#ffffff';
       ctx.fillText(c.text, x + m.a / 2, top + h / 2 + 1);
       if (m.b) {
-        ctx.strokeStyle = TINTS[color];
+        ctx.strokeStyle = CARD_TINTS[color];
         ctx.lineWidth = 4;
         roundRect(ctx, x + m.a, top + 2, m.b - 2, h - 4, [0, 12, 12, 0]);
         ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -487,6 +539,26 @@ function drawChips(ctx, chips, cx, top, h, color, icons) {
         ctx.fillStyle = '#ffffff';
         ctx.fillText('ONCE PER TURN', x + m.a + m.b / 2, top + h / 2 + 1);
       }
+    } else if (c.kind === 'bonus') {
+      // Tamna oznaka s bijelim rubom, točkice u bojama bonusa, pa tekst.
+      roundRect(ctx, x, top, m.w, h, 12);
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      c.colors.forEach((col, k) => {
+        const dx = x + pad * 0.7 + m.dot / 2 + k * m.dot * 1.3;
+        ctx.beginPath();
+        ctx.arc(dx, top + h / 2, m.dot / 2, 0, Math.PI * 2);
+        ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+      });
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(c.text, x + pad * 0.7 + m.dots + 12 + (m.w - pad * 0.7 - m.dots - 12) / 2, top + h / 2 + 1);
     } else {
       ctx.fillStyle = 'rgba(0,0,0,0.78)';
       roundRect(ctx, x, top, m.w, h, 12);

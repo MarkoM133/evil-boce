@@ -13,7 +13,7 @@ export const APP_FIELDS = ['wt', 'aliases', 'bakugan', 'bakuganShape', 'bakuganC
 // Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
 // fxStatus je samo oznaka za pregled, pa ni on ne diže verziju.
 export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fxStatus', 'figure', 'ballColor', 'ballColor2', 'heroSfx'];
-const FIELD_ORDER = ['id', 'name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
+const FIELD_ORDER = ['id', 'name', 'type', 'color', 'bonusColors', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
 
@@ -133,6 +133,8 @@ export async function analyzeExport({ xmlFiles, pngFiles, db }) {
   for (const p of picked.values()) {
     for (const pr of p.problems) add(pr.level === 'error' ? errors : warnings, p.code, pr.msg);
     const old = oldById.get(p.code);
+    // Colorless karta (2026-11-01) ostaje colorless: Card Engine zna samo boju okvira.
+    if (old?.color === 'None') { p.card.color = 'None'; if (old.bonusColors) p.card.bonusColors = old.bonusColors; }
     const byCode = pngByCode.get(p.code);
     const png = byCode ?? pngByName.get(p.card.name);
     let imageHash = null;
@@ -381,7 +383,7 @@ export function applyAppEdits(db, edits, now = new Date()) {
 // polja izgleda (art, izrez, amblem, pozadina, predložak, status, bilješke) i nova slika ne dižu.
 // images: { id: imageHash } za karte kojima je Objava nacrtala novi PNG (data/images/ID.hash.png).
 // Nacrt s new: true i kodom kojeg nema u bazi je nova karta (dodaje se na kraj, rev 1).
-export const DRAFT_GAME_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats', 'bonus', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx'];
+export const DRAFT_GAME_FIELDS = ['name', 'type', 'color', 'bonusColors', 'cost', 'evo', 'hero', 'stats', 'bonus', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx'];
 export const DRAFT_LOOK_FIELDS = ['fxStatus', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes'];
 
 export function applyDrafts(db, drafts, images = {}, now = new Date()) {

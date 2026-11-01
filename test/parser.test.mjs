@@ -640,3 +640,11 @@ test('Card editor drafts: game fields bump rev and version, look fields and a ne
   const b = added.db.cards.at(-1);
   assert.deepEqual([b.id, b.rev, b.landscape, b.image, b.new, b.who], ['OP9-003', 1, true, 'images/OP9-003.cccc3333.png', undefined, undefined]);
 });
+
+test('colorless: a Card Engine re-import keeps color None and the bonus colours', async () => {
+  const { pub } = await firstImport();
+  const db = { ...pub.db, cards: pub.db.cards.map(c => (c.id === ACTION.code ? { ...c, color: 'None', bonusColors: ['Cyan'] } : c)) };
+  const a = await analyzeExport({ xmlFiles: [{ path: 'export/a.xml', text: xml(card(ACTION)), lastModified: 9 }], pngFiles: [png([9], 'export/Punch.png')], db });
+  const c = buildPublish(db, a).db.cards.find(x => x.id === ACTION.code);
+  assert.deepEqual([c.color, c.bonusColors], ['None', ['Cyan']]);
+});

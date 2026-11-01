@@ -32,7 +32,7 @@ const WHO_KEY = 'evil-boce-who';
 const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'PWR'], ['rng', 'RNG'], ['kb', 'KB']];
 const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
-const FIELDS = ['name', 'type', 'color', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain',
+const FIELDS = ['name', 'type', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain',
   'fx', 'fxStatus', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status'];
 const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equipment: 'action', Assist: 'action', Stage: 'stage', Core: 'core' };
 
@@ -776,7 +776,8 @@ export function createEditor(env) {
         unlock.length ? h('p', { class: 'small muted' }, 'Cards with first tag ', h('strong', { class: 'accent' }, unlock.join(', ')), ' need this evolution in the deck.') : null,
       ];
     } else if (PORTRAIT.includes(w.type)) {
-      const heroes = db().cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === w.color);
+      // Colorless karta: prvi tag smije biti bilo koji heroj.
+      const heroes = db().cards.filter(c => c.type === 'Hero' && !c.deleted && (w.color === 'None' || c.color === w.color));
       const firstOptions = [['General', 'General'], ...heroes.map(x => [x.name, `${x.name} (hero)`]), ...traits.map(t => [t, `${t} (trait)`])];
       if (w.traits[0] && !firstOptions.some(([v]) => v === w.traits[0])) firstOptions.push([w.traits[0], `${w.traits[0]} (unknown)`]);
       body = [
@@ -784,7 +785,21 @@ export function createEditor(env) {
         field('TYPE', seg(PORTRAIT.map(t => [t, t]), w.type, v => { set('type', v); env.render(); })),
         field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
         h('div', { class: 'ce-row' }, field('COST', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })), code),
-        field('COLOR', h('div', { class: 'ce-swatches' }, COLORS.map(c => h('button', { type: 'button', class: `ce-swatch${c === w.color ? ' active' : ''}`, style: `--sw: var(--c-${c})`, title: c, 'aria-label': c, onclick: () => { set('color', c); env.render(); } })))),
+        field('COLOR', h('div', { class: 'ce-swatches' },
+          COLORS.map(c => h('button', { type: 'button', class: `ce-swatch${c === w.color ? ' active' : ''}`, style: `--sw: var(--c-${c})`, title: c, 'aria-label': c, onclick: () => { snap(true); w.color = c; delete w.bonusColors; changed(); env.render(); } })),
+          h('button', { type: 'button', class: `ce-swatch colorless${w.color === 'None' ? ' active' : ''}`, style: '--sw: var(--c-colorless)', title: 'Colorless: any hero may play it', 'aria-label': 'Colorless',
+            onclick: () => { snap(true); if (w.color !== 'None' && COLORS.includes(w.color)) w.bonusColors = [w.color]; w.color = 'None'; changed(); env.render(); } }, 'C'))),
+        w.color === 'None' ? field('BONUS COLOURS (UP TO 2)', h('div', { class: 'ce-bonuscols' }, COLORS.map(c => {
+          const on = (w.bonusColors ?? []).includes(c);
+          return h('button', { type: 'button', class: `ce-bonuscol${on ? ' on' : ''}`, style: `--sw: var(--c-${c})`, 'aria-pressed': String(on), onclick: () => {
+            snap(true);
+            const cur = w.bonusColors ?? [];
+            w.bonusColors = on ? cur.filter(x => x !== c) : [...cur, c];
+            if (!w.bonusColors.length) delete w.bonusColors;
+            changed();
+            env.render();
+          } }, h('span', { class: 'dot' }), c);
+        })), h('small', { class: 'muted' }, 'The bonus applies when the hero it is played for is one of these colours. Write it in the text as "Red Bonus: …".')) : null,
         field('BONUS', h('div', { class: 'ce-row ce-stats' }, STAT_KEYS.map(([k, label]) => field(h('span', { class: `stat-${k}` }, label), num(w.bonus[k], e => {
           const b = { ...w.bonus };
           if (e.target.value === '' || Number(e.target.value) === 0) delete b[k]; else b[k] = Number(e.target.value);
@@ -952,7 +967,17 @@ export function createEditor(env) {
     const trait = PORTRAIT.includes(w.type) ? h('button', { type: 'button', class: 'tok', title: 'A trait in the text, e.g. {Sword}', onclick: () => insert('{}') }, '{Trait}') : null;
     const phrase = ed.guide?.phrases?.length ? h('select', { class: 'ce-phrase', 'aria-label': 'Insert a phrase', onchange: e => { const p = ed.guide.phrases[Number(e.target.value)]; e.target.value = ''; if (p) insert(toTokens(p.text)); } },
       h('option', { value: '' }, 'Phrase from the guide…'), ed.guide.phrases.map((p, i) => h('option', { value: i, title: p.note ?? '' }, `${p.label}: ${p.text.trim()}`))) : null;
-    const tools = h('div', { class: 'ce-tools' }, revealed, phaseBtns, once, range, addEffect, toks, trait, phrase);
+    // Colorless: red s bonusom za odabrane boje ("Cyan / Purple Bonus: ").
+    const bonusBtn = w.color === 'None' ? h('button', { type: 'button', class: 'ce-add-effect', onmousedown: e => e.preventDefault(), onclick: () => {
+      const cols = (w.bonusColors ?? []).length ? w.bonusColors : ['Red'];
+      snap(true);
+      area.value = area.value.replace(/\s+$/, '') + (area.value.trim() ? '\n' : '') + `${cols.join(' / ')} Bonus: `;
+      caret = area.value.length;
+      area.focus();
+      area.selectionStart = area.selectionEnd = caret;
+      sync();
+    } }, '+ Bonus') : null;
+    const tools = h('div', { class: 'ce-tools' }, revealed, phaseBtns, once, range, addEffect, bonusBtn, toks, trait, phrase);
     function refreshToggles() {
       const hd = here();
       for (const b of tools.querySelectorAll('[data-phase]')) b.classList.toggle('on', b.dataset.phase === hd.phase);
@@ -1019,6 +1044,18 @@ export function createEditor(env) {
       out.push(avoid.length ? [false, avoid[0]] : [true, 'Phrases match the text guide']);
       gameReads();
     }
+    if (w.color === 'None' && PORTRAIT.includes(w.type)) {
+      const cols = w.bonusColors ?? [];
+      const lines = [...(w.text ?? '').matchAll(/^(Cyan|Yellow|Purple|Red|Blue|Green)((?:\s*\/\s*(?:Cyan|Yellow|Purple|Red|Blue|Green))*)\s+Bonus\s*:/gim)]
+        .flatMap(m => m[0].replace(/\s+Bonus\s*:$/i, '').split('/').map(x => x.trim().toLowerCase()));
+      if (!cols.length) out.push([false, 'Colorless without bonus colours']);
+      else if (cols.length > 2) out.push([false, 'More than 2 bonus colours: only as an exception, with the same bonus']);
+      else out.push([true, `Colorless, bonus for ${cols.join(' / ')}`]);
+      const missing = cols.filter(c => !lines.includes(c.toLowerCase()));
+      const extra = lines.filter(l => !cols.some(c => c.toLowerCase() === l));
+      if (missing.length) out.push([false, `No "${missing.join(' / ')} Bonus:" line in the text`]);
+      if (extra.length) out.push([false, `The text has a bonus for ${extra.join(', ')}, which is not a bonus colour`]);
+    }
     if (HEROISH.includes(w.type)) {
       if (w.type === 'Evolution') {
         const hc = heroCard(w);
@@ -1065,7 +1102,7 @@ export function createEditor(env) {
     const similar = pool.filter(c => c.id !== card.id && (c.cost ?? 0) === (card.cost ?? 0));
     const live = liveDb(card);
     const pub = setTraits({ ...db(), cards: db().cards.map(merged) }, db().traitList ?? env.state.traits?.traits);
-    const heroes = db().cards.filter(c => c.type === 'Hero' && !c.deleted && c.color === card.color);
+    const heroes = db().cards.filter(c => c.type === 'Hero' && !c.deleted && (card.color === 'None' || c.color === card.color));
     const own = (d, hero) => deckPool(d, [hero.id], heroEvolutions(d, [hero.id])).filter(c => c.color === hero.color);
     const rows = heroes.map(hero => {
       const before = own(pub, hero).length;
