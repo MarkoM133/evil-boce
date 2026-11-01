@@ -177,6 +177,8 @@ var _aim_line: Control
 var _battle_bar: HBoxContainer
 ## Stages and your cores under the ribbon (_refresh_board).
 var _board: VBoxContainer
+## The small STAGES tab beside the strip that hides or shows it.
+var _strip_tab: PanelContainer
 var _board_sig: String = ""
 ## The battle camera is on (set by the match): letterbox, only the fighting heroes in the rosters.
 var battle_cam: bool = false
@@ -689,6 +691,18 @@ func _build() -> void:
 	_board.add_theme_constant_override("separation", 4)
 	_board.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_board)
+	_strip_tab = PanelContainer.new()
+	_strip_tab.add_theme_stylebox_override("panel", UiTheme.box(Color(0.06, 0.06, 0.06, 0.85), 4, Color(0, 0, 0, 0), 8, 3))
+	var tab_l: Label = UiTheme.label("STAGES  ▴", 12, Palette.MUTED)
+	_strip_tab.add_child(tab_l)
+	_strip_tab.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_strip_tab.tooltip_text = "Show or hide the stages and your cores (key G)"
+	_strip_tab.visible = false
+	_strip_tab.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			toggle_stage_strip()
+			_strip_tab.accept_event())
+	add_child(_strip_tab)
 
 	_aim_line = Control.new()
 	_aim_line.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -900,7 +914,7 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		s.outline_width = 3.5 if chosen_pick else 2.0
 	if in_battle:
 		s.stripe = Palette.ACCENT
-	s.custom_minimum_size = Vector2(ROSTER_WIDTH, SLICE_HEIGHT + (22.0 if expanded else 0.0))
+	s.custom_minimum_size = Vector2(ROSTER_WIDTH, SLICE_HEIGHT + (28.0 if expanded else 0.0))
 	s.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var shown_id: String = card.id if card != null else ""
 	s.gui_input.connect(func(e: InputEvent) -> void:
@@ -3040,7 +3054,8 @@ func hide_ball_choice(force: bool = false) -> void:
 ## One equipment slot in a hero panel: the card's picture, small, or a dashed empty slot.
 func _equip_mini(cid: String) -> Control:
 	var box := PanelContainer.new()
-	box.custom_minimum_size = Vector2(22, 30)
+	# As tall as the panel row allows (Marko 2026-11-01: a 30 px card ran out of the panel).
+	box.custom_minimum_size = Vector2(17, 22)
 	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0, 0, 0, 0)
@@ -3224,13 +3239,29 @@ func _heroes_line(e: Dictionary) -> String:
 ## Under the phase ribbon: all six stages (yours as cards from the start, marked HIDDEN until
 ## they turn face up; the other side's as "?" until then) and your cores (HIDDEN or PUBLIC, and
 ## on whom). Hover shows where it is on the table, a click shows the card big.
+## The stage strip on or off (key G, or its tab); kept in the settings.
+func toggle_stage_strip() -> void:
+	GameSettings.set_value("display", "stage_strip", not GameSettings.stage_strip())
+	_board_sig = ""
+	_refresh_board()
+
+
 func _refresh_board() -> void:
 	if _board == null:
 		return
 	var on: bool = state.turn > 0 and not state.is_over()
 	_board.visible = on
 	_board.position.y = 112.0 if _battle_bar.visible else 62.0
+	if _strip_tab != null:
+		_strip_tab.visible = on
+		_strip_tab.position = Vector2(_board.position.x - _strip_tab.size.x - 8.0, _board.position.y + 4.0) if GameSettings.stage_strip() \
+				else Vector2(size.x * 0.5 - _strip_tab.size.x * 0.5, _board.position.y)
+		(_strip_tab.get_child(0) as Label).text = "STAGES  ▴" if GameSettings.stage_strip() else "STAGES  ▾"
 	if not on:
+		return
+	# Switched off: only its tab stays, to bring it back (Marko 2026-11-01).
+	if not GameSettings.stage_strip():
+		_board.visible = false
 		return
 	var viewer: int = hand_slot() if hand_slot() >= 0 else (local_slots[0] if not local_slots.is_empty() else -1)
 	var sig: String = "%d|%s" % [viewer, str(local_slots)]

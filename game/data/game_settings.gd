@@ -133,7 +133,7 @@ const FPS_LIMITS: Array[int] = [0, 60, 120, 144, 240]
 const BUSES: Array[String] = ["Master", "Music", "Effects"]
 ## Rebindable keys: action -> default key.
 const DEFAULT_KEYS: Dictionary[String, Key] = {"pass": KEY_SPACE, "menu": KEY_ESCAPE, "card_zoom": KEY_ALT,
-	"battle_cam": KEY_C, "hold": KEY_CTRL, "beams": KEY_B}
+	"battle_cam": KEY_C, "hold": KEY_CTRL, "beams": KEY_B, "table_text": KEY_T, "stage_strip": KEY_G}
 ## The card-zoom key: held (the card shows while it is down) or pressed (on, then off).
 const ZOOM_MODES: Array[String] = ["hold", "press"]
 
@@ -328,6 +328,16 @@ static func auto_pass() -> bool:
 ## Light beams over the heroes a card or a pick points at (the rings always show). Key B.
 static func beams() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "beams", true))
+
+
+## Words standing over the table (TIED · FIGHT AGAIN, STAYED 1 TURN, RAMP). Key T.
+static func table_text() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "table_text", true))
+
+
+## The stages and your cores under the phase ribbon. Key G, or its STAGES tab.
+static func stage_strip() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "stage_strip", true))
 
 
 ## Banners in the middle: "all" (phases too), "moments" (battles, KOs, ring-outs, claims), "off".

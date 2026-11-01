@@ -935,7 +935,7 @@ func _rebuild_tokens() -> void:
 			_tokens.add_child(body)
 	# A tied, locked pair: LOCKED over the middle of their link (_lock_links).
 	for a: HeroState in state.heroes:
-		if a.tie_turns <= 0 or not a.is_on_map():
+		if a.tie_turns <= 0 or not a.is_on_map() or not GameSettings.table_text():
 			continue
 		for lid: String in a.locked_with:
 			var b: HeroState = state.hero(lid)
@@ -972,7 +972,9 @@ func _rebuild_tokens() -> void:
 			cloth.material_override = MeshKit.unshaded(team_col, false)
 			cloth.position = flag.position + Vector3(0.58, 0.85, 0)
 			_tokens.add_child(cloth)
-		elif st.placed and not st.stay_hero.is_empty() and st.stay_turn == state.turn - 1:
+		# Not in Battle (Marko 2026-11-01: it stood over the fight), nor with the words switched off.
+		elif st.placed and not st.stay_hero.is_empty() and st.stay_turn == state.turn - 1 \
+				and state.phase != GameState.PHASE_BATTLE and GameSettings.table_text():
 			# A hero stayed here last turn: one more Stay claims it (playtest 2026-10-30: nothing
 			# showed how long anyone had stood on a stage).
 			var stayer: HeroState = state.hero(st.stay_hero)
@@ -1042,7 +1044,7 @@ func _stage_art(st: StageState) -> Node3D:
 		Terrain.Type.MUD:
 			mat.albedo_color = Color(0.72, 0.55, 0.38, STAGE_ART_ALPHA + 0.15)
 			mat.roughness = 1.0
-	if kind == Terrain.Type.RAMP:
+	if kind == Terrain.Type.RAMP and GameSettings.table_text():
 		var tag := Label3D.new()
 		tag.text = Terrain.name_of(kind).to_upper()
 		tag.font_size = 44
@@ -1822,6 +1824,13 @@ func _on_key(k: InputEventKey) -> void:
 			hud.toast("Beams %s" % ("on" if GameSettings.beams() else "off"), Palette.FG)
 		KEY_C:
 			_toggle_battle_cam()
+		KEY_T:
+			# Words over the table on or off (Marko 2026-11-01).
+			GameSettings.set_value("display", "table_text", not GameSettings.table_text())
+			_rebuild_tokens()
+			hud.toast("Words over the table %s" % ("on" if GameSettings.table_text() else "off"), Palette.FG)
+		KEY_G:
+			hud.toggle_stage_strip()
 
 
 func _on_left(pressed: bool) -> void:
@@ -2108,6 +2117,14 @@ func demo_setup_cores() -> void:
 			if engine.core_placement_error(state, c, a).is_empty():
 				engine.apply(state, Move.make(Move.PLACE_CORE, state.setup_turn, {"core": c.id, "hex": Hex.to_json(a)}))
 				break
+	_sync()
+
+## Screenshot helper: the stage strip switched off (only its STAGES tab stays); not saved.
+func demo_strip_off() -> void:
+	demo_choose_hero()
+	state.pending.clear()
+	GameSettings.in_memory = true
+	hud.toggle_stage_strip()
 	_sync()
 
 ## Hits hero 0, knocks hero 1 three hexes away and knocks out hero 2.

@@ -6,7 +6,7 @@ extends Control
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const KEY_LABELS: Dictionary[String, String] = {"pass": "Pass / end the round", "menu": "Menu / cancel",
 	"card_zoom": "Show a card big", "battle_cam": "Battle camera on / off", "hold": "Hold (no auto-pass while down)",
-	"beams": "Beams on heroes on / off"}
+	"beams": "Beams on heroes on / off", "table_text": "Words over the table on / off", "stage_strip": "Stages under the ribbon on / off"}
 const TABS: Array[String] = ["GAME", "INTERFACE", "GRAPHICS", "SOUND", "KEYS"]
 
 ## The tab last open, kept while the game runs.
@@ -153,6 +153,12 @@ func _build_interface(col: VBoxContainer) -> void:
 	var beams := _option(col, "Beams on heroes", ["On", "Off"], 0 if GameSettings.beams() else 1)
 	beams.item_selected.connect(func(i: int) -> void: _store("display", "beams", i == 0))
 	_hint(col, "The light over the heroes a card or a pick points at; the rings always show. Key B switches it in a match.")
+	var words := _option(col, "Words over the table", ["Shown", "Hidden"], 0 if GameSettings.table_text() else 1)
+	words.item_selected.connect(func(i: int) -> void: _store("display", "table_text", i == 0))
+	_hint(col, "TIED · FIGHT AGAIN, STAYED 1 TURN and the like over the heroes and stages. Key T switches it in a match.")
+	var strip := _option(col, "Stages under the ribbon", ["Shown", "Hidden"], 0 if GameSettings.stage_strip() else 1)
+	strip.item_selected.connect(func(i: int) -> void: _store("display", "stage_strip", i == 0))
+	_hint(col, "All six stages and your cores at a glance. Key G or the STAGES tab switches it in a match.")
 	var rng := _option(col, "Range circles", ["Activated heroes always, others on hover", "Only on hover"],
 		GameSettings.RANGE_MODES.find(GameSettings.range_mode()))
 	rng.item_selected.connect(func(i: int) -> void: _store("display", "range", GameSettings.RANGE_MODES[i]))
