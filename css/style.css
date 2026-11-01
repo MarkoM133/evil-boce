@@ -18,6 +18,7 @@
   --c-Blue: #2f6bff;
   --c-Green: #23b14d;
   --c-none: #6b6b6b;
+  --c-colorless: #c4cad1; /* colorless karte (generičke, siv okvir) */
   --display: "Barlow Condensed", "Arial Narrow", sans-serif;
   --text: "Barlow", system-ui, "Segoe UI", sans-serif;
   --slant: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
@@ -227,6 +228,7 @@ input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
 .c-edge-Red { --edge: var(--c-Red); }
 .c-edge-Blue { --edge: var(--c-Blue); }
 .c-edge-Green { --edge: var(--c-Green); }
+.c-edge-None { --edge: var(--c-colorless); }
 @media (prefers-reduced-motion: reduce) {
   .slice-art, .slice-name { transition: none; }
   .hero-strip { overflow-x: auto; scrollbar-width: none; } /* bez klizanja: traka se pomiče prstom ili kotačićem */
@@ -387,6 +389,7 @@ td.now { font-weight: 600; }
 .c-Red { background: var(--c-Red); }
 .c-Blue { background: var(--c-Blue); }
 .c-Green { background: var(--c-Green); }
+.c-None { background: var(--c-colorless); }
 .chip.c-Purple, .chip.c-Red, .chip.c-Blue { color: var(--bone); }
 
 .same { color: var(--muted); }

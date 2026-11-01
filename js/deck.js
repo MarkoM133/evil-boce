@@ -1,6 +1,6 @@
 // Deck: pravila (§8 plana), random deck (§10) i deck kod. Bez I/O, isto za app i testove.
 import { DECK_TYPES } from './parse.js';
-import { deckVerdict, firstTag, traitNames, hasTrait, heroAliases, norm, HEROES, TRAIT, INVALID } from './tags.js';
+import { deckVerdict, firstTag, traitNames, hasTrait, heroAliases, norm, isColorless, HEROES, TRAIT, INVALID } from './tags.js';
 
 export const DECK_SIZE = 40;
 export const LIMITS = { Action: 4, Equipment: 4, Assist: 2, Evolution: 2 };
@@ -198,7 +198,7 @@ export function tagWarnings(db) {
     } else if (k.kind === HEROES && k.unknown?.length) {
       out.push({ id: c.id, msg: `first tag "${k.tag}": ${k.unknown.map(u => `"${u}"`).join(', ')} is no hero yet, so the card counts for ${k.heroes.join(' and ')} only` });
     } else if (k.kind === TRAIT) {
-      const holders = live.filter(x => (x.type === 'Hero' || x.type === 'Evolution') && x.color === c.color && hasTrait(x, k.trait));
+      const holders = live.filter(x => (x.type === 'Hero' || x.type === 'Evolution') && (isColorless(c) || x.color === c.color) && hasTrait(x, k.trait));
       if (!holders.length) out.push({ id: c.id, msg: `first tag ${k.trait}: no ${c.color} hero or Evolution has it, so nobody can take the card` });
     }
     const later = (c.traits ?? []).slice(1).find(t => heroes.some(h => heroAliases(h).includes(norm(t))));
@@ -206,7 +206,7 @@ export function tagWarnings(db) {
   }
   for (const h of heroes) {
     if (!names.some(t => hasTrait(h, t))) out.push({ id: h.id, msg: 'the hero has no trait from the trait list' });
-    const own = deckPool(db, [h.id], heroEvolutions(db, [h.id])).filter(c => c.color === h.color);
+    const own = deckPool(db, [h.id], heroEvolutions(db, [h.id])).filter(c => c.color === h.color || isColorless(c));
     if (own.length < MIN_OWN_CARDS) out.push({ id: h.id, msg: `${h.name} may take only ${own.length} different ${h.color} cards (fewer than ${MIN_OWN_CARDS})` });
   }
   return out;
@@ -218,7 +218,7 @@ export function coverage(db) {
   const traits = traitsOf(db);
   const heroes = heroCards(db);
   return heroes.map(h => {
-    const own = deckPool(db, [h.id], heroEvolutions(db, [h.id])).filter(c => c.color === h.color);
+    const own = deckPool(db, [h.id], heroEvolutions(db, [h.id])).filter(c => c.color === h.color || isColorless(c));
     const kinds = { signature: 0, trait: 0, general: 0, evolution: 0 };
     for (const c of own) {
       if (c.type === 'Evolution') { kinds.evolution++; continue; }

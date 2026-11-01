@@ -1321,8 +1321,8 @@ function renderQuickFilters() {
   const group = (cls, active, ...kids) => Object.assign(h('div', { class: `qf-group${cls ? ` ${cls}` : ''}` }, ...kids), { activeCount: active });
   const groups = [
     group('', f.types.length, types.map(t => chip('types', t, t === 'Hero' ? 'Heroes' : t))),
-    group('', f.colors.length, COLOR_NAMES.map(c => h('button', {
-      type: 'button', class: `qf-color c-${c}${on('colors', c) ? ' active' : ''}`, title: c, 'aria-label': c, 'aria-pressed': String(on('colors', c)), onclick: () => toggle('colors', c),
+    group('', f.colors.length, [...COLOR_NAMES, 'None'].map(c => h('button', {
+      type: 'button', class: `qf-color c-${c}${on('colors', c) ? ' active' : ''}`, title: c === 'None' ? 'Colorless' : c, 'aria-label': c === 'None' ? 'Colorless' : c, 'aria-pressed': String(on('colors', c)), onclick: () => toggle('colors', c),
     }))),
     sets.length > 1 ? group('', f.sets.length, sets.map(x => chip('sets', x, x, `Set ${x}`))) : null,
     group('qf-specials', f.specials.length,

@@ -58,6 +58,11 @@ export function tagLabel(kind) {
   return kind.tag ? `Invalid: ${kind.tag}` : 'Invalid: no tag';
 }
 
+// Colorless karta (color "None", 2026-11-01): generička, igra je heroj bilo koje boje; prvi tag i dalje vrijedi.
+// bonusColors: boje za koje ima bonus (najviše 2) kad je heroj za kojeg se igra te boje.
+export const COLORLESS = 'None';
+export const isColorless = card => card?.color === COLORLESS;
+
 // Smije li karta u deck s ovim herojima (id-evi) i ovim Evolution kartama u decku (id-evi).
 // { ok, why, needs: [id Evolution karata koje bi je otključale] }.
 export function deckVerdict(db, traits, card, heroIds, evolutionIds = []) {
@@ -70,9 +75,10 @@ export function deckVerdict(db, traits, card, heroIds, evolutionIds = []) {
       ? { ok: true, why: '', needs: [] }
       : { ok: false, why: `Evolution for a hero who isn't in the deck`, needs: [] };
   }
-  if (!colors.has(card.color)) return { ok: false, why: `color ${card.color} is not a color of the chosen heroes`, needs: [] };
+  const colorless = isColorless(card);
+  if (!colorless && !colors.has(card.color)) return { ok: false, why: `color ${card.color} is not a color of the chosen heroes`, needs: [] };
   const kind = firstTag(db, card, traits);
-  const same = heroes.filter(h => h.color === card.color);
+  const same = colorless ? heroes : heroes.filter(h => h.color === card.color);
   if (kind.kind === GENERAL) return { ok: true, why: '', needs: [] };
   if (kind.kind === HEROES) {
     return same.some(h => kind.heroes.includes(h.name))
@@ -85,7 +91,7 @@ export function deckVerdict(db, traits, card, heroIds, evolutionIds = []) {
     if (evos.some(e => names.has(e.hero) && hasTrait(e, kind.trait))) return { ok: true, why: '', needs: [] };
     const needs = db.cards.filter(e => !e.deleted && e.type === 'Evolution' && names.has(e.hero) && hasTrait(e, kind.trait));
     if (needs.length) return { ok: false, why: `Requires ${needs.map(e => e.name).join(' or ')}`, needs: needs.map(e => e.id) };
-    return { ok: false, why: `needs a ${card.color} hero with ${kind.trait}`, needs: [] };
+    return { ok: false, why: colorless ? `needs a hero with ${kind.trait}` : `needs a ${card.color} hero with ${kind.trait}`, needs: [] };
   }
   return { ok: false, why: kind.tag ? `first tag "${kind.tag}" is not General, a hero or a known trait` : 'the card has no tags', needs: [] };
 }
