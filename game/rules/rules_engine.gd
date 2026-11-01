@@ -433,12 +433,13 @@ func _apply_decision(s: GameState, m: Move) -> String:
 			var target: String = m.str_arg("target")
 			var amount: int = JsonUtil.as_int(d.get("amount", 0))
 			var targets: PackedStringArray = JsonUtil.as_strings(d.get("targets", []))
+			var winner: String = str(d.get("winner", ""))
 			if target == "deck":
 				s.pending.pop_front()
-				deck_damage(s, s.player(who), amount)
+				deck_damage(s, s.player(who), amount, winner)
 			elif targets.has(target):
 				s.pending.pop_front()
-				hero_damage(s, s.hero(target), amount)
+				hero_damage(s, s.hero(target), amount, false, winner)
 			else:
 				return "target must be \"deck\" or one of %s" % ", ".join(targets)
 		DECISION_RETURN_CORE:
@@ -633,7 +634,7 @@ func apply_knockback(s: GameState, o: RollOutcome) -> String:
 				"steps": asked[h.id], "physics": true, "hits": r.collisions.size() + r.walls_hit})
 			var hits: int = r.collisions.size() + r.walls_hit
 			if h.is_on_map() and hits > 0:
-				hero_damage(s, h, hits * s.settings.wall_damage)
+				hero_damage(s, h, hits * s.settings.wall_damage, false, "wall")
 	s.event("knockback_done", {"heroes": asked.keys()})
 	_check_win(s)
 	_continue(s)
@@ -734,7 +735,7 @@ func _spring_core_traps(s: GameState, h: HeroState, c: CoreState) -> void:
 		if s.team_of(JsonUtil.as_int(m.get("player", -1))) == s.team_of(h.owner):
 			continue
 		s.event("core_trap", {"core": c.id, "hero": h.id})
-		hero_damage(s, h, JsonUtil.as_int(m.get("amount", 0)))
+		hero_damage(s, h, JsonUtil.as_int(m.get("amount", 0)), false, "trap")
 
 
 ## "" when an effect may move core `c` onto `a` (free hex, not on a stage).
@@ -1109,7 +1110,10 @@ func _resolve_battle(s: GameState, index: int) -> void:
 			tie = false
 		elif power[t] == best_pow:
 			tie = true
-	s.event("battle", {"index": index, "power": power.duplicate()})
+	var fighters: Array = []
+	for h: HeroState in members:
+		fighters.append(h.id)
+	s.event("battle", {"index": index, "power": power.duplicate(), "heroes": fighters})
 	if tie:
 		b["tie"] = true
 		_battle_tie(s, members)
@@ -1217,16 +1221,23 @@ func _battle_tie(s: GameState, members: Array[HeroState]) -> void:
 # =====================================================================================
 
 ## Damage to a hero, after "takes ±N DMG from all sources" modifiers (unless unblockable).
-func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = false) -> void:
+## `by`: who or what dealt it (a hero id, "wall", "trap"), `card`: the card that did, for the log.
+func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = false, by: String = "", card: String = "") -> void:
 	if h == null or h.is_ko() or amount <= 0:
 		return
 	if not unblockable:
 		amount = maxi(amount + fx.damage_mod(s, h), 0)
+	var info: Dictionary = {"hero": h.id, "amount": maxi(amount, 0), "hp": h.hp}
+	if not by.is_empty():
+		info["by"] = by
+	if not card.is_empty():
+		info["card"] = card
 	if amount <= 0:
-		s.event("damage", {"hero": h.id, "amount": 0, "hp": h.hp})
+		s.event("damage", info)
 		return
 	h.hp -= amount
-	s.event("damage", {"hero": h.id, "amount": amount, "hp": h.hp})
+	info["hp"] = h.hp
+	s.event("damage", info)
 	if h.hp <= 0:
 		h.hp = 0
 		knock_out(s, h)
@@ -1238,7 +1249,8 @@ func heal(s: GameState, h: HeroState, amount: int) -> void:
 
 ## Deck damage: cards from the top of the deck to the graveyard; from the hand once the deck
 ## is empty; losing the match when the hand runs out too.
-func deck_damage(s: GameState, p: PlayerState, amount: int) -> void:
+func deck_damage(s: GameState, p: PlayerState, amount: int, by: String = "") -> void:
+	var from_hand: int = 0
 	for _i: int in amount:
 		if not p.deck.is_empty():
 			p.graveyard.append(p.deck[0])
@@ -1246,11 +1258,12 @@ func deck_damage(s: GameState, p: PlayerState, amount: int) -> void:
 		elif not p.hand.is_empty():
 			p.graveyard.append(p.hand[p.hand.size() - 1])
 			p.hand.remove_at(p.hand.size() - 1)
+			from_hand += 1
 		else:
 			s.event("deck_out", {"player": p.slot})
 			_end_match(s, other_slot(s, p.slot), "deckout")
 			return
-	s.event("deck_damage", {"player": p.slot, "amount": amount})
+	s.event("deck_damage", {"player": p.slot, "amount": amount, "by": by, "left": p.deck.size(), "from_hand": from_hand})
 
 
 func knock_out(s: GameState, h: HeroState) -> void:
@@ -1364,7 +1377,7 @@ func knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 	arrive(s, h)
 	if left > 0:
 		# Blocked by a wall or a hero: wall_damage once (GDD 10, 2026-10-26), not per step short.
-		hero_damage(s, h, s.settings.wall_damage)
+		hero_damage(s, h, s.settings.wall_damage, false, "wall")
 
 
 # =====================================================================================

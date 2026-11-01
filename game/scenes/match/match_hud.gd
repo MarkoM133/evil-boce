@@ -2633,6 +2633,249 @@ func _describe(e: Dictionary) -> String:
 	return ""
 
 
+## The match log for the pause menu as BBCode (Marko 2026-11-01: who hit whom and much more was
+## missing): a heading per turn, the phase before its first line, names in their team's colour,
+## and for every line who did what to whom.
+func log_bbcode() -> String:
+	var out := PackedStringArray()
+	var turn_at: int = -1
+	var phase_at: String = ""
+	var ctx: Dictionary = {}
+	for e: Dictionary in state.log:
+		var line: String = _log_line(e, ctx)
+		if line.is_empty():
+			continue
+		var turn: int = JsonUtil.as_int(e.get("turn", 0))
+		# The draw opens a turn (it is logged before the phase moves on).
+		var phase: String = "start" if str(e.get("type", "")) == "draw" else _ribbon_phase(str(e.get("phase", "")))
+		if turn != turn_at:
+			turn_at = turn
+			phase_at = ""
+			out.append("")
+			out.append("[font_size=22][color=#%s]%s[/color][/font_size]" % [Palette.GOLD.to_html(false), ("TURN %d" % turn) if turn > 0 else "SETUP"])
+		if phase != phase_at and turn > 0 and str(e.get("type", "")) != "turn_end":
+			phase_at = phase
+			out.append("[font_size=13][color=#%s]%s[/color][/font_size]" % [Palette.MUTED.to_html(false), phase.to_upper()])
+		out.append(line)
+	return "\n".join(out).strip_edges()
+
+
+func _who(slot: int) -> String:
+	var p: PlayerState = state.player(slot)
+	if p == null:
+		return "?"
+	return "[color=#%s]%s[/color]" % [Palette.team(state.team_of(slot)).lightened(0.35).to_html(false), _esc(player_name(slot))]
+
+
+func _hero_b(id: String) -> String:
+	var h: HeroState = state.hero(id)
+	if h == null:
+		return _esc(id)
+	return "[b][color=#%s]%s[/color][/b]" % [Palette.team(state.team_of(h.owner)).lightened(0.35).to_html(false), _esc(hero_name(h))]
+
+
+func _card_b(cid: String) -> String:
+	# A colour, not italics: the UI font has no italic face.
+	return "[color=#e9d8a6]%s[/color]" % _esc(_card_name(cid)) if not cid.is_empty() else ""
+
+
+static func _esc(s: String) -> String:
+	return s.replace("[", "[lb]")
+
+
+func _core_b(core_id: String) -> String:
+	var c: CoreState = state.core(core_id)
+	var card: CardDef = engine.catalog.get_card(c.card_id) if c != null else null
+	return "a core (%s)" % _esc(card.name) if card != null else "a core"
+
+
+## One log line; `ctx` carries what earlier lines said (the activated heroes for Roll / Stay).
+func _log_line(e: Dictionary, ctx: Dictionary) -> String:
+	var t: String = str(e.get("type", ""))
+	var hero: String = str(e.get("hero", ""))
+	var slot: int = JsonUtil.as_int(e.get("player", -1), -1)
+	var dot: String = "[color=#%s]•[/color] " % Palette.DIM.to_html(false)
+	match t:
+		"match_start":
+			return dot + "Match starts. %s goes first." % _who(JsonUtil.as_int(e.get("initiative", 0)))
+		"stage_placed":
+			var st: StageState = state.stage(str(e.get("stage", "")))
+			return dot + "%s places a stage." % _who(st.owner) if st != null else ""
+		"core_placed":
+			var cp: CoreState = state.core(str(e.get("core", "")))
+			return dot + "%s places a core." % _who(cp.owner) if cp != null else ""
+		"mulligan":
+			return dot + "%s takes a new hand." % _who(slot)
+		"activated":
+			var act: Dictionary = JsonUtil.as_dict(e.get("heroes", {}))
+			ctx["active"] = act
+			return ""
+		"choices":
+			var act2: Dictionary = JsonUtil.as_dict(ctx.get("active", {}))
+			var parts := PackedStringArray()
+			var roll: Dictionary = JsonUtil.as_dict(e.get("roll", {}))
+			for k: Variant in act2:
+				var rolls: bool = JsonUtil.as_bool(roll.get(k, roll.get(str(k), true)))
+				parts.append("%s activates %s, who %s" % [_who(str(k).to_int()), _hero_b(str(act2[k])), "rolls" if rolls else "stays"])
+			return dot + ". ".join(parts) + "." if not parts.is_empty() else ""
+		"draw":
+			return dot + "Everyone draws a card and gets energy."
+		"rolled":
+			var moved := PackedStringArray()
+			for id: String in JsonUtil.as_strings(e.get("moved", [])):
+				moved.append(_hero_b(id))
+			return dot + "The balls stop. Moved: %s." % ", ".join(moved) if not moved.is_empty() else dot + "The balls stop."
+		"roll_retry":
+			return dot + "%s did not leave the start strip and throws again." % _hero_b(hero)
+		"roll_again":
+			return dot + "%s rolls again." % _hero_b(hero)
+		"reverse_roll":
+			return dot + "%s goes back to where it stood." % _hero_b(hero)
+		"moved":
+			return dot + "%s moves." % _hero_b(hero)
+		"swapped":
+			return dot + "%s and %s swap places." % [_hero_b(hero), _hero_b(str(e.get("with", "")))]
+		"knockback":
+			var steps: int = JsonUtil.as_int(e.get("steps", 0))
+			return dot + "%s is knocked back %d hex%s." % [_hero_b(hero), steps, "" if steps == 1 else "es"] if steps > 0 else ""
+		"ring_out":
+			return dot + "[color=#%s]RING-OUT[/color]: %s leaves the arena." % [Palette.GOLD.to_html(false), _hero_b(hero)]
+		"stage_revealed":
+			var sr: StageState = state.stage(str(e.get("stage", "")))
+			var card: CardDef = engine.catalog.get_card(sr.card_id) if sr != null else null
+			var terrain: String = Terrain.name_of(card.terrain) if card != null and card.terrain != Terrain.Type.NONE else ""
+			var by: String = str(e.get("by", ""))
+			return dot + "%s turns %s face up%s." % [_hero_b(by) if not by.is_empty() else "A hero", _card_b(sr.card_id if sr != null else ""), (" (%s)" % terrain) if not terrain.is_empty() else ""]
+		"stage_buff":
+			return dot + _esc(_describe(e)) + "."
+		"stage_stay":
+			var ss: StageState = state.stage(str(e.get("stage", "")))
+			return dot + "%s stays on %s." % [_hero_b(hero), _card_b(ss.card_id if ss != null else "")]
+		"stage_claimed":
+			var sc: StageState = state.stage(str(e.get("stage", "")))
+			return dot + "[color=#%s]STAGE CLAIMED[/color]: %s takes %s." % [Palette.GOLD.to_html(false), _who(slot), _card_b(sc.card_id if sc != null else "")]
+		"claim_blocked":
+			var sb2: StageState = state.stage(str(e.get("stage", "")))
+			return dot + "%s cannot claim %s this turn." % [_who(slot), _card_b(sb2.card_id if sb2 != null else "")]
+		"core_activated":
+			return dot + "%s picks up %s." % [_hero_b(hero), _core_b(str(e.get("core", "")))]
+		"core_deactivated", "core_to_inventory":
+			return dot + "%s puts down %s." % [_hero_b(hero), _core_b(str(e.get("core", "")))]
+		"core_returned", "core_moved", "core_scattered":
+			return dot + "%s goes back on the field." % _core_b(str(e.get("core", ""))).capitalize() if t == "core_returned" else ""
+		"core_revealed":
+			return dot + "%s is turned face up." % _core_b(str(e.get("core", ""))).capitalize()
+		"core_trap":
+			return dot + "%s walks into a core trap." % _hero_b(hero)
+		"equipped", "evolved", "action":
+			var h: HeroState = state.hero(hero)
+			var verb: String = {"equipped": "equips", "evolved": "evolves", "action": "plays"}[t]
+			if t == "action":
+				return dot + "%s plays %s on %s." % [_who(h.owner) if h != null else "?", _card_b(str(e.get("card", ""))), _hero_b(hero)]
+			if t == "evolved":
+				return dot + "%s evolves into %s." % [_hero_b(hero), _card_b(str(e.get("card", "")))]
+			return dot + "%s %s %s." % [_hero_b(hero), verb, _card_b(str(e.get("card", "")))]
+		"assist":
+			return dot + "Assist: %s." % _card_b(str(e.get("card", "")))
+		"equipment_removed", "evolution_removed":
+			return dot + "%s loses %s." % [_hero_b(hero), _card_b(str(e.get("card", "")))]
+		"equipment_unfit":
+			return dot + "%s drops %s (%s)." % [_hero_b(hero), _card_b(str(e.get("card", ""))), _esc(str(e.get("why", "")))]
+		"ability":
+			var an: String = _triggered_name(e)
+			return dot + "%s uses %s." % [_hero_b(hero), ("[color=#e9d8a6]%s[/color]" % _esc(an)) if not an.is_empty() else _card_b(str(e.get("card", "")))]
+		"triggered":
+			var tn: String = _triggered_name(e)
+			return dot + "%s: %s." % [_hero_b(hero), ("[color=#e9d8a6]%s[/color]" % _esc(tn)) if not tn.is_empty() else _card_b(str(e.get("card", "")))]
+		"fx_buff":
+			return ""
+		"heal":
+			return dot + "%s heals %d (HP %d)." % [_hero_b(hero), JsonUtil.as_int(e.get("amount", 0)), JsonUtil.as_int(e.get("hp", 0))]
+		"energy":
+			var n: int = JsonUtil.as_int(e.get("amount", 0))
+			return dot + "%s %s %d energy (now %d)." % [_who(slot), "charges" if n >= 0 else "discharges", absi(n), JsonUtil.as_int(e.get("energy", 0))]
+		"discard":
+			return dot + "%s discards %s." % [_who(slot), _card_b(str(e.get("card", "")))]
+		"recycled":
+			return dot + "%s puts %s back into the deck." % [_who(slot), _card_b(str(e.get("card", "")))]
+		"top_card":
+			return dot + "%s shows %s (cost %d)." % [_who(slot), _card_b(str(e.get("card", ""))), JsonUtil.as_int(e.get("cost", 0))]
+		"wall":
+			return dot + "A wall goes up."
+		"battle":
+			var ids: PackedStringArray = JsonUtil.as_strings(e.get("heroes", []))
+			if ids.is_empty():
+				var bi: int = JsonUtil.as_int(e.get("index", -1), -1)
+				if bi >= 0 and bi < state.battles.size():
+					ids = JsonUtil.as_strings(state.battles[bi].get("heroes", []))
+			var power: Dictionary = JsonUtil.as_dict(e.get("power", {}))
+			var sides := PackedStringArray()
+			var pw := [0, 0]
+			for team: int in 2:
+				var names := PackedStringArray()
+				for id: String in ids:
+					var bh: HeroState = state.hero(id)
+					if bh != null and state.team_of(bh.owner) == team:
+						names.append(_hero_b(id))
+				for k: Variant in power:
+					if str(k) == str(team):
+						pw[team] = JsonUtil.as_int(power[k])
+				sides.append("%s (%d)" % [" + ".join(names), pw[team]])
+			var result: String = "tie" if pw[0] == pw[1] else ("%s wins" % ("left" if pw[0] > pw[1] else "right"))
+			if pw[0] != pw[1]:
+				result = "[color=#%s]%s side wins[/color]" % [Palette.team(0 if pw[0] > pw[1] else 1).lightened(0.35).to_html(false), Palette.TEAM_NAMES[0 if pw[0] > pw[1] else 1]]
+			return "[color=#%s]⚔ BATTLE[/color]: %s vs %s, %s." % [Palette.ACCENT.lightened(0.2).to_html(false), sides[0], sides[1], result]
+		"battle_locked":
+			return dot + "Tie: %s stay locked and fight again next turn." % _esc(_heroes_line(e))
+		"battle_tie_break":
+			return dot + "Second tie: %s are both knocked back." % _esc(_heroes_line(e))
+		"hit_held", "hold_hit":
+			return dot + "%s holds the hit back for double knockback." % _hero_b(hero) if t == "hit_held" else ""
+		"damage":
+			var amount: int = JsonUtil.as_int(e.get("amount", 0))
+			var hp: int = JsonUtil.as_int(e.get("hp", 0))
+			var src: String = str(e.get("by", ""))
+			var card_id: String = str(e.get("card", ""))
+			var red: String = Palette.ACCENT.lightened(0.25).to_html(false)
+			if amount <= 0:
+				return dot + "%s takes no damage." % _hero_b(hero)
+			var dmg: String = "[color=#%s]%d DMG[/color]" % [red, amount]
+			if src == "wall":
+				return dot + "%s hits a wall: %s (HP %d)." % [_hero_b(hero), dmg, hp]
+			if src == "trap":
+				return dot + "The trap deals %s to %s (HP %d)." % [dmg, _hero_b(hero), hp]
+			if not src.is_empty() and state.hero(src) != null:
+				return dot + "%s hits %s for %s%s (HP %d)." % [_hero_b(src), _hero_b(hero), dmg, (" with %s" % _card_b(card_id)) if not card_id.is_empty() else "", hp]
+			if not card_id.is_empty():
+				return dot + "%s: %s takes %s (HP %d)." % [_card_b(card_id), _hero_b(hero), dmg, hp]
+			return dot + "%s takes %s (HP %d)." % [_hero_b(hero), dmg, hp]
+		"deck_damage":
+			var amt: int = JsonUtil.as_int(e.get("amount", 0))
+			var by2: String = str(e.get("by", ""))
+			var hand: int = JsonUtil.as_int(e.get("from_hand", 0))
+			var left: String = (", %d left" % JsonUtil.as_int(e.get("left", 0))) if e.has("left") else ""
+			return dot + "%s takes %s to the deck%s%s%s." % [_who(slot), "[color=#%s]%d[/color]" % [Palette.ACCENT.lightened(0.25).to_html(false), amt],
+				(" from %s" % _hero_b(by2)) if not by2.is_empty() and state.hero(by2) != null else "", left, (", %d from the hand" % hand) if hand > 0 else ""]
+		"deck_out":
+			return dot + "[color=#%s]DECK-OUT[/color]: %s has no cards left." % [Palette.ACCENT.to_html(false), _who(slot)]
+		"ko":
+			return dot + "[color=#%s]KO[/color]: %s is knocked out." % [Palette.ACCENT.lightened(0.2).to_html(false), _hero_b(hero)]
+		"roll_missed":
+			return dot + "%s ran out of time to throw." % _who(slot)
+		"surrender":
+			return dot + "%s surrenders." % _who(slot)
+		"fx_skipped":
+			return dot + "%s does nothing: %s." % [_card_b(str(e.get("card", ""))), _esc(str(e.get("why", "")))]
+		"turn_end":
+			return ""
+		"match_end":
+			var w: int = JsonUtil.as_int(e.get("winner", -1), -1)
+			var reasons: Dictionary = {"ko": "all heroes KO", "stages": "three stages", "deckout": "deck-out", "surrender": "surrender", "draw": "draw"}
+			var why: String = str(reasons.get(str(e.get("result", "")), str(e.get("result", ""))))
+			return "[color=#%s]MATCH OVER[/color]: %s (%s)." % [Palette.GOLD.to_html(false), ("%s wins" % _who(w)) if w >= 0 else "draw", why]
+	return ""
+
+
 # --- end of the match ----------------------------------------------------------------
 
 func _refresh_over() -> void:

@@ -687,7 +687,7 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			# TRUE: "this damage cannot be blocked" (no damage modifiers).
 			var unblockable: bool = args.has("TRUE")
 			for h: HeroState in _targets(s, ctx, e, target, answer):
-				engine.hero_damage(s, h, n, unblockable)
+				engine.hero_damage(s, h, n, unblockable, me.id if me != null else "", str(ctx.get("card", "")))
 		"HEAL":
 			for h: HeroState in _targets(s, ctx, e, target, answer):
 				engine.heal(s, h, args[0].to_int())
@@ -884,7 +884,7 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 		"COST_DAMAGE":
 			if me == null:
 				return "no hero to pay"
-			engine.hero_damage(s, me, args[0].to_int())
+			engine.hero_damage(s, me, args[0].to_int(), false, "", str(ctx.get("card", "")))
 		"CHOOSE":
 			var branches: Array = JsonUtil.as_array(a.get("branches", []))
 			var index: int = JsonUtil.as_int(answer, 0)

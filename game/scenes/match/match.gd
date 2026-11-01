@@ -508,13 +508,20 @@ func _build_menu_overlay() -> Control:
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_menu_log.add_child(scroll)
-	var log_text := Label.new()
+	# Rich text: turn headings, names in team colours, damage in red (Marko 2026-11-01).
+	var log_text := RichTextLabel.new()
 	log_text.name = "Text"
+	log_text.bbcode_enabled = true
+	log_text.fit_content = true
+	log_text.scroll_active = false
+	log_text.selection_enabled = true
 	log_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	log_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	log_text.add_theme_color_override("font_color", Color("d8d3cb"))
-	log_text.add_theme_font_size_override("font_size", 15)
-	log_text.add_theme_constant_override("line_spacing", 4)
+	log_text.add_theme_color_override("default_color", Color("d8d3cb"))
+	log_text.add_theme_font_size_override("normal_font_size", 15)
+	log_text.add_theme_font_size_override("bold_font_size", 15)
+	log_text.add_theme_font_size_override("italics_font_size", 15)
+	log_text.add_theme_constant_override("line_separation", 5)
 	scroll.add_child(log_text)
 	return root
 
@@ -550,8 +557,8 @@ func _toggle_menu() -> void:
 func _fill_menu_log() -> void:
 	if _menu_log == null:
 		return
-	var text: Label = _menu_log.find_child("Text", true, false) as Label
-	text.text = "\n".join(hud.log_lines())
+	var text: RichTextLabel = _menu_log.find_child("Text", true, false) as RichTextLabel
+	text.text = hud.log_bbcode()
 	var scroll: ScrollContainer = text.get_parent() as ScrollContainer
 	await get_tree().process_frame
 	scroll.scroll_vertical = int(scroll.get_v_scroll_bar().max_value)
