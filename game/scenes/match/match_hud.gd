@@ -1519,6 +1519,9 @@ func _setup_prompt() -> void:
 		if stages and state.stage(id) != null and db != null and db.thumb(state.stage(id).card_id) != null:
 			_tray.add_child(_setup_card(id, state.stage(id).card_id))
 			continue
+		if not stages and state.core(id) != null and db != null and db.thumb(state.core(id).card_id) != null:
+			_tray.add_child(_setup_core(id, state.core(id).card_id))
+			continue
 		var b := Button.new()
 		b.text = _setup_label(id)
 		b.focus_mode = Control.FOCUS_NONE
@@ -1531,28 +1534,90 @@ func _setup_prompt() -> void:
 		_tray.add_child(b)
 
 
-## A stage to place as its card: a click picks it, a right click shows it big.
+## A stage to place as its card (Marko 2026-11-01): it grows under the mouse, the picked one stays
+## bigger with a gold edge and PICKED; a click picks it, a right click or the card-zoom key shows it big.
 func _setup_card(id: String, card_id: String) -> Control:
-	var tile := PanelContainer.new()
-	var sb: StyleBoxFlat = UiTheme.box(Color(0, 0, 0, 0), 6, Color(0, 0, 0, 0), 0, 0)
-	sb.set_border_width_all(4)
-	sb.border_color = Palette.GOLD if id == setup_pick else Color(0, 0, 0, 0)
-	tile.add_theme_stylebox_override("panel", sb)
 	var art := TextureRect.new()
 	art.texture = db.thumb(card_id)
 	art.custom_minimum_size = Vector2(120, 168)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tile.add_child(art)
+	return _setup_tile(id, card_id, art)
+
+
+## A core to place as its hex picture with the value under it (Marko 2026-11-01: not "Core · Buff").
+func _setup_core(id: String, card_id: String) -> Control:
+	var card: CardDef = engine.catalog.get_card(card_id)
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(96, 128)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tex: Texture2D = db.large(card_id) if db.large(card_id) != null else db.thumb(card_id)
+	var pic := TextureRect.new()
+	pic.custom_minimum_size = Vector2(78, 82)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if tex != null:
+		# Only the hex token in the middle of the white core card.
+		var cut := AtlasTexture.new()
+		cut.atlas = tex
+		var sz := Vector2(tex.get_width(), tex.get_height())
+		cut.region = Rect2(CardDb.CORE_HEX.position * sz, CardDb.CORE_HEX.size * sz)
+		pic.texture = cut
+	col.add_child(pic)
+	var family: String = card.core_family() if card != null else ""
+	var tint: Color = PlayerCard.CORE_FAMILY_COLORS[family] if PlayerCard.CORE_FAMILY_COLORS.has(family) else Palette.FG
+	var value: Label = UiTheme.label(card.name.split(" ")[0] if card != null else "?", 22, tint)
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(value)
+	var sub: Label = UiTheme.label(card.kind.to_upper() if card != null else "", 11, Palette.MUTED)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(sub)
+	return _setup_tile(id, card_id, col)
+
+
+func _setup_tile(id: String, card_id: String, content: Control) -> Control:
+	var picked: bool = id == setup_pick
+	var tile := PanelContainer.new()
+	var sb: StyleBoxFlat = UiTheme.box(Color(0.05, 0.05, 0.05, 0.9) if content is VBoxContainer else Color(0, 0, 0, 0), 6, Color(0, 0, 0, 0), 4, 4)
+	sb.set_border_width_all(4)
+	sb.border_color = Palette.GOLD if picked else Color(0, 0, 0, 0)
+	tile.add_theme_stylebox_override("panel", sb)
+	tile.add_child(content)
+	# A container puts its children's scale back to 1, so the tray holds a plain box and the
+	# panel inside it grows (from its bottom middle).
+	var holder := Control.new()
+	holder.custom_minimum_size = content.get_combined_minimum_size() + Vector2(8, 8)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(tile)
+	tile.size = holder.custom_minimum_size
+	tile.pivot_offset = Vector2(tile.size.x * 0.5, tile.size.y)
+	var rest: float = 1.18 if picked else 1.0
+	tile.scale = Vector2.ONE * rest
+	holder.z_index = 2 if picked else 0
+	if picked:
+		var chip: UiShape = UiShape.chip("PICKED", Palette.GOLD, Color.BLACK, 12, 20.0, 8.0)
+		chip.position = Vector2(6, 4)
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		content.add_child(chip)
 	tile.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var tip: String = _setup_tip(id)
-	tile.tooltip_text = (tip + "\n" if not tip.is_empty() else "") + "Click to pick, right click to see it big"
+	tile.tooltip_text = _card_tip((tip + "\n" if not tip.is_empty() else "") + "Click to pick, right click to see it big")
 	tile.mouse_entered.connect(func() -> void:
-		if id != setup_pick:
-			sb.border_color = Color(Palette.GOLD, 0.5))
+		_hovered(card_id)
+		holder.z_index = 3
+		if not picked:
+			sb.border_color = Color(Palette.GOLD, 0.55)
+		tile.create_tween().tween_property(tile, "scale", Vector2.ONE * maxf(rest, 1.14), 0.1))
 	tile.mouse_exited.connect(func() -> void:
-		sb.border_color = Palette.GOLD if id == setup_pick else Color(0, 0, 0, 0))
+		if _hover_cid == card_id:
+			_hover_cid = ""
+		holder.z_index = 2 if picked else 0
+		sb.border_color = Palette.GOLD if picked else Color(0, 0, 0, 0)
+		tile.create_tween().tween_property(tile, "scale", Vector2.ONE * rest, 0.1))
 	tile.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
 			if (e as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT:
@@ -1560,7 +1625,7 @@ func _setup_card(id: String, card_id: String) -> Control:
 			else:
 				setup_item_pressed.emit(id)
 			tile.accept_event())
-	return tile
+	return holder
 
 
 ## Stages (or cores, in the core phase) `slot` still has to place.

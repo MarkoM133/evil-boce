@@ -2084,6 +2084,28 @@ func demo_choose_card() -> void:
 	_sync()
 
 
+## Screenshot helper: every stage placed (first legal hex), player 1 about to place a core.
+func demo_setup_cores() -> void:
+	_demo = true
+	var guard: int = 0
+	while state.phase == GameState.PHASE_SETUP_STAGES and guard < 20:
+		guard += 1
+		var who: int = state.setup_turn
+		var st: StageState = state.stage(MatchHud.setup_items(state, who)[0])
+		for a: Vector2i in arena.map.cells():
+			if engine.stage_placement_error(state, st, a).is_empty():
+				engine.apply(state, Move.make(Move.PLACE_STAGE, who, {"stage": st.id, "hex": Hex.to_json(a)}))
+				break
+	# Player 1 places first in the core phase too.
+	while state.phase == GameState.PHASE_SETUP_CORES and state.setup_turn != 0 and guard < 40:
+		guard += 1
+		var c: CoreState = state.core(MatchHud.setup_items(state, state.setup_turn)[0])
+		for a: Vector2i in arena.map.cells():
+			if engine.core_placement_error(state, c, a).is_empty():
+				engine.apply(state, Move.make(Move.PLACE_CORE, state.setup_turn, {"core": c.id, "hex": Hex.to_json(a)}))
+				break
+	_sync()
+
 ## Hits hero 0, knocks hero 1 three hexes away and knocks out hero 2.
 func demo_fx_hit() -> void:
 	_demo = true
