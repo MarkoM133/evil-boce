@@ -28,20 +28,93 @@ static func parse(card: CardDef) -> Dictionary:
 	# The stage terrain line is data, not an effect.
 	var kept := PackedStringArray()
 	for l: String in text.split("\n"):
-		if not l.strip_edges().to_lower().begins_with("terrain:"):
-			kept.append(l)
+		if l.strip_edges().to_lower().begins_with("terrain:"):
+			continue
+		# A bonus line is a sentence of its own, even after a bare phase ("Battle Phase:").
+		if _is_bonus(l.strip_edges()) and not kept.is_empty() and _rx("[.!?]\\s*$").search(kept[kept.size() - 1]) == null:
+			kept[kept.size() - 1] = kept[kept.size() - 1].strip_edges() + "."
+		kept.append(l)
 	text = "\n".join(kept)
 	if text.strip_edges().is_empty():
 		return {"fx": "", "unparsed": unparsed}
 	var self_name: String = card.hero if card.type == "Evolution" and not card.hero.is_empty() else card.name
 	var t: String = _normalise(text, self_name)
+	# A colour bonus sentence ("Red Bonus: …", 2026-11-01) leans on the sentence before it.
+	var prev: FxEffect = null
+	var prev_sentence: String = ""
 	for sentence: String in _sentences(t):
-		var e: FxEffect = _parse_sentence(sentence, card)
+		var e: FxEffect = _parse_sentence(sentence, card, prev, prev_sentence)
 		if e == null:
 			unparsed.append(sentence)
 		else:
 			lines.append(e.to_fx())
+		if not _is_bonus(sentence):
+			prev = e
+			prev_sentence = sentence
 	return {"fx": "\n".join(lines), "unparsed": unparsed}
+
+
+const BONUS_HEAD: String = "^((?:Cyan|Yellow|Purple|Red|Blue|Green)(?:\\s*/\\s*(?:Cyan|Yellow|Purple|Red|Blue|Green))*)\\s+Bonus:\\s*(.*)$"
+const STAT_WORD: String = "(?:power|pwr|\\[pwr\\]|dmg|damage|\\[dmg\\]|kb|knockback|\\[kb\\]|range|rng|\\[rng\\]|hp|\\[hp\\])"
+
+
+static func _is_bonus(sentence: String) -> bool:
+	return _rx(BONUS_HEAD).search(sentence) != null
+
+
+## A bonus sentence: the colours, then what the bonus is. "This card costs N less to play" is
+## OWN_COST; "+N STAT" a buff on the card's hero; "It also …" an extra effect; "It … N …
+## instead" the sentence before with its number swapped, replacing it (INSTEAD). Anything else
+## is read as a sentence of its own. The effect takes the WHEN and flags of the sentence before.
+static func _parse_bonus(colors: String, rest: String, card: CardDef, prev: FxEffect, prev_sentence: String) -> FxEffect:
+	var names: PackedStringArray = colors.split("/", false)
+	var e: FxEffect = null
+	var low: String = rest.strip_edges().trim_suffix(".").strip_edges().to_lower()
+	var instead: bool = low.ends_with(" instead")
+	if instead:
+		low = low.trim_suffix(" instead").strip_edges()
+	var m: RegExMatch = _rx("^this card costs (\\d+) (less|more)(?: to play)?$").search(low)
+	if m != null:
+		e = FxEffect.new()
+		e.when = "PLAY"
+		e.actions = [_act("OWN_COST", "", [("-" if m.get_string(2) == "less" else "") + m.get_string(1)])]
+	elif _rx("^[+-]\\d+ " + STAT_WORD + "$").search(low) != null:
+		var who: String = "the equipped hero gains " if card.type == "Equipment" else "self gains "
+		e = FxEffect.new()
+		e.when = "PASSIVE" if card.type == "Equipment" or card.type == "Assist" else (prev.when if prev != null else "PLAY")
+		e.actions = _clause(who + low)
+	elif instead and low.begins_with("it ") and prev != null:
+		# "It heals 4 HP instead": the sentence before, its one number replaced by this one.
+		var nums: Array[RegExMatch] = _rx("[+-]?\\d+").search_all(low)
+		var old: Array[RegExMatch] = _rx("[+-]?\\d+").search_all(prev_sentence)
+		if nums.size() == 1 and old.size() == 1:
+			var swapped: String = prev_sentence.substr(0, old[0].get_start()) + nums[0].get_string() + prev_sentence.substr(old[0].get_end())
+			e = _parse_sentence(swapped, card)
+	else:
+		var text: String = rest.strip_edges().trim_suffix(".").strip_edges()
+		if instead:
+			text = _rx("\\s+instead$").sub(text, "")
+		# "It also …", "You also …": the extra effect; "It" is the card's hero.
+		text = _rx("^(It|You|They|SELF) also ").sub(text, "$1 ")
+		if text.to_lower().begins_with("it "):
+			text = "SELF " + text.substr(3)
+		e = _parse_sentence(text, card)
+		if e != null and prev != null and _rx("^(?:\\[Range\\] ?)?(Start|Preroll|Roll|Postroll|Battle|End)").search(text) == null:
+			e.when = prev.when
+			e.range = prev.range
+			e.once = prev.once
+			if e.cond.is_empty():
+				e.cond = prev.cond
+				e.cond_arg = prev.cond_arg
+	if e == null or e.actions.is_empty():
+		return null
+	e.bonus = true
+	if names.size() == 1:
+		e.bonus_color = names[0].strip_edges().to_upper()
+	e.instead = instead
+	if instead and prev != null:
+		e.when = prev.when
+	return e
 
 
 static func _normalise(text: String, self_name: String) -> String:
@@ -65,16 +138,19 @@ static func _sentences(t: String) -> PackedStringArray:
 	return out
 
 
-static func _parse_sentence(sentence: String, card: CardDef) -> FxEffect:
+static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = null, prev_sentence: String = "") -> FxEffect:
 	var e := FxEffect.new()
 	var s: String = sentence
+	var bm: RegExMatch = _rx(BONUS_HEAD).search(s)
+	if bm != null:
+		return _parse_bonus(bm.get_string(1), bm.get_string(2), card, prev, prev_sentence)
 	_traits = PackedStringArray()
 	for tm: RegExMatch in _rx("\\{(\\w+)\\}").search_all(s):
 		_traits.append(tm.get_string(1))
 	if s.begins_with("[Range] ") or s.begins_with("[Range]"):
 		e.range = true
 		s = s.trim_prefix("[Range]").strip_edges()
-	var m: RegExMatch = _rx("^(Preroll|Roll|Postroll|Battle|End)(?: Phase)?( Once Per Turn)?:\\s*(.*)$").search(s)
+	var m: RegExMatch = _rx("^(Start|Preroll|Roll|Postroll|Battle|End)(?: Phase)?( Once Per Turn)?:\\s*(.*)$").search(s)
 	if m != null:
 		e.when = PHASES[m.get_string(1).to_lower()]
 		e.once = not m.get_string(2).is_empty()

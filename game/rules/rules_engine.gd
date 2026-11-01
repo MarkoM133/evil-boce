@@ -557,11 +557,11 @@ func _offer_roll_effects(s: GameState) -> void:
 				var card: CardDef = catalog.get_card(cid)
 				if card == null or not card.is_ready() or _play_phase(card) != "ROLL":
 					continue
-				if hero_card != null and hero_card.color != card.color:
+				if hero_card != null and not card.plays_for_color(hero_card.color):
 					continue
 				if hero_card != null and not JsonUtil.as_bool(FirstTag.play_verdict(catalog, card, hero_card, stat_card(h))["ok"]):
 					continue
-				if card_cost(s, p, card) <= p.energy:
+				if card_cost(s, p, card, h) <= p.energy:
 					cards.append(cid)
 			s.pending.append({"type": DECISION_ROLL_OFFER, "player": slot, "hero": h.id, "at": s.log.size(),
 				"abilities": Array(abilities), "cards": Array(cards)})
@@ -1647,9 +1647,6 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 		return "unknown card"
 	if not card.is_ready():
 		return "card effects are not ready yet"
-	var cost: int = 0 if free else card_cost(s, p, card)
-	if cost > p.energy:
-		return "not enough energy (%d, costs %d)" % [p.energy, cost]
 	var phase_lock: String = _play_phase(card)
 	if not phase_lock.is_empty() and phase_lock != s.phase.to_upper():
 		return "playable in the %s phase" % phase_lock.to_lower()
@@ -1660,9 +1657,10 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 		var context: Array[HeroState] = card_context_heroes(s, slot)
 		if context.is_empty():
 			return "no hero to play cards for"
+		# A colorless card is for a hero of any colour (its bonus is worked out per hero).
 		for h: HeroState in context:
 			var hc: CardDef = catalog.get_card(h.card_id)
-			if hc != null and hc.color == card.color:
+			if hc != null and card.plays_for_color(hc.color):
 				same_colour.append(h)
 		if same_colour.is_empty():
 			if s.phase == GameState.PHASE_BATTLE:
@@ -1692,6 +1690,11 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 				target = h
 		if target == null:
 			return "that hero cannot take this card now"
+	# The cost depends on the hero the card is played for (a colorless card's bonus): with no
+	# target picked (an Assist), the cheapest of the heroes that fit.
+	var cost: int = 0 if free else card_cost(s, p, card, target if target != null else _cheapest_for(s, p, card, same_colour))
+	if cost > p.energy:
+		return "not enough energy (%d, costs %d)" % [p.energy, cost]
 	match card.type:
 		"Equipment":
 			if target.equipment.size() >= s.settings.equipment_limit:
@@ -1802,12 +1805,41 @@ func _cost_damage(card: CardDef) -> int:
 	return 0
 
 
-## Energy a card costs this player now: discounts never go below 1 (GDD 10).
-func card_cost(s: GameState, p: PlayerState, card: CardDef) -> int:
+## Energy a card costs this player now: discounts never go below 1 (GDD 10). `hero` is the hero
+## the card is played for (a colorless card's own-cost bonus); without one, the cheapest of the
+## heroes it could go to now, so the hand shows the price the player can get.
+func card_cost(s: GameState, p: PlayerState, card: CardDef, hero: HeroState = null) -> int:
 	var mod: int = fx.cost_mod(s, p, card)
+	if hero == null:
+		hero = _cheapest_for(s, p, card, playable_heroes(s, p.slot, card))
+	mod += fx.own_cost(s, p, card, hero)
 	if card.cost <= 0:
 		return maxi(card.cost + mod, 0)
 	return maxi(card.cost + mod, 1)
+
+
+## The heroes in the card round's context that this card may go to now (colour and first tag).
+func playable_heroes(s: GameState, slot: int, card: CardDef) -> Array[HeroState]:
+	var out: Array[HeroState] = []
+	for h: HeroState in card_context_heroes(s, slot):
+		var hc: CardDef = catalog.get_card(h.card_id)
+		if hc == null or not card.plays_for_color(hc.color):
+			continue
+		if JsonUtil.as_bool(FirstTag.play_verdict(catalog, card, hc, stat_card(h))["ok"]):
+			out.append(h)
+	return out
+
+
+## Of these heroes, the one the card costs least for (its colour bonus); null when none.
+func _cheapest_for(s: GameState, p: PlayerState, card: CardDef, heroes: Array[HeroState]) -> HeroState:
+	var best: HeroState = null
+	var best_cost: int = 0
+	for h: HeroState in heroes:
+		var c: int = fx.own_cost(s, p, card, h)
+		if best == null or c < best_cost:
+			best = h
+			best_cost = c
+	return best
 
 
 ## ROLL_AGAIN: the activated hero rolls once more, right away, in the Roll phase.

@@ -116,3 +116,26 @@ func test_fx_language_round_trip() -> void:
 	assert_null(FxEffect.parse_line("POSTROLL: BUFF SELF 2000"))
 	assert_null(FxEffect.parse_line("NEVER: HEAL SELF 1"))
 	assert_null(FxEffect.parse_line("PREROLL: HEAL 5"))
+
+
+func test_colour_bonus_lines() -> void:
+	# Colorless cards (2026-11-01): "<Colour> Bonus:" lines, as the drafts of the twelve cards say them.
+	var none: Dictionary = {"color": "None", "bonusColors": ["Red"]}
+	_assert_fx(_fx("Action", "Taunt", "Postroll Phase: Make an Opponent's Hero move 2 spaces towards you.\nRed Bonus: It moves 3 spaces instead.", none),
+		"POSTROLL: KNOCKBACK ENEMY 2 TOWARDS\nPOSTROLL INSTEAD BONUS RED: KNOCKBACK ENEMY 3 TOWARDS")
+	_assert_fx(_fx("Action", "Bon Apetit", "[Range] Preroll Phase: A friendly Hero heals 3 HP.\nPurple Bonus: It heals 4 HP instead.", none),
+		"PREROLL RANGE: HEAL FRIENDLY 3\nPREROLL RANGE INSTEAD BONUS PURPLE: HEAL FRIENDLY 4")
+	_assert_fx(_fx("Action", "Observation Haki", "[Range] Preroll Phase: Reveal a Core.\nCyan Bonus: This card costs 1 less to play.", none),
+		"PREROLL RANGE: REVEAL_CORE\nPLAY BONUS CYAN: OWN_COST -1")
+	_assert_fx(_fx("Assist", "Rayleigh", "Your {Haki} cards cost 1 less to play.\nCyan Bonus: This card costs 1 less to play.", none),
+		"PASSIVE: COST ME -1 {Haki}\nPLAY BONUS CYAN: OWN_COST -1")
+	_assert_fx(_fx("Action", "Armament Haki", "Battle Phase:\nYellow Bonus: +1 DMG.", none), "BATTLE:\nBATTLE BONUS YELLOW: BUFF SELF DMG 1")
+	_assert_fx(_fx("Action", "Full Body Armament Haki", "Preroll Phase: This Hero is immune to Knockback this turn.\nBlue Bonus: It also takes -1 DMG from all sources this turn.", none),
+		"PREROLL: STATUS SELF IMMUNE_KB TURN\nPREROLL BONUS BLUE: DAMAGE_MOD SELF -1 TURN")
+	_assert_fx(_fx("Equipment", "Sandai Kitetsu", "The equipped Hero takes +1 DMG from all sources.\nYellow Bonus: +1 DMG.", none),
+		"PASSIVE: DAMAGE_MOD EQUIPPED 1\nPASSIVE BONUS YELLOW: BUFF EQUIPPED DMG 1")
+	_assert_fx(_fx("Equipment", "Enma", "Preroll Phase: You must discharge 1 Energy if the equipped Hero is activated.\nYellow Bonus: +1000 Power.", none),
+		"PREROLL IF ACTIVATED: DISCHARGE ME 1\nPASSIVE BONUS YELLOW: BUFF EQUIPPED PWR 1000")
+	# Two colours with the same bonus: no colour on the flag, the card's bonusColors decide.
+	_assert_fx(_fx("Action", "Peek", "[Range] Preroll Phase: Reveal a Core.\nCyan / Purple Bonus: This card costs 1 less to play.", {"color": "None", "bonusColors": ["Cyan", "Purple"]}),
+		"PREROLL RANGE: REVEAL_CORE\nPLAY BONUS: OWN_COST -1")

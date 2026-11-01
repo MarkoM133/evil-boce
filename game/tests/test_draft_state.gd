@@ -50,7 +50,7 @@ func test_only_legal_cards_and_the_rest_goes_to_the_other() -> void:
 	var before: int = d.current_pack().size()
 	for id: String in d.options(slot):
 		var c: CardDef = catalog.get_card(id)
-		assert_true(d._hero_colors(slot).has(c.color), "%s is of the picker's colours" % id)
+		assert_true(c.is_colorless() or d._hero_colors(slot).has(c.color), "%s is of the picker's colours (or colorless)" % id)
 	var id: String = d.options(slot)[0]
 	assert_eq(d.pick(slot, id), "")
 	assert_eq(d.current_pack().size(), before - 1, "one card left the pack")

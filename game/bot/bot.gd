@@ -513,7 +513,7 @@ static func draft_pick(catalog: CardCatalog, draft: DraftState, slot: int, rng_:
 			score += c.hp + c.dmg * 2.0 + c.pwr / 1000.0 + c.rng + c.kb
 			for hid: String in draft.heroes[slot]:
 				var h: CardDef = catalog.get_card(hid)
-				if h != null and h.color == c.color:
+				if h != null and (h.color == c.color or c.has_bonus_for(h.color)):
 					score += 3.0
 		else:
 			var kind: String = str(FirstTag.kind_of(catalog, c)["kind"])

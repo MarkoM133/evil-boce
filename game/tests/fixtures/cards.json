@@ -1,120 +1,981 @@
 {
   "version": 1,
-  "traits": [{"name": "Haki"}, {"name": "Sword"}, {"name": "Gear Second"}],
+  "traits": [
+    {
+      "name": "Haki"
+    },
+    {
+      "name": "Sword"
+    },
+    {
+      "name": "Gear Second"
+    }
+  ],
   "cards": [
-    {"id": "TF-001", "name": "Alpha Only", "type": "Action", "color": "Red", "cost": 1, "traits": ["alpha"], "text": "x", "fx": "PREROLL: HEAL SELF 0"},
-    {"id": "TF-002", "name": "Gear Punch", "type": "Action", "color": "Red", "cost": 1, "traits": ["Gear Second"], "text": "x", "fx": "PREROLL: HEAL SELF 0"},
-    {"id": "TF-003", "name": "Gear Armor", "type": "Equipment", "color": "Red", "cost": 1, "traits": ["Gear Second"], "bonus": {"pwr": 1000}, "text": ""},
-    {"id": "TF-004", "name": "Red Will", "type": "Action", "color": "Red", "cost": 1, "traits": ["Haki"], "text": "x", "fx": "PREROLL: HEAL SELF 0"},
-    {"id": "TF-005", "name": "Unmake", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"], "text": "", "fx": "PREROLL: REMOVE_EVO SELF"},
-    {"id": "TF-006", "name": "Twin Strike", "type": "Action", "color": "Red", "cost": 1, "traits": ["Alpha & Hotel"], "text": "x", "fx": "PREROLL: HEAL SELF 0"},
-    {"id": "TF-007", "name": "Hotel Spin", "type": "Action", "color": "Red", "cost": 1, "traits": ["hotel"], "text": "x", "fx": "ROLL: HEAL SELF 0"},
-    {"id": "TF-008", "name": "Any Spin", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"], "text": "x", "fx": "ROLL: HEAL SELF 0"},
-    {"id": "TF-009", "name": "Sword Slash", "type": "Action", "color": "Red", "cost": 1, "traits": ["General", "Sword"], "text": "x", "fx": "BATTLE: BUFF SELF PWR 1000"},
-    {"id": "TF-010", "name": "Shared Meal", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"], "text": "x", "fx": "PREROLL RANGE: HEAL FRIENDLY 4"},
-    {"id": "TA-001", "name": "Alpha", "type": "Hero", "color": "Red", "wt": 2, "traits": ["Haki"],
-     "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2},
-     "text": "Postroll Phase Once Per Turn: Alpha may move up to 2 spaces."},
-    {"id": "TA-002", "name": "Bravo", "type": "Hero", "color": "Blue", "wt": 3,
-     "stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 2, "kb": 3}, "text": ""},
-    {"id": "TA-003", "name": "Charlie", "type": "Hero", "color": "Green", "wt": 1,
-     "stats": {"hp": 8, "dmg": 2, "pwr": 1000, "rng": 4, "kb": 1}, "text": ""},
-    {"id": "TA-004", "name": "Delta", "type": "Hero", "color": "Purple", "wt": 4,
-     "stats": {"hp": 14, "dmg": 5, "pwr": 4000, "rng": 2, "kb": 4}, "text": ""},
-    {"id": "TA-005", "name": "Hotel", "type": "Hero", "color": "Red", "wt": 2,
-     "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2},
-     "text": "Postroll Phase: If Hotel is activated, all other Heroes in Range take 2 DMG."},
-    {"id": "TA-006", "name": "India", "type": "Hero", "color": "Blue", "wt": 2,
-     "stats": {"hp": 12, "dmg": 3, "pwr": 2500, "rng": 2, "kb": 2},
-     "text": "India takes -1 DMG from all sources."},
-    {"id": "TB-001", "name": "Echo", "type": "Hero", "color": "Red", "wt": 2,
-     "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2}, "text": ""},
-    {"id": "TB-002", "name": "Foxtrot", "type": "Hero", "color": "Cyan", "wt": 2,
-     "stats": {"hp": 10, "dmg": 3, "pwr": 2500, "rng": 3, "kb": 2}, "text": ""},
-    {"id": "TB-003", "name": "Golf", "type": "Hero", "color": "Yellow", "wt": 1,
-     "stats": {"hp": 9, "dmg": 2, "pwr": 1500, "rng": 2, "kb": 1}, "text": ""},
-    {"id": "TB-004", "name": "Juliet", "type": "Hero", "color": "Cyan", "wt": 2,
-     "stats": {"hp": 10, "dmg": 2, "pwr": 1500, "rng": 3, "kb": 1},
-     "text": "All friendly Heroes in Juliet's Range have +1000 Power."},
-
-    {"id": "TA-012", "name": "Alpha, Awakened", "type": "Evolution", "color": "Red", "cost": 3, "traits": ["Haki", "Gear Second"],
-     "evo": 1, "hero": "Alpha", "stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2}, "text": ""},
-    {"id": "TA-013", "name": "Alpha, Ascended", "type": "Evolution", "color": "Red", "cost": 5,
-     "evo": 2, "hero": "Alpha", "stats": {"hp": 14, "dmg": 5, "pwr": 4000, "rng": 3, "kb": 3}, "text": ""},
-    {"id": "TB-012", "name": "Echo, Awakened", "type": "Evolution", "color": "Red", "cost": 3,
-     "evo": 1, "hero": "Echo", "stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2}, "text": ""},
-
-    {"id": "TA-020", "name": "Red Blade", "type": "Equipment", "traits": ["General"], "color": "Red", "cost": 2, "bonus": {"pwr": 1000, "hp": 2}, "text": ""},
-    {"id": "TA-021", "name": "Red Cloak", "type": "Equipment", "traits": ["General"], "color": "Red", "cost": 1, "bonus": {}, "text": ""},
-    {"id": "TA-022", "name": "Red Boots", "type": "Equipment", "traits": ["General"], "color": "Red", "cost": 0, "bonus": {}, "text": ""},
-    {"id": "TA-023", "name": "Red Ring", "type": "Equipment", "traits": ["General"], "color": "Red", "cost": 0, "bonus": {}, "text": ""},
-
-    {"id": "TA-030", "name": "Helper One", "type": "Assist", "traits": ["General"], "color": "Red", "cost": 1, "text": ""},
-    {"id": "TA-031", "name": "Helper Two", "type": "Assist", "traits": ["General"], "color": "Red", "cost": 1, "text": ""},
-    {"id": "TA-032", "name": "Helper Three", "type": "Assist", "traits": ["General"], "color": "Red", "cost": 1, "text": ""},
-    {"id": "TA-033", "name": "Helper Four", "type": "Assist", "traits": ["General"], "color": "Red", "cost": 1, "text": ""},
-    {"id": "TA-034", "name": "Red Mentor", "type": "Assist", "traits": ["General"], "color": "Red", "cost": 1, "text": "Your {Haki} cards cost 1 less to play."},
-
-    {"id": "TA-040", "name": "Red Surge", "type": "Action", "traits": ["General"], "color": "Red", "cost": 1, "bonus": {"pwr": 1000}, "text": ""},
-    {"id": "TA-041", "name": "Red Trick", "type": "Action", "traits": ["General"], "color": "Red", "cost": 1, "bonus": {}, "text": "Postroll Phase: Shuffle the universe."},
-    {"id": "TA-042", "name": "Blue Surge", "type": "Action", "traits": ["General"], "color": "Blue", "cost": 1, "bonus": {"pwr": 1000}, "text": ""},
-    {"id": "TA-043", "name": "Red Mend", "type": "Action", "traits": ["General"], "color": "Red", "cost": 2, "text": "Preroll Phase: Heal 5 HP."},
-    {"id": "TA-044", "name": "Red Guard", "type": "Action", "traits": ["General"], "color": "Red", "cost": 1,
-     "text": "Preroll Phase: This Hero is immune to Knockback and takes -1 DMG from all sources this turn."},
-    {"id": "TA-045", "name": "Red Shove", "type": "Action", "traits": ["General"], "color": "Red", "cost": 2,
-     "text": "[Range] Postroll Phase: Knockback an Opponent's Hero 3 spaces in the opposite direction of your Hero."},
-    {"id": "TA-046", "name": "Red Bricks", "type": "Action", "traits": ["General"], "color": "Red", "cost": 1, "text": "[Range] Preroll Phase: Place a Wall."},
-    {"id": "TA-047", "name": "Red Gambit", "type": "Action", "traits": ["General"], "color": "Red", "cost": 2, "bonus": {"pwr": 2000},
-     "text": "Battle Phase: If you win this Battle, your Opponent must discard a card."},
-    {"id": "TA-048", "name": "Red Encore", "type": "Action", "traits": ["General"], "color": "Red", "cost": 2, "text": "Roll Phase: You may roll the activated Hero again."},
-    {"id": "TA-049", "name": "Red Haki Strike", "type": "Action", "color": "Red", "cost": 3, "bonus": {"pwr": 1000}, "traits": ["General", "Haki"], "text": ""},
-    {"id": "TA-050", "name": "Red Blockade", "type": "Action", "traits": ["General"], "color": "Red", "cost": 2, "text": "[Range] Postroll Phase: Your Opponent cannot take a Stage this turn."},
-    {"id": "TA-051", "name": "Red Dilemma", "type": "Action", "traits": ["General"], "color": "Red", "cost": 2,
-     "text": "[Range] Postroll Phase: Your Opponent chooses:\n- You charge 2 Energy and they discharge 2 Energy\n- Your Hero heals 3 HP and their Hero takes 3 DMG"},
-    {"id": "TB-050", "name": "Orange Trick", "type": "Action", "traits": ["General"], "color": "Orange", "cost": 1, "bonus": {}, "text": ""},
-    {"id": "TX-010", "name": "Filler", "type": "Action", "traits": ["General"], "color": "Red", "cost": 1, "text": ""},
-    {"id": "TX-011", "name": "Filler Two", "type": "Action", "traits": ["General"], "color": "Blue", "cost": 2, "text": ""},
-
-    {"id": "TA-007", "name": "Kilo", "type": "Hero", "color": "Red", "wt": 2,
-     "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2}, "text": "x", "fx": "END IF ACTIVATED: RECYCLE ME 1 TOP"},
-    {"id": "TA-008", "name": "Lima", "type": "Hero", "color": "Red", "wt": 2,
-     "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2}, "text": "x",
-     "fx": "BATTLE ONCE OPTIONAL: DEACTIVATE_CORE SELF 2 UPTO; BUFF SELF DMG 1 TURN PER COUNT; BUFF SELF PWR 2000 TURN PER COUNT"},
-    {"id": "TA-009", "name": "Mike", "type": "Hero", "color": "Red", "wt": 2,
-     "stats": {"hp": 10, "dmg": 3, "pwr": 3000, "rng": 3, "kb": 2}, "text": "x", "fx": "BATTLE IF WIN OPTIONAL: HOLD_HIT SELF"},
-    {"id": "TA-010", "name": "November", "type": "Hero", "color": "Red", "wt": 2,
-     "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2}, "text": "x",
-     "fx": "POSTROLL ONCE OPTIONAL: DEACTIVATE_CORE SELF 1; FREE_PLAY 3 {Sword} Equipment"},
-    {"id": "TA-011", "name": "Papa", "type": "Hero", "color": "Red", "wt": 2,
-     "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2}, "text": "x",
-     "fx": "PASSIVE: DAMAGE_MOD SELF -1\nROLL ONCE OPTIONAL IF ACTIVATED: ROLL_AGAIN; DAMAGE SELF 2 TRUE"},
-    {"id": "TA-024", "name": "Blue Sword", "type": "Equipment", "color": "Blue", "cost": 3, "traits": ["General", "Sword"], "bonus": {"pwr": 1000}, "text": ""},
-    {"id": "TA-035", "name": "Sword Hunter", "type": "Assist", "traits": ["General"], "color": "Red", "cost": 1, "text": "x",
-     "fx": "BATTLE IF OPP_EQUIPPED {Sword}: BUFF SELF PWR 2000"},
-    {"id": "TA-052", "name": "Core Snare", "type": "Action", "traits": ["General"], "color": "Red", "cost": 1, "text": "x",
-     "fx": "PREROLL RANGE: PICK_CORE; MOVE_CORE 2; TRAP_CORE 3"},
-    {"id": "TA-053", "name": "Shuffle Step", "type": "Action", "traits": ["General"], "color": "Red", "cost": 1, "text": "x",
-     "fx": "POSTROLL: MOVE ALL_FRIENDLY_IN_RANGE 1"},
-    {"id": "TA-055", "name": "Switch", "type": "Action", "traits": ["General"], "color": "Red", "cost": 1, "text": "x",
-     "fx": "POSTROLL RANGE: SWAP FRIENDLY ENGAGED"},
-    {"id": "TA-056", "name": "Short Reach", "type": "Action", "traits": ["General"], "color": "Red", "cost": 1, "text": "Postroll Phase: Your Hero gains +2 Range."},
-    {"id": "TA-057", "name": "Long Reach", "type": "Action", "traits": ["General"], "color": "Red", "cost": 1, "text": "Postroll Phase: Your Hero gains +2 Range until the end of the turn."},
-    {"id": "TS-007", "name": "Arena of Cards", "type": "Stage", "text": "x", "fx": "REVEAL: DUEL_TOP PWR 2000"},
-    {"id": "TS-001", "name": "Frozen Lake", "type": "Stage", "text": "Terrain: Ice"},
-    {"id": "TS-002", "name": "Swamp", "type": "Stage", "text": "Terrain: Mud"},
-    {"id": "TS-003", "name": "Plain Field", "type": "Stage", "text": ""},
-    {"id": "TS-004", "name": "Glacier", "type": "Stage", "text": "Terrain: Ice"},
-    {"id": "TS-005", "name": "Bog", "type": "Stage", "text": "Terrain: Mud"},
-    {"id": "TS-006", "name": "Meadow", "type": "Stage", "text": "When this Stage is revealed, the Hero with more HP gains +3000 Power."},
-    {"id": "CR0-001", "name": "Buff core 1", "type": "Core", "kind": "Buff"},
-    {"id": "CR0-002", "name": "Buff core 2", "type": "Core", "kind": "Buff"},
-    {"id": "CR0-003", "name": "Major core 1", "type": "Core", "kind": "Major"},
-    {"id": "CR0-004", "name": "Major core 2", "type": "Core", "kind": "Major"},
-    {"id": "CR0-005", "name": "Debuff core 1", "type": "Core", "kind": "Debuff"},
-    {"id": "CR0-006", "name": "Debuff core 2", "type": "Core", "kind": "Debuff"},
-    {"id": "CR1-001", "name": "+4000 Power", "type": "Core", "traits": ["Major"], "bonus": {"pwr": 4000}},
-    {"id": "CR1-002", "name": "+2 Damage", "type": "Core", "traits": ["Buff"], "bonus": {"dmg": 2}},
-    {"id": "CR1-003", "name": "-2 Damage", "type": "Core", "traits": ["Debuff"], "bonus": {"dmg": -2}},
-    {"id": "CR1-004", "name": "-1 Knockback", "type": "Core", "traits": ["Debuff"], "bonus": {"kb": -1}}
+    {
+      "id": "TF-001",
+      "name": "Alpha Only",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "alpha"
+      ],
+      "text": "x",
+      "fx": "PREROLL: HEAL SELF 0"
+    },
+    {
+      "id": "TF-002",
+      "name": "Gear Punch",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "Gear Second"
+      ],
+      "text": "x",
+      "fx": "PREROLL: HEAL SELF 0"
+    },
+    {
+      "id": "TF-003",
+      "name": "Gear Armor",
+      "type": "Equipment",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "Gear Second"
+      ],
+      "bonus": {
+        "pwr": 1000
+      },
+      "text": ""
+    },
+    {
+      "id": "TF-004",
+      "name": "Red Will",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "Haki"
+      ],
+      "text": "x",
+      "fx": "PREROLL: HEAL SELF 0"
+    },
+    {
+      "id": "TF-005",
+      "name": "Unmake",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "General"
+      ],
+      "text": "",
+      "fx": "PREROLL: REMOVE_EVO SELF"
+    },
+    {
+      "id": "TF-006",
+      "name": "Twin Strike",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "Alpha & Hotel"
+      ],
+      "text": "x",
+      "fx": "PREROLL: HEAL SELF 0"
+    },
+    {
+      "id": "TF-007",
+      "name": "Hotel Spin",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "hotel"
+      ],
+      "text": "x",
+      "fx": "ROLL: HEAL SELF 0"
+    },
+    {
+      "id": "TF-008",
+      "name": "Any Spin",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "General"
+      ],
+      "text": "x",
+      "fx": "ROLL: HEAL SELF 0"
+    },
+    {
+      "id": "TF-009",
+      "name": "Sword Slash",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "General",
+        "Sword"
+      ],
+      "text": "x",
+      "fx": "BATTLE: BUFF SELF PWR 1000"
+    },
+    {
+      "id": "TF-010",
+      "name": "Shared Meal",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "General"
+      ],
+      "text": "x",
+      "fx": "PREROLL RANGE: HEAL FRIENDLY 4"
+    },
+    {
+      "id": "TA-001",
+      "name": "Alpha",
+      "type": "Hero",
+      "color": "Red",
+      "wt": 2,
+      "traits": [
+        "Haki"
+      ],
+      "stats": {
+        "hp": 10,
+        "dmg": 3,
+        "pwr": 2000,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": "Postroll Phase Once Per Turn: Alpha may move up to 2 spaces."
+    },
+    {
+      "id": "TA-002",
+      "name": "Bravo",
+      "type": "Hero",
+      "color": "Blue",
+      "wt": 3,
+      "stats": {
+        "hp": 12,
+        "dmg": 4,
+        "pwr": 3000,
+        "rng": 2,
+        "kb": 3
+      },
+      "text": ""
+    },
+    {
+      "id": "TA-003",
+      "name": "Charlie",
+      "type": "Hero",
+      "color": "Green",
+      "wt": 1,
+      "stats": {
+        "hp": 8,
+        "dmg": 2,
+        "pwr": 1000,
+        "rng": 4,
+        "kb": 1
+      },
+      "text": ""
+    },
+    {
+      "id": "TA-004",
+      "name": "Delta",
+      "type": "Hero",
+      "color": "Purple",
+      "wt": 4,
+      "stats": {
+        "hp": 14,
+        "dmg": 5,
+        "pwr": 4000,
+        "rng": 2,
+        "kb": 4
+      },
+      "text": ""
+    },
+    {
+      "id": "TA-005",
+      "name": "Hotel",
+      "type": "Hero",
+      "color": "Red",
+      "wt": 2,
+      "stats": {
+        "hp": 10,
+        "dmg": 3,
+        "pwr": 2000,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": "Postroll Phase: If Hotel is activated, all other Heroes in Range take 2 DMG."
+    },
+    {
+      "id": "TA-006",
+      "name": "India",
+      "type": "Hero",
+      "color": "Blue",
+      "wt": 2,
+      "stats": {
+        "hp": 12,
+        "dmg": 3,
+        "pwr": 2500,
+        "rng": 2,
+        "kb": 2
+      },
+      "text": "India takes -1 DMG from all sources."
+    },
+    {
+      "id": "TB-001",
+      "name": "Echo",
+      "type": "Hero",
+      "color": "Red",
+      "wt": 2,
+      "stats": {
+        "hp": 10,
+        "dmg": 3,
+        "pwr": 2000,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": ""
+    },
+    {
+      "id": "TB-002",
+      "name": "Foxtrot",
+      "type": "Hero",
+      "color": "Cyan",
+      "wt": 2,
+      "stats": {
+        "hp": 10,
+        "dmg": 3,
+        "pwr": 2500,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": ""
+    },
+    {
+      "id": "TB-003",
+      "name": "Golf",
+      "type": "Hero",
+      "color": "Yellow",
+      "wt": 1,
+      "stats": {
+        "hp": 9,
+        "dmg": 2,
+        "pwr": 1500,
+        "rng": 2,
+        "kb": 1
+      },
+      "text": ""
+    },
+    {
+      "id": "TB-004",
+      "name": "Juliet",
+      "type": "Hero",
+      "color": "Cyan",
+      "wt": 2,
+      "stats": {
+        "hp": 10,
+        "dmg": 2,
+        "pwr": 1500,
+        "rng": 3,
+        "kb": 1
+      },
+      "text": "All friendly Heroes in Juliet's Range have +1000 Power."
+    },
+    {
+      "id": "TA-012",
+      "name": "Alpha, Awakened",
+      "type": "Evolution",
+      "color": "Red",
+      "cost": 3,
+      "traits": [
+        "Haki",
+        "Gear Second"
+      ],
+      "evo": 1,
+      "hero": "Alpha",
+      "stats": {
+        "hp": 12,
+        "dmg": 4,
+        "pwr": 3000,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": ""
+    },
+    {
+      "id": "TA-013",
+      "name": "Alpha, Ascended",
+      "type": "Evolution",
+      "color": "Red",
+      "cost": 5,
+      "evo": 2,
+      "hero": "Alpha",
+      "stats": {
+        "hp": 14,
+        "dmg": 5,
+        "pwr": 4000,
+        "rng": 3,
+        "kb": 3
+      },
+      "text": ""
+    },
+    {
+      "id": "TB-012",
+      "name": "Echo, Awakened",
+      "type": "Evolution",
+      "color": "Red",
+      "cost": 3,
+      "evo": 1,
+      "hero": "Echo",
+      "stats": {
+        "hp": 12,
+        "dmg": 4,
+        "pwr": 3000,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": ""
+    },
+    {
+      "id": "TA-020",
+      "name": "Red Blade",
+      "type": "Equipment",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 2,
+      "bonus": {
+        "pwr": 1000,
+        "hp": 2
+      },
+      "text": ""
+    },
+    {
+      "id": "TA-021",
+      "name": "Red Cloak",
+      "type": "Equipment",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "bonus": {},
+      "text": ""
+    },
+    {
+      "id": "TA-022",
+      "name": "Red Boots",
+      "type": "Equipment",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 0,
+      "bonus": {},
+      "text": ""
+    },
+    {
+      "id": "TA-023",
+      "name": "Red Ring",
+      "type": "Equipment",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 0,
+      "bonus": {},
+      "text": ""
+    },
+    {
+      "id": "TA-030",
+      "name": "Helper One",
+      "type": "Assist",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": ""
+    },
+    {
+      "id": "TA-031",
+      "name": "Helper Two",
+      "type": "Assist",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": ""
+    },
+    {
+      "id": "TA-032",
+      "name": "Helper Three",
+      "type": "Assist",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": ""
+    },
+    {
+      "id": "TA-033",
+      "name": "Helper Four",
+      "type": "Assist",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": ""
+    },
+    {
+      "id": "TA-034",
+      "name": "Red Mentor",
+      "type": "Assist",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "Your {Haki} cards cost 1 less to play."
+    },
+    {
+      "id": "TA-040",
+      "name": "Red Surge",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "bonus": {
+        "pwr": 1000
+      },
+      "text": ""
+    },
+    {
+      "id": "TA-041",
+      "name": "Red Trick",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "bonus": {},
+      "text": "Postroll Phase: Shuffle the universe."
+    },
+    {
+      "id": "TA-042",
+      "name": "Blue Surge",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Blue",
+      "cost": 1,
+      "bonus": {
+        "pwr": 1000
+      },
+      "text": ""
+    },
+    {
+      "id": "TA-043",
+      "name": "Red Mend",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 2,
+      "text": "Preroll Phase: Heal 5 HP."
+    },
+    {
+      "id": "TA-044",
+      "name": "Red Guard",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "Preroll Phase: This Hero is immune to Knockback and takes -1 DMG from all sources this turn."
+    },
+    {
+      "id": "TA-045",
+      "name": "Red Shove",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 2,
+      "text": "[Range] Postroll Phase: Knockback an Opponent's Hero 3 spaces in the opposite direction of your Hero."
+    },
+    {
+      "id": "TA-046",
+      "name": "Red Bricks",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "[Range] Preroll Phase: Place a Wall."
+    },
+    {
+      "id": "TA-047",
+      "name": "Red Gambit",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 2,
+      "bonus": {
+        "pwr": 2000
+      },
+      "text": "Battle Phase: If you win this Battle, your Opponent must discard a card."
+    },
+    {
+      "id": "TA-048",
+      "name": "Red Encore",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 2,
+      "text": "Roll Phase: You may roll the activated Hero again."
+    },
+    {
+      "id": "TA-049",
+      "name": "Red Haki Strike",
+      "type": "Action",
+      "color": "Red",
+      "cost": 3,
+      "bonus": {
+        "pwr": 1000
+      },
+      "traits": [
+        "General",
+        "Haki"
+      ],
+      "text": ""
+    },
+    {
+      "id": "TA-050",
+      "name": "Red Blockade",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 2,
+      "text": "[Range] Postroll Phase: Your Opponent cannot take a Stage this turn."
+    },
+    {
+      "id": "TA-051",
+      "name": "Red Dilemma",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 2,
+      "text": "[Range] Postroll Phase: Your Opponent chooses:\n- You charge 2 Energy and they discharge 2 Energy\n- Your Hero heals 3 HP and their Hero takes 3 DMG"
+    },
+    {
+      "id": "TB-050",
+      "name": "Orange Trick",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Orange",
+      "cost": 1,
+      "bonus": {},
+      "text": ""
+    },
+    {
+      "id": "TX-010",
+      "name": "Filler",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": ""
+    },
+    {
+      "id": "TX-011",
+      "name": "Filler Two",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Blue",
+      "cost": 2,
+      "text": ""
+    },
+    {
+      "id": "TA-007",
+      "name": "Kilo",
+      "type": "Hero",
+      "color": "Red",
+      "wt": 2,
+      "stats": {
+        "hp": 10,
+        "dmg": 3,
+        "pwr": 2000,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": "x",
+      "fx": "END IF ACTIVATED: RECYCLE ME 1 TOP"
+    },
+    {
+      "id": "TA-008",
+      "name": "Lima",
+      "type": "Hero",
+      "color": "Red",
+      "wt": 2,
+      "stats": {
+        "hp": 10,
+        "dmg": 3,
+        "pwr": 2000,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": "x",
+      "fx": "BATTLE ONCE OPTIONAL: DEACTIVATE_CORE SELF 2 UPTO; BUFF SELF DMG 1 TURN PER COUNT; BUFF SELF PWR 2000 TURN PER COUNT"
+    },
+    {
+      "id": "TA-009",
+      "name": "Mike",
+      "type": "Hero",
+      "color": "Red",
+      "wt": 2,
+      "stats": {
+        "hp": 10,
+        "dmg": 3,
+        "pwr": 3000,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": "x",
+      "fx": "BATTLE IF WIN OPTIONAL: HOLD_HIT SELF"
+    },
+    {
+      "id": "TA-010",
+      "name": "November",
+      "type": "Hero",
+      "color": "Red",
+      "wt": 2,
+      "stats": {
+        "hp": 10,
+        "dmg": 3,
+        "pwr": 2000,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": "x",
+      "fx": "POSTROLL ONCE OPTIONAL: DEACTIVATE_CORE SELF 1; FREE_PLAY 3 {Sword} Equipment"
+    },
+    {
+      "id": "TA-011",
+      "name": "Papa",
+      "type": "Hero",
+      "color": "Red",
+      "wt": 2,
+      "stats": {
+        "hp": 10,
+        "dmg": 3,
+        "pwr": 2000,
+        "rng": 3,
+        "kb": 2
+      },
+      "text": "x",
+      "fx": "PASSIVE: DAMAGE_MOD SELF -1\nROLL ONCE OPTIONAL IF ACTIVATED: ROLL_AGAIN; DAMAGE SELF 2 TRUE"
+    },
+    {
+      "id": "TA-024",
+      "name": "Blue Sword",
+      "type": "Equipment",
+      "color": "Blue",
+      "cost": 3,
+      "traits": [
+        "General",
+        "Sword"
+      ],
+      "bonus": {
+        "pwr": 1000
+      },
+      "text": ""
+    },
+    {
+      "id": "TA-035",
+      "name": "Sword Hunter",
+      "type": "Assist",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "x",
+      "fx": "BATTLE IF OPP_EQUIPPED {Sword}: BUFF SELF PWR 2000"
+    },
+    {
+      "id": "TA-052",
+      "name": "Core Snare",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "x",
+      "fx": "PREROLL RANGE: PICK_CORE; MOVE_CORE 2; TRAP_CORE 3"
+    },
+    {
+      "id": "TA-053",
+      "name": "Shuffle Step",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "x",
+      "fx": "POSTROLL: MOVE ALL_FRIENDLY_IN_RANGE 1"
+    },
+    {
+      "id": "TA-055",
+      "name": "Switch",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "x",
+      "fx": "POSTROLL RANGE: SWAP FRIENDLY ENGAGED"
+    },
+    {
+      "id": "TA-056",
+      "name": "Short Reach",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "Postroll Phase: Your Hero gains +2 Range."
+    },
+    {
+      "id": "TA-057",
+      "name": "Long Reach",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "Postroll Phase: Your Hero gains +2 Range until the end of the turn."
+    },
+    {
+      "id": "TS-007",
+      "name": "Arena of Cards",
+      "type": "Stage",
+      "text": "x",
+      "fx": "REVEAL: DUEL_TOP PWR 2000"
+    },
+    {
+      "id": "TS-001",
+      "name": "Frozen Lake",
+      "type": "Stage",
+      "text": "Terrain: Ice"
+    },
+    {
+      "id": "TS-002",
+      "name": "Swamp",
+      "type": "Stage",
+      "text": "Terrain: Mud"
+    },
+    {
+      "id": "TS-003",
+      "name": "Plain Field",
+      "type": "Stage",
+      "text": ""
+    },
+    {
+      "id": "TS-004",
+      "name": "Glacier",
+      "type": "Stage",
+      "text": "Terrain: Ice"
+    },
+    {
+      "id": "TS-005",
+      "name": "Bog",
+      "type": "Stage",
+      "text": "Terrain: Mud"
+    },
+    {
+      "id": "TS-006",
+      "name": "Meadow",
+      "type": "Stage",
+      "text": "When this Stage is revealed, the Hero with more HP gains +3000 Power."
+    },
+    {
+      "id": "CR0-001",
+      "name": "Buff core 1",
+      "type": "Core",
+      "kind": "Buff"
+    },
+    {
+      "id": "CR0-002",
+      "name": "Buff core 2",
+      "type": "Core",
+      "kind": "Buff"
+    },
+    {
+      "id": "CR0-003",
+      "name": "Major core 1",
+      "type": "Core",
+      "kind": "Major"
+    },
+    {
+      "id": "CR0-004",
+      "name": "Major core 2",
+      "type": "Core",
+      "kind": "Major"
+    },
+    {
+      "id": "CR0-005",
+      "name": "Debuff core 1",
+      "type": "Core",
+      "kind": "Debuff"
+    },
+    {
+      "id": "CR0-006",
+      "name": "Debuff core 2",
+      "type": "Core",
+      "kind": "Debuff"
+    },
+    {
+      "id": "CR1-001",
+      "name": "+4000 Power",
+      "type": "Core",
+      "traits": [
+        "Major"
+      ],
+      "bonus": {
+        "pwr": 4000
+      }
+    },
+    {
+      "id": "CR1-002",
+      "name": "+2 Damage",
+      "type": "Core",
+      "traits": [
+        "Buff"
+      ],
+      "bonus": {
+        "dmg": 2
+      }
+    },
+    {
+      "id": "CR1-003",
+      "name": "-2 Damage",
+      "type": "Core",
+      "traits": [
+        "Debuff"
+      ],
+      "bonus": {
+        "dmg": -2
+      }
+    },
+    {
+      "id": "CR1-004",
+      "name": "-1 Knockback",
+      "type": "Core",
+      "traits": [
+        "Debuff"
+      ],
+      "bonus": {
+        "kb": -1
+      }
+    },
+    {
+      "id": "TF-020",
+      "name": "Grey Mend",
+      "type": "Action",
+      "color": "None",
+      "bonusColors": [
+        "Red"
+      ],
+      "cost": 3,
+      "traits": [
+        "General"
+      ],
+      "text": "Preroll Phase: Heal 5 HP.\nRed Bonus: This card costs 1 less to play."
+    },
+    {
+      "id": "TF-021",
+      "name": "Grey Blade",
+      "type": "Equipment",
+      "color": "None",
+      "bonusColors": [
+        "Red"
+      ],
+      "cost": 1,
+      "traits": [
+        "General"
+      ],
+      "bonus": {
+        "dmg": 2
+      },
+      "text": "Red Bonus: +1 DMG."
+    },
+    {
+      "id": "TF-022",
+      "name": "Grey Soup",
+      "type": "Action",
+      "color": "None",
+      "bonusColors": [
+        "Cyan",
+        "Purple"
+      ],
+      "cost": 1,
+      "traits": [
+        "General"
+      ],
+      "text": "Preroll Phase: Heal 2 HP.\nCyan / Purple Bonus: It heals 4 HP instead."
+    },
+    {
+      "id": "TF-023",
+      "name": "Grey Haki",
+      "type": "Action",
+      "color": "None",
+      "bonusColors": [
+        "Yellow"
+      ],
+      "cost": 1,
+      "traits": [
+        "Haki"
+      ],
+      "text": "Preroll Phase: Heal 1 HP.\nYellow Bonus: You also charge 1 Energy."
+    }
   ]
 }

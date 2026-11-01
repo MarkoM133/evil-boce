@@ -42,7 +42,10 @@ resets the passes.
 
 - Costs energy (`PlayerState.energy`, refilled to min(turn, 8) every Draw).
 - Played in the colour of the **context heroes**: outside a battle the activated hero; in a
-  battle your heroes taking part in it. `hero` picks one when several fit.
+  battle your heroes taking part in it. `hero` picks one when several fit. A colorless card
+  (`color: "None"`, 2026-11-01) goes to a context hero of any colour; its price and its
+  `BONUS` effects depend on that hero (`card_cost(s, p, card, hero)`; with no hero, the
+  cheapest of the heroes it could go to, which is what the hand shows).
 - **Equipment**: on a context hero, at most `equipment_limit` (3), the same card once per
   hero. Its `bonus` (`{"pwr": 1000, "hp": 2}` from the web app) counts while equipped.
 - **Evolution**: on a context hero that is on the map, `hero` name must match, level
@@ -157,6 +160,10 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    the hero's current card (the last evolution, else the base). `_play` refuses the others
    ("only for X", "Requires T"); equipment whose tag the hero no longer fits falls into the
    graveyard when an evolution comes or goes (`_drop_unfit_equipment`). A record carries the
+9g. (2026-11-01) Colorless cards: `color: "None"` passes the colour check in `deck_verdict`
+   and `_play` (the first tag still counts), and `bonusColors` on the card drive the fx
+   `BONUS` / `INSTEAD` effects and `OWN_COST` (docs/fx-keywords.md). The Draft counts a
+   colorless card as a card of any colour.
 g. (2026-10-26) A grid knockback stopped by a wall or a hero costs `wall_damage` once, not per
    step short. A Wind stage draws its direction (`StageState.wind_dir`, one of six) when it is
    revealed; `terrain()` blows that way and the state and the replay keep it.

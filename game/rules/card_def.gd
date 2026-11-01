@@ -8,6 +8,9 @@ var name: String = ""
 ## "Hero", "Action", "Equipment", "Assist", "Evolution", "Stage", "Core".
 var type: String = ""
 var color: String = ""
+## Colorless card (color "None", 2026-11-01): any hero may play it, the first tag still counts.
+## bonus_colors: the colours whose hero gets the card's bonus (fx BONUS effects); at most two.
+var bonus_colors: PackedStringArray = PackedStringArray()
 var cost: int = 0
 var wt: int = 2
 ## Hero and Evolution stats.
@@ -65,6 +68,26 @@ func core_family() -> String:
 	return ""
 
 
+const COLORLESS: String = "None"
+
+
+func is_colorless() -> bool:
+	return color == COLORLESS
+
+
+## Does a hero of this colour get the card's bonus?
+func has_bonus_for(hero_color: String) -> bool:
+	for c: String in bonus_colors:
+		if c.to_lower() == hero_color.to_lower():
+			return true
+	return false
+
+
+## May a hero of this colour play the card at all (colour only; the first tag is FirstTag's)?
+func plays_for_color(hero_color: String) -> bool:
+	return is_colorless() or color == hero_color
+
+
 func has_trait(t: String) -> bool:
 	for x: String in traits:
 		if x.to_lower() == t.to_lower():
@@ -109,6 +132,7 @@ static func from_card(c: Dictionary) -> CardDef:
 	d.kind = str(c.get("kind", "")) if c.get("kind") != null else ""
 	d.text = str(c.get("text", "")) if c.get("text") != null else ""
 	d.traits = JsonUtil.as_strings(c.get("traits", []))
+	d.bonus_colors = JsonUtil.as_strings(c.get("bonusColors", []))
 	d.aliases = JsonUtil.as_strings(c.get("aliases", []))
 	d.ability_names = JsonUtil.as_strings(c.get("abilityNames", []))
 	var bonus: Dictionary = JsonUtil.as_dict(c.get("bonus", {}))
@@ -138,6 +162,8 @@ func to_record() -> Dictionary:
 		rec["aliases"] = Array(aliases)
 	if not color.is_empty():
 		rec["color"] = color
+	if not bonus_colors.is_empty():
+		rec["bonusColors"] = Array(bonus_colors)
 	if type == "Hero" or type == "Evolution":
 		rec["stats"] = {"hp": hp, "dmg": dmg, "pwr": pwr, "rng": rng, "kb": kb}
 	if evo > 0:

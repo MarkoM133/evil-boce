@@ -5,6 +5,7 @@ extends RefCounted
 ## Bucciarati"): only those heroes; a name after "&" that is no hero yet is skipped ("Shanks &
 ## Roger" is Shanks's until Roger comes). A trait from the trait list (data/traits.json): a hero of the
 ## card's colour that has the trait, on its own card or on an Evolution card in the deck.
+## A colorless card (color "None", 2026-11-01) is for a hero of any colour; its first tag still counts.
 ## Anything else is not valid. Case and edge spaces do not count. The web app has the same rule
 ## (js/tags.js); both run the cases in tests/fixtures/first_tag_cases.json.
 
@@ -83,10 +84,10 @@ static func deck_verdict(catalog: CardCatalog, card: CardDef, heroes: Array[Card
 		if names.has(card.hero):
 			return _ok()
 		return _no("Evolution for a hero who isn't in the deck")
-	if not colors.has(card.color):
+	if not card.is_colorless() and not colors.has(card.color):
 		return _no("color %s is not a color of the chosen heroes" % card.color)
 	var k: Dictionary = kind_of(catalog, card)
-	var same: Array[CardDef] = heroes.filter(func(h: CardDef) -> bool: return h.color == card.color)
+	var same: Array[CardDef] = heroes.filter(func(h: CardDef) -> bool: return card.plays_for_color(h.color))
 	var same_names := PackedStringArray()
 	for h: CardDef in same:
 		same_names.append(h.name)
@@ -115,7 +116,7 @@ static func deck_verdict(catalog: CardCatalog, card: CardDef, heroes: Array[Card
 					needs_names.append(e.name)
 			if not needs.is_empty():
 				return {"ok": false, "why": "Requires %s" % " or ".join(needs_names), "needs": needs}
-			return _no("needs a %s hero with %s" % [card.color, t])
+			return _no(("needs a hero with %s" % t) if card.is_colorless() else ("needs a %s hero with %s" % [card.color, t]))
 	var tag: String = str(k.get("tag", ""))
 	return _no(("first tag \"%s\" is not General, a hero or a known trait" % tag) if not tag.is_empty() else "the card has no tags")
 

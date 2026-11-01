@@ -1,0 +1,29 @@
+{
+  "name": "Colorless (2026-11-01): a hero of any colour plays the card, the first tag still counts, and the hero of a bonus colour gets the bonus (cheaper, or the bigger effect instead)",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "players.p0.hand": ["TF-020", "TF-022", "TF-023"], "players.p0.energy": 20,
+      "players.p1.hand": ["TF-020", "TF-022", "TF-023"], "players.p1.energy": 20,
+      "initiative": 0,
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 10], "heroes.p0:TA-001.hp": 1,
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 4], "heroes.p1:TB-002.hp": 1
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002", "roll": false}},
+    {"expect": {"phase": "preroll", "to_act": 0}},
+    {"move": {"type": "play_card", "player": 0, "card": "TF-022"}},
+    {"expect": {"heroes.p0:TA-001.hp": 3, "players.p0.energy": 19}},
+    {"move": {"type": "play_card", "player": 1, "card": "TF-022"}},
+    {"expect": {"heroes.p1:TB-002.hp": 5, "players.p1.energy": 19}},
+    {"move": {"type": "play_card", "player": 0, "card": "TF-020"}},
+    {"expect": {"players.p0.energy": 17}},
+    {"move": {"type": "play_card", "player": 1, "card": "TF-020"}},
+    {"expect": {"players.p1.energy": 16}},
+    {"move": {"type": "play_card", "player": 0, "card": "TF-023"}},
+    {"expect": {"players.p0.energy": 16, "players.p0.hand": {"$size": 0}}},
+    {"move": {"type": "play_card", "player": 1, "card": "TF-023"}, "error": "Requires Haki"}
+  ]
+}

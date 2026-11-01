@@ -3,7 +3,7 @@ extends RefCounted
 ## One effect of a card in the fx language (docs/fx-keywords.md). A card's `fx` field holds
 ## one effect per line; FxTextParser writes the same language from the card text.
 ##
-##   WHEN [ONCE] [OPTIONAL] [RANGE] [IF COND [ARG]]: ACTION; ACTION; ...
+##   WHEN [ONCE] [OPTIONAL] [RANGE] [INSTEAD] [BONUS [Colour]] [IF COND [ARG]]: ACTION; ACTION; ...
 ##   ACTION = VERB [TARGET] [ARGS...]      e.g. BUFF SELF PWR 2000 TURN
 ##
 ## WHEN:  PLAY (as the card is played), PREROLL / ROLL / POSTROLL / BATTLE / END (an Action
@@ -13,9 +13,14 @@ extends RefCounted
 ##        RANGE = targets must be within the hero's range.
 ## IF:    ACTIVATED (the hero is activated this turn), WIN (runs after the hero's side wins
 ##        the current battle), EQUIPPED {Trait} (an enemy in the battle has that trait).
+## BONUS [Colour]: a colorless card's colour bonus (2026-11-01): the effect counts only when the
+##        hero the card is played for (SELF) is one of the card's bonus colours, or that colour.
+## INSTEAD: the effect replaces the one right before it on the card when its own BONUS / IF
+##        hold; otherwise it is skipped. Both share the WHEN of the one before.
 
 const WHENS: Array[String] = ["PLAY", "PREROLL", "ROLL", "POSTROLL", "BATTLE", "END", "PASSIVE", "REVEAL"]
 const CONDS: Array[String] = ["ACTIVATED", "WIN", "OPP_EQUIPPED", "COPIES"]
+const COLORS: Array[String] = ["CYAN", "YELLOW", "PURPLE", "RED", "BLUE", "GREEN"]
 ## Verb -> [takes a target, number of extra args at least].
 const VERBS: Dictionary[String, Array] = {
 	"BUFF": [true, 2],          # BUFF <target> <STAT> <n> [TURN] [PER <COUNTER> [arg]]
@@ -39,6 +44,7 @@ const VERBS: Dictionary[String, Array] = {
 	"ROLL_AGAIN": [false, 0],   # ROLL_AGAIN  (the activated hero rolls once more)
 	"REVERSE_ROLL": [false, 0], # REVERSE_ROLL  (the activated hero goes back to where the Roll phase found it)
 	"COST_DAMAGE": [false, 1],  # COST_DAMAGE <n>  (paid by SELF before the rest)
+	"OWN_COST": [false, 1],     # OWN_COST <n>  (this card costs ±n; read when the cost is worked out)
 	"CHOOSE": [true, 0],        # CHOOSE <ME|OPP> [ACTION; ACTION] [ACTION; ACTION]  (that player picks a branch)
 	"RECYCLE": [true, 1],       # RECYCLE <ME|OPP> <n> [TOP|BOTTOM|SHUFFLE]  (graveyard top -> deck)
 	"PICK_CORE": [false, 0],    # PICK_CORE  (choose a core on the field; MOVE_CORE / TRAP_CORE use it)
@@ -63,6 +69,9 @@ var optional: bool = false
 var range: bool = false
 var cond: String = ""
 var cond_arg: String = ""
+var bonus: bool = false
+var bonus_color: String = ""
+var instead: bool = false
 ## Each action: {"verb": String, "target": String, "args": PackedStringArray,
 ## "branches": Array[Array[Dictionary]] (CHOOSE only)}.
 var actions: Array[Dictionary] = []
@@ -78,6 +87,12 @@ func to_fx() -> String:
 		head.append("OPTIONAL")
 	if range:
 		head.append("RANGE")
+	if instead:
+		head.append("INSTEAD")
+	if bonus:
+		head.append("BONUS")
+		if not bonus_color.is_empty():
+			head.append(bonus_color)
 	if not cond.is_empty():
 		head.append("IF")
 		head.append(cond)
@@ -187,6 +202,13 @@ static func parse_line(line: String) -> FxEffect:
 				e.optional = true
 			"RANGE":
 				e.range = true
+			"INSTEAD":
+				e.instead = true
+			"BONUS":
+				e.bonus = true
+				if i + 1 < head.size() and COLORS.has(head[i + 1]):
+					e.bonus_color = head[i + 1]
+					i += 1
 			"IF":
 				if i + 1 >= head.size() or not CONDS.has(head[i + 1]):
 					return null

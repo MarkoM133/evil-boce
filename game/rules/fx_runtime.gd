@@ -213,7 +213,57 @@ func on_battle_done(s: GameState, winners: Array[HeroState], members: Array[Hero
 	s.deferred = keep
 
 
+## Does the effect count now? Its IF condition and BONUS, and, for an effect that an INSTEAD
+## effect right after it replaces, whether that replacement holds (then this one does not).
 func cond_ok(s: GameState, ctx: Dictionary, e: FxEffect) -> bool:
+	if not _holds(s, ctx, e):
+		return false
+	if e.instead:
+		return true
+	var card: CardDef = engine.catalog.get_card(str(ctx.get("card", "")))
+	if card == null:
+		return true
+	for i: int in card.effects.size() - 1:
+		if card.effects[i].line == e.line:
+			var next: FxEffect = card.effects[i + 1]
+			if next.instead and next.when == e.when and _holds(s, ctx, next):
+				return false
+			break
+	return true
+
+
+## A colorless card's colour bonus: the hero in the context is one of the card's bonus colours
+## (or the colour the effect names).
+func bonus_ok(s: GameState, ctx: Dictionary, e: FxEffect) -> bool:
+	var card: CardDef = engine.catalog.get_card(str(ctx.get("card", "")))
+	var hero: HeroState = s.hero(str(ctx.get("hero", "")))
+	if card == null or hero == null:
+		return false
+	var hc: CardDef = engine.catalog.get_card(hero.card_id)
+	if hc == null:
+		return false
+	if not e.bonus_color.is_empty():
+		return hc.color.to_upper() == e.bonus_color
+	return card.has_bonus_for(hc.color)
+
+
+## This card's own cost change (OWN_COST) when played for `hero` (null: no hero, so no bonus).
+func own_cost(s: GameState, p: PlayerState, card: CardDef, hero: HeroState) -> int:
+	var total: int = 0
+	var ctx: Dictionary = {"player": p.slot, "hero": hero.id if hero != null else "", "card": card.id, "stage": ""}
+	for e: FxEffect in card.effects:
+		if not e.has_verb("OWN_COST") or not cond_ok(s, ctx, e):
+			continue
+		for a: Dictionary in e.actions:
+			if str(a["verb"]) == "OWN_COST":
+				var args: PackedStringArray = a["args"]
+				total += args[0].to_int()
+	return total
+
+
+func _holds(s: GameState, ctx: Dictionary, e: FxEffect) -> bool:
+	if e.bonus and not bonus_ok(s, ctx, e):
+		return false
 	match e.cond:
 		"", "WIN":
 			return true
@@ -616,6 +666,8 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
 	match verb:
+		"OWN_COST":
+			return ""
 		"BUFF":
 			if e.when == "PASSIVE":
 				return ""

@@ -45,6 +45,13 @@ asks each player with one (`roll_offer`), once per stop; the Roll phase has no c
   played in this phase.
 - An assist's `BATTLE` effect runs at the start of every battle with SELF = its player's hero
   in that battle.
+- `BONUS [Colour]` (colorless cards, 2026-11-01): the effect counts only when the hero the card
+  is played for (SELF: the activated hero, the equipped hero, the hero an assist helps) is one
+  of the card's `bonusColors`, or the colour named. A colorless card (`color: "None"`) is
+  played for a hero of any colour; the first tag still counts.
+- `INSTEAD`: the effect replaces the one right before it on the card when its BONUS and IF
+  hold, and is skipped otherwise; it keeps the WHEN of the one before. `PREROLL RANGE: HEAL
+  FRIENDLY 3` + `PREROLL RANGE INSTEAD BONUS: HEAL FRIENDLY 4` is "heals 4 HP instead".
 
 Cards the parser cannot read get a hand-written line in `game/data/placeholders/card_fx.json`
 until the web app's Effect tab writes `fx` into `cards.json`.
@@ -80,6 +87,7 @@ Players: `ME`, `OPP`.
 | `ROLL_AGAIN` | | the activated hero rolls once more, right away (Roll phase, after the roll); the ball stopping again brings new offers |
 | `REVERSE_ROLL` | | the activated hero goes back to where it stood as the Roll phase began; heroes it pushed, cores it picked up and stages it revealed stay ("reverse the roll", "return this hero to where it was before the roll") |
 | `COST_DAMAGE <n>` | | additional cost: SELF takes n as the card is played (needs more than n HP) |
+| `OWN_COST <n>` | | this card costs ±n, read when its price is worked out (`PLAY BONUS: OWN_COST -1` = "This card costs 1 less to play" for a hero of a bonus colour); never below 1 |
 | `CHOOSE <p> [A; B] [C; D]` | | that player picks a branch; its actions run |
 | `RECYCLE <p> <n> [TOP|BOTTOM|SHUFFLE]` | | the top n of the graveyard go back into the deck |
 | `PICK_CORE` | | pick a core on the field (in range with `RANGE`); `MOVE_CORE` / `TRAP_CORE` use it |
@@ -118,4 +126,8 @@ spaces …`; `move N spaces towards you`; `immune to Knockback`; `Place a Wall`;
 activate / deactivate a Core`; `charge / discharge N Energy`; cost changes; `roll … again`;
 `discard a card`; `remove an Evolution`; `cannot take a Stage`; `As an additional cost, take
 N DMG`; `Your Opponent chooses:` with two dashed lines. Clauses joined by "and" are read one by
-one. Everything else lands in `unparsed`; `tests/test_fx_parser.gd` lists the exact phrases.
+one. Colour bonus lines of colorless cards (`Red Bonus: …`, `Cyan / Purple Bonus: …`): `This
+card costs N less to play` (`OWN_COST`), `+N STAT` (a buff on the card's hero), `It also …` /
+`You also …` (an extra effect with the WHEN of the sentence before), `It … N … instead` (the
+sentence before with its number swapped, `INSTEAD`). Everything else lands in `unparsed`;
+`tests/test_fx_parser.gd` lists the exact phrases.
