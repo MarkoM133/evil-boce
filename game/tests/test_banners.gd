@@ -24,8 +24,8 @@ func test_winner_names_the_merged_band() -> void:
 	var m: Dictionary = Hud.merge_banners(run)
 	assert_eq(str(m["title"]), "GIORNO WINS THE FIGHT!")
 	assert_eq(Array(JsonUtil.as_strings(m["lines"])), ["SHANKS TAKES 3 DAMAGE · HP 0", "KO · SHANKS", "STAGE CLAIMED · MARKO · DRESSROSA"])
-	# Long enough to read the lines, never past three seconds.
-	assert_almost_eq(JsonUtil.as_float(m["hold"]), 3.0, 0.001)
+	# The longest part (2 s) plus time per line to read it.
+	assert_almost_eq(JsonUtil.as_float(m["hold"]), 2.0 + 3 * Hud.MERGED_LINE_TIME, 0.001)
 
 
 func test_ko_over_blows_and_more_lines_are_counted() -> void:

@@ -59,6 +59,9 @@ const PHASE_BANNER_TIME: float = 3.0
 const START_BANNER_TIME: float = 3.0
 ## BATTLE! stays long enough to read both sides' Power.
 const BATTLE_BANNER_TIME: float = 1.6
+## A merged band stays this much longer per extra line, up to MERGED_MAX_TIME.
+const MERGED_LINE_TIME: float = 1.2
+const MERGED_MAX_TIME: float = 6.0
 ## How far a hovered hand card rises.
 const LIFT: float = 56.0
 ## Log events that get a banner (the rest only go to the log).
@@ -391,7 +394,9 @@ static func merge_banners(run: Array[Dictionary]) -> Dictionary:
 		lines = lines.slice(0, 2)
 		lines.append("+%d MORE" % more)
 	top["lines"] = lines
-	top["hold"] = minf(3.0, hold + 0.5 * lines.size())
+	# Time to read every line (Marko 2026-11-01: a merged band went before it could be read); a
+	# click or Enter still takes it away sooner.
+	top["hold"] = minf(MERGED_MAX_TIME, hold + MERGED_LINE_TIME * lines.size())
 	return top
 
 

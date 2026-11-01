@@ -2092,6 +2092,52 @@ func demo_banners() -> void:
 	hud.banner("RING-OUT", Palette.GOLD, "", "SHANKS")
 
 
+## Screenshot helper: one band, named by `--banner=<name>` on the command line (see BUILD.md).
+func demo_banner_shot() -> void:
+	_demo = true
+	var which: String = "battle"
+	for arg: String in OS.get_cmdline_user_args():
+		if arg.begins_with("--banner="):
+			which = arg.substr(9)
+	var win: Color = Palette.team(0).darkened(0.2)
+	match which:
+		"start", "preroll", "roll", "postroll", "battle_phase":
+			hud.banner("%s PHASE" % which.trim_suffix("_phase").to_upper(), Palette.PANEL_SOLID, "TURN 3", "", 3.0)
+		"battle":
+			hud.banner("BATTLE!", Palette.ACCENT, "GIORNO + BUCCIARATI\n5000", "SHANKS\n4000", 3.0)
+		"win":
+			hud.banner("GIORNO WINS THE FIGHT!", win, "", "", 3.0)
+		"win_team":
+			hud.banner("GIORNO + BUCCIARATI WIN THE FIGHT!", win, "", "", 3.0)
+		"damage":
+			hud.banner("SHANKS TAKES 3 DAMAGE", Palette.ACCENT_DEEP, "", "HP 4", 3.0)
+		"deck":
+			hud.banner("MARKO DECKS 2!", Palette.ACCENT_DEEP, "", "17 LEFT IN THE DECK", 3.0)
+		"ringout":
+			hud.banner("RING-OUT", Palette.GOLD, "", "SHANKS", 3.0)
+		"ko":
+			hud.banner("KO", Palette.ACCENT_DEEP, "", "SHANKS", 3.0)
+		"stage":
+			hud.banner("STAGE CLAIMED", Palette.GOLD, "MARKO", "DRESSROSA", 3.0)
+		"triggered":
+			hud.banner("GOLD EXPERIENCE", Palette.GOLD, "GIORNO", "", 3.0)
+		"tie":
+			hud.banner("TIE!", Palette.GOLD, "GIORNO VS SHANKS", "SAME POWER · FIGHT AGAIN NEXT TURN", 3.0)
+		"tie_again":
+			hud.banner("TIE AGAIN!", Palette.ACCENT, "GIORNO VS SHANKS", "BOTH KNOCKED BACK", 3.0)
+		"merged_many":
+			hud._grouping = true
+			hud.banner("LUFFY TAKES 1 DAMAGE", Palette.ACCENT_DEEP, "", "HP 7", 1.6)
+			hud.banner("GOLD EXPERIENCE", Palette.GOLD, "GIORNO", "")
+			hud.banner("KO", Palette.ACCENT_DEEP, "", "SHANKS")
+			hud.banner("SHANKS TAKES 2 DAMAGE", Palette.ACCENT_DEEP, "", "HP 0", 1.6)
+			hud.banner("STAGE CLAIMED", Palette.GOLD, "MARKO", "ALABASTA")
+			hud._grouping = false
+			hud._push_group()
+		_:
+			demo_merged_banner()
+
+
 ## Screenshot helper: the bands of one moment merged into one (the winner, the blow, the KO, the claim).
 func demo_merged_banner() -> void:
 	_demo = true
