@@ -1568,7 +1568,7 @@ func _run_playback(delta: float) -> void:
 ## when the balls stop, and the wait is what hides who had something (GDD 8, 2026-10-26).
 func _run_auto_pass(delta: float) -> void:
 	if not GameSettings.auto_pass() or _replay != null or _menu.visible \
-			or state.is_over() or _runner.is_running() or _launching or _phase_hold > 0.0 \
+			or state.is_over() or _runner.is_running() or _launching or _phase_hold > 0.0 or hud.is_announcing() \
 			or state.phase == GameState.PHASE_BATTLE:
 		# Battle is never passed for the player (Marko 2026-10-26): it is the big moment.
 		_idle_pass = 0.0
@@ -1628,7 +1628,7 @@ func _run_clock(delta: float) -> void:
 			_clocks.clear()
 		hud.set_clock(-1, "")
 		return
-	var frozen: bool = _runner.is_running() or _launching or _phase_hold > 0.0 \
+	var frozen: bool = _runner.is_running() or _launching or _phase_hold > 0.0 or hud.is_announcing() \
 			or (net_role == "host" and net_host.paused) or (net_role == "client" and not hud.net_paused.is_empty()) \
 			or (net_role.is_empty() and _menu.visible)
 	if net_role != "client":
@@ -1703,7 +1703,9 @@ func _show_clock() -> void:
 
 
 func _run_bots(delta: float) -> void:
-	if bots.is_empty() or state.is_over() or _runner.is_running() or _launching or _menu.visible or _phase_hold > 0.0:
+	# Bots wait for the bands in the middle too, so the table and the words stay in step.
+	if bots.is_empty() or state.is_over() or _runner.is_running() or _launching or _menu.visible or _phase_hold > 0.0 \
+			or hud.is_announcing():
 		return
 	_bot_wait -= delta
 	if _bot_wait > 0.0:
@@ -2088,6 +2090,18 @@ func demo_banners() -> void:
 	_demo = true
 	hud.banner("BATTLE!", Palette.ACCENT, "GIORNO\n3000", "SHANKS\n2500")
 	hud.banner("RING-OUT", Palette.GOLD, "", "SHANKS")
+
+
+## Screenshot helper: the bands of one moment merged into one (the winner, the blow, the KO, the claim).
+func demo_merged_banner() -> void:
+	_demo = true
+	hud._grouping = true
+	hud.banner("SHANKS TAKES 3 DAMAGE", Palette.ACCENT_DEEP, "", "HP 0", 1.6)
+	hud.banner("GIORNO WINS THE FIGHT!", Palette.team(0).darkened(0.2), "", "", 2.0)
+	hud.banner("KO", Palette.ACCENT_DEEP, "", "SHANKS")
+	hud.banner("STAGE CLAIMED", Palette.GOLD, "MARKO", "DRESSROSA")
+	hud._grouping = false
+	hud._push_group()
 
 
 ## Screenshot helper: player 1's first hand card shown big.

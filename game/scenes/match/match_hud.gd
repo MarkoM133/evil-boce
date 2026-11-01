@@ -32,6 +32,8 @@ signal hero_hovered(hero_id: String)
 signal board_hovered(hexes: Array[Vector2i])
 ## A card went onto a hero (log: equipped, evolved, action): the table shows it coming down.
 signal card_played(card_id: String, hero_id: String)
+## The centre is taken by a band (true) or free again (false): the match waits while it is taken.
+signal announcing_changed(busy: bool)
 signal menu_pressed
 signal rematch_pressed
 signal watch_replay_pressed
@@ -129,6 +131,11 @@ var _toast_tween: Tween
 var _banner_layer: Control
 var _banners: Array[Dictionary] = []
 var _banner_busy: bool = false
+## Bands of one moment are gathered first, then merged (`_push_group`).
+var _grouping: bool = false
+var _group: Array[Dictionary] = []
+var _band: Panel
+var _band_tween: Tween
 ## How much of state.log has been looked at for banners (-1: not yet, nothing replays).
 var _log_seen: int = -1
 ## The phase last called out by a banner.
@@ -308,9 +315,108 @@ func banner(title: String, color: Color, left: String = "", right: String = "", 
 	# "TURN 3 · PREROLL" showing in turn 5).
 	if title.ends_with(" PHASE"):
 		_banners = _banners.filter(func(q: Dictionary) -> bool: return not str(q["title"]).ends_with(" PHASE"))
-	_banners.append({"title": title, "color": color, "left": left, "right": right, "hold": hold})
+	var b: Dictionary = {"title": title, "color": color, "left": left, "right": right, "hold": hold, "lines": PackedStringArray()}
+	if _grouping:
+		_group.append(b)
+		return
+	_banners.append(b)
 	if not _banner_busy:
 		_next_banner()
+
+
+## True while a band is on the screen or waiting its turn. The match waits for it: bots, clocks,
+## auto-pass and the choice dialogs (playtest 2026-11-01: several moments at once piled up over
+## each other and over a choice).
+func is_announcing() -> bool:
+	return _banner_busy
+
+
+## The bands of one moment, merged: BATTLE! and the ties stand alone (they show both sides);
+## the rest become one band, the loudest as its title and the others as lines beside it.
+func _push_group() -> void:
+	var run: Array[Dictionary] = []
+	for b: Dictionary in _group:
+		if stands_alone(b):
+			if not run.is_empty():
+				_banners.append(merge_banners(run))
+				run = []
+			_banners.append(b)
+		else:
+			run.append(b)
+	if not run.is_empty():
+		_banners.append(merge_banners(run))
+	_group.clear()
+	if not _banner_busy and not _banners.is_empty():
+		_next_banner()
+
+
+static func stands_alone(b: Dictionary) -> bool:
+	var title: String = str(b.get("title", ""))
+	return title == "BATTLE!" or title.begins_with("TIE") or title.ends_with(" PHASE")
+
+
+## How loud a band is: the winner names the moment, a KO or a ring-out comes next, then the
+## blows, then a claim; an ability that fired is the quietest.
+static func loudness(b: Dictionary) -> int:
+	var title: String = str(b.get("title", ""))
+	if title.ends_with("THE FIGHT!"):
+		return 5
+	if title == "KO" or title == "RING-OUT":
+		return 4
+	if title.contains(" TAKES ") or title.contains(" DECKS "):
+		return 2
+	if title == "STAGE CLAIMED":
+		return 1
+	return 0
+
+
+## One band out of several: the loudest keeps its title, colour and sides; the others turn into
+## lines ("KO · SHANKS", "STAGE CLAIMED · MARKO · DRESSROSA"), at most three, the rest counted.
+static func merge_banners(run: Array[Dictionary]) -> Dictionary:
+	if run.size() == 1:
+		return run[0]
+	var best: int = 0
+	for i: int in run.size():
+		if loudness(run[i]) > loudness(run[best]):
+			best = i
+	var top: Dictionary = run[best].duplicate()
+	var lines := PackedStringArray()
+	var hold: float = 0.0
+	for i: int in run.size():
+		hold = maxf(hold, JsonUtil.as_float(run[i].get("hold", BANNER_TIME), BANNER_TIME))
+		if i != best:
+			lines.append(line_of(run[i]))
+	if lines.size() > 3:
+		var more: int = lines.size() - 2
+		lines = lines.slice(0, 2)
+		lines.append("+%d MORE" % more)
+	top["lines"] = lines
+	top["hold"] = minf(3.0, hold + 0.5 * lines.size())
+	return top
+
+
+static func line_of(b: Dictionary) -> String:
+	var parts := PackedStringArray()
+	for key: String in ["title", "left", "right"]:
+		var s: String = str(b.get(key, "")).replace("\n", " ").strip_edges()
+		if not s.is_empty():
+			parts.append(s)
+	return " · ".join(parts)
+
+
+## The band on the screen goes out now (a click or Enter: the player has seen enough).
+func skip_banner() -> void:
+	if not _banner_busy or _band == null or not is_instance_valid(_band):
+		return
+	if _band_tween != null and _band_tween.is_valid():
+		_band_tween.kill()
+	var band: Panel = _band
+	_band = null
+	var t: Tween = band.create_tween()
+	t.tween_property(band, "position:x", size.x + 100.0, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_callback(func() -> void:
+		band.queue_free()
+		_next_banner())
 
 
 ## The local slot whose hand and buttons are shown: the one the game waits for.
@@ -1857,6 +1963,11 @@ func _show_big(cid: String) -> void:
 func _input(event: InputEvent) -> void:
 	if not _drag.is_empty() and _drag_input(event):
 		return
+	if _banner_busy and ((event is InputEventMouseButton and (event as InputEventMouseButton).pressed
+			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT)
+			or (event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo
+			and (event as InputEventKey).keycode in [KEY_ENTER, KEY_KP_ENTER])):
+		skip_banner()
 	# An open big card goes away on any left click (the click does nothing else).
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and not _big_cid.is_empty():
@@ -1996,7 +2107,8 @@ func _lift(card: Control, up: bool, playable: bool) -> void:
 func _refresh_dialog() -> void:
 	_clear(_dialog_box)
 	_dialog.visible = false
-	if state.pending.is_empty():
+	# Not over a band: the choice comes once the bands are through (`_next_banner` asks again).
+	if state.pending.is_empty() or _banner_busy:
 		return
 	var d: Dictionary = state.pending[0]
 	var who: int = JsonUtil.as_int(d.get("player", -1), -1)
@@ -2128,9 +2240,12 @@ func _scan_log() -> void:
 			# A stage's bonus is easy to miss on the table: say it.
 			toast(_describe(e))
 	_log_seen = n
-	# A replay jumping ahead shows only the last few.
-	for e: Dictionary in fresh.slice(maxi(0, fresh.size() - 3)):
+	# The moment's bands together, merged (a replay jumping ahead shows only the last few).
+	_grouping = true
+	for e: Dictionary in fresh.slice(maxi(0, fresh.size() - 8)):
 		_banner_for(e)
+	_grouping = false
+	_push_group()
 
 
 func _banner_for(e: Dictionary) -> void:
@@ -2200,10 +2315,18 @@ func _banner_for(e: Dictionary) -> void:
 
 func _next_banner() -> void:
 	if _banners.is_empty():
-		_banner_busy = false
+		if _banner_busy:
+			_banner_busy = false
+			announcing_changed.emit(false)
+			# A choice that waited behind the bands shows now.
+			if state != null:
+				_refresh_dialog()
 		return
-	_banner_busy = true
+	if not _banner_busy:
+		_banner_busy = true
+		announcing_changed.emit(true)
 	var b: Dictionary = _banners.pop_front()
+	var lines: PackedStringArray = b.get("lines", PackedStringArray())
 	var color: Color = b["color"]
 	var fg: Color = Color.BLACK if color.get_luminance() > 0.5 else Palette.FG
 	var w: float = size.x + 200.0
@@ -2212,9 +2335,10 @@ func _next_banner() -> void:
 	sb.border_color = Color.BLACK
 	sb.set_border_width_all(6)
 	band.add_theme_stylebox_override("panel", sb)
-	band.size = Vector2(w, 100)
+	var h: float = maxf(100.0, 36.0 + 30.0 * (lines.size() + (0 if str(b["right"]).is_empty() else 1)))
+	band.size = Vector2(w, h)
 	band.pivot_offset = band.size * 0.5
-	band.position = Vector2(-100.0 - w, size.y * 0.5 - 50.0)
+	band.position = Vector2(-100.0 - w, size.y * 0.5 - h * 0.5)
 	band.rotation_degrees = -3.0
 	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_banner_layer.add_child(band)
@@ -2230,8 +2354,17 @@ func _next_banner() -> void:
 	title.add_theme_constant_override("outline_size", 10 if fg == Palette.FG else 0)
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(title)
-	row.add_child(_banner_side(str(b["right"]), fg, false))
+	var right: String = str(b["right"])
+	if not lines.is_empty():
+		right = "\n".join(([right] if not right.is_empty() else []) + Array(lines))
+	var side_r: Label = _banner_side(right, fg, false)
+	if not lines.is_empty():
+		side_r.add_theme_font_size_override("font_size", 22)
+		side_r.custom_minimum_size.x = 420
+	row.add_child(side_r)
+	_band = band
 	var t: Tween = band.create_tween()
+	_band_tween = t
 	t.tween_property(band, "position:x", -100.0, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	t.tween_interval(JsonUtil.as_float(b.get("hold", BANNER_TIME), BANNER_TIME) * GameSettings.anim_scale())
 	t.tween_property(band, "position:x", size.x + 100.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)

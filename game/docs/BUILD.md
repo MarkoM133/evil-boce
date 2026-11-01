@@ -58,6 +58,7 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
   throw so the roll has finished before the next call.
   Match helpers (`--scene=res://scenes/match/match.tscn`, random decks, bot as player 2):
   `demo_step` (one local move as if clicked; at the aim it draws the slingshot and stops),
+  `demo_banners`, `demo_merged_banner` (the bands in the middle; one moment merged into one band),
   `demo_autoplay` (bots play both sides; give it `--wait=3600` for about a minute),
   `debug_dump` (turn, phase, heroes, last log lines).
 
