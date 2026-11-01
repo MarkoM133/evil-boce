@@ -60,6 +60,9 @@ var _hero_color: Color = Color.WHITE
 var _style: String = ""
 var _team_color: Color = Color.WHITE
 var _glow: bool = false
+## Half see-through: another hero is being picked and this one cannot be (Marko 2026-11-01).
+var _faded: bool = false
+const FADE_ALPHA: float = 0.35
 var _glow_t: float = 0.0
 var _tween: Tween
 ## One-off effects (hit, landing, KO) run on their own tweens, so they never cut the open /
@@ -115,6 +118,23 @@ func set_glow(on: bool) -> void:
 	_glow = on
 	_glow_t = 0.0
 	_seam_mat.emission_energy_multiplier = 0.0
+
+
+func set_faded(on: bool) -> void:
+	if on == _faded:
+		return
+	_faded = on
+	for m: StandardMaterial3D in [_top_mat, _bottom_mat, _seam_mat, _socket_mat, _inner_mat, _button_mat, _emblem_mat]:
+		if on:
+			m.set_meta("solid", m.transparency)
+			# The depth pre-pass keeps the far side of the ball from showing through the near one.
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+			m.albedo_color = Color(m.albedo_color, FADE_ALPHA)
+		else:
+			m.transparency = m.get_meta("solid", BaseMaterial3D.TRANSPARENCY_DISABLED)
+			m.albedo_color = Color(m.albedo_color, 1.0)
+	_ring_mat.albedo_color = Color(_ring_mat.albedo_color, 0.9 * (FADE_ALPHA if on else 1.0))
+	_figure.modulate = Color(_figure.modulate, FADE_ALPHA if on else 1.0)
 
 
 func is_open() -> bool:

@@ -1840,6 +1840,9 @@ func _on_left(pressed: bool) -> void:
 		var id: String = _hero_under_mouse()
 		if hud.is_targeting() and not id.is_empty() and hud.play_target(id):
 			return
+		if not id.is_empty() and hud.choice_heroes.has(id):
+			_on_hero_clicked(id)
+			return
 		if not id.is_empty() and _try_aim(id):
 			return
 		if not id.is_empty():
@@ -1889,6 +1892,10 @@ func _on_hero_clicked(id: String) -> void:
 	if hud.is_targeting():
 		hud.play_target(id)
 		return
+	# A card effect waits for a hero: a lit one answers it.
+	if hud.choice_heroes.has(id):
+		_apply(Move.make(Move.CHOOSE, hud.choice_slot, {"value": id}))
+		return
 	var h: HeroState = state.hero(id)
 	if h == null:
 		return
@@ -1915,7 +1922,7 @@ func _set_hover(id: String, refresh_hud: bool) -> void:
 		return
 	_hovered = id
 	_update_ball_choice()
-	if hud.is_targeting():
+	if hud.is_targeting() or not hud.choice_heroes.is_empty():
 		_refresh_target_fx()
 	for hid: String in _views:
 		_views[hid].set_glow(hid == id)
@@ -2002,6 +2009,29 @@ func demo_fx_place() -> void:
 		state.heroes[i].hex = spots[i]
 	_sync()
 	cam.focus(arena.hex_center(mid), 11.0)
+
+
+## Screenshot helper: every hero on the map and a heal asking player 1 for one of its heroes
+## (two may take it: lit; the rest half see-through).
+func demo_choose_hero() -> void:
+	_demo = true
+	var mid: Vector2i = arena.hex_at(Vector3.ZERO)
+	var spots: Array[Vector2i] = [mid + Vector2i(-2, 1), mid + Vector2i(0, 2), mid + Vector2i(-3, -1),
+		mid + Vector2i(2, -1), mid + Vector2i(1, -3), mid + Vector2i(3, 1)]
+	for i: int in mini(spots.size(), state.heroes.size()):
+		state.heroes[i].zone = HeroState.ZONE_MAP
+		state.heroes[i].hex = spots[i]
+	state.turn = 3
+	state.phase = GameState.PHASE_PREROLL
+	var mine := PackedStringArray()
+	for h: HeroState in state.heroes:
+		if h.owner == 0 and mine.size() < 2:
+			mine.append(h.id)
+	state.pending.append({"type": FxRuntime.DECISION_CHOOSE, "player": 0, "kind": "hero", "options": Array(mine),
+		"prompt": "Choose a hero to heal", "resume": {"ctx": {}}})
+	hud.local_slots = PackedInt32Array([0])
+	_sync()
+	cam.focus(arena.hex_center(mid), 13.0)
 
 
 ## Hits hero 0, knocks hero 1 three hexes away and knocks out hero 2.
@@ -2178,6 +2208,12 @@ func _refresh_target_fx() -> void:
 	for hid: String in hud.target_heroes:
 		if _bodies.has(hid):
 			_target_fx.add_child(_target_mark(_bodies[hid].global_position, hid == _hovered))
+	# A card effect's hero choice: the same beams, and the heroes it cannot take half see-through.
+	for hid: String in hud.choice_heroes:
+		if _bodies.has(hid):
+			_target_fx.add_child(_target_mark(_bodies[hid].global_position, hid == _hovered))
+	for hid: String in _views:
+		_views[hid].set_faded(not hud.choice_heroes.is_empty() and not hud.choice_heroes.has(hid))
 	# The same light on the hero chosen in Select, and on the ball a local player has to throw.
 	var lit := PackedStringArray()
 	for slot: Variant in hud.picks:

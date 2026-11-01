@@ -59,6 +59,7 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
   Match helpers (`--scene=res://scenes/match/match.tscn`, random decks, bot as player 2):
   `demo_step` (one local move as if clicked; at the aim it draws the slingshot and stops),
   `demo_banners`, `demo_merged_banner` (the bands in the middle; one moment merged into one band),
+  `demo_choose_hero` (a heal asking for a hero: beams on the heroes it may take, the rest see-through),
   `demo_banner_shot` with `--banner=` start, preroll, roll, postroll, battle_phase, battle, win, win_team,
   damage, deck, ringout, ko, stage, triggered, tie, tie_again, merged, merged_many (one band per run),
   `demo_autoplay` (bots play both sides; give it `--wait=3600` for about a minute),

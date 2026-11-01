@@ -160,6 +160,10 @@ var _choice_left_at: int = 0
 const CHOICE_GRACE: float = 0.6
 var target_cid: String = ""
 var target_heroes: PackedStringArray = PackedStringArray()
+## A card effect asking a local player for a hero (heal, swap…): the heroes it may take and the
+## seat that picks. Lit on the table and in the rosters, the rest fade; no dialog (Marko 2026-11-01).
+var choice_heroes: PackedStringArray = PackedStringArray()
+var choice_slot: int = -1
 var _target_why: Dictionary = {}
 var _last_why_by: Dictionary = {}
 var _aim_line: Control
@@ -220,6 +224,7 @@ func refresh() -> void:
 	else:
 		_called_phase = state.phase
 	_scan_log()
+	_refresh_choice()
 	_refresh_ribbon()
 	_refresh_battle_bar()
 	_refresh_board()
@@ -930,6 +935,16 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		evo.tooltip_text = "Evolved %d time%s" % [h.evolutions.size(), "" if h.evolutions.size() == 1 else "s"]
 		top.add_child(evo)
 	var tag: UiShape = _hero_tag(h, active, pickable, in_battle)
+	# A card effect asks for a hero (heal, swap…): the ones it may take are lit, the rest fade.
+	if not choice_heroes.is_empty() and not ko:
+		if choice_heroes.has(h.id):
+			var chosen: bool = h.id == hover_hero
+			tag = UiShape.chip("CHOSEN" if chosen else "PICK", Palette.GOLD if chosen else Color(Palette.GOLD, 0.25),
+				Color.BLACK if chosen else Palette.GOLD, 12, 20.0, 8.0)
+			s.outline = Color("ffd36a") if chosen else Color(Palette.GOLD, 0.8)
+			s.outline_width = 3.0
+		else:
+			s.modulate.a = 0.45
 	# Picking a hero for a card: who can take it (the one under the mouse is chosen), who not.
 	if is_targeting() and h.owner == target_slot and not ko:
 		if target_heroes.has(h.id):
@@ -1368,6 +1383,9 @@ func _refresh_prompt() -> void:
 		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hex":
 			_prompt.text = str(d.get("prompt", "Pick a hex"))
 			_detail.text = "%s: click a highlighted hex." % player_name(who)
+		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hero":
+			_prompt.text = str(d.get("prompt", "Choose a hero"))
+			_detail.text = "%s: click a lit hero on the table, or its panel." % player_name(who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
 			_roll_offer_prompt(d, who)
 		return
@@ -2150,10 +2168,27 @@ func _refresh_dialog() -> void:
 	_option_button(deck_line, func() -> void: damage_pressed.emit(who, "deck"))
 
 
+## The hero choice waiting on a local player, if any; `targeting_changed` tells the table.
+func _refresh_choice() -> void:
+	var heroes := PackedStringArray()
+	var slot: int = -1
+	if not state.pending.is_empty() and not _banner_busy:
+		var d: Dictionary = state.pending[0]
+		var who: int = JsonUtil.as_int(d.get("player", -1), -1)
+		if str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hero" and local_slots.has(who):
+			heroes = JsonUtil.as_strings(d.get("options", []))
+			slot = who
+	if heroes != choice_heroes or slot != choice_slot:
+		choice_heroes = heroes
+		choice_slot = slot
+		targeting_changed.emit()
+
+
 ## A card effect asks for a hero, core, card or branch (hexes are clicked on the table).
 func _choose_dialog(d: Dictionary, who: int) -> void:
 	var kind: String = str(d.get("kind", ""))
-	if kind == "hex":
+	# Hexes and heroes are picked on the table (`_refresh_choice`).
+	if kind == "hex" or kind == "hero":
 		return
 	_dialog.visible = true
 	var ctx: Dictionary = JsonUtil.as_dict(JsonUtil.as_dict(d.get("resume", {})).get("ctx", {}))
@@ -2325,7 +2360,7 @@ func _next_banner() -> void:
 			announcing_changed.emit(false)
 			# A choice that waited behind the bands shows now.
 			if state != null:
-				_refresh_dialog()
+				refresh()
 		return
 	if not _banner_busy:
 		_banner_busy = true
