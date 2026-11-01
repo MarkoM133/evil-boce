@@ -1274,6 +1274,11 @@ func _refresh_range() -> void:
 		for a: Vector2i in arena.map.cells():
 			if engine.core_return_error(state, c, a).is_empty():
 				cells.append(a)
+	elif not hud.choice_cores.is_empty():
+		key += "cores:%s" % ",".join(hud.choice_cores)
+		cells.clear()
+		for cid: String in hud.choice_cores:
+			cells.append(state.core(cid).hex)
 	elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hex":
 		key += "choose:%d" % state.pending.size()
 		cells.clear()
@@ -1837,10 +1842,20 @@ func _on_left(pressed: bool) -> void:
 				var gp: Vector3 = g
 				_apply(Move.make(Move.CHOOSE, JsonUtil.as_int(d.get("player", 0)), {"value": Hex.to_json(arena.hex_at(gp))}))
 			return
+		if not hud.choice_cores.is_empty():
+			var g: Variant = _ground_under_mouse()
+			if g != null:
+				var gp: Vector3 = g
+				var at: Vector2i = arena.hex_at(gp)
+				for cid: String in hud.choice_cores:
+					var c: CoreState = state.core(cid)
+					if c != null and c.hex == at:
+						_apply(Move.make(Move.CHOOSE, hud.choice_slot, {"value": cid}))
+						return
 		var id: String = _hero_under_mouse()
 		if hud.is_targeting() and not id.is_empty() and hud.play_target(id):
 			return
-		if not id.is_empty() and hud.choice_heroes.has(id):
+		if not id.is_empty() and (hud.choice_heroes.has(id) or hud.damage_heroes.has(id)):
 			_on_hero_clicked(id)
 			return
 		if not id.is_empty() and _try_aim(id):
@@ -1896,6 +1911,10 @@ func _on_hero_clicked(id: String) -> void:
 	if hud.choice_heroes.has(id):
 		_apply(Move.make(Move.CHOOSE, hud.choice_slot, {"value": id}))
 		return
+	# A lost battle's DMG: a lit hero takes it (the dialog's buttons do the same).
+	if hud.damage_heroes.has(id):
+		_apply(Move.make(Move.DAMAGE_TO, hud.choice_slot, {"target": id}))
+		return
 	var h: HeroState = state.hero(id)
 	if h == null:
 		return
@@ -1922,7 +1941,7 @@ func _set_hover(id: String, refresh_hud: bool) -> void:
 		return
 	_hovered = id
 	_update_ball_choice()
-	if hud.is_targeting() or not hud.choice_heroes.is_empty():
+	if hud.is_targeting() or not hud.choice_heroes.is_empty() or not hud.damage_heroes.is_empty():
 		_refresh_target_fx()
 	for hid: String in _views:
 		_views[hid].set_glow(hid == id)
@@ -2032,6 +2051,37 @@ func demo_choose_hero() -> void:
 	hud.local_slots = PackedInt32Array([0])
 	_sync()
 	cam.focus(arena.hex_center(mid), 13.0)
+
+
+## Screenshot helper: a Reveal a Core asking player 1 for one of two cores on the field.
+func demo_choose_core() -> void:
+	demo_choose_hero()
+	state.pending.clear()
+	var ids: Array = []
+	var mid: Vector2i = arena.hex_at(Vector3.ZERO)
+	var spots: Array[Vector2i] = [mid + Vector2i(1, 0), mid + Vector2i(-1, -2)]
+	for c: CoreState in state.cores:
+		if ids.size() >= spots.size():
+			break
+		c.place = CoreState.ON_FIELD
+		c.hex = spots[ids.size()]
+		ids.append(c.id)
+	state.pending.append({"type": FxRuntime.DECISION_CHOOSE, "player": 0, "kind": "core", "options": ids,
+		"prompt": "Choose a core", "resume": {"ctx": {}}})
+	_sync()
+
+
+## Screenshot helper: a Discard asking player 1 for a card from a hand of five (three may go).
+func demo_choose_card() -> void:
+	demo_choose_hero()
+	state.pending.clear()
+	var p: PlayerState = state.player(0)
+	while p.hand.size() < 5 and not p.deck.is_empty():
+		p.hand.append(p.deck[0])
+		p.deck.remove_at(0)
+	state.pending.append({"type": FxRuntime.DECISION_CHOOSE, "player": 0, "kind": "card", "options": Array(p.hand.slice(0, 3)),
+		"prompt": "Discard a card", "resume": {"ctx": {}}})
+	_sync()
 
 
 ## Hits hero 0, knocks hero 1 three hexes away and knocks out hero 2.
@@ -2209,9 +2259,14 @@ func _refresh_target_fx() -> void:
 		if _bodies.has(hid):
 			_target_fx.add_child(_target_mark(_bodies[hid].global_position, hid == _hovered))
 	# A card effect's hero choice: the same beams, and the heroes it cannot take half see-through.
-	for hid: String in hud.choice_heroes:
+	for hid: String in hud.choice_heroes + hud.damage_heroes:
 		if _bodies.has(hid):
 			_target_fx.add_child(_target_mark(_bodies[hid].global_position, hid == _hovered))
+	# A core on the field asked for: a beam on its hex.
+	for cid: String in hud.choice_cores:
+		var c: CoreState = state.core(cid)
+		if c != null:
+			_target_fx.add_child(_target_mark(arena.hex_center(c.hex), false))
 	for hid: String in _views:
 		_views[hid].set_faded(not hud.choice_heroes.is_empty() and not hud.choice_heroes.has(hid))
 	# The same light on the hero chosen in Select, and on the ball a local player has to throw.

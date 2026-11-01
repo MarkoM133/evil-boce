@@ -164,6 +164,12 @@ var target_heroes: PackedStringArray = PackedStringArray()
 ## seat that picks. Lit on the table and in the rosters, the rest fade; no dialog (Marko 2026-11-01).
 var choice_heroes: PackedStringArray = PackedStringArray()
 var choice_slot: int = -1
+## The same for a core on the field (Reveal / Activate a Core…): lit on its hex.
+var choice_cores: PackedStringArray = PackedStringArray()
+## A card from the hand (Discard, Play a card for free): lit in the hand, the rest dimmed.
+var choice_cards: PackedStringArray = PackedStringArray()
+## The heroes a lost battle's DMG may go to: lit on the table while the dialog asks.
+var damage_heroes: PackedStringArray = PackedStringArray()
 var _target_why: Dictionary = {}
 var _last_why_by: Dictionary = {}
 var _aim_line: Control
@@ -1386,6 +1392,12 @@ func _refresh_prompt() -> void:
 		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hero":
 			_prompt.text = str(d.get("prompt", "Choose a hero"))
 			_detail.text = "%s: click a lit hero on the table, or its panel." % player_name(who)
+		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "core" and not choice_cores.is_empty():
+			_prompt.text = str(d.get("prompt", "Choose a core"))
+			_detail.text = "%s: click a lit core on the table." % player_name(who)
+		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "card" and not choice_cards.is_empty():
+			_prompt.text = str(d.get("prompt", "Choose a card"))
+			_detail.text = "%s: click a lit card in your hand." % player_name(who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
 			_roll_offer_prompt(d, who)
 		return
@@ -1648,8 +1660,8 @@ func _process(delta: float) -> void:
 		_hand_box.position.y = size.y * 0.5 - HAND_HEIGHT * 0.5
 		return
 	# Up while the mouse is near the bottom of the screen (or a hero is being picked for a
-	# card), else only the tops of the cards show.
-	var up: bool = (get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0 and state.phase != GameState.PHASE_START) or is_targeting()
+	# card, or a card effect asks for a card from it), else only the tops of the cards show.
+	var up: bool = (get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0 and state.phase != GameState.PHASE_START) or is_targeting() or (not choice_cards.is_empty() and choice_slot == hand_slot())
 	if _aim_line != null and (is_targeting() or _aim_line.get_meta("drawn", false)):
 		_aim_line.set_meta("drawn", is_targeting())
 		_aim_line.queue_redraw()
@@ -1846,6 +1858,8 @@ static func _card_rect(tex: Texture2D) -> Rect2:
 func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: String = "",
 		heroes: PackedStringArray = PackedStringArray()) -> Control:
 	var c: CardDef = engine.catalog.get_card(cid)
+	var picking: bool = not choice_cards.is_empty() and choice_slot == slot
+	var picks_it: bool = picking and choice_cards.has(cid)
 	var root := Control.new()
 	root.custom_minimum_size = CARD_SIZE
 	root.size = CARD_SIZE
@@ -1919,20 +1933,40 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 			w.position = Vector2(CARD_SIZE.x * 0.5 - w.custom_minimum_size.x * 0.5, pic.position.y - 26.0)
 			face.add_child(w)
 		root.tooltip_text = _card_tip("%s  ·  %s %s  ·  cost %d\n%s" % [c.name, c.color, c.type, c.cost, c.text])
-		if my_round and not playable:
+		if picking:
+			root.modulate = Color.WHITE if picks_it else Color(0.35, 0.35, 0.35)
+		elif my_round and not playable:
 			# Why it is grey shows above the card on hover; the text block keeps the card's text.
 			root.modulate = Color(0.45, 0.45, 0.45)
 		elif not my_round:
 			root.modulate = Color(0.88, 0.88, 0.88)
+	if picks_it:
+		var ring := ReferenceRect.new()
+		ring.border_color = Palette.GOLD
+		ring.border_width = 4.0
+		ring.editor_only = false
+		ring.position = pic.position - Vector2(2, 2)
+		ring.size = pic.size + Vector2(4, 4)
+		ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		face.add_child(ring)
+		# Above the card: the bottom of the hand is off the screen.
+		var chip: UiShape = UiShape.chip("PICK", Palette.GOLD, Color.BLACK, 14, 24.0, 8.0)
+		chip.position = Vector2(CARD_SIZE.x * 0.5 - chip.custom_minimum_size.x * 0.5, pic.position.y - 30.0)
+		face.add_child(chip)
 	root.mouse_entered.connect(func() -> void:
 		_hovered(cid)
-		_lift(root, true, playable))
+		_lift(root, true, playable or picks_it))
 	root.mouse_exited.connect(func() -> void:
 		if _hover_cid == cid:
 			_hover_cid = ""
-		_lift(root, false, playable))
+		_lift(root, false, playable or picks_it))
 	root.gui_input.connect(func(e: InputEvent) -> void:
 		if _card_click(e, cid):
+			return
+		# A card effect asks for a card from this hand: a lit one answers it.
+		if picks_it and e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
+				and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			choose_pressed.emit(slot, cid)
 			return
 		if playable and e is InputEventMouseButton:
 			var mb := e as InputEventMouseButton
@@ -2171,24 +2205,50 @@ func _refresh_dialog() -> void:
 ## The hero choice waiting on a local player, if any; `targeting_changed` tells the table.
 func _refresh_choice() -> void:
 	var heroes := PackedStringArray()
+	var cores := PackedStringArray()
+	var cards := PackedStringArray()
+	var hurt := PackedStringArray()
 	var slot: int = -1
 	if not state.pending.is_empty() and not _banner_busy:
 		var d: Dictionary = state.pending[0]
 		var who: int = JsonUtil.as_int(d.get("player", -1), -1)
-		if str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hero" and local_slots.has(who):
-			heroes = JsonUtil.as_strings(d.get("options", []))
+		var kind: String = str(d.get("kind", ""))
+		var options: PackedStringArray = JsonUtil.as_strings(d.get("options", []))
+		if local_slots.has(who) and str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE:
+			if kind == "hero":
+				heroes = options
+			elif kind == "core" and _all_on_field(options):
+				cores = options
+			# The hand is away while the balls are aimed; the dialog asks then.
+			elif kind == "card" and not (state.phase == GameState.PHASE_ROLL and not state.rolled):
+				cards = options
 			slot = who
-	if heroes != choice_heroes or slot != choice_slot:
+		elif local_slots.has(who) and str(d.get("type", "")) == RulesEngine.DECISION_DAMAGE:
+			hurt = JsonUtil.as_strings(d.get("targets", []))
+			slot = who
+	if heroes != choice_heroes or cores != choice_cores or cards != choice_cards or hurt != damage_heroes or slot != choice_slot:
 		choice_heroes = heroes
+		choice_cores = cores
+		choice_cards = cards
+		damage_heroes = hurt
 		choice_slot = slot
 		targeting_changed.emit()
+
+
+## Cores held by a hero have no hex of their own to click: those are asked in the dialog.
+func _all_on_field(ids: PackedStringArray) -> bool:
+	for id: String in ids:
+		var c: CoreState = state.core(id)
+		if c == null or c.place != CoreState.ON_FIELD:
+			return false
+	return not ids.is_empty()
 
 
 ## A card effect asks for a hero, core, card or branch (hexes are clicked on the table).
 func _choose_dialog(d: Dictionary, who: int) -> void:
 	var kind: String = str(d.get("kind", ""))
 	# Hexes and heroes are picked on the table (`_refresh_choice`).
-	if kind == "hex" or kind == "hero":
+	if kind == "hex" or kind == "hero" or (kind == "core" and not choice_cores.is_empty()) or (kind == "card" and not choice_cards.is_empty()):
 		return
 	_dialog.visible = true
 	var ctx: Dictionary = JsonUtil.as_dict(JsonUtil.as_dict(d.get("resume", {})).get("ctx", {}))
