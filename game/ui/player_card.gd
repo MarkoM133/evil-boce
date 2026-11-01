@@ -22,6 +22,7 @@ var built: Dictionary = {}
 ## A random deck built after hero picks is shown only after BUILD / REROLL (the others stay "?").
 var _show_built: bool = true
 var loadout: Loadout = Loadout.new()
+var _rolling: bool = false
 var team: int = 0
 ## Extra controls in the header (the opponent type in Play setup).
 var header_extra: HBoxContainer
@@ -489,7 +490,8 @@ static func card_tile(db_: CardDb, id: String, tile: Vector2, on_click: Callable
 			s.outline = Palette.GOLD
 			s.queue_redraw())
 	s.mouse_exited.connect(func() -> void:
-		s.outline = Color(0, 0, 0, 0)
+		# A picked tile keeps its gold edge (`rest_outline`).
+		s.outline = s.get_meta("rest_outline", Color(0, 0, 0, 0))
 		s.queue_redraw())
 	s.gui_input.connect(func(e: InputEvent) -> void:
 		if clickable and e is InputEventMouseButton:
@@ -568,7 +570,7 @@ func _open_core_picker() -> void:
 	_popup.add_child(col)
 	col.add_child(UiTheme.label("CORES", 28))
 	var hint := Label.new()
-	hint.text = "Two of each kind. Click to pick or drop one; RANDOM leaves the row to the draw."
+	hint.text = "Two of each kind. Click to pick or drop one; ROLL picks two at random. A row with nothing picked is drawn when the match starts."
 	hint.add_theme_color_override("font_color", Palette.MUTED)
 	col.add_child(hint)
 	for k: int in Loadout.CORE_KINDS.size():
@@ -577,19 +579,13 @@ func _open_core_picker() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		col.add_child(row)
+		var row_tiles: Array[HeroSlice] = []
+		var row_ids := PackedStringArray()
 		var kind_color: Color = KIND_COLORS.get(kind, Palette.FG)
 		var name_l: Label = UiTheme.label(kind.to_upper(), 18, kind_color)
 		name_l.custom_minimum_size = Vector2(90, 0)
 		name_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(name_l)
-		var all_random: bool = true
-		for j: int in Loadout.CORES_PER_KIND:
-			if not loadout.cores[first + j].is_empty():
-				all_random = false
-		row.add_child(_core_choice("", all_random, func() -> void:
-			for j: int in Loadout.CORES_PER_KIND:
-				loadout.cores[first + j] = ""
-			_core_picked()))
 		for c: CardDef in db.catalog.of_type("Core"):
 			if c.kind != kind:
 				continue
@@ -598,7 +594,7 @@ func _open_core_picker() -> void:
 			for j: int in Loadout.CORES_PER_KIND:
 				if loadout.cores[first + j] == id:
 					at = first + j
-			row.add_child(_core_choice(id, at >= 0, func() -> void:
+			var tile: HeroSlice = _core_choice(id, at >= 0, func() -> void:
 				if at >= 0:
 					loadout.cores[at] = ""
 				else:
@@ -612,7 +608,24 @@ func _open_core_picker() -> void:
 							loadout.cores[first + j - 1] = loadout.cores[first + j]
 						free = first + Loadout.CORES_PER_KIND - 1
 					loadout.cores[free] = id
-				_core_picked()))
+				_core_picked())
+			row.add_child(tile)
+			row_tiles.append(tile)
+			row_ids.append(id)
+		# ROLL under the row's cores (Marko 2026-11-01: under, not beside).
+		var under := HBoxContainer.new()
+		under.add_theme_constant_override("separation", 10)
+		col.add_child(under)
+		var pad := Control.new()
+		pad.custom_minimum_size = Vector2(90, 0)
+		under.add_child(pad)
+		var roll := Button.new()
+		roll.text = "ROLL %s" % kind.to_upper()
+		roll.focus_mode = Control.FOCUS_NONE
+		roll.custom_minimum_size = Vector2(150.0 * row_ids.size() + 10.0 * (row_ids.size() - 1), 36)
+		roll.add_theme_font_size_override("font_size", 16)
+		roll.pressed.connect(func() -> void: _roll_row(first, row_tiles, row_ids))
+		under.add_child(roll)
 	var done := Button.new()
 	done.text = "DONE"
 	done.theme_type_variation = &"Primary"
@@ -623,22 +636,53 @@ func _open_core_picker() -> void:
 		_popup.popup_centered()
 
 
-## A core tile in the picker, gold edged with PICKED when it is one of the row's picks.
-func _core_choice(id: String, picked: bool, on_click: Callable) -> Control:
-	var frame := PanelContainer.new()
-	var sb: StyleBoxFlat = UiTheme.box(Color(0, 0, 0, 0), 4, Color(0, 0, 0, 0), 2, 2)
-	sb.set_border_width_all(3)
-	sb.border_color = Palette.GOLD if picked else Color(0, 0, 0, 0)
-	frame.add_theme_stylebox_override("panel", sb)
-	var tile: Control = card_tile(db, id, Vector2(150, 96), on_click)
-	frame.add_child(tile)
+## A core tile in the picker, gold edged (along its slant) with PICKED when it is one of the row's picks.
+func _core_choice(id: String, picked: bool, on_click: Callable) -> HeroSlice:
+	var tile: HeroSlice = card_tile(db, id, Vector2(150, 96), on_click)
+	if picked:
+		_set_edge(tile, true)
 	if picked and not id.is_empty():
 		# On the tile itself: a container would stretch it over the whole frame.
 		var chip: UiShape = UiShape.chip("PICKED", Palette.GOLD, Color.BLACK, 11, 18.0, 7.0)
 		chip.position = Vector2(14, 4)
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		tile.add_child(chip)
-	return frame
+	return tile
+
+
+static func _set_edge(tile: HeroSlice, on: bool) -> void:
+	var c: Color = Palette.GOLD if on else Color(0, 0, 0, 0)
+	tile.set_meta("rest_outline", c)
+	tile.outline = c
+	tile.outline_width = 3.0
+	tile.queue_redraw()
+
+
+## ROLL on a row: the gold edge runs over the row's cores like a slot machine, slowing down, and
+## stops on two of them, which become the row's picks (Marko 2026-11-01).
+func _roll_row(first: int, tiles: Array[HeroSlice], ids: PackedStringArray) -> void:
+	if ids.size() < Loadout.CORES_PER_KIND or _rolling:
+		return
+	_rolling = true
+	var order: Array = range(ids.size())
+	order.shuffle()
+	var result: Array = order.slice(0, Loadout.CORES_PER_KIND)
+	var steps: int = 14
+	var t: Tween = create_tween()
+	for i: int in steps:
+		var lit: Array = [(i * 2) % ids.size(), (i * 2 + 1) % ids.size()] if i < steps - 1 else result
+		t.tween_callback(func() -> void:
+			for k: int in tiles.size():
+				if is_instance_valid(tiles[k]):
+					_set_edge(tiles[k], lit.has(k)))
+		# Fast at first, then slower, like reels coming to rest.
+		t.tween_interval(0.04 + 0.012 * i * i * 0.5)
+	t.tween_interval(0.25)
+	t.tween_callback(func() -> void:
+		_rolling = false
+		for j: int in Loadout.CORES_PER_KIND:
+			loadout.cores[first + j] = ids[JsonUtil.as_int(result[j])]
+		_core_picked())
 
 
 func _core_picked() -> void:

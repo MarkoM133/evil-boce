@@ -310,3 +310,13 @@ func demo_swap() -> void:
 ## Screenshot helper: the Buff core picker of player 1 is open.
 func demo_core_pick() -> void:
 	_cards[0].call("_open_core_picker")
+
+
+## Screenshot helper: the core picker with ROLL pressed on every row (the reels running).
+func demo_core_roll() -> void:
+	_cards[0].call("_open_core_picker")
+	await get_tree().process_frame
+	for b: Node in _cards[0].find_children("*", "Button", true, false):
+		if (b as Button).text.begins_with("ROLL "):
+			(b as Button).pressed.emit()
+			break
