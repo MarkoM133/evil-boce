@@ -1766,9 +1766,13 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		name_l.set_anchors_preset(Control.PRESET_FULL_RECT)
 		face.add_child(name_l)
 	if c != null:
-		var poor: bool = my_round and c.cost > state.player(slot).energy
-		var cost: UiShape = UiShape.make(UiShape.Kind.DIAMOND, Palette.ACCENT if poor else Palette.GOLD, Vector2(36, 36),
-			str(c.cost), 21, Palette.FG if poor else Color.BLACK)
+		# The price now (a discount, or a colorless card's bonus for the hero it would go to): green when
+		# it is under the printed cost, red when the player cannot pay it.
+		var price: int = engine.card_cost(state, state.player(slot), c) if state != null else c.cost
+		var poor: bool = my_round and price > state.player(slot).energy
+		var cheaper: bool = price < c.cost
+		var cost: UiShape = UiShape.make(UiShape.Kind.DIAMOND, Palette.ACCENT if poor else (Palette.HEAL if cheaper else Palette.GOLD), Vector2(36, 36),
+			str(price), 21, Palette.FG if poor else Color.BLACK)
 		cost.outline = Color.BLACK
 		cost.outline_width = 3.0
 		cost.name = "Cost"
