@@ -1949,9 +1949,15 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		ring.size = pic.size + Vector2(4, 4)
 		ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		face.add_child(ring)
-		# The cost stays on top of the ring (Marko 2026-11-01: the ring ran over the 2).
+		# The ring runs round the cost diamond (Marko 2026-11-01): a gold diamond a little bigger
+		# behind it, the cost on top.
 		if face.has_node("Cost"):
-			face.move_child(face.get_node("Cost"), -1)
+			var cost_node: UiShape = face.get_node("Cost")
+			var halo: UiShape = UiShape.make(UiShape.Kind.DIAMOND, Palette.GOLD, Vector2(48, 48), "", 1, Palette.GOLD)
+			halo.position = cost_node.position - Vector2(6, 6)
+			halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			face.add_child(halo)
+			face.move_child(cost_node, -1)
 		# Above the card: the bottom of the hand is off the screen.
 		var chip: UiShape = UiShape.chip("PICK", Palette.GOLD, Color.BLACK, 14, 24.0, 8.0)
 		chip.position = Vector2(CARD_SIZE.x * 0.5 - chip.custom_minimum_size.x * 0.5, pic.position.y - 30.0)
