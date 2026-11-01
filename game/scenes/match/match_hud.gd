@@ -54,9 +54,9 @@ const HAND_HEIGHT: float = 210.0
 const HAND_WIDTH: float = 760.0
 const BANNER_TIME: float = 0.8
 ## Phase call-outs stay a little longer, to be read.
-const PHASE_BANNER_TIME: float = 3.0
+const PHASE_BANNER_TIME: float = 2.2
 ## Start too: every phase is called out long enough to notice (Marko 2026-10-26).
-const START_BANNER_TIME: float = 3.0
+const START_BANNER_TIME: float = 2.2
 ## BATTLE! stays long enough to read both sides' Power.
 const BATTLE_BANNER_TIME: float = 1.6
 ## A merged band stays this much longer per extra line, up to MERGED_MAX_TIME.
@@ -2003,8 +2003,10 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		elif my_round and not playable:
 			# Why it is grey shows above the card on hover; the text block keeps the card's text.
 			root.modulate = Color(0.45, 0.45, 0.45)
-		elif not my_round:
-			root.modulate = Color(0.88, 0.88, 0.88)
+		elif not my_round and state.phase != GameState.PHASE_MULLIGAN:
+			# Nothing can be played now (Start, the other side's turn): grey, so no card looks
+			# playable (Marko 2026-11-01: in Start every card was in colour).
+			root.modulate = Color(0.5, 0.5, 0.5)
 	if picks_it:
 		var ring := ReferenceRect.new()
 		ring.border_color = Palette.GOLD
@@ -2985,6 +2987,13 @@ func show_ball_choice(hero_id: String, at: Vector2) -> void:
 				var hero: HeroState = state.hero(_choice_hero)
 				if hero == null:
 					return
+				# The chosen option of the picked hero reads CONFIRM <HERO> and locks it in, as the
+				# button bottom right does (Marko 2026-11-01).
+				var must: bool = hero.zone == HeroState.ZONE_STRIP
+				if str(picks.get(hero.owner, "")) == hero.id and (must or pick_rolls.get(hero.owner, true) == true) == want:
+					hide_ball_choice(true)
+					pick_confirmed.emit(hero.owner, hero.id, want)
+					return
 				picks[hero.owner] = hero.id
 				pick_rolls[hero.owner] = want
 				hide_ball_choice(true)
@@ -2998,8 +3007,11 @@ func show_ball_choice(hero_id: String, at: Vector2) -> void:
 	var rolls: bool = must_roll or not picked or pick_rolls.get(h.owner, true) == true
 	var roll_b: Button = _ball_choice.get_child(0)
 	var stay_b: Button = _ball_choice.get_child(1)
-	roll_b.theme_type_variation = &"Gold" if picked and rolls else &""
-	stay_b.theme_type_variation = &"Gold" if picked and not rolls else &""
+	roll_b.theme_type_variation = &"Primary" if picked and rolls else &""
+	stay_b.theme_type_variation = &"Primary" if picked and not rolls else &""
+	var confirm: String = "CONFIRM %s" % hero_name(h).get_slice(",", 0).to_upper()
+	roll_b.text = confirm if picked and rolls else "ROLL"
+	stay_b.text = confirm if picked and not rolls else "STAY"
 	# In the start zone a hero must roll: STAY is not offered at all.
 	stay_b.visible = not must_roll
 	_ball_choice.reset_size()
@@ -3131,6 +3143,11 @@ func _pile(cid: String, count: String, face_down: bool) -> Control:
 
 
 ## Whether the mouse is on the Roll / Stay under a ball.
+## The hero whose Roll / Stay shows under its ball, "" when hidden.
+func ball_choice_hero() -> String:
+	return _choice_hero if _ball_choice != null and _ball_choice.visible else ""
+
+
 func ball_choice_has_mouse() -> bool:
 	return _ball_choice != null and _ball_choice.visible \
 			and _ball_choice.get_global_rect().grow(8).has_point(get_global_mouse_position())

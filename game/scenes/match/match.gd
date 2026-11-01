@@ -14,7 +14,7 @@ const BOT_DELAY: float = 0.5
 const AUTO_PASS_DELAY: float = 1.5
 ## A new phase holds the table this long (Marko 2026-10-26: it went by too fast to notice):
 ## bots and auto-pass wait, the clock stands. The player may still move at once.
-const PHASE_HOLD: float = 3.0
+const PHASE_HOLD: float = 2.4
 ## Core token radius; a rolling ball picks a core up when it touches it.
 const CORE_RADIUS: float = 0.34
 ## The token is drawn this much bigger than its pick-up radius, so its picture reads.
@@ -1752,6 +1752,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed and _sling.is_aiming():
 			_sling.cancel()
 			arena.set_grid_emphasis(false)
+			# The ball still to throw lights up again (Marko 2026-11-01: the beam was gone).
+			_refresh_target_fx()
 			return
 	if event is InputEventMouseMotion and not _setup_item().is_empty():
 		var g: Variant = _ground_under_mouse()
@@ -1801,6 +1803,7 @@ func _on_key(k: InputEventKey) -> void:
 			elif _sling.is_aiming():
 				_sling.cancel()
 				arena.set_grid_emphasis(false)
+				_refresh_target_fx()
 			else:
 				_toggle_menu()
 		KEY_SPACE:
@@ -1897,6 +1900,7 @@ func _release_aim() -> void:
 	_sling.cancel()
 	arena.set_grid_emphasis(false)
 	if ball == null or not throw:
+		_refresh_target_fx()
 		return
 	var h: HeroState = state.hero(ball.ball_id)
 	_apply(Move.make(Move.AIM, h.owner, {"dir": [dir.x, dir.z], "power": power}))
@@ -2755,6 +2759,11 @@ func _update_ball_choice() -> void:
 		hud.hide_ball_choice(true)
 		return
 	if hud.ball_choice_has_mouse():
+		# The mouse is on the buttons: they stay with their ball when the camera moves (WASD),
+		# they no longer stay under the mouse (Marko 2026-11-01).
+		var on: String = hud.ball_choice_hero()
+		if _bodies.has(on):
+			hud.show_ball_choice(on, cam.camera.unproject_position(_bodies[on].global_position) + Vector2(0, 34))
 		return
 	var id: String = _hovered if _choice_ok(_hovered) else ""
 	if id.is_empty():
