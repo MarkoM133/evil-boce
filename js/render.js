@@ -625,8 +625,8 @@ export const FRAME_LETTER = { Cyan: 'C', Yellow: 'Y', Purple: 'M', Red: 'R', Blu
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 
 // Heroj ili evolucija: boja pozadine i art u prozoru, okvir u boji heroja, pločica s amblemom, oznakom
-// (HERO, ili ime heroja kod evolucije) i nazivom, statsi u kućicama, naziv sposobnosti i tekst, RNG/KB,
-// tagovi, kod. Evolucija ima i razinu u hexu lijevo od naziva i cost u pločici.
+// (HERO, ili EVOLUTION i razina) i nazivom, statsi u kućicama, naziv sposobnosti i tekst, RNG/KB,
+// tagovi, kod. Evolucija ima i cost u pločici.
 function renderHero(canvas, card, tpl, art, emblem) {
   const L = tpl.layout;
   const [W, H] = L.size;
@@ -658,31 +658,15 @@ function renderHero(canvas, card, tpl, art, emblem) {
     ctx.drawImage(emblem, ex + (ew - emblem.width * s) / 2, ey + (eh - emblem.height * s) / 2, emblem.width * s, emblem.height * s);
   }
   const plate = L.plateColor;
-  const [heroName, evoName] = evo && (card.name ?? '').includes(',') ? card.name.split(/,\s*/, 2) : [card.hero ?? '', card.name ?? ''];
+  const plateText = plate;
   ctx.save();
   ctx.letterSpacing = `${L.label.spacing ?? 0}px`;
-  fitLine(ctx, evo ? (card.hero || heroName).toUpperCase() : 'HERO', L.label, { font: TITLE_FONT, color: plate, bold: true });
+  // Gore između strelica: HERO, ili EVOLUTION i razina rimskim brojem (kao Card Engine).
+  fitLine(ctx, evo ? `EVOLUTION ${ROMAN[card.evo ?? 1] ?? card.evo}` : 'HERO', L.label, { font: TITLE_FONT, color: plateText, bold: true });
   ctx.restore();
-  const title = evo ? evoName : card.name ?? '';
-  if (!fitLine(ctx, title, L.title, { font: TITLE_FONT, color: plate, bold: true })) warnings.push('The name is too long for the plate.');
-  if (evo) {
-    // Razina u hexu, odmah lijevo od naziva.
-    const [tx, ty, tw, th] = L.title.box;
-    const textW = Math.min(ctx.measureText(title).width, tw);
-    const r = th * 0.42;
-    const cx = tx + tw / 2 - textW / 2 - r - 22;
-    const cy = ty + th / 2;
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const a = Math.PI / 6 + (i * Math.PI) / 3;
-      ctx[i ? 'lineTo' : 'moveTo'](cx + r * Math.cos(a), cy + r * Math.sin(a));
-    }
-    ctx.closePath();
-    ctx.fillStyle = plate;
-    ctx.fill();
-    fitLine(ctx, ROMAN[card.evo ?? 1] ?? String(card.evo), { box: [cx - r, cy - r, r * 2, r * 2], size: r * 1.05, min: 20 }, { font: TITLE_FONT, color: '#ffffff', bold: true });
-    if (L.cost && card.cost != null) fitLine(ctx, String(card.cost), L.cost, { font: TITLE_FONT, color: '#ffffff' });
-  }
+  // Naslov je puno ime karte ("Luffy, Gear Second").
+  if (!fitLine(ctx, card.name ?? '', L.title, { font: TITLE_FONT, color: plateText, bold: true })) warnings.push('The name is too long for the plate.');
+  if (evo && L.cost && card.cost != null) fitLine(ctx, String(card.cost), L.cost, { font: TITLE_FONT, color: '#ffffff' });
   const tints = { ...STAT_TINTS, ...(L.statTints ?? {}) };
   for (const [k, slot] of Object.entries(L.stats)) {
     const v = card.stats?.[k];
