@@ -35,6 +35,8 @@ signal hero_hovered(hero_id: String)
 signal board_hovered(hexes: Array[Vector2i])
 ## A card went onto a hero (log: equipped, evolved, action): the table shows it coming down.
 signal card_played(card_id: String, hero_id: String)
+## A hero's ability went off (used or by itself): the table shows its effect.
+signal ability_fired(hero_id: String, card_id: String)
 ## The centre is taken by a band (true) or free again (false): the match waits while it is taken.
 signal announcing_changed(busy: bool)
 signal menu_pressed
@@ -162,6 +164,9 @@ var _choice_left_at: int = 0
 ## How long Roll / Stay under a ball stays after the mouse leaves the ball.
 const CHOICE_GRACE: float = 0.6
 var target_cid: String = ""
+## Where that card sits in the hand: two copies of one card are told apart by it (Marko
+## 2026-11-02: the other copy lit up and the aim line came from it).
+var target_index: int = -1
 var target_heroes: PackedStringArray = PackedStringArray()
 ## A card effect asking a local player for a hero (heal, swap…): the heroes it may take and the
 ## seat that picks. Lit on the table and in the rosters, the rest fade; no dialog (Marko 2026-11-01).
@@ -229,6 +234,7 @@ func refresh() -> void:
 	if is_targeting() and not (_in_card_round() and state.to_act == target_slot and state.pending.is_empty()
 			and state.player(target_slot).hand.has(target_cid)):
 		target_cid = ""
+		target_index = -1
 		target_slot = -1
 		target_heroes = PackedStringArray()
 		targeting_changed.emit()
@@ -1799,7 +1805,7 @@ func _refresh_hand() -> void:
 				fly.tween_property(face, "position:y", 0.0, 0.45).set_delay(0.12 * i).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 				fly.tween_property(face, "modulate:a", 1.0, 0.2).set_delay(0.12 * i)
 		# The card a hero is being chosen for stays up.
-		if cid == target_cid and slot == target_slot:
+		if cid == target_cid and slot == target_slot and (target_index < 0 or target_index == i):
 			_lift(card, true, true)
 	if mulligan and not _hand_dealt:
 		_mulligan_ready_at = Time.get_ticks_msec() + int((0.12 * maxf(float(n) - 1.0, 0.0) + 0.45 + 0.15) * 1000.0)
@@ -1851,16 +1857,17 @@ func _play_check(slot: int, cid: String, as_turn: bool = false) -> Dictionary:
 
 ## A playable card was clicked: with one hero to go on (or none to name) it is played at once;
 ## with more, the player picks one on the table or in the roster.
-func _card_chosen(slot: int, cid: String, heroes: PackedStringArray) -> void:
+func _card_chosen(slot: int, cid: String, heroes: PackedStringArray, index: int = -1) -> void:
 	if heroes.size() <= 1:
 		cancel_targeting()
 		card_pressed.emit(slot, cid, heroes[0] if heroes.size() == 1 else "")
 		return
-	if cid == target_cid:
+	if cid == target_cid and index == target_index:
 		cancel_targeting()
 		return
 	target_slot = slot
 	target_cid = cid
+	target_index = index
 	target_heroes = heroes
 	_target_why = _last_why_by.get(cid, {})
 	targeting_changed.emit()
@@ -1875,6 +1882,7 @@ func cancel_targeting() -> void:
 	if target_cid.is_empty():
 		return
 	target_cid = ""
+	target_index = -1
 	target_slot = -1
 	target_heroes = PackedStringArray()
 	_target_why = {}
@@ -1900,7 +1908,8 @@ func _draw_aim_line() -> void:
 	var from := Vector2.ZERO
 	var found: bool = false
 	for c: Node in _hand.get_children():
-		if c is Control and str(c.get_meta("cid", "")) == target_cid:
+		if c is Control and str(c.get_meta("cid", "")) == target_cid \
+				and (target_index < 0 or JsonUtil.as_int(c.get_meta("index", -1)) == target_index):
 			var card := c as Control
 			from = card.get_global_rect().get_center() - _aim_line.get_global_rect().position
 			from.y = card.get_global_rect().position.y - _aim_line.get_global_rect().position.y
@@ -1945,6 +1954,7 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 	root.size = CARD_SIZE
 	root.pivot_offset = Vector2(CARD_SIZE.x * 0.5, CARD_SIZE.y)
 	root.set_meta("cid", cid)
+	root.set_meta("index", index)
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
 	# The root stays put and takes the mouse; only its face rises and grows on hover, so the
 	# card does not slip out from under the mouse and flicker.
@@ -2071,7 +2081,7 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 			var mb := e as InputEventMouseButton
 			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 				# A click (let go where pressed) plays as before; a drag carries it to a hero (_input).
-				_drag = {"slot": slot, "cid": cid, "heroes": heroes, "from": get_global_mouse_position()}
+				_drag = {"slot": slot, "cid": cid, "index": index, "heroes": heroes, "from": get_global_mouse_position()}
 				_dragging = false)
 	return root
 
@@ -2155,6 +2165,7 @@ func _drag_input(event: InputEvent) -> bool:
 		if not heroes.is_empty():
 			target_slot = JsonUtil.as_int(_drag["slot"])
 			target_cid = str(_drag["cid"])
+			target_index = JsonUtil.as_int(_drag.get("index", -1), -1)
 			target_heroes = heroes
 			_target_why = _last_why_by.get(target_cid, {})
 			targeting_changed.emit()
@@ -2166,7 +2177,7 @@ func _drag_input(event: InputEvent) -> bool:
 	var d: Dictionary = _drag
 	_drag = {}
 	if not _dragging:
-		_card_chosen(JsonUtil.as_int(d["slot"]), str(d["cid"]), heroes)
+		_card_chosen(JsonUtil.as_int(d["slot"]), str(d["cid"]), heroes, JsonUtil.as_int(d.get("index", -1), -1))
 		return false
 	_dragging = false
 	get_viewport().set_input_as_handled()
@@ -2614,6 +2625,8 @@ func _scan_log() -> void:
 		var t: String = str(e.get("type", ""))
 		if (t == "equipped" or t == "evolved" or t == "action") and not str(e.get("hero", "")).is_empty():
 			card_played.emit(str(e.get("card", "")), str(e.get("hero", "")))
+		if (t == "triggered" or t == "ability") and not str(e.get("hero", "")).is_empty():
+			ability_fired.emit(str(e.get("hero", "")), str(e.get("card", "")))
 		if BANNER_EVENTS.has(t):
 			fresh.append(e)
 		elif t == "stage_revealed":
@@ -2763,6 +2776,19 @@ func _next_banner() -> void:
 		side_r.add_theme_font_size_override("font_size", 22)
 		side_r.custom_minimum_size.x = 420
 	row.add_child(side_r)
+	# Everything stays on the screen (Marko 2026-11-02: a long right side ran off it): the
+	# sides wrap first, then the title gets smaller until the row fits.
+	var room: float = size.x - 80.0
+	if row.get_combined_minimum_size().x > room:
+		for side: Label in [side_r, row.get_child(0) as Label]:
+			if side.get_minimum_size().x > 300.0:
+				side.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				side.custom_minimum_size.x = 300.0
+				side.add_theme_font_size_override("font_size", 22)
+	var title_size: int = 84
+	while row.get_combined_minimum_size().x > room and title_size > 40:
+		title_size -= 6
+		title.add_theme_font_size_override("font_size", title_size)
 	_band = band
 	var t: Tween = band.create_tween()
 	_band_tween = t
@@ -3959,9 +3985,17 @@ func _board_stage(st: StageState, slot: int) -> Control:
 				line.add_child(UiTheme.label("STAY 1/2", 10, Palette.team(state.team_of(stayer.owner)).lightened(0.45)))
 		if energy:
 			var goal: int = state.settings.stage_goal
-			var num: String = ("%d | %d" % [st.progress_of(slot), st.progress_of(other)]) if other >= 0 else "%d/%d" % [st.progress_of(slot), goal]
-			var num_col: Color = Palette.DIM if contested else Palette.team(state.team_of(slot)).lightened(0.45)
-			line.add_child(UiTheme.label(num, 11, num_col))
+			# Each side's energy in its own team's colour, then the goal: "6/14", or "0 5 /14"
+			# with both (Marko 2026-11-02: "0 | 5" read like "0/14").
+			var nums := HBoxContainer.new()
+			nums.add_theme_constant_override("separation", 3)
+			nums.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			line.add_child(nums)
+			for who: int in ([slot, other] if other >= 0 else [slot]):
+				# In team colours even while contested (the name and the bar go grey then).
+				var col: Color = Palette.team(state.team_of(who)).lightened(0.45)
+				nums.add_child(UiTheme.label(str(st.progress_of(who)), 11, col))
+			nums.add_child(UiTheme.label("/%d" % goal, 9, Palette.MUTED))
 			var track := ColorRect.new()
 			track.color = Palette.LINE
 			track.custom_minimum_size = Vector2(0, 3)

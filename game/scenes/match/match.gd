@@ -408,6 +408,7 @@ func _build_hud() -> void:
 	hud.hero_clicked.connect(_on_hero_clicked)
 	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
 	hud.card_played.connect(_ghost_card)
+	hud.ability_fired.connect(_ability_fx)
 	hud.board_hovered.connect(func(hexes: Array[Vector2i]) -> void:
 		_board_marks = hexes
 		_refresh_range())
@@ -2492,6 +2493,18 @@ func demo_targeting() -> void:
 		cam.focus(_bodies[a.id].global_position, 16.0)
 
 
+## Screenshot helper: as demo_targeting with two copies of the card side by side; the left
+## one is being played (only it may lift, the aim line comes from it).
+func demo_targeting_dupe() -> void:
+	var p: PlayerState = state.player(0)
+	if p.hand.size() < 3:
+		return
+	p.hand[2] = p.hand[0]
+	demo_targeting()
+	hud.target_index = 0
+	hud.refresh()
+
+
 # --- battles on the table (mockup HUD 4) -------------------------------------------------
 
 ## A red ring that breathes under each hero of the battle being fought.
@@ -2716,6 +2729,28 @@ func demo_kb_hit() -> void:
 	_sync()
 	engine.knockback(state, h, Hex.direction_towards(other.hex, h.hex) + 3, 3)
 	_sync()
+
+
+## A hero's ability goes off: its colour bursts on the ball and a wave runs out to its range
+## (Purple: a toxic fog over it, Purple Haze; Marko 2026-11-02).
+func _ability_fx(hero_id: String, _card_id: String) -> void:
+	if _quiet or not _views.has(hero_id):
+		return
+	var h: HeroState = state.hero(hero_id)
+	if h == null or not h.is_on_map():
+		return
+	var v: BallView = _views[hero_id]
+	ColorFx.burst(v, v._style, v._hero_color, v.radius)
+	var step: float = arena.hex_center(Hex.neighbor(h.hex, 0)).distance_to(arena.hex_center(h.hex))
+	var reach: float = step * (float(engine.stat(state, h, "rng")) + 0.5)
+	AbilityFx.play(arena, arena.hex_center(h.hex), reach, v._hero_color, v._style)
+
+
+## Screenshot helper: the first hero of player 1 on the table, its ability going off.
+func demo_ability_fx() -> void:
+	demo_fx_place()
+	var h: HeroState = state.heroes[0]
+	_ability_fx(h.id, h.card_id)
 
 
 ## Screenshot helper (after demo_dice): player 1 throws its dice.
