@@ -2718,6 +2718,13 @@ func demo_kb_hit() -> void:
 	_sync()
 
 
+## Screenshot helper (after demo_dice): player 1 throws its dice.
+func demo_dice_throw() -> void:
+	for n: Node in hud.get_parent().get_children():
+		if n is InitiativeDice:
+			(n as InitiativeDice)._throw(0)
+
+
 ## Screenshot helper: the dice that pick who starts (a real match shows them on its own).
 func demo_dice() -> void:
 	_show_initiative()

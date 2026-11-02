@@ -5,12 +5,16 @@ extends Control
 ## it: the values come from the match seed, so a host and its guests see the same roll, and
 ## the player the engine picked always has the higher total.
 ## The dice are two closed balls in the player's colour (playtest 2026-10-30: they fell by
-## themselves): a local player throws them with ROLL or a click, they shake and open on a
-## number. Bots and remote players throw right after; with no local player both go at once.
+## themselves): a local player throws them with ROLL or a click, they open and their numbers
+## run like a slot machine, slower and slower, until they stop on the throw (Marko 2026-11-02).
+## Bots and remote players throw right after; with no local player both go at once.
 
 signal finished
 
-const ROLL_TIME: float = 1.1
+const ROLL_TIME: float = 1.6
+## Seconds between two numbers on a die: at the start of the run and just before it stops.
+const SPIN_FAST: float = 0.045
+const SPIN_SLOW: float = 0.26
 const HOLD_TIME: float = 1.6
 const BALL := Vector2(72, 72)
 ## How long a bot or remote player waits after the local throw.
@@ -26,7 +30,10 @@ var _roll_buttons: Array[Button] = []
 var _final: Array[PackedInt32Array] = []
 ## Per slot: time left shaking (> 0), -1 not thrown yet, 0 settled.
 var _rolling: Array[float] = [-1.0, -1.0]
-var _flicker: float = 0.0
+## Per die: seconds until its number changes again.
+var _spin_left: Array[float] = [0.0, 0.0, 0.0, 0.0]
+## The running numbers only (the throw itself comes from the seed).
+var _spin_rng := RandomNumberGenerator.new()
 var _done: bool = false
 var _rng := RandomNumberGenerator.new()
 var _result: Label
@@ -71,6 +78,7 @@ func setup(seed: int, initiative: int, names: PackedStringArray, colors: Array[C
 	_colors = colors
 	_local = local
 	_rng.seed = seed
+	_spin_rng.randomize()
 	# It sits outside the HUD, so it brings the game's look itself (buttons).
 	theme = UiTheme.get_theme()
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -169,6 +177,12 @@ func _throw(slot: int) -> void:
 		return
 	_rolling[slot] = ROLL_TIME * GameSettings.anim_scale()
 	_roll_buttons[slot].visible = false
+	# Open at once: the numbers run inside.
+	for d: int in 2:
+		_balls[slot * 2 + d].add_theme_stylebox_override("panel", _ball_box(slot, true))
+		_die_labels[slot * 2 + d].text = str(_spin_rng.randi_range(1, 6))
+		# The second die runs a little longer than the first.
+		_spin_left[slot * 2 + d] = SPIN_FAST * (1 + d)
 	# Whoever is not at this computer throws right after.
 	for other: int in 2:
 		if other != slot and not _local.has(other) and _rolling[other] == -1.0:
@@ -178,20 +192,29 @@ func _throw(slot: int) -> void:
 func _process(delta: float) -> void:
 	if _done:
 		return
-	_flicker -= delta
-	var tick: bool = _flicker <= 0.0
-	if tick:
-		_flicker = 0.07
 	for slot: int in 2:
 		if _rolling[slot] <= 0.0:
 			continue
 		_rolling[slot] -= delta
+		var total: float = maxf(ROLL_TIME * GameSettings.anim_scale(), 0.01)
+		var k: float = clampf(1.0 - _rolling[slot] / total, 0.0, 1.0)
 		for d: int in 2:
-			var ball: PanelContainer = _balls[slot * 2 + d]
-			# Shaking in the hand before it opens.
-			ball.rotation = sin(Time.get_ticks_msec() * 0.04 + d * 1.7) * 0.35
-			if tick:
-				_die_labels[slot * 2 + d].text = ""
+			var i: int = slot * 2 + d
+			var ball: PanelContainer = _balls[i]
+			# A wobble that dies down as the numbers slow.
+			ball.rotation = sin(Time.get_ticks_msec() * 0.04 + d * 1.7) * 0.18 * (1.0 - k)
+			_spin_left[i] -= delta
+			if _spin_left[i] > 0.0:
+				continue
+			# Slower and slower, like a reel coming to rest.
+			_spin_left[i] = lerpf(SPIN_FAST, SPIN_SLOW, k * k) * GameSettings.anim_scale()
+			var label: Label = _die_labels[i]
+			var n: int = _spin_rng.randi_range(1, 5)
+			if n >= label.text.to_int():
+				n += 1
+			label.text = str(n)
+			ball.scale = Vector2(1.08, 1.08)
+			ball.create_tween().tween_property(ball, "scale", Vector2.ONE, 0.06)
 		if _rolling[slot] <= 0.0:
 			_open(slot)
 
