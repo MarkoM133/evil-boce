@@ -1685,7 +1685,8 @@ func begin_move(s: GameState, h: HeroState) -> StageState:
 ## A move of `h` that began on stage `was` is over. With the energy claim variant, a hero that
 ## left an unclaimed stage through team `by_team`'s doing (another team: a hit, a knockback, a
 ## ring-out, a KO, an effect) costs its player half the energy in that stage, rounded down;
-## leaving by its own roll (or its own side's doing) costs nothing.
+## leaving by its own roll (or its own side's doing) costs nothing, and so does it while another
+## of the player's heroes still stands there (Marko 2026-11-02).
 func end_move(s: GameState, h: HeroState, was: StageState, by_team: int) -> void:
 	_move_depth -= 1
 	if _move_depth > 0 or was == null or h == null or not s.settings.energy_claims() or was.is_claimed():
@@ -1696,6 +1697,9 @@ func end_move(s: GameState, h: HeroState, was: StageState, by_team: int) -> void
 		return
 	var have: int = was.progress_of(h.owner)
 	var lost: int = have / 2
+	for o: HeroState in s.heroes_on_stage(was):
+		if o != h and o.owner == h.owner:
+			lost = 0
 	if lost > 0:
 		was.progress[h.owner] = have - lost
 	s.event("stage_knocked_off", {"hero": h.id, "stage": was.id, "player": h.owner, "lost": lost,

@@ -58,15 +58,18 @@ A rule option from Marko and Tarik (2026-11-02), next to the Stay claims, not in
 - Knocked off (`begin_move` / `end_move`): a hero that leaves an unclaimed stage through the
   other side's doing costs its player half the energy in that stage, rounded down (event
   `stage_knocked_off {hero, stage, player, lost, progress, goal, by_team}`). Leaving by its own
-  roll costs nothing. Who did it: a battle knockback, the winners; a roll, the thrower whose
+  roll costs nothing, and so does it while another of the player's heroes still stands there
+  (`lost` 0): only the last one off halves it. Who did it: a battle knockback, the winners; a roll, the thrower whose
   ball touched it, directly or through other balls (`roll_causes`; without touches reported,
   another team that threw); a KO, whoever dealt the damage; a card's move or knockback, the
   card's player. Only the outermost move counts, so a knockback's wall damage is part of it.
-- Assumptions waiting for Marko (`pitanja.md`): a KO on a stage counts as being knocked off;
-  each hero knocked off costs half, even with another hero of the player still there; energy
-  may go into any unclaimed stage, whoever placed it; a "cannot claim" effect lets the energy go
-  in but holds the claim back until a later End phase; in 2v2 only the player's own heroes
-  count, and a teammate's hero does not contest.
+- Decided with Marko (2026-11-02; the GDD waits until the variant itself is decided): a KO by
+  the other side on a stage counts as being knocked off; a card of the other side that moves or
+  knocks the hero off counts too; energy may go into any unclaimed stage, whoever placed it; a
+  "cannot claim" effect lets the energy go in but holds the claim back until a later End phase;
+  energy over the goal is lost; the goal is 14 unless set.
+- 2v2 is left for later (`pitanja.md`). For now only the player's own heroes count, and a
+  teammate's hero does not contest.
 - The move timer's safe move puts it all into the stage with the most energy already in it.
 
 ## Playing cards (`play_card {"card", "hero"?, "replace"?}`)
