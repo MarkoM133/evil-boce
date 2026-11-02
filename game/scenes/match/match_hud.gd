@@ -3756,9 +3756,13 @@ func _side_board(slot: int, right: bool) -> Control:
 	box.bg = Palette.PANEL_SOLID
 	box.color_edge = team_col
 	box.custom_minimum_size = Vector2(ROSTER_WIDTH, 40)
-	var near_cut: int = int(HeroSlice.CUT) + 8
-	box.content.add_theme_constant_override("margin_left", 12 if right else near_cut)
-	box.content.add_theme_constant_override("margin_right", near_cut if right else 12)
+	# As wide as a hero panel and no wider: the column grows with an ability tab beside a panel.
+	box.size_flags_horizontal = Control.SIZE_SHRINK_END if right else Control.SIZE_SHRINK_BEGIN
+	# The slice leans on both sides: the top starts a cut in on the left, the bottom ends a cut
+	# short on the right, so both margins keep the text (and the fold chevron) on the black.
+	var cut: int = int(HeroSlice.CUT) + 8
+	box.content.add_theme_constant_override("margin_left", cut)
+	box.content.add_theme_constant_override("margin_right", cut)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 4)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -3813,7 +3817,7 @@ func _side_board(slot: int, right: bool) -> Control:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(spacer)
-	head.add_child(UiTheme.label("▴" if open else "▾", 12, Palette.MUTED))
+	head.add_child(_fold_chevron(open))
 	col.add_child(head)
 	if not open:
 		return box
@@ -3851,6 +3855,19 @@ func _core_known(c: CoreState) -> bool:
 	if local_slots.has(c.owner):
 		return true
 	return c.place == CoreState.ON_HERO or c.place == CoreState.IN_INVENTORY or (c.place == CoreState.ON_FIELD and c.face_up)
+
+
+## A small drawn chevron: up while the box is open (click folds it), down while folded.
+func _fold_chevron(open: bool) -> Control:
+	var chev := Control.new()
+	chev.custom_minimum_size = Vector2(16, 16)
+	chev.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	chev.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chev.draw.connect(func() -> void:
+		var pts := PackedVector2Array([Vector2(3, 10), Vector2(8, 5), Vector2(13, 10)] if open
+			else [Vector2(3, 6), Vector2(8, 11), Vector2(13, 6)])
+		chev.draw_polyline(pts, Palette.MUTED, 2.0, true))
+	return chev
 
 
 ## One stage as a tile in its owner's box: the art, a band with the name (CLAIMED, HIDDEN) and,
