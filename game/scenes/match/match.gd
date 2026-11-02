@@ -941,25 +941,8 @@ func _rebuild_tokens() -> void:
 			body.add_child(_hex_prism(tuning.hex_size * 0.92, 1.2, Color("5a5049"), Color("6d625a")))
 			body.position = arena.hex_center(a) + Vector3(0, 0.6, 0)
 			_tokens.add_child(body)
-	# A tied, locked pair: LOCKED over the middle of their link (_lock_links).
-	for a: HeroState in state.heroes:
-		if a.tie_turns <= 0 or not a.is_on_map() or not GameSettings.table_text():
-			continue
-		for lid: String in a.locked_with:
-			var b: HeroState = state.hero(lid)
-			if b == null or not b.is_on_map() or b.id < a.id:
-				continue
-			var tag := Label3D.new()
-			# Says what it means for the player (playtest 2026-10-30: LOCKED · TIE was unclear).
-			tag.text = "TIED · FIGHT AGAIN\nCAN'T BE PICKED"
-			tag.font_size = 40
-			tag.pixel_size = 0.016
-			tag.outline_size = 12
-			tag.modulate = Palette.ACCENT.lightened(0.25)
-			tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-			tag.no_depth_test = true
-			tag.position = arena.hex_center(a.hex).lerp(arena.hex_center(b.hex), 0.5) + Vector3(0, 1.6, 0)
-			_tokens.add_child(tag)
+	# A tied, locked pair: shackles on the ground and dimmed balls (_lock_links, _refresh_targets),
+	# no words over the table (Marko 2026-11-02).
 	for st: StageState in state.stages:
 		if st.is_claimed():
 			var flag := MeshInstance3D.new()
@@ -980,65 +963,8 @@ func _rebuild_tokens() -> void:
 			cloth.material_override = MeshKit.unshaded(team_col, false)
 			cloth.position = flag.position + Vector3(0.58, 0.85, 0)
 			_tokens.add_child(cloth)
-		# Not in Battle (Marko 2026-11-01: it stood over the fight), nor with the words switched off.
-		elif st.placed and not st.stay_hero.is_empty() and st.stay_turn == state.turn - 1 \
-				and state.phase != GameState.PHASE_BATTLE and GameSettings.table_text():
-			# A hero stayed here last turn: one more Stay claims it (playtest 2026-10-30: nothing
-			# showed how long anyone had stood on a stage).
-			var stayer: HeroState = state.hero(st.stay_hero)
-			if stayer != null and state.heroes_on_stage(st).has(stayer):
-				var tag := Label3D.new()
-				tag.text = "STAYED 1 TURN\n%s · STAY AGAIN TO CLAIM" % hud.hero_name(stayer).to_upper()
-				tag.font_size = 36
-				tag.pixel_size = 0.016
-				tag.outline_size = 10
-				tag.modulate = Palette.team(state.team_of(stayer.owner)).lightened(0.35)
-				tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-				tag.no_depth_test = true
-				tag.position = arena.hex_center(st.center) + Vector3(0, 2.4, 0)
-				_tokens.add_child(tag)
-		if st.placed and not st.is_claimed() and state.settings.energy_claims():
-			_energy_tags(st)
-
-
-## The energy claim variant (Marko and Tarik 2026-11-02): over an open stage, each player's energy
-## in it ("6/14", in the player's colour) once there is some or one of its heroes stands there;
-## CONTESTED under them while heroes of both sides stand on it (nobody's energy goes in).
-func _energy_tags(st: StageState) -> void:
-	var on: Array[HeroState] = state.heroes_on_stage(st)
-	var lines: Array[int] = []
-	for p: PlayerState in state.players:
-		var here: bool = false
-		for h: HeroState in on:
-			if h.owner == p.slot:
-				here = true
-		if st.progress_of(p.slot) > 0 or here:
-			lines.append(p.slot)
-	# Side by side: the camera looks down, so lines stacked upwards would run into each other.
-	for i: int in lines.size():
-		var slot: int = lines[i]
-		var tag := Label3D.new()
-		tag.text = "%d/%d" % [st.progress_of(slot), state.settings.stage_goal]
-		tag.font_size = 48
-		tag.pixel_size = 0.016
-		tag.outline_size = 12
-		tag.modulate = Palette.team(state.team_of(slot)).lightened(0.35)
-		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		tag.no_depth_test = true
-		tag.position = arena.hex_center(st.center) + Vector3((i - (lines.size() - 1) * 0.5) * 2.6, 2.2, 0)
-		_tokens.add_child(tag)
-	var y: float = 3.8
-	if engine.contested(state, st) and GameSettings.table_text():
-		var c := Label3D.new()
-		c.text = "CONTESTED · NO ENERGY"
-		c.font_size = 32
-		c.pixel_size = 0.016
-		c.outline_size = 10
-		c.modulate = Palette.MUTED
-		c.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		c.no_depth_test = true
-		c.position = arena.hex_center(st.center) + Vector3(0, y, 0)
-		_tokens.add_child(c)
+		# A stage someone stayed on, or has energy in, says so in the HUD box and by its edge
+		# (_draw_marks), not in words over the table (Marko 2026-11-02).
 
 
 ## A revealed stage's card art laid on its hexes, faded, cut to their shape: the stage reads as
@@ -1196,6 +1122,17 @@ func _draw_marks() -> void:
 		var col: Color = Color(Palette.GOLD, 0.35)
 		if st.revealed:
 			col = Color(Palette.GOLD, 0.85)
+		# The energy claim variant: the edge takes the colour of the side with energy in it
+		# (the most, when both have some), and goes grey while heroes of both sides stand on it.
+		if st.revealed and not st.is_claimed() and state.settings.energy_claims():
+			var best: int = -1
+			for sl: int in st.progress:
+				if st.progress[sl] > 0 and (best < 0 or st.progress[sl] > st.progress[best]):
+					best = sl
+			if engine.contested(state, st):
+				col = Color(0.45, 0.41, 0.37, 0.9)
+			elif best >= 0:
+				col = Color(Palette.team(state.team_of(best)), 0.9)
 		if st.is_claimed():
 			col = Palette.team(state.team_of(st.claimed_by))
 		if fighting:
@@ -2169,7 +2106,7 @@ func demo_setup_cores() -> void:
 				break
 	_sync()
 
-## Screenshot helper: the stage strip switched off (only its STAGES tab stays); not saved.
+## Screenshot helper: the stage and core boxes folded; not saved.
 func demo_strip_off() -> void:
 	demo_choose_hero()
 	state.pending.clear()
@@ -2405,6 +2342,9 @@ func _refresh_target_fx() -> void:
 			_target_fx.add_child(_target_mark(arena.hex_center(c.hex), false))
 	for hid: String in _views:
 		_views[hid].set_faded(not hud.choice_heroes.is_empty() and not hud.choice_heroes.has(hid))
+		# A tied, locked hero cannot be picked: its ball goes dull (Marko 2026-11-02).
+		var locked: HeroState = state.hero(hid)
+		_views[hid].set_dimmed(locked != null and locked.tie_turns > 0 and locked.is_on_map())
 	# The same light on the hero chosen in Select, and on the ball a local player has to throw.
 	var lit := PackedStringArray()
 	for slot: Variant in hud.picks:
@@ -2999,15 +2939,28 @@ func _lock_links() -> bool:
 				continue
 			var from: Vector3 = arena.hex_center(a.hex) + Vector3(0, 0.07, 0)
 			var to: Vector3 = arena.hex_center(b.hex) + Vector3(0, 0.07, 0)
+			# Shackles (Marko 2026-11-02): a ring on the ground round each ball, the chain between.
+			for h: HeroState in [a, b]:
+				_ground_ring(arena.hex_center(h.hex), _bodies[h.id].radius() * 1.35, 0.12, Palette.GOLD)
 			var n: int = 9
 			for i: int in n:
 				if i % 2 == 1:
 					continue
 				var p0: Vector3 = from.lerp(to, float(i) / n)
 				var p1: Vector3 = from.lerp(to, float(i + 1) / n)
-				MeshKit.ribbon(_marks, PackedVector3Array([p0, p1]), 0.18, Palette.ACCENT)
+				MeshKit.ribbon(_marks, PackedVector3Array([p0, p1]), 0.14, Palette.GOLD)
 			drew = true
 	return drew
+
+
+## A flat ring on the table round `center`.
+func _ground_ring(center: Vector3, radius: float, width: float, color: Color) -> void:
+	var pts := PackedVector3Array()
+	var n: int = 28
+	for i: int in n + 1:
+		var ang: float = TAU * float(i) / n
+		pts.append(center + Vector3(cos(ang) * radius, 0.05, sin(ang) * radius))
+	MeshKit.ribbon(_marks, pts, width, color)
 
 
 ## Screenshot helper: two heroes locked in a tied battle, Start of the next turn.

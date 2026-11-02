@@ -62,6 +62,8 @@ var _team_color: Color = Color.WHITE
 var _glow: bool = false
 ## Half see-through: another hero is being picked and this one cannot be (Marko 2026-11-01).
 var _faded: bool = false
+## Dull (a locked, tied hero): the colours sink towards grey, the figure with them.
+var _dimmed: bool = false
 const FADE_ALPHA: float = 0.35
 var _glow_t: float = 0.0
 var _tween: Tween
@@ -118,6 +120,19 @@ func set_glow(on: bool) -> void:
 	_glow = on
 	_glow_t = 0.0
 	_seam_mat.emission_energy_multiplier = 0.0
+
+
+func set_dimmed(on: bool) -> void:
+	if on == _dimmed:
+		return
+	_dimmed = on
+	for m: StandardMaterial3D in [_top_mat, _bottom_mat, _seam_mat, _socket_mat, _inner_mat, _button_mat, _ring_mat]:
+		var base: Color = m.get_meta("base", m.albedo_color)
+		m.set_meta("base", base)
+		var c: Color = base.lerp(Color(0.32, 0.30, 0.28), 0.72) if on else base
+		m.albedo_color = Color(c, m.albedo_color.a)
+	_seam_mat.emission = _team_color.lerp(Color(0.32, 0.30, 0.28), 0.72) if on else _team_color
+	_figure.modulate = Color(Color(0.55, 0.53, 0.5) if on else Color.WHITE, _figure.modulate.a)
 
 
 func set_faded(on: bool) -> void:

@@ -335,7 +335,7 @@ static func table_text() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "table_text", true))
 
 
-## The stages and your cores under the phase ribbon. Key G, or its STAGES tab.
+## The stage and core boxes under the heroes, open (true) or folded. Key G, or a click on a header.
 static func stage_strip() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "stage_strip", true))
 

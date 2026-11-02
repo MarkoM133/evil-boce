@@ -189,11 +189,8 @@ var _last_why_by: Dictionary = {}
 var _aim_line: Control
 ## Under the phase ribbon while a battle is fought: which one and who with what Power.
 var _battle_bar: HBoxContainer
-## Stages and your cores under the ribbon (_refresh_board).
-var _board: VBoxContainer
+## Each side's stages and cores in a box under its heroes (_side_board); key G folds them.
 ## The small STAGES tab beside the strip that hides or shows it.
-var _strip_tab: PanelContainer
-var _board_sig: String = ""
 ## The battle camera is on (set by the match): letterbox, only the fighting heroes in the rosters.
 var battle_cam: bool = false
 var _letterbox: Array[ColorRect] = []
@@ -249,7 +246,6 @@ func refresh() -> void:
 	_refresh_choice()
 	_refresh_ribbon()
 	_refresh_battle_bar()
-	_refresh_board()
 	_refresh_energy()
 	for slot: int in state.players.size():
 		if slot < _rosters.size():
@@ -698,26 +694,6 @@ func _build() -> void:
 	_battle_bar.visible = false
 	add_child(_battle_bar)
 
-	_board = VBoxContainer.new()
-	_board.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_board.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_board.position = Vector2(0, 62)
-	_board.add_theme_constant_override("separation", 4)
-	_board.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_board)
-	_strip_tab = PanelContainer.new()
-	_strip_tab.add_theme_stylebox_override("panel", UiTheme.box(Color(0.06, 0.06, 0.06, 0.85), 4, Color(0, 0, 0, 0), 8, 3))
-	var tab_l: Label = UiTheme.label("STAGES  ▴", 12, Palette.MUTED)
-	_strip_tab.add_child(tab_l)
-	_strip_tab.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_strip_tab.tooltip_text = "Show or hide the stages and your cores (key G)"
-	_strip_tab.visible = false
-	_strip_tab.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-			toggle_stage_strip()
-			_strip_tab.accept_event())
-	add_child(_strip_tab)
-
 	_aim_line = Control.new()
 	_aim_line.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_aim_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -871,6 +847,8 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 		inv.text = "%d core%s to put back" % [p.inventory.size(), "" if p.inventory.size() == 1 else "s"]
 		inv.horizontal_alignment = align
 		col.add_child(inv)
+	if state.turn > 0 and not state.is_over() and not battle_cam:
+		col.add_child(_side_board(slot, right))
 	# Your own deck and graveyard stand as piles by the hand (_refresh_piles); the counts here
 	# are for the other side (and for two players at one screen).
 	if local_slots.size() == 1 and local_slots[0] == slot:
@@ -3758,109 +3736,200 @@ func _heroes_line(e: Dictionary) -> String:
 ## The stage strip on or off (key G, or its tab); kept in the settings.
 func toggle_stage_strip() -> void:
 	GameSettings.set_value("display", "stage_strip", not GameSettings.stage_strip())
-	_board_sig = ""
-	_refresh_board()
+	refresh()
 
 
-func _refresh_board() -> void:
-	if _board == null:
-		return
-	var on: bool = state.turn > 0 and not state.is_over()
-	_board.visible = on
-	_board.position.y = 112.0 if _battle_bar.visible else 62.0
-	if _strip_tab != null:
-		_strip_tab.visible = on
-		_strip_tab.position = Vector2(_board.position.x - _strip_tab.size.x - 8.0, _board.position.y + 4.0) if GameSettings.stage_strip() \
-				else Vector2(size.x * 0.5 - _strip_tab.size.x * 0.5, _board.position.y)
-		(_strip_tab.get_child(0) as Label).text = "STAGES  ▴" if GameSettings.stage_strip() else "STAGES  ▾"
-	if not on:
-		return
-	# Switched off: only its tab stays, to bring it back (Marko 2026-11-01).
-	if not GameSettings.stage_strip():
-		_board.visible = false
-		return
-	var viewer: int = hand_slot() if hand_slot() >= 0 else (local_slots[0] if not local_slots.is_empty() else -1)
-	var sig: String = "%d|%s" % [viewer, str(local_slots)]
+## A player's stages and cores in a box under its heroes (Marko 2026-11-02, mockup B): the
+## stages as tiles with the name, and with energy claims that player's energy in each (a bar and
+## "6/14"; "4 | 7" when the other side has some in it too); the cores as chips, placed ones
+## full, face-down ones dashed, not-placed ones dim, a core on a hero with that hero's initial.
+## The other side's cores show as far as the viewer knows them. The header folds the box (key G
+## does too); folded, one line counts what is in it.
+func _side_board(slot: int, right: bool) -> Control:
+	var p: PlayerState = state.player(slot)
+	var team_col: Color = Palette.team(state.team_of(slot))
+	var box := PanelContainer.new()
+	var sb: StyleBoxFlat = UiTheme.box(Palette.PANEL, 0, Color(0, 0, 0, 0), 10, 6)
+	if right:
+		sb.border_width_right = 4
+	else:
+		sb.border_width_left = 4
+	sb.border_color = team_col
+	box.add_theme_stylebox_override("panel", sb)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(col)
+	var open: bool = GameSettings.stage_strip()
+	var claimed: int = engine.claimed_count(state, slot)
+	var mine: Array[StageState] = []
 	for st: StageState in state.stages:
-		sig += "|%s:%s:%s:%d:%s:%s" % [st.id, st.card_id, st.revealed, st.claimed_by, st.placed, str(st.progress)]
+		if st.owner == slot:
+			mine.append(st)
+	var cores: Array[CoreState] = []
 	for c: CoreState in state.cores:
-		sig += "|%s:%s:%s:%s" % [c.id, c.place, c.face_up, c.holder]
-	if sig == _board_sig:
-		return
-	_board_sig = sig
-	_clear(_board)
-	var stages := HBoxContainer.new()
-	stages.add_theme_constant_override("separation", 6)
-	stages.alignment = BoxContainer.ALIGNMENT_CENTER
-	stages.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_board.add_child(stages)
-	# The viewer's stages first, then the other side's.
-	var order: Array[StageState] = []
-	for st: StageState in state.stages:
-		if st.owner == viewer:
-			order.append(st)
-	for st: StageState in state.stages:
-		if st.owner != viewer:
-			order.append(st)
-	for st: StageState in order:
-		stages.add_child(_board_stage(st))
-	if viewer < 0:
-		return
-	var mine: Array[CoreState] = []
-	for c: CoreState in state.cores:
-		if c.owner == viewer:
-			mine.append(c)
-	if mine.is_empty():
-		return
-	var cores := HBoxContainer.new()
-	cores.add_theme_constant_override("separation", 4)
-	cores.alignment = BoxContainer.ALIGNMENT_CENTER
-	cores.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_board.add_child(cores)
-	var cap: Label = UiTheme.label("YOUR CORES", 12, Palette.GOLD)
-	cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	cores.add_child(cap)
-	for c: CoreState in mine:
-		cores.add_child(_board_core(c))
+		if c.owner == slot:
+			cores.append(c)
+	var placed: int = 0
+	var known: int = 0
+	var hidden: int = 0
+	for c: CoreState in cores:
+		if c.place != CoreState.UNPLACED:
+			placed += 1
+			if _core_known(c):
+				known += 1
+			else:
+				hidden += 1
+	var own: bool = local_slots.has(slot)
+	var core_line: String
+	if own:
+		core_line = "%d PLACED · %d TO PLACE" % [placed, cores.size() - placed]
+	else:
+		core_line = "%d KNOWN · %d HIDDEN · %d TO PLACE" % [known, hidden, cores.size() - placed]
+	# The header: a click folds or opens the box.
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	head.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
+	head.mouse_filter = Control.MOUSE_FILTER_STOP
+	head.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	head.tooltip_text = "Fold or open the stages and cores (key G)"
+	head.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			toggle_stage_strip()
+			head.accept_event())
+	var title: String = ("STAGES" if own else "%s STAGES" % player_name(slot).to_upper()) if open \
+			else ("STAGES %d/%d · CORES %s" % [claimed, state.settings.stages_to_win, ("%d/%d" % [placed, cores.size()]) if own else ("%d KNOWN" % known)])
+	head.add_child(UiTheme.label(title, 12, Palette.GOLD if own else Color(Palette.team(state.team_of(slot)), 0.9).lightened(0.3)))
+	if open:
+		head.add_child(UiTheme.label("CLAIMED %d/%d" % [claimed, state.settings.stages_to_win], 12, Palette.MUTED))
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(spacer)
+	head.add_child(UiTheme.label("▴" if open else "▾", 12, Palette.MUTED))
+	col.add_child(head)
+	if not open:
+		return box
+	var tiles := HBoxContainer.new()
+	tiles.add_theme_constant_override("separation", 6)
+	tiles.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
+	tiles.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(tiles)
+	for st: StageState in mine:
+		tiles.add_child(_board_stage(st, slot))
+	if cores.is_empty():
+		return box
+	var chead := HBoxContainer.new()
+	chead.add_theme_constant_override("separation", 8)
+	chead.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
+	chead.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chead.add_child(UiTheme.label("CORES", 12, Palette.GOLD if own else Color(Palette.team(state.team_of(slot)), 0.9).lightened(0.3)))
+	chead.add_child(UiTheme.label(core_line, 12, Palette.MUTED))
+	col.add_child(chead)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 4)
+	grid.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
+	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(grid)
+	for c: CoreState in cores:
+		grid.add_child(_board_core(c))
+	return box
 
 
-func _board_stage(st: StageState) -> Control:
+## Whether the viewer knows what core `c` is: its own, face up on the field, on a hero, or
+## waiting in an inventory.
+func _core_known(c: CoreState) -> bool:
+	if local_slots.has(c.owner):
+		return true
+	return c.place == CoreState.ON_HERO or c.place == CoreState.IN_INVENTORY or (c.place == CoreState.ON_FIELD and c.face_up)
+
+
+## One stage as a tile in its owner's box: the art, a band with the name (CLAIMED, HIDDEN) and,
+## with energy claims, `slot`'s energy in it as a bar and a number.
+func _board_stage(st: StageState, slot: int) -> Control:
 	var known: bool = st.revealed or local_slots.has(st.owner)
 	var card: CardDef = engine.catalog.get_card(st.card_id) if known and not st.card_id.is_empty() else null
+	var contested: bool = state.settings.energy_claims() and engine.contested(state, st)
 	var tile := PanelContainer.new()
-	tile.custom_minimum_size = Vector2(70, 46)
+	tile.custom_minimum_size = Vector2(88, 50)
 	tile.clip_contents = true
-	var sb: StyleBoxFlat = UiTheme.box(Palette.SURFACE_2, 4, Color(0, 0, 0, 0), 0, 0)
+	var sb: StyleBoxFlat = UiTheme.box(Palette.SURFACE_2, 3, Color(0, 0, 0, 0), 0, 0)
 	sb.set_border_width_all(3 if st.is_claimed() else 2)
-	sb.border_color = Palette.team(state.team_of(st.claimed_by)) if st.is_claimed() else Color(Palette.team(state.team_of(st.owner)), 0.7)
+	sb.border_color = Palette.team(state.team_of(st.claimed_by)) if st.is_claimed() else (Palette.DIM if contested else Color(Palette.team(state.team_of(st.owner)), 0.7))
 	tile.add_theme_stylebox_override("panel", sb)
+	# A plain layer inside: the panel would stretch the band over the art.
+	var inner := Control.new()
+	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(inner)
 	var tex: Texture2D = db.thumb(card.id) if card != null and db != null else null
 	if tex != null:
 		var art := TextureRect.new()
 		art.texture = tex
 		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		art.set_anchors_preset(Control.PRESET_FULL_RECT)
 		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		# Yours but still face down: you know it, the table does not yet.
 		art.modulate = Color(1, 1, 1, 1.0 if st.revealed else 0.45)
-		tile.add_child(art)
+		inner.add_child(art)
 	else:
 		var q: Label = UiTheme.label("?", 26, Palette.DIM)
+		q.set_anchors_preset(Control.PRESET_FULL_RECT)
 		q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		tile.add_child(q)
-	var word: String = "CLAIMED" if st.is_claimed() else ("HIDDEN" if not st.revealed and card != null else "")
-	# The energy claim variant: the viewer's energy in it, as on the table.
-	var me: int = hand_slot() if hand_slot() >= 0 else (local_slots[0] if not local_slots.is_empty() else -1)
-	if word.is_empty() and state.settings.energy_claims() and me >= 0 and st.progress_of(me) > 0:
-		word = "%d/%d" % [st.progress_of(me), state.settings.stage_goal]
-	if not word.is_empty():
-		var tag: Label = UiTheme.label(word, 10, Palette.GOLD if st.is_claimed() else Palette.FG)
-		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		tag.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-		tag.add_theme_constant_override("outline_size", 4)
-		tag.add_theme_color_override("font_outline_color", Color.BLACK)
-		tile.add_child(tag)
+		inner.add_child(q)
+	# The band along the bottom: the name, and the progress.
+	var word: String = "CLAIMED" if st.is_claimed() else ("HIDDEN" if not st.revealed and card != null else (card.name.to_upper() if card != null else ""))
+	var energy: bool = state.settings.energy_claims() and st.placed and not st.is_claimed() and card != null
+	var other: int = -1
+	for q: PlayerState in state.players:
+		if q.slot != slot and st.progress_of(q.slot) > 0:
+			other = q.slot
+	if not word.is_empty() or energy:
+		var band := PanelContainer.new()
+		band.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+		band.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		band.add_theme_stylebox_override("panel", UiTheme.box(Color(0.05, 0.045, 0.04, 0.9), 0, Color(0, 0, 0, 0), 3, 1))
+		band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		inner.add_child(band)
+		var rows := VBoxContainer.new()
+		rows.add_theme_constant_override("separation", 1)
+		rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		band.add_child(rows)
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 4)
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rows.add_child(line)
+		var name_l: Label = UiTheme.label(word, 9, Palette.GOLD if st.is_claimed() else (Palette.DIM if contested else Palette.MUTED))
+		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_l.clip_text = true
+		name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		line.add_child(name_l)
+		if energy:
+			var goal: int = state.settings.stage_goal
+			var num: String = ("%d | %d" % [st.progress_of(slot), st.progress_of(other)]) if other >= 0 else "%d/%d" % [st.progress_of(slot), goal]
+			var num_col: Color = Palette.DIM if contested else Palette.team(state.team_of(slot)).lightened(0.45)
+			line.add_child(UiTheme.label(num, 11, num_col))
+			var track := ColorRect.new()
+			track.color = Palette.LINE
+			track.custom_minimum_size = Vector2(0, 3)
+			track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			rows.add_child(track)
+			var fill := ColorRect.new()
+			fill.color = Palette.DIM if contested else Palette.team(state.team_of(slot))
+			fill.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+			fill.anchor_right = clampf(float(st.progress_of(slot)) / maxf(float(goal), 1.0), 0.0, 1.0)
+			fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			track.add_child(fill)
+			if other >= 0:
+				var theirs := ColorRect.new()
+				theirs.color = Palette.DIM if contested else Palette.team(state.team_of(other))
+				theirs.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+				theirs.anchor_left = 1.0 - clampf(float(st.progress_of(other)) / maxf(float(goal), 1.0), 0.0, 1.0)
+				theirs.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				track.add_child(theirs)
 	var whose: String = player_name(st.owner)
 	if card != null:
 		tile.tooltip_text = "%s (%s's stage%s)%s" % [card.name, whose, ", face down" if not st.revealed else "",
@@ -3870,9 +3939,13 @@ func _board_stage(st: StageState) -> Control:
 	if st.is_claimed():
 		tile.tooltip_text += "\nClaimed by %s" % player_name(st.claimed_by)
 	elif state.settings.energy_claims():
+		if contested:
+			tile.tooltip_text += "\nContested: heroes of both sides stand on it, no energy goes in"
 		for p: PlayerState in state.players:
 			if st.progress_of(p.slot) > 0:
 				tile.tooltip_text += "\n%s: %d of %d energy" % [player_name(p.slot), st.progress_of(p.slot), state.settings.stage_goal]
+	elif st.placed and not st.stay_hero.is_empty() and st.stay_turn == state.turn - 1:
+		tile.tooltip_text += "\n%s stayed here last turn: one more Stay claims it" % _hero_label(st.stay_hero)
 	# Not a ternary: its value is an untyped Array, which the typed parameter refuses.
 	var hexes: Array[Vector2i] = []
 	if st.placed:
@@ -3881,35 +3954,48 @@ func _board_stage(st: StageState) -> Control:
 	return tile
 
 
+## One core as a chip: what it does, in the look of where it is (not placed dim, face down on
+## the field half, on a hero with that hero's initial by it); a core the viewer does not know
+## is a "?" chip.
 func _board_core(c: CoreState) -> Control:
-	var card: CardDef = engine.catalog.get_card(c.card_id)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 0)
+	var known: bool = _core_known(c)
+	var card: CardDef = engine.catalog.get_card(c.card_id) if known else null
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
 	box.mouse_filter = Control.MOUSE_FILTER_STOP
-	var chip: Control = _core_slot(c.id, Palette.SURFACE_2)
+	var chip: Control
+	if known:
+		chip = _core_slot(c.id, Palette.SURFACE_2)
+	else:
+		chip = UiShape.chip("?", Color("1b1f20"), Palette.MUTED, 11, 16.0, 6.0)
+		chip.custom_minimum_size = Vector2(52, 16)
 	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(chip)
 	var where: String = ""
 	var hexes: Array[Vector2i] = []
 	match c.place:
 		CoreState.ON_FIELD:
-			where = "PUBLIC" if c.face_up else "HIDDEN"
-			hexes.append(c.hex)
+			where = "On the field, face up" if c.face_up else ("On the field, face down: only you know it" if known else "On the field, face down")
+			if known or c.face_up:
+				hexes.append(c.hex)
+			if not c.face_up:
+				chip.modulate = Color(1, 1, 1, 0.7)
 		CoreState.ON_HERO:
 			var h: HeroState = state.hero(c.holder)
-			where = hero_name(h).get_slice(",", 0).to_upper() if h != null else "ON A HERO"
+			where = "On %s" % hero_name(h) if h != null else "On a hero"
 			if h != null and h.is_on_map():
 				hexes.append(h.hex)
+			if h != null:
+				var initial: UiShape = UiShape.chip(hero_name(h).left(1).to_upper(), Palette.team(state.team_of(h.owner)), Palette.FG, 9, 14.0, 3.0)
+				initial.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				initial.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				box.add_child(initial)
 		CoreState.IN_INVENTORY:
-			where = "TO PUT BACK"
+			where = "To put back on the field"
 		_:
-			where = "NOT PLACED"
-	var w: Label = UiTheme.label(where, 9, Palette.MUTED if where != "HIDDEN" else Palette.FG)
-	w.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	w.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(w)
-	box.tooltip_text = "%s%s" % [card.name if card != null else "Core",
-		"\nFace down: only you know it" if c.place == CoreState.ON_FIELD and not c.face_up else ""]
+			where = "Not placed yet"
+			chip.modulate = Color(1, 1, 1, 0.4)
+	box.tooltip_text = "%s\n%s" % [card.name if card != null else "A core", where]
 	_board_hover(box, hexes, card)
 	return box
 
