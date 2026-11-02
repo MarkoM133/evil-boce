@@ -3553,8 +3553,9 @@ func hide_ball_choice(force: bool = false) -> void:
 ## One equipment slot in a hero panel: the card's picture, small, or a dashed empty slot.
 func _equip_mini(cid: String) -> Control:
 	var box := PanelContainer.new()
-	# As tall as the panel row allows (Marko 2026-11-01: a 30 px card ran out of the panel).
-	box.custom_minimum_size = Vector2(17, 22)
+	# Clear of the panel's bottom edge (Marko 2026-11-01: a 30 px card ran out of the panel;
+	# 2026-11-02: 22 px still touched it).
+	box.custom_minimum_size = Vector2(14, 19)
 	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0, 0, 0, 0)
@@ -3950,6 +3951,12 @@ func _board_stage(st: StageState, slot: int) -> Control:
 		name_l.clip_text = true
 		name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		line.add_child(name_l)
+		# Stay claims: a hero that stayed here last turn claims it with one more Stay (Marko
+		# 2026-11-02: ten stays and no claim, but never two in a row with the same hero).
+		if not energy and st.placed and not st.is_claimed() and not st.stay_hero.is_empty() 				and st.stay_turn == state.turn - 1:
+			var stayer: HeroState = state.hero(st.stay_hero)
+			if stayer != null and state.heroes_on_stage(st).has(stayer):
+				line.add_child(UiTheme.label("STAY 1/2", 10, Palette.team(state.team_of(stayer.owner)).lightened(0.45)))
 		if energy:
 			var goal: int = state.settings.stage_goal
 			var num: String = ("%d | %d" % [st.progress_of(slot), st.progress_of(other)]) if other >= 0 else "%d/%d" % [st.progress_of(slot), goal]

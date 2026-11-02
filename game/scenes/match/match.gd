@@ -2910,6 +2910,32 @@ func demo_equip() -> void:
 	_sync()
 
 
+## Screenshot helper: Stay claims, player 1's first hero stayed on its stage last turn.
+func demo_stay_pending() -> void:
+	demo_energy()
+	state.settings.stage_claim = MatchSettings.CLAIM_STAY
+	state.pending = []
+	for st: StageState in state.stages:
+		st.progress = {}
+	var h: HeroState = state.heroes_of(0)[0]
+	var st0: StageState = state.stage_at(h.hex)
+	st0.stay_hero = h.id
+	st0.stay_turn = state.turn - 1
+	state.phase = GameState.PHASE_START
+	_sync()
+	hud.refresh()
+
+
+## Screenshot helper: as demo_equip with three equipment cards on two heroes, no panel open.
+func demo_equip_rest() -> void:
+	_demo = true
+	for h: HeroState in state.heroes_of(0).slice(0, 2):
+		for c: CardDef in engine.catalog.of_type("Equipment"):
+			if h.equipment.size() < 3:
+				h.equipment.append(c.id)
+	_sync()
+
+
 ## Screenshot helper: a hero evolves on the table (aura, EVO on its panel) and an evolution card
 ## waits upright in the hand of a Preroll card round.
 func demo_evolved() -> void:
