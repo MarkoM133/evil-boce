@@ -1245,7 +1245,8 @@ func _effect_chips(h: HeroState, right: bool) -> Control:
 
 ## One of a hero's core slots: what the core there does in short ("PWR+2K", green up, red
 ## down), else an empty outline. Hover gives the core's name.
-func _core_slot(core_id: String, hero_color: Color) -> Control:
+## `small`: the box under the heroes, where six stand in one row.
+func _core_slot(core_id: String, hero_color: Color, small: bool = false) -> Control:
 	var c: CoreState = state.core(core_id) if not core_id.is_empty() else null
 	var card: CardDef = engine.catalog.get_card(c.card_id) if c != null else null
 	if card == null or card.bonus.is_empty():
@@ -1262,7 +1263,7 @@ func _core_slot(core_id: String, hero_color: Color) -> Control:
 	var v: int = card.bonus[key]
 	var amount: String = ("%+dK" % (v / 1000)) if key == "pwr" and v % 1000 == 0 else "%+d" % v
 	var chip: UiShape = UiShape.chip(key.to_upper() + amount.replace("-", "−"), Color("1b1f20"),
-		Palette.HP if v > 0 else Palette.ACCENT, 11, 16.0, 6.0)
+		Palette.HP if v > 0 else Palette.ACCENT, 10 if small else 11, 15.0 if small else 16.0, 3.0 if small else 6.0)
 	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	chip.tooltip_text = "%s core: %s" % [card.kind, card.name]
 	return chip
@@ -3833,8 +3834,8 @@ func _side_board(slot: int, right: bool) -> Control:
 	chead.add_child(UiTheme.label(core_line, 12, Palette.MUTED))
 	col.add_child(chead)
 	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 6)
+	grid.columns = 6
+	grid.add_theme_constant_override("h_separation", 3)
 	grid.add_theme_constant_override("v_separation", 4)
 	grid.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
 	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -3967,14 +3968,14 @@ func _board_core(c: CoreState) -> Control:
 	var known: bool = _core_known(c)
 	var card: CardDef = engine.catalog.get_card(c.card_id) if known else null
 	var box := HBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
+	box.add_theme_constant_override("separation", 1)
 	box.mouse_filter = Control.MOUSE_FILTER_STOP
 	var chip: Control
 	if known:
-		chip = _core_slot(c.id, Palette.SURFACE_2)
+		chip = _core_slot(c.id, Palette.SURFACE_2, true)
 	else:
-		chip = UiShape.chip("?", Color("1b1f20"), Palette.MUTED, 11, 16.0, 6.0)
-		chip.custom_minimum_size = Vector2(52, 16)
+		chip = UiShape.chip("?", Color("1b1f20"), Palette.MUTED, 10, 15.0, 3.0)
+		chip.custom_minimum_size = Vector2(40, 15)
 	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(chip)
 	var where: String = ""
@@ -3992,7 +3993,7 @@ func _board_core(c: CoreState) -> Control:
 			if h != null and h.is_on_map():
 				hexes.append(h.hex)
 			if h != null:
-				var initial: UiShape = UiShape.chip(hero_name(h).left(1).to_upper(), Palette.team(state.team_of(h.owner)), Palette.FG, 9, 14.0, 3.0)
+				var initial: UiShape = UiShape.chip(hero_name(h).left(1).to_upper(), Palette.team(state.team_of(h.owner)), Palette.FG, 8, 12.0, 2.0)
 				initial.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 				initial.mouse_filter = Control.MOUSE_FILTER_IGNORE
 				box.add_child(initial)
