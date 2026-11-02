@@ -62,7 +62,9 @@ A rule option from Marko and Tarik (2026-11-02), next to the Stay claims, not in
   (`lost` 0): only the last one off halves it. Who did it: a battle knockback, the winners; a roll, the thrower whose
   ball touched it, directly or through other balls (`roll_causes`; without touches reported,
   another team that threw); a KO, whoever dealt the damage; a card's move or knockback, the
-  card's player. Only the outermost move counts, so a knockback's wall damage is part of it.
+  card's player; a physics knockback, each knocked hero's own (a tie-break sends each side back
+  by the other's), and a ball one of them touches the same. Only a hero's outermost move counts,
+  so a knockback's wall damage is part of it.
 - Decided with Marko (2026-11-02; the GDD waits until the variant itself is decided): a KO by
   the other side on a stage counts as being knocked off; a card of the other side that moves or
   knocks the hero off counts too; energy may go into any unclaimed stage, whoever placed it; a

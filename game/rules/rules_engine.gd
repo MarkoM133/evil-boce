@@ -16,9 +16,10 @@ const DECISION_STAGE_ENERGY: String = "stage_energy"
 var catalog: CardCatalog
 ## Card effects (docs/fx-keywords.md).
 var fx: FxRuntime
-## Moves of a hero in progress (begin_move / end_move): only the outermost one may cost energy in
-## a stage, so a knockback's wall damage is part of the knockback.
-var _move_depth: int = 0
+## Moves in progress, hero id -> depth (begin_move / end_move): only a hero's outermost move may
+## cost energy in a stage, so a knockback's wall damage is part of the knockback. Per hero: a
+## stage's reveal effect that knocks another hero back is still that hero's own, outermost, move.
+var _moving: Dictionary[String, int] = {}
 
 
 func _init(catalog_: CardCatalog) -> void:
@@ -657,18 +658,20 @@ func apply_knockback(s: GameState, o: RollOutcome) -> String:
 	if s.pending_knockbacks.is_empty():
 		return "no knockback waiting"
 	var asked: Dictionary = {}
-	# The team whose win knocked them: every ball this knockback moves counts as its doing.
-	var by_team: int = -1
+	# Whose doing each knockback is (a tie-break sends each side back by the other's); a ball
+	# a knocked hero touched, directly or through others, is the same team's doing.
+	var movers: Dictionary[String, int] = {}
 	for k: Dictionary in s.pending_knockbacks:
 		asked[str(k.get("hero", ""))] = JsonUtil.as_int(k.get("steps", 0))
-		if by_team < 0:
-			by_team = JsonUtil.as_int(k.get("by_team", -1), -1)
+		movers[str(k.get("hero", ""))] = JsonUtil.as_int(k.get("by_team", -1), -1)
 	s.pending_knockbacks.clear()
+	var causes: Dictionary[String, int] = _causes(s, o, movers)
 	for r: RollResult in o.results:
 		var h: HeroState = s.hero(r.ball_id)
 		if h == null or h.is_ko():
 			continue
 		var from: Vector2i = h.hex
+		var by_team: int = causes.get(r.ball_id, -1)
 		var was: StageState = begin_move(s, h)
 		_apply_result(s, h, r)
 		if asked.has(h.id):
@@ -743,13 +746,23 @@ func arrive(s: GameState, h: HeroState) -> void:
 ## team of a thrower whose ball touched it (directly or through other balls), another team's
 ## first; with no touches reported (the analytic roll) another team that threw, else its own.
 func roll_causes(s: GameState, o: RollOutcome) -> Dictionary[String, int]:
-	var out: Dictionary[String, int] = {}
-	var touch: Dictionary[String, PackedStringArray] = {}
 	var thrown: Dictionary[String, int] = {}
 	for r: RollResult in o.results:
 		var h: HeroState = s.hero(r.ball_id)
 		if h != null and r.thrown:
 			thrown[r.ball_id] = s.team_of(h.owner)
+	return _causes(s, o, thrown)
+
+
+## Who moved each ball of an outcome, as a team. `movers`: the balls set going and whose doing
+## each was (a thrown ball its thrower's own team, a knocked-back one the team that knocked it).
+## A mover keeps its entry; any other ball takes a mover's that touched it, directly or through
+## other balls, another team's first; a ball no touch leads to a mover from (none reported) takes
+## another team's among all the movers, else its own.
+func _causes(s: GameState, o: RollOutcome, movers: Dictionary[String, int]) -> Dictionary[String, int]:
+	var out: Dictionary[String, int] = {}
+	var touch: Dictionary[String, PackedStringArray] = {}
+	for r: RollResult in o.results:
 		for other: String in r.collisions:
 			if not touch.has(r.ball_id):
 				touch[r.ball_id] = PackedStringArray()
@@ -762,8 +775,8 @@ func roll_causes(s: GameState, o: RollOutcome) -> Dictionary[String, int]:
 		if h == null:
 			continue
 		var own: int = s.team_of(h.owner)
-		if r.thrown:
-			out[r.ball_id] = own
+		if movers.has(r.ball_id):
+			out[r.ball_id] = movers[r.ball_id]
 			continue
 		var teams: Dictionary[int, bool] = {}
 		var seen: Dictionary[String, bool] = {r.ball_id: true}
@@ -771,14 +784,14 @@ func roll_causes(s: GameState, o: RollOutcome) -> Dictionary[String, int]:
 		while not queue.is_empty():
 			var id: String = queue[queue.size() - 1]
 			queue.remove_at(queue.size() - 1)
-			if thrown.has(id):
-				teams[thrown[id]] = true
+			if movers.has(id):
+				teams[movers[id]] = true
 			for next: String in touch.get(id, PackedStringArray()):
 				if not seen.has(next):
 					seen[next] = true
 					queue.append(next)
 		if teams.is_empty():
-			for t: int in thrown.values():
+			for t: int in movers.values():
 				teams[t] = true
 		var by: int = own
 		for t: int in teams:
@@ -1678,8 +1691,10 @@ func _claim_by_energy(s: GameState) -> void:
 
 ## The stage under `h` as one of its moves begins; pair with end_move.
 func begin_move(s: GameState, h: HeroState) -> StageState:
-	_move_depth += 1
-	return s.stage_at(h.hex) if h != null and h.is_on_map() else null
+	if h == null:
+		return null
+	_moving[h.id] = _moving.get(h.id, 0) + 1
+	return s.stage_at(h.hex) if h.is_on_map() else null
 
 
 ## A move of `h` that began on stage `was` is over. With the energy claim variant, a hero that
@@ -1688,8 +1703,14 @@ func begin_move(s: GameState, h: HeroState) -> StageState:
 ## leaving by its own roll (or its own side's doing) costs nothing, and so does it while another
 ## of the player's heroes still stands there (Marko 2026-11-02).
 func end_move(s: GameState, h: HeroState, was: StageState, by_team: int) -> void:
-	_move_depth -= 1
-	if _move_depth > 0 or was == null or h == null or not s.settings.energy_claims() or was.is_claimed():
+	if h == null:
+		return
+	var depth: int = _moving.get(h.id, 1) - 1
+	if depth > 0:
+		_moving[h.id] = depth
+		return
+	_moving.erase(h.id)
+	if was == null or not s.settings.energy_claims() or was.is_claimed():
 		return
 	if h.is_on_map() and was.covers(h.hex):
 		return
