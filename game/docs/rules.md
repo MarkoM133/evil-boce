@@ -32,12 +32,42 @@ engine is shaped and which gaps it had to fill on its own (see **Assumptions**).
 | `roll` | `aim {dir, power}` (or `aim {skip: true}`: a missed roll, the hero stays put), then the sim's `apply_roll`; then a `roll_offer` decision per player with a "Roll Phase:" option (`use_ability`, `play_card` or `pass`) | aims in, balls stopped, offers answered |
 | `postroll` | `pass`, (`play_card`) | round passed |
 | `battle` | per battle: `pass` round, then `damage_to` decisions | last battle done |
-| `end` | — (automatic) | claims, status timers, win check, next turn |
+| `end` | — (automatic); with energy claims a `stage_energy {split}` decision when a player's heroes stand on more than one open stage | claims (or energy into stages), status timers, win check, next turn |
 | `over` | nothing | — |
 
 `surrender` is accepted at any time. Card rounds alternate from the initiative player and end
 when every player has passed in a row; playing a card hands the turn to the next player and
 resets the passes.
+
+## Energy claim variant (`MatchSettings.stage_claim = "energy"`, under test)
+
+A rule option from Marko and Tarik (2026-11-02), next to the Stay claims, not instead of them.
+`stage_goal` (default 14) is the energy a stage needs. The rules panel offers both.
+
+- No Stay claim and no battle claim. Energy is as always: +1 a turn up to `max_energy`, and
+  what is left at the end of the turn does not carry over.
+- End phase (`_bank_energy`, once a turn, `GameState.energy_banked`): each player's energy left
+  goes into the unclaimed stage(s) one of its own heroes stands on (`energy_stages`). One stage
+  takes it all; more than one gives a `stage_energy` decision `{"energy", "stages", "goal"}`,
+  answered by `stage_energy {"split": {stage id: n}}` adding up to all of it.
+- Contested (`contested`): heroes of two teams on a stage, so nobody's energy goes in
+  (event `stage_contested`).
+- Progress is per player and per stage (`StageState.progress`, slot -> energy). Reaching the
+  goal claims the stage at once (event `stage_claimed` with `energy`); energy over the goal is
+  lost (`stage_energy.wasted`).
+- Knocked off (`begin_move` / `end_move`): a hero that leaves an unclaimed stage through the
+  other side's doing costs its player half the energy in that stage, rounded down (event
+  `stage_knocked_off {hero, stage, player, lost, progress, goal, by_team}`). Leaving by its own
+  roll costs nothing. Who did it: a battle knockback, the winners; a roll, the thrower whose
+  ball touched it, directly or through other balls (`roll_causes`; without touches reported,
+  another team that threw); a KO, whoever dealt the damage; a card's move or knockback, the
+  card's player. Only the outermost move counts, so a knockback's wall damage is part of it.
+- Assumptions waiting for Marko (`pitanja.md`): a KO on a stage counts as being knocked off;
+  each hero knocked off costs half, even with another hero of the player still there; energy
+  may go into any unclaimed stage, whoever placed it; a "cannot claim" effect lets the energy go
+  in but holds the claim back until a later End phase; in 2v2 only the player's own heroes
+  count, and a teammate's hero does not contest.
+- The move timer's safe move puts it all into the stage with the most energy already in it.
 
 ## Playing cards (`play_card {"card", "hero"?, "replace"?}`)
 

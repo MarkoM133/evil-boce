@@ -9,10 +9,16 @@ const DECISION_DAMAGE: String = "damage"
 const DECISION_RETURN_CORE: String = "return_core"
 ## After the roll: a player with a "Roll Phase:" card or ability may use one (or pass).
 const DECISION_ROLL_OFFER: String = "roll_offer"
+## End phase, energy claim variant: the player splits the energy left between the stages its
+## heroes stand on: {"energy": n, "stages": [ids], "goal": n}.
+const DECISION_STAGE_ENERGY: String = "stage_energy"
 
 var catalog: CardCatalog
 ## Card effects (docs/fx-keywords.md).
 var fx: FxRuntime
+## Moves of a hero in progress (begin_move / end_move): only the outermost one may cost energy in
+## a stage, so a knockback's wall damage is part of the knockback.
+var _move_depth: int = 0
 
 
 func _init(catalog_: CardCatalog) -> void:
@@ -489,6 +495,27 @@ func _apply_decision(s: GameState, m: Move) -> String:
 			var err: String = _answer_roll_offer(s, offer, m)
 			if not err.is_empty():
 				return err
+		DECISION_STAGE_ENERGY:
+			if m.type != Move.STAGE_ENERGY:
+				return "put your energy into the stages first"
+			var energy: int = JsonUtil.as_int(d.get("energy", 0))
+			var ids: PackedStringArray = JsonUtil.as_strings(d.get("stages", []))
+			var split: Dictionary = JsonUtil.as_dict(m.data.get("split", {}))
+			var total: int = 0
+			for k: Variant in split:
+				if not ids.has(str(k)):
+					return "%s is not a stage your energy can go into" % str(k)
+				var n: int = JsonUtil.as_int(split[k])
+				if n < 0:
+					return "energy cannot be negative"
+				total += n
+			if total != energy:
+				return "all %d energy goes into the stages (got %d)" % [energy, total]
+			s.pending.pop_front()
+			for id: String in ids:
+				_put_energy(s, who, s.stage(id), JsonUtil.as_int(split.get(id, 0)))
+			s.player(who).energy = 0
+			_claim_by_energy(s)
 		_:
 			return "unknown decision"
 	_continue(s)
@@ -630,14 +657,19 @@ func apply_knockback(s: GameState, o: RollOutcome) -> String:
 	if s.pending_knockbacks.is_empty():
 		return "no knockback waiting"
 	var asked: Dictionary = {}
+	# The team whose win knocked them: every ball this knockback moves counts as its doing.
+	var by_team: int = -1
 	for k: Dictionary in s.pending_knockbacks:
 		asked[str(k.get("hero", ""))] = JsonUtil.as_int(k.get("steps", 0))
+		if by_team < 0:
+			by_team = JsonUtil.as_int(k.get("by_team", -1), -1)
 	s.pending_knockbacks.clear()
 	for r: RollResult in o.results:
 		var h: HeroState = s.hero(r.ball_id)
 		if h == null or h.is_ko():
 			continue
 		var from: Vector2i = h.hex
+		var was: StageState = begin_move(s, h)
 		_apply_result(s, h, r)
 		if asked.has(h.id):
 			s.event("knockback", {"hero": h.id, "from": Hex.to_json(from), "to": Hex.to_json(h.hex),
@@ -645,6 +677,7 @@ func apply_knockback(s: GameState, o: RollOutcome) -> String:
 			var hits: int = r.collisions.size() + r.walls_hit
 			if h.is_on_map() and hits > 0:
 				hero_damage(s, h, hits * s.settings.wall_damage, false, "wall")
+		end_move(s, h, was, by_team)
 	s.event("knockback_done", {"heroes": asked.keys()})
 	_check_win(s)
 	_continue(s)
@@ -656,11 +689,13 @@ func apply_knockback(s: GameState, o: RollOutcome) -> String:
 func apply_roll(s: GameState, o: RollOutcome) -> String:
 	if s.phase != GameState.PHASE_ROLL or not s.awaiting_roll:
 		return "not waiting for a roll"
+	var causes: Dictionary[String, int] = roll_causes(s, o)
 	for r: RollResult in o.results:
 		var h: HeroState = s.hero(r.ball_id)
 		if h == null or h.is_ko():
 			continue
-		_apply_result(s, h, r)
+		var by_team: int = causes.get(r.ball_id, -1)
+		_apply_result(s, h, r, by_team)
 	# A thrown hero that never left its start strip (too weak a throw) throws again, as if
 	# nothing happened (Marko 2026-10-26): it may not stay there. The others keep where they
 	# stopped and are not thrown again.
@@ -704,7 +739,64 @@ func arrive(s: GameState, h: HeroState) -> void:
 		fx.on_reveal(s, st, h)
 
 
-func _apply_result(s: GameState, h: HeroState, r: RollResult) -> void:
+## Who moved each ball of a roll, as a team: a thrown ball its own; a ball it did not throw the
+## team of a thrower whose ball touched it (directly or through other balls), another team's
+## first; with no touches reported (the analytic roll) another team that threw, else its own.
+func roll_causes(s: GameState, o: RollOutcome) -> Dictionary[String, int]:
+	var out: Dictionary[String, int] = {}
+	var touch: Dictionary[String, PackedStringArray] = {}
+	var thrown: Dictionary[String, int] = {}
+	for r: RollResult in o.results:
+		var h: HeroState = s.hero(r.ball_id)
+		if h != null and r.thrown:
+			thrown[r.ball_id] = s.team_of(h.owner)
+		for other: String in r.collisions:
+			if not touch.has(r.ball_id):
+				touch[r.ball_id] = PackedStringArray()
+			if not touch.has(other):
+				touch[other] = PackedStringArray()
+			touch[r.ball_id].append(other)
+			touch[other].append(r.ball_id)
+	for r: RollResult in o.results:
+		var h: HeroState = s.hero(r.ball_id)
+		if h == null:
+			continue
+		var own: int = s.team_of(h.owner)
+		if r.thrown:
+			out[r.ball_id] = own
+			continue
+		var teams: Dictionary[int, bool] = {}
+		var seen: Dictionary[String, bool] = {r.ball_id: true}
+		var queue: PackedStringArray = PackedStringArray([r.ball_id])
+		while not queue.is_empty():
+			var id: String = queue[queue.size() - 1]
+			queue.remove_at(queue.size() - 1)
+			if thrown.has(id):
+				teams[thrown[id]] = true
+			for next: String in touch.get(id, PackedStringArray()):
+				if not seen.has(next):
+					seen[next] = true
+					queue.append(next)
+		if teams.is_empty():
+			for t: int in thrown.values():
+				teams[t] = true
+		var by: int = own
+		for t: int in teams:
+			if t != own:
+				by = t
+				break
+		out[r.ball_id] = by
+	return out
+
+
+## One ball's stop applied to its hero; `by_team` moved it (see end_move).
+func _apply_result(s: GameState, h: HeroState, r: RollResult, by_team: int = -1) -> void:
+	var was: StageState = begin_move(s, h)
+	_place_result(s, h, r)
+	end_move(s, h, was, by_team)
+
+
+func _place_result(s: GameState, h: HeroState, r: RollResult) -> void:
 	for cid: String in r.cores_picked:
 		var c: CoreState = s.core(cid)
 		if c != null and c.place == CoreState.ON_FIELD:
@@ -849,6 +941,10 @@ func _continue(s: GameState) -> void:
 						return
 				_finish_battle(s, s.battle_index)
 			GameState.PHASE_END:
+				if s.settings.energy_claims() and not s.energy_banked:
+					_bank_energy(s)
+					if not s.pending.is_empty():
+						return
 				_end_phase(s)
 				if s.is_over():
 					return
@@ -1186,7 +1282,7 @@ func _finish_battle(s: GameState, index: int) -> void:
 				from = w
 		if from == null:
 			continue
-		knockback(s, l, Hex.direction_towards(from.hex, l.hex), kb)
+		knockback(s, l, Hex.direction_towards(from.hex, l.hex), kb, best)
 	for h: HeroState in members:
 		h.tie_turns = 0
 		h.locked_with = PackedStringArray()
@@ -1213,9 +1309,13 @@ func _battle_tie(s: GameState, members: Array[HeroState]) -> void:
 			for other_t: int in kb_of_team:
 				if other_t != t:
 					kb = maxi(kb, kb_of_team[other_t])
+			var by_team: int = -1
+			for other_t: int in kb_of_team:
+				if other_t != t:
+					by_team = other_t
 			h.tie_turns = 0
 			h.locked_with = PackedStringArray()
-			knockback(s, h, 1 if t == 0 else 4, kb)
+			knockback(s, h, 1 if t == 0 else 4, kb, by_team)
 		s.event("battle_tie_break", {"heroes": Array(ids)})
 		return
 	for h: HeroState in members:
@@ -1251,7 +1351,10 @@ func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = fa
 	s.event("damage", info)
 	if h.hp <= 0:
 		h.hp = 0
+		var was: StageState = begin_move(s, h)
 		knock_out(s, h)
+		var source: HeroState = s.hero(by)
+		end_move(s, h, was, s.team_of(source.owner) if source != null else -1)
 
 
 func heal(s: GameState, h: HeroState, amount: int) -> void:
@@ -1359,13 +1462,21 @@ func _lost_active(s: GameState, h: HeroState) -> void:
 ## Knockback (GDD 10). In the "physics" mode (the game) the hero is not moved here: the
 ## knockback waits in `pending_knockbacks` for the sim (apply_knockback). On the grid it goes
 ## hex by hex, stopped by walls and heroes.
-func knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
+## `by_team`: the team whose doing it is (a battle's winners, an effect's player), for the
+## energy claim variant (end_move).
+func knockback(s: GameState, h: HeroState, dir: int, steps: int, by_team: int = -1) -> void:
 	if steps <= 0 or not h.is_on_map() or h.has_status("immune_kb"):
 		return
 	if s.settings.knockback == "physics":
-		s.pending_knockbacks.append({"hero": h.id, "dir": dir, "steps": steps})
+		s.pending_knockbacks.append({"hero": h.id, "dir": dir, "steps": steps, "by_team": by_team})
 		s.event("knockback_launched", {"hero": h.id, "dir": dir, "steps": steps})
 		return
+	var was: StageState = begin_move(s, h)
+	_grid_knockback(s, h, dir, steps)
+	end_move(s, h, was, by_team)
+
+
+func _grid_knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 	var start: Vector2i = h.hex
 	var pos: Vector2i = h.hex
 	var left: int = steps
@@ -1400,7 +1511,8 @@ func knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 # =====================================================================================
 
 func _end_phase(s: GameState) -> void:
-	_check_claims(s)
+	if not s.settings.energy_claims():
+		_check_claims(s)
 	for h: HeroState in s.heroes:
 		var gone: PackedStringArray = PackedStringArray()
 		for name: String in h.statuses:
@@ -1472,6 +1584,122 @@ func _check_claims(s: GameState) -> void:
 			st.claimed_by = claimer
 			st.terrain_until_turn = s.turn + 1
 			s.event("stage_claimed", {"stage": st.id, "player": claimer})
+
+
+# =====================================================================================
+# Energy claim variant (Marko and Tarik 2026-11-02, MatchSettings.CLAIM_ENERGY, under test)
+# =====================================================================================
+
+## End phase: each player's energy left goes into the unclaimed stages its own heroes stand on.
+## A stage with heroes of two teams on it is contested: nobody puts energy in. One stage takes
+## it all; more than one asks the player for a split (DECISION_STAGE_ENERGY). Energy that finds
+## no stage is lost, as it always is at the end of the turn.
+func _bank_energy(s: GameState) -> void:
+	s.energy_banked = true
+	for st: StageState in s.stages:
+		if contested(s, st):
+			s.event("stage_contested", {"stage": st.id})
+	for slot: int in _active_slots(s):
+		var p: PlayerState = s.player(slot)
+		if p.energy <= 0:
+			continue
+		var open: Array[StageState] = energy_stages(s, slot)
+		if open.is_empty():
+			continue
+		if open.size() == 1:
+			_put_energy(s, slot, open[0], p.energy)
+			p.energy = 0
+			continue
+		var ids: Array = []
+		for st: StageState in open:
+			ids.append(st.id)
+		s.pending.append({"type": DECISION_STAGE_ENERGY, "player": slot, "energy": p.energy,
+			"stages": ids, "goal": s.settings.stage_goal})
+	_claim_by_energy(s)
+
+
+## Unclaimed stages `slot` can put energy into now: one of its own heroes stands on it and no
+## hero of another team does.
+func energy_stages(s: GameState, slot: int) -> Array[StageState]:
+	var out: Array[StageState] = []
+	for st: StageState in s.stages:
+		if not st.placed or st.is_claimed() or contested(s, st):
+			continue
+		for h: HeroState in s.heroes_on_stage(st):
+			if h.owner == slot:
+				out.append(st)
+				break
+	return out
+
+
+## An unclaimed stage with heroes of two teams on it.
+func contested(s: GameState, st: StageState) -> bool:
+	if not st.placed or st.is_claimed():
+		return false
+	var teams: Dictionary[int, bool] = {}
+	for h: HeroState in s.heroes_on_stage(st):
+		teams[s.team_of(h.owner)] = true
+	return teams.size() >= 2
+
+
+## `n` energy of `slot` into `st`, up to the goal (more is lost).
+func _put_energy(s: GameState, slot: int, st: StageState, n: int) -> void:
+	if st == null or n <= 0:
+		return
+	var goal: int = s.settings.stage_goal
+	var have: int = st.progress_of(slot)
+	var added: int = mini(n, maxi(goal - have, 0))
+	st.progress[slot] = have + added
+	var info: Dictionary = {"player": slot, "stage": st.id, "amount": added, "progress": have + added, "goal": goal}
+	if n > added:
+		info["wasted"] = n - added
+	s.event("stage_energy", info)
+
+
+## A stage is claimed by the first player whose energy in it reached the goal (a "cannot claim"
+## effect holds it back until a later End phase).
+func _claim_by_energy(s: GameState) -> void:
+	for st: StageState in s.stages:
+		if st.is_claimed():
+			continue
+		var slots: Array = st.progress.keys()
+		slots.sort()
+		for slot: int in slots:
+			if st.progress[slot] < s.settings.stage_goal:
+				continue
+			if _claim_blocked(s, slot):
+				s.event("claim_blocked", {"stage": st.id, "player": slot})
+				continue
+			st.claimed_by = slot
+			st.terrain_until_turn = s.turn + 1
+			s.event("stage_claimed", {"stage": st.id, "player": slot, "energy": st.progress[slot]})
+			break
+
+
+## The stage under `h` as one of its moves begins; pair with end_move.
+func begin_move(s: GameState, h: HeroState) -> StageState:
+	_move_depth += 1
+	return s.stage_at(h.hex) if h != null and h.is_on_map() else null
+
+
+## A move of `h` that began on stage `was` is over. With the energy claim variant, a hero that
+## left an unclaimed stage through team `by_team`'s doing (another team: a hit, a knockback, a
+## ring-out, a KO, an effect) costs its player half the energy in that stage, rounded down;
+## leaving by its own roll (or its own side's doing) costs nothing.
+func end_move(s: GameState, h: HeroState, was: StageState, by_team: int) -> void:
+	_move_depth -= 1
+	if _move_depth > 0 or was == null or h == null or not s.settings.energy_claims() or was.is_claimed():
+		return
+	if h.is_on_map() and was.covers(h.hex):
+		return
+	if by_team < 0 or by_team == s.team_of(h.owner):
+		return
+	var have: int = was.progress_of(h.owner)
+	var lost: int = have / 2
+	if lost > 0:
+		was.progress[h.owner] = have - lost
+	s.event("stage_knocked_off", {"hero": h.id, "stage": was.id, "player": h.owner, "lost": lost,
+		"progress": have - lost, "goal": s.settings.stage_goal, "by_team": by_team})
 
 
 func _claim_blocked(s: GameState, slot: int) -> bool:

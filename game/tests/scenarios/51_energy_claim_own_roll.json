@@ -1,0 +1,44 @@
+{
+  "name": "Energy claims: leaving a stage by its own roll keeps the energy; an enemy ball that hits it off costs half",
+  "steps": [
+    {"setup": {"seed": 1, "settings": {"stage_claim": "energy", "stage_goal": 14}, "decks": [
+      {"name": "A", "heroes": ["TA-001", "TA-002", "TA-003"], "cards": {"TX-010": 40},
+       "stages": ["TS-001"], "cores": []},
+      {"name": "B", "heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-010": 40},
+       "stages": ["TS-006"], "cores": []}
+    ]}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "stages.stage:p0:1.center": [4, 8], "stages.stage:p0:1.placed": true, "stages.stage:p0:1.revealed": true,
+      "stages.stage:p0:1.progress": {"0": 6},
+      "stages.stage:p1:1.placed": false,
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8],
+      "heroes.p1:TB-001.zone": "map", "heroes.p1:TB-001.hex": [10, 2]
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": true}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": false}},
+    {"pass_round": true},
+    {"move": {"type": "aim", "player": 0, "dir": [1, 0], "power": 1.0}},
+    {"roll": {"thrower": "p0:TA-001", "duration": 2.0, "results": [
+      {"ball": "p0:TA-001", "thrown": true, "end_area": 0, "end_hex": [8, 8]}
+    ]}},
+    {"expect": {"heroes.p0:TA-001.hex": [8, 8], "stages.stage:p0:1.progress.0": 6}},
+    {"pass_round": true},
+    {"expect": {"turn": 2, "phase": "start", "stages.stage:p0:1.progress.0": 6}},
+    {"set": {"heroes.p0:TA-001.hex": [4, 8]}},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": true}},
+    {"pass_round": true},
+    {"move": {"type": "aim", "player": 1, "dir": [-1, 0], "power": 1.0}},
+    {"roll": {"thrower": "p1:TB-001", "duration": 2.0, "results": [
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 0, "end_hex": [9, 4], "collisions": ["p0:TA-001"]},
+      {"ball": "p0:TA-001", "thrown": false, "end_area": 0, "end_hex": [1, 8]}
+    ]}},
+    {"expect": {
+      "heroes.p0:TA-001.hex": [1, 8],
+      "stages.stage:p0:1.progress.0": 3,
+      "log": {"$has": {"type": "stage_knocked_off", "hero": "p0:TA-001", "lost": 3, "by_team": 1}}
+    }}
+  ]
+}

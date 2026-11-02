@@ -18,6 +18,8 @@ var stay_turn: int = -1
 var terrain_until_turn: int = -1
 ## Wind stages: the direction drawn when the stage was revealed (a Hex.DIRECTIONS index), -1 before.
 var wind_dir: int = -1
+## The energy claim variant (MatchSettings.CLAIM_ENERGY): slot -> energy that player has put in.
+var progress: Dictionary[int, int] = {}
 
 
 func footprint() -> Array[Vector2i]:
@@ -30,6 +32,11 @@ func covers(a: Vector2i) -> bool:
 
 func is_claimed() -> bool:
 	return claimed_by >= 0
+
+
+## Energy `slot` has put into this stage (the energy claim variant).
+func progress_of(slot: int) -> int:
+	return progress.get(slot, 0)
 
 
 func to_dict() -> Dictionary:
@@ -45,7 +52,15 @@ func to_dict() -> Dictionary:
 		"stay_turn": stay_turn,
 		"terrain_until_turn": terrain_until_turn,
 		"wind_dir": wind_dir,
+		"progress": _progress_dict(),
 	}
+
+
+func _progress_dict() -> Dictionary:
+	var out: Dictionary = {}
+	for slot: int in progress:
+		out[str(slot)] = progress[slot]
+	return out
 
 
 static func from_dict(d: Dictionary) -> StageState:
@@ -61,4 +76,7 @@ static func from_dict(d: Dictionary) -> StageState:
 	s.stay_hero = str(d.get("stay_hero", ""))
 	s.stay_turn = JsonUtil.as_int(d.get("stay_turn", -1), -1)
 	s.terrain_until_turn = JsonUtil.as_int(d.get("terrain_until_turn", -1), -1)
+	var pr: Dictionary = JsonUtil.as_dict(d.get("progress", {}))
+	for k: Variant in pr:
+		s.progress[str(k).to_int()] = JsonUtil.as_int(pr[k])
 	return s

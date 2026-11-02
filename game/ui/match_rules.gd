@@ -37,6 +37,8 @@ const COLUMNS: Array = [
 		["STAGES & CORES", [
 			["manual_setup", "Placement", "Who puts the stages and cores on the map before the first turn.", [true, false]],
 			["stages_to_win", "Stages to win", "Stages a player must hold at once to win.", [2, 3, 4]],
+			["stage_claim", "Stage claims", "Stay: stay on a stage two turns in a row, two heroes on it, or win the battle there. Energy (a variant on test): the energy left at the end of the turn goes into the stage under your hero; enough of it claims the stage. Knocked off by the other side, you lose half of it.", [MatchSettings.CLAIM_STAY, MatchSettings.CLAIM_ENERGY]],
+			["stage_goal", "Energy to claim", "With energy claims: the energy one stage needs.", [8, 10, 12, 14, 16, 18, 20]],
 		]],
 		["CARDS & ENERGY", [
 			["deck_size", "Deck", "Cards played from each deck: a smaller deck is drawn at random from the full one. 50 and 60 are for random and drafted decks; a saved deck plays its 40.", [20, 30, 40, 50, 60]],
@@ -110,6 +112,8 @@ static func value_text(key: String, v: Variant) -> String:
 		"timer_seconds":
 			var t: int = JsonUtil.as_int(v)
 			return "OFF" if t <= 0 else "%d S" % t
+		"stage_claim":
+			return "ENERGY" if str(v) == MatchSettings.CLAIM_ENERGY else "STAY"
 	return str(v)
 
 

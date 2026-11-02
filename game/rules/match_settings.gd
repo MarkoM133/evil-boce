@@ -39,6 +39,21 @@ var series_wins: int = 1
 var first_initiative: int = -1
 ## The game mode these settings came from ("standard", "fast", "chaos") or "custom".
 var mode: String = "standard"
+## How a stage is claimed. CLAIM_STAY (GDD 6): Stay on it twice in a row, two heroes on it
+## without a battle, or win the battle fought on it. CLAIM_ENERGY (a variant, Marko and Tarik
+## 2026-11-02, under test): in the End phase the energy left goes into the stage under your
+## hero; `stage_goal` energy in one stage claims it. See docs/rules.md.
+var stage_claim: String = CLAIM_STAY
+## Energy that claims a stage with CLAIM_ENERGY.
+var stage_goal: int = 14
+
+const CLAIM_STAY: String = "stay"
+const CLAIM_ENERGY: String = "energy"
+
+
+## True with the energy variant of stage claims.
+func energy_claims() -> bool:
+	return stage_claim == CLAIM_ENERGY
 
 
 ## The Standard mode (GDD 13). `new()` keeps the cards as printed, which the scenario tests use.
@@ -149,6 +164,8 @@ func to_dict() -> Dictionary:
 		"series_wins": series_wins,
 		"first_initiative": first_initiative,
 		"mode": mode,
+		"stage_claim": stage_claim,
+		"stage_goal": stage_goal,
 	}
 
 
@@ -177,4 +194,6 @@ static func from_dict(d: Dictionary) -> MatchSettings:
 	s.series_wins = JsonUtil.as_int(d.get("series_wins", s.series_wins), s.series_wins)
 	s.first_initiative = JsonUtil.as_int(d.get("first_initiative", s.first_initiative), s.first_initiative)
 	s.mode = str(d.get("mode", s.mode))
+	s.stage_claim = str(d.get("stage_claim", s.stage_claim))
+	s.stage_goal = JsonUtil.as_int(d.get("stage_goal", s.stage_goal), s.stage_goal)
 	return s

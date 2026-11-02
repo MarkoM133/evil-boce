@@ -10,6 +10,10 @@ extends RefCounted
 enum Level { EASY, HARD }
 
 const RING_OUT: float = -100.0
+## The energy claim variant: energy already in a stage, and energy about to go in, against a
+## claimed stage (it can still be lost half by half, or never reach the goal).
+const HELD: float = 0.75
+const BANKED: float = 0.6
 
 var level: Level = Level.EASY
 var rng := RandomNumberGenerator.new()
@@ -91,6 +95,8 @@ func evaluate(engine: RulesEngine, s: GameState, slot: int) -> float:
 		score += sign * (engine.claimed_count(s, p.slot) * 30.0 + mini(p.hand.size(), 8) * 0.5)
 		if p.deck.is_empty():
 			score -= sign * 3.0
+		if s.settings.energy_claims():
+			score += sign * _energy_value(engine, s, p)
 	# The battle being fought now: the Power gap decides it.
 	if s.phase == GameState.PHASE_BATTLE and s.battle_index >= 0 and s.battle_index < s.battles.size():
 		var mine: int = 0
@@ -106,6 +112,21 @@ func evaluate(engine: RulesEngine, s: GameState, slot: int) -> float:
 		if mine > 0 and theirs > 0:
 			score += clampf((mine - theirs) / 1000.0, -5.0, 5.0) * 4.0 + (8.0 if mine > theirs else -8.0 if mine < theirs else 0.0)
 	return score
+
+
+## The energy claim variant: what a player's energy in the stages is worth (a claimed stage is
+## 30; energy in a stage still has to be held there, so a little less), plus the energy it has
+## now when one of its heroes stands on an open stage, which goes in at the End phase unless a
+## card spends it. That makes a card worth playing only when it does more than the energy would.
+func _energy_value(engine: RulesEngine, s: GameState, p: PlayerState) -> float:
+	var goal: float = maxf(float(s.settings.stage_goal), 1.0)
+	var v: float = 0.0
+	for st: StageState in s.stages:
+		if not st.is_claimed():
+			v += st.progress_of(p.slot) / goal * 30.0 * HELD
+	if p.energy > 0 and not engine.energy_stages(s, p.slot).is_empty():
+		v += p.energy / goal * 30.0 * BANKED
+	return v
 
 
 ## The state after `m`, or null when the engine refuses it.
@@ -143,6 +164,8 @@ func _decide(engine: RulesEngine, s: GameState, slot: int, d: Dictionary) -> Mov
 			return Move.make(Move.PASS, slot)
 		RulesEngine.DECISION_DAMAGE:
 			return _damage_split(engine, s, slot, d)
+		RulesEngine.DECISION_STAGE_ENERGY:
+			return _energy_split(engine, s, slot, d)
 		RulesEngine.DECISION_RETURN_CORE:
 			var c: CoreState = s.core(str(d.get("core", "")))
 			var cells: Array[Vector2i] = s.map().cells()
@@ -212,6 +235,66 @@ func _damage_split(engine: RulesEngine, s: GameState, slot: int, d: Dictionary) 
 			best_k = k
 	var picked: Array = ranked.slice(0, best_k)
 	return Move.make(Move.DAMAGE_TO, slot, {"target": target, "cards": picked})
+
+
+## The energy claim variant's End phase split (both levels): a stage the energy finishes first
+## (the one that needs the least), then everything into one stage rather than a little into each:
+## the one with the most already in it, the safer one on a tie (fewer enemies close enough to
+## hit the hero off it next turn).
+func _energy_split(engine: RulesEngine, s: GameState, slot: int, d: Dictionary) -> Move:
+	var energy: int = JsonUtil.as_int(d.get("energy", 0))
+	var goal: int = JsonUtil.as_int(d.get("goal", s.settings.stage_goal))
+	var open: Array[StageState] = []
+	for id: String in JsonUtil.as_strings(d.get("stages", [])):
+		var st: StageState = s.stage(id)
+		if st != null:
+			open.append(st)
+	var split: Dictionary = {}
+	if open.is_empty():
+		return Move.make(Move.STAGE_ENERGY, slot, {"split": split})
+	var left: int = energy
+	var need: Dictionary = {}
+	for st: StageState in open:
+		need[st.id] = maxi(goal - st.progress_of(slot), 0)
+		split[st.id] = 0
+	# Finish what can be finished, cheapest first.
+	var finishable: Array[StageState] = open.filter(func(st: StageState) -> bool: return JsonUtil.as_int(need[st.id]) > 0)
+	finishable.sort_custom(func(a: StageState, b: StageState) -> bool: return JsonUtil.as_int(need[a.id]) < JsonUtil.as_int(need[b.id]))
+	for st: StageState in finishable:
+		var n: int = JsonUtil.as_int(need[st.id])
+		if n <= left:
+			split[st.id] = n
+			need[st.id] = 0
+			left -= n
+	# The rest into one stage.
+	if left > 0:
+		var best: StageState = null
+		var best_v: float = -INF
+		for st: StageState in open:
+			if JsonUtil.as_int(need[st.id]) <= 0:
+				continue
+			var v: float = st.progress_of(slot) + JsonUtil.as_int(split[st.id]) - _stage_danger(engine, s, slot, st) * 2.0
+			if v > best_v:
+				best_v = v
+				best = st
+		if best == null:
+			best = open[0]
+		split[best.id] = JsonUtil.as_int(split[best.id]) + left
+	for k: Variant in split.keys():
+		if JsonUtil.as_int(split[k]) == 0:
+			split.erase(k)
+	return Move.make(Move.STAGE_ENERGY, slot, {"split": split})
+
+
+## Enemies on the map that could reach `slot`'s heroes on `st` next turn (their range and a throw).
+func _stage_danger(engine: RulesEngine, s: GameState, slot: int, st: StageState) -> int:
+	var n: int = 0
+	for e: HeroState in s.heroes:
+		if not e.is_on_map() or s.team_of(e.owner) == s.team_of(slot):
+			continue
+		if Hex.distance(e.hex, st.center) <= engine.stat(s, e, "rng") + 5:
+			n += 1
+	return n
 
 
 ## What `dmg` on a hero with `hp` costs the bot: a KO is a disaster, the last HP are dear, the
@@ -337,7 +420,9 @@ func _select(engine: RulesEngine, s: GameState, slot: int) -> Move:
 		else:
 			var st: StageState = s.stage_at(h.hex)
 			if st != null and not st.is_claimed() and _enemies_on(s, st, h).is_empty():
-				v += 25.0
+				# Stay claims want the hero picked (and staying); with energy claims it puts its
+				# energy in anyway, so another hero gets the move.
+				v += -15.0 if s.settings.energy_claims() else 25.0
 			var e: HeroState = _nearest_enemy(s, h)
 			if e != null:
 				var gap: int = Hex.distance(h.hex, e.hex)
@@ -482,6 +567,18 @@ func _score_path(engine: RulesEngine, s: GameState, h: HeroState, path: PackedVe
 	var st: StageState = s.stage_at(end)
 	if st != null and not st.is_claimed():
 		v += 25.0 if not st.revealed else 20.0
+		if s.settings.energy_claims():
+			var goal: float = maxf(float(s.settings.stage_goal), 1.0)
+			v += st.progress_of(h.owner) / goal * 15.0
+			for o: HeroState in s.heroes_on_stage(st):
+				if o == h:
+					continue
+				if s.same_team(o, h):
+					# Two heroes on one stage put in no more energy than one.
+					v -= 10.0
+				else:
+					# Standing on it stops the other side's energy going in.
+					v += st.progress_of(o.owner) / goal * 15.0
 	var my_rng: int = engine.stat(s, h, "rng")
 	var my_pwr: int = engine.stat(s, h, "pwr")
 	var near: int = 999

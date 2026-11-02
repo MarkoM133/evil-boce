@@ -69,6 +69,8 @@ var turn_mods: Array[Dictionary] = []
 ## Stage reveal bonuses: {"stage", "hero", "stat", "amount"}; they count while the hero stays
 ## on that stage and it is not claimed, and go away once it leaves.
 var stage_buffs: Array[Dictionary] = []
+## The energy claim variant: this turn's End phase already put the energy into the stages.
+var energy_banked: bool = false
 ## Slot placing the next stage or core during setup.
 var setup_turn: int = 0
 
@@ -253,6 +255,7 @@ func reset_turn_data() -> void:
 	abilities_used = PackedStringArray()
 	deferred.clear()
 	turn_mods.clear()
+	energy_banked = false
 
 
 # --- serialisation ----------------------------------------------------------------
@@ -314,6 +317,7 @@ func to_dict() -> Dictionary:
 		"deferred": deferred.duplicate(true),
 		"turn_mods": turn_mods.duplicate(true),
 		"stage_buffs": stage_buffs.duplicate(true),
+		"energy_banked": energy_banked,
 		"setup_turn": setup_turn,
 		"winner": winner,
 		"result": result,
@@ -385,6 +389,7 @@ static func from_dict(d: Dictionary) -> GameState:
 		s.turn_mods.append(JsonUtil.as_dict(x))
 	for x: Variant in JsonUtil.as_array(d.get("stage_buffs", [])):
 		s.stage_buffs.append(JsonUtil.as_dict(x))
+	s.energy_banked = JsonUtil.as_bool(d.get("energy_banked", false))
 	s.setup_turn = JsonUtil.as_int(d.get("setup_turn", 0))
 	s.winner = JsonUtil.as_int(d.get("winner", -1), -1)
 	s.result = str(d.get("result", ""))

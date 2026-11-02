@@ -708,18 +708,22 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			var hex: Vector2i = JsonUtil.as_hex(answer)
 			if not s.is_free(hex, me.big, me):
 				return "that hex is taken"
+			var me_was: StageState = engine.begin_move(s, me)
 			me.hex = hex
 			s.event("moved", {"hero": me.id, "hex": Hex.to_json(hex), "by": "fx"})
 			engine.arrive(s, me)
+			engine.end_move(s, me, me_was, s.team_of(player))
 		"MOVE_ID":
 			var who: HeroState = s.hero(args[0])
 			if who == null or answer == null:
 				return ""
 			var to: Vector2i = JsonUtil.as_hex(answer)
 			if to != who.hex:
+				var who_was: StageState = engine.begin_move(s, who)
 				who.hex = to
 				s.event("moved", {"hero": who.id, "hex": Hex.to_json(to), "by": "fx"})
 				engine.arrive(s, who)
+				engine.end_move(s, who, who_was, s.team_of(player))
 		"RECYCLE":
 			var p: PlayerState = s.player(player if target == "ME" else engine.other_slot(s, player))
 			var mode: String = args[1] if args.size() > 1 else "TOP"
@@ -808,7 +812,7 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 				var dir: int = Hex.direction_towards(me.hex, h.hex)
 				if towards:
 					dir = (dir + 3) % 6
-				engine.knockback(s, h, dir, args[0].to_int())
+				engine.knockback(s, h, dir, args[0].to_int(), s.team_of(player))
 		"STATUS":
 			var turns: int = 1 if args.size() < 2 or args[1] == "TURN" else args[1].to_int()
 			for h: HeroState in _targets(s, ctx, e, target, answer):

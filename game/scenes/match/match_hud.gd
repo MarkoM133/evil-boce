@@ -24,6 +24,8 @@ signal battle_cam_pressed
 signal battle_resolved(index: int, winner_team: int)
 ## A lost battle's hit confirmed: the hero that takes it and the hand cards (ids) that take 1 DMG each.
 signal damage_pressed(slot: int, target: String, cards: Array)
+## The energy claim variant's End phase split: {stage id: energy}.
+signal energy_pressed(slot: int, split: Dictionary)
 ## Answer to a "choose" decision (hero, core, card id or branch index; hexes go by click).
 signal choose_pressed(slot: int, value: Variant)
 signal ability_pressed(slot: int, hero_id: String, card_id: String, index: int)
@@ -67,7 +69,7 @@ const MERGED_MAX_TIME: float = 6.0
 const LIFT: float = 56.0
 ## Log events that get a banner (the rest only go to the log).
 const BANNER_EVENTS: Array[String] = ["battle", "battle_locked", "battle_tie_break", "ring_out", "ko", "stage_claimed", "triggered",
-	"damage", "deck_damage", "hand_damage"]
+	"damage", "deck_damage", "hand_damage", "stage_knocked_off"]
 
 var engine: RulesEngine
 var state: GameState
@@ -178,6 +180,10 @@ var damage_cards: PackedInt32Array = PackedInt32Array()
 ## Which hit the picks belong to (slot, hitter, targets): a new hit starts with nothing picked,
 ## a band passing over the same hit keeps them.
 var _damage_key: String = ""
+## The energy claim variant: the split being set in the End phase box (stage id -> energy), and
+## the decision it belongs to.
+var energy_split: Dictionary = {}
+var _energy_key: String = ""
 var _target_why: Dictionary = {}
 var _last_why_by: Dictionary = {}
 var _aim_line: Control
@@ -1422,6 +1428,9 @@ func _refresh_prompt() -> void:
 			_detail.text = "%s: click a lit card in your hand." % player_name(who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
 			_roll_offer_prompt(d, who)
+		elif str(d.get("type", "")) == RulesEngine.DECISION_STAGE_ENERGY:
+			_prompt.text = "Put your energy into your stages"
+			_detail.text = "%s: − and + in the box share it out, then CONFIRM." % player_name(who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_DAMAGE:
 			_prompt.text = "Take the hit"
 			_detail.text = "%s: %s%sthen CONFIRM." % [player_name(who),
@@ -2288,6 +2297,9 @@ func _refresh_dialog() -> void:
 	if str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE:
 		_choose_dialog(d, who)
 		return
+	if str(d.get("type", "")) == RulesEngine.DECISION_STAGE_ENERGY:
+		_energy_dialog(d, who)
+		return
 	if str(d.get("type", "")) != RulesEngine.DECISION_DAMAGE:
 		return
 	_damage_dialog(d, who)
@@ -2350,6 +2362,106 @@ func _damage_dialog(d: Dictionary, who: int) -> void:
 		damage_pressed.emit(who, target, cards))
 	confirm.theme_type_variation = &"Gold"
 	confirm.disabled = hero == null
+
+
+## The energy claim variant's End phase (Marko and Tarik 2026-11-02): the energy left goes into
+## the stages the player's heroes stand on. With more than one, the player shares it out here,
+## all of it, with − and + per stage (+ with nothing left takes one from another stage), and
+## CONFIRMs. It starts filling the stage with the most energy in it up to the goal, then the next.
+func _energy_dialog(d: Dictionary, who: int) -> void:
+	_dialog.visible = true
+	var energy: int = JsonUtil.as_int(d.get("energy", 0))
+	var goal: int = JsonUtil.as_int(d.get("goal", state.settings.stage_goal))
+	var ids: PackedStringArray = JsonUtil.as_strings(d.get("stages", []))
+	var key: String = "%d|%d|%d|%s" % [who, state.turn, energy, ",".join(ids)]
+	if key != _energy_key:
+		_energy_key = key
+		energy_split = {}
+		var order: Array = Array(ids)
+		order.sort_custom(func(a: String, b: String) -> bool: return state.stage(a).progress_of(who) > state.stage(b).progress_of(who))
+		var rest: int = energy
+		for id: String in order:
+			var n: int = mini(rest, maxi(goal - state.stage(id).progress_of(who), 0))
+			if n > 0:
+				energy_split[id] = n
+				rest -= n
+		if rest > 0 and not order.is_empty():
+			energy_split[order[0]] = JsonUtil.as_int(energy_split.get(order[0], 0)) + rest
+	var left: int = energy
+	for id: String in ids:
+		left -= JsonUtil.as_int(energy_split.get(id, 0))
+	_dialog_box.add_child(UiTheme.label("END PHASE · %s" % player_name(who).to_upper(), 15, Palette.GOLD))
+	_dialog_box.add_child(UiTheme.label("%d ENERGY INTO YOUR STAGES" % energy, 36))
+	var sub := Label.new()
+	sub.add_theme_color_override("font_color", Palette.MUTED)
+	sub.text = "Your heroes stand on %d open stages. All of the energy goes in; %d in one stage claims it." % [ids.size(), goal]
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sub.custom_minimum_size.x = 420
+	_dialog_box.add_child(sub)
+	for id: String in ids:
+		var st: StageState = state.stage(id)
+		if st == null:
+			continue
+		var have: int = st.progress_of(who)
+		var n: int = JsonUtil.as_int(energy_split.get(id, 0))
+		var after: int = mini(have + n, goal)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var minus: Button = _step_button("−", func() -> void: _energy_step(id, -1, ids, who))
+		minus.disabled = n <= 0
+		row.add_child(minus)
+		var over: int = have + n - after
+		var line: Label = UiTheme.label("%s   %d → %d / %d%s%s" % [_card_name(st.card_id).to_upper(), have, after, goal,
+			"   CLAIMS IT" if after >= goal else "", ("  (%d LOST)" % over) if over > 0 else ""], 20, Palette.GOLD if after >= goal else Palette.FG)
+		line.custom_minimum_size.x = 330
+		line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(line)
+		var plus: Button = _step_button("+", func() -> void: _energy_step(id, 1, ids, who))
+		plus.disabled = left <= 0 and n >= energy
+		row.add_child(plus)
+		_dialog_box.add_child(row)
+	var confirm: Button = _option_button("CONFIRM" if left == 0 else "CONFIRM   %d LEFT" % left, func() -> void:
+		var split: Dictionary = {}
+		for id: String in ids:
+			if JsonUtil.as_int(energy_split.get(id, 0)) > 0:
+				split[id] = JsonUtil.as_int(energy_split[id])
+		energy_pressed.emit(who, split))
+	confirm.theme_type_variation = &"Gold"
+	confirm.disabled = left != 0
+
+
+func _step_button(text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_font_size_override("font_size", 24)
+	b.custom_minimum_size = Vector2(46, 46)
+	b.pressed.connect(cb)
+	return b
+
+
+## One energy more (or less) for stage `id`; a plus with nothing left takes it from the stage
+## that has the most.
+func _energy_step(id: String, by: int, ids: PackedStringArray, who: int) -> void:
+	var d: Dictionary = state.pending[0] if not state.pending.is_empty() else {}
+	var energy: int = JsonUtil.as_int(d.get("energy", 0))
+	var n: int = JsonUtil.as_int(energy_split.get(id, 0))
+	if by < 0:
+		energy_split[id] = maxi(n - 1, 0)
+	else:
+		var used: int = 0
+		for k: String in ids:
+			used += JsonUtil.as_int(energy_split.get(k, 0))
+		if used >= energy:
+			var from: String = ""
+			for k: String in ids:
+				if k != id and JsonUtil.as_int(energy_split.get(k, 0)) > JsonUtil.as_int(energy_split.get(from, 0)):
+					from = k
+			if from.is_empty():
+				return
+			energy_split[from] = JsonUtil.as_int(energy_split[from]) - 1
+		energy_split[id] = n + 1
+	refresh()
 
 
 ## Whether `slot` is picking hand cards for a lost battle's hit now.
@@ -2605,6 +2717,14 @@ func _banner_for(e: Dictionary) -> void:
 			var st: StageState = state.stage(str(e.get("stage", "")))
 			banner("STAGE CLAIMED", Palette.GOLD, player_name(JsonUtil.as_int(e.get("player", 0))).to_upper(),
 				_card_name(st.card_id if st != null else "").to_upper())
+		"stage_knocked_off":
+			# The energy claim variant: knocked off by the other side, half the energy in it goes.
+			var lost: int = JsonUtil.as_int(e.get("lost", 0))
+			if lost > 0:
+				var sk: StageState = state.stage(str(e.get("stage", "")))
+				banner("KNOCKED OFF", Palette.ACCENT_DEEP, _hero_label(str(e.get("hero", ""))).to_upper(),
+					"-%d ENERGY · %s %d/%d" % [lost, _card_name(sk.card_id if sk != null else "").to_upper(),
+					JsonUtil.as_int(e.get("progress", 0)), JsonUtil.as_int(e.get("goal", 0))], 1.6)
 		"triggered":
 			var name: String = _triggered_name(e)
 			if not name.is_empty():
@@ -2714,6 +2834,17 @@ func _describe(e: Dictionary) -> String:
 		"stage_claimed":
 			var st2: StageState = state.stage(str(e.get("stage", "")))
 			return "%s claims %s" % [player_name(JsonUtil.as_int(e.get("player", 0))), _card_name(st2.card_id if st2 != null else "")]
+		"stage_energy":
+			var se: StageState = state.stage(str(e.get("stage", "")))
+			return "%s puts %d energy into %s (%d/%d)" % [player_name(JsonUtil.as_int(e.get("player", 0))), JsonUtil.as_int(e.get("amount", 0)),
+				_card_name(se.card_id if se != null else ""), JsonUtil.as_int(e.get("progress", 0)), JsonUtil.as_int(e.get("goal", 0))]
+		"stage_knocked_off":
+			var so: StageState = state.stage(str(e.get("stage", "")))
+			return "%s knocked off %s: -%d energy (%d/%d)" % [hero_l, _card_name(so.card_id if so != null else ""), JsonUtil.as_int(e.get("lost", 0)),
+				JsonUtil.as_int(e.get("progress", 0)), JsonUtil.as_int(e.get("goal", 0))]
+		"stage_contested":
+			var sct: StageState = state.stage(str(e.get("stage", "")))
+			return "%s is contested: no energy goes in" % _card_name(sct.card_id if sct != null else "")
 		"core_activated":
 			return "%s activates a core" % hero_l
 		"equipped", "evolved", "action":
@@ -2874,6 +3005,23 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 		"claim_blocked":
 			var sb2: StageState = state.stage(str(e.get("stage", "")))
 			return dot + "%s cannot claim %s this turn." % [_who(slot), _card_b(sb2.card_id if sb2 != null else "")]
+		"stage_energy":
+			var se2: StageState = state.stage(str(e.get("stage", "")))
+			var wasted: int = JsonUtil.as_int(e.get("wasted", 0))
+			return dot + "%s puts %d energy into %s: %d of %d%s." % [_who(slot), JsonUtil.as_int(e.get("amount", 0)),
+				_card_b(se2.card_id if se2 != null else ""), JsonUtil.as_int(e.get("progress", 0)), JsonUtil.as_int(e.get("goal", 0)),
+				(" (%d over the goal is lost)" % wasted) if wasted > 0 else ""]
+		"stage_knocked_off":
+			var so2: StageState = state.stage(str(e.get("stage", "")))
+			var lost2: int = JsonUtil.as_int(e.get("lost", 0))
+			if lost2 <= 0:
+				return dot + "%s is knocked off %s." % [_hero_b(hero), _card_b(so2.card_id if so2 != null else "")]
+			return dot + "%s is knocked off %s: %s loses [color=#%s]%d energy[/color] there, %d of %d left." % [_hero_b(hero),
+				_card_b(so2.card_id if so2 != null else ""), _who(slot), Palette.ACCENT.to_html(false), lost2,
+				JsonUtil.as_int(e.get("progress", 0)), JsonUtil.as_int(e.get("goal", 0))]
+		"stage_contested":
+			var sct2: StageState = state.stage(str(e.get("stage", "")))
+			return dot + "%s is contested: heroes of both sides stand on it, so no energy goes in." % _card_b(sct2.card_id if sct2 != null else "")
 		"core_activated":
 			return dot + "%s picks up %s." % [_hero_b(hero), _core_b(str(e.get("core", "")))]
 		"core_deactivated", "core_to_inventory":
@@ -3634,7 +3782,7 @@ func _refresh_board() -> void:
 	var viewer: int = hand_slot() if hand_slot() >= 0 else (local_slots[0] if not local_slots.is_empty() else -1)
 	var sig: String = "%d|%s" % [viewer, str(local_slots)]
 	for st: StageState in state.stages:
-		sig += "|%s:%s:%s:%d:%s" % [st.id, st.card_id, st.revealed, st.claimed_by, st.placed]
+		sig += "|%s:%s:%s:%d:%s:%s" % [st.id, st.card_id, st.revealed, st.claimed_by, st.placed, str(st.progress)]
 	for c: CoreState in state.cores:
 		sig += "|%s:%s:%s:%s" % [c.id, c.place, c.face_up, c.holder]
 	if sig == _board_sig:
@@ -3702,6 +3850,10 @@ func _board_stage(st: StageState) -> Control:
 		q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		tile.add_child(q)
 	var word: String = "CLAIMED" if st.is_claimed() else ("HIDDEN" if not st.revealed and card != null else "")
+	# The energy claim variant: the viewer's energy in it, as on the table.
+	var me: int = hand_slot() if hand_slot() >= 0 else (local_slots[0] if not local_slots.is_empty() else -1)
+	if word.is_empty() and state.settings.energy_claims() and me >= 0 and st.progress_of(me) > 0:
+		word = "%d/%d" % [st.progress_of(me), state.settings.stage_goal]
 	if not word.is_empty():
 		var tag: Label = UiTheme.label(word, 10, Palette.GOLD if st.is_claimed() else Palette.FG)
 		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -3717,6 +3869,10 @@ func _board_stage(st: StageState) -> Control:
 		tile.tooltip_text = "%s's stage, face down until a hero stops on it" % whose
 	if st.is_claimed():
 		tile.tooltip_text += "\nClaimed by %s" % player_name(st.claimed_by)
+	elif state.settings.energy_claims():
+		for p: PlayerState in state.players:
+			if st.progress_of(p.slot) > 0:
+				tile.tooltip_text += "\n%s: %d of %d energy" % [player_name(p.slot), st.progress_of(p.slot), state.settings.stage_goal]
 	# Not a ternary: its value is an untyped Array, which the typed parameter refuses.
 	var hexes: Array[Vector2i] = []
 	if st.placed:

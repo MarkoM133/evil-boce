@@ -401,6 +401,7 @@ func _build_hud() -> void:
 	hud.battle_cam_pressed.connect(_toggle_battle_cam)
 	hud.battle_resolved.connect(_on_battle_resolved)
 	hud.damage_pressed.connect(func(slot: int, target: String, cards: Array) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target, "cards": cards})))
+	hud.energy_pressed.connect(func(slot: int, split: Dictionary) -> void: _apply(Move.make(Move.STAGE_ENERGY, slot, {"split": split})))
 	hud.choose_pressed.connect(func(slot: int, value: Variant) -> void: _apply(Move.make(Move.CHOOSE, slot, {"value": value})))
 	hud.ability_pressed.connect(func(slot: int, hero_id: String, card_id: String, index: int) -> void:
 		_apply(Move.make(Move.USE_ABILITY, slot, {"hero": hero_id, "card": card_id, "index": index})))
@@ -996,6 +997,48 @@ func _rebuild_tokens() -> void:
 				tag.no_depth_test = true
 				tag.position = arena.hex_center(st.center) + Vector3(0, 2.4, 0)
 				_tokens.add_child(tag)
+		if st.placed and not st.is_claimed() and state.settings.energy_claims():
+			_energy_tags(st)
+
+
+## The energy claim variant (Marko and Tarik 2026-11-02): over an open stage, each player's energy
+## in it ("6/14", in the player's colour) once there is some or one of its heroes stands there;
+## CONTESTED under them while heroes of both sides stand on it (nobody's energy goes in).
+func _energy_tags(st: StageState) -> void:
+	var on: Array[HeroState] = state.heroes_on_stage(st)
+	var lines: Array[int] = []
+	for p: PlayerState in state.players:
+		var here: bool = false
+		for h: HeroState in on:
+			if h.owner == p.slot:
+				here = true
+		if st.progress_of(p.slot) > 0 or here:
+			lines.append(p.slot)
+	# Side by side: the camera looks down, so lines stacked upwards would run into each other.
+	for i: int in lines.size():
+		var slot: int = lines[i]
+		var tag := Label3D.new()
+		tag.text = "%d/%d" % [st.progress_of(slot), state.settings.stage_goal]
+		tag.font_size = 48
+		tag.pixel_size = 0.016
+		tag.outline_size = 12
+		tag.modulate = Palette.team(state.team_of(slot)).lightened(0.35)
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.no_depth_test = true
+		tag.position = arena.hex_center(st.center) + Vector3((i - (lines.size() - 1) * 0.5) * 2.6, 2.2, 0)
+		_tokens.add_child(tag)
+	var y: float = 3.8
+	if engine.contested(state, st) and GameSettings.table_text():
+		var c := Label3D.new()
+		c.text = "CONTESTED · NO ENERGY"
+		c.font_size = 32
+		c.pixel_size = 0.016
+		c.outline_size = 10
+		c.modulate = Palette.MUTED
+		c.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		c.no_depth_test = true
+		c.position = arena.hex_center(st.center) + Vector3(0, y, 0)
+		_tokens.add_child(c)
 
 
 ## A revealed stage's card art laid on its hexes, faded, cut to their shape: the stage reads as
@@ -2208,6 +2251,40 @@ func demo_damage() -> void:
 	hud.refresh()
 	hud.pick_damage_hero(str(mine[0]))
 	hud.toggle_damage_card(1)
+
+
+## Screenshot helper: the energy claim variant: player 1's heroes on two open stages with energy
+## in them, a third stage contested, and the End phase box splitting 6 energy.
+func demo_energy() -> void:
+	_demo = true
+	state.settings.stage_claim = MatchSettings.CLAIM_ENERGY
+	state.settings.stage_goal = 14
+	var mine: Array[StageState] = []
+	for st: StageState in state.stages:
+		if st.owner == 0:
+			mine.append(st)
+	var spots: Array[Vector2i] = [Vector2i(7, 12), Vector2i(15, 12), Vector2i(11, 8)]
+	for i: int in mini(3, mine.size()):
+		mine[i].placed = true
+		mine[i].revealed = true
+		mine[i].center = Hex.offset_to_axial(spots[i].x, spots[i].y)
+	mine[0].progress = {0: 6}
+	mine[1].progress = {0: 9}
+	mine[2].progress = {0: 4, 1: 7}
+	var heroes: Array[HeroState] = state.heroes_of(0)
+	for i: int in 3:
+		heroes[i].zone = HeroState.ZONE_MAP
+		heroes[i].hex = mine[i].center
+	var enemy: HeroState = state.heroes_of(1)[0]
+	enemy.zone = HeroState.ZONE_MAP
+	enemy.hex = Hex.neighbor(mine[2].center, 0)
+	state.turn = maxi(state.turn, 6)
+	state.phase = GameState.PHASE_END
+	state.pending = [{"type": RulesEngine.DECISION_STAGE_ENERGY, "player": 0, "energy": 6,
+		"stages": [mine[0].id, mine[1].id], "goal": 14}]
+	hud.local_slots = PackedInt32Array([0])
+	_sync()
+	hud.refresh()
 
 
 ## Screenshot helper: the end screen as if player 1 won on stages (drawn only).

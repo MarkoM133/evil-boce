@@ -26,6 +26,9 @@ const RETURN_CORE: String = "return_core"
 const USE_ABILITY: String = "use_ability"
 ## Answer to a pending "choose" decision: {"value": hero id | [q, r] | core id | card id | branch index}.
 const CHOOSE: String = "choose"
+## End phase, energy claim variant: where the energy left goes when the player's heroes stand on
+## more than one stage it may go into: {"split": {stage id: energy}}, adding up to all of it.
+const STAGE_ENERGY: String = "stage_energy"
 const SURRENDER: String = "surrender"
 
 var type: String = ""
