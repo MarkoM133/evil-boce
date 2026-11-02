@@ -535,13 +535,13 @@ function render() {
     if (state.tab !== 'editor' && !cardEditor.leave()) state.tab = 'editor';
     // Stranice Card editora (i otvorena karta) su u istom okviru s izbornikom, bez trake heroja.
     // Tko radi na ovom računalu: pita se jednom, kad je folder otvoren (samo tada se sprema), i pamti se na računalu.
-    if (state.store.kind === 'folder' && !cardEditor.who() && !state.whoLater) app.replaceChildren(renderWhoPick());
+    if (state.store.kind === 'folder' && !cardEditor.who() && !state.whoLater) app.replaceChildren(renderSetup());
     else if (state.tab === 'editor') app.replaceChildren(renderMain());
     else app.replaceChildren(renderHeader(), renderMain());
     updateStrip();
     cardPushed = false;
     syncHash();
-  } else app.replaceChildren(renderWelcome());
+  } else app.replaceChildren(renderSetup());
 }
 
 // ---------- adresa: svaki pogled ima svoj #/…, pa gesta ili tipka Natrag vraća korak unatrag ----------
@@ -762,40 +762,55 @@ function renderHeader() {
 
 // "Tko radi na ovom računalu?": dvije pločice, odabir se pamti; kasnije se mijenja u izborniku (Signed in as).
 const PEOPLE = [['Marko', 'Publishes cards into the game, edits the frames'], ['Tarik', 'Makes and edits the cards']];
-function renderWhoPick() {
-  const pick = name => { cardEditor.setWho(name); render(); };
-  return h('section', { class: 'who-pick' },
-    studioLogo('big'),
-    h('h1', {}, 'Who works on this computer?'),
-    h('p', { class: 'muted' }, 'The Card editor locks the card you edit under your name, and notes and history show who changed what. Asked once; change it later under "Signed in as" in the menu.'),
-    h('div', { class: 'who-tiles' }, PEOPLE.map(([name, role]) => h('button', { class: 'who-tile', type: 'button', onclick: () => pick(name) },
-      h('span', { class: 'who-initial', 'aria-hidden': 'true' }, name[0]), h('strong', {}, name), h('span', { class: 'muted' }, role)))),
-    h('button', { class: 'link', type: 'button', onclick: () => { state.whoLater = true; render(); } }, 'Just looking for now'));
-}
-
-// Prvi ekran bez foldera: logo Card Studija (kao "Tko radi na ovom računalu?"), što je u appu i odabir
-// zajedničkog Syncthing foldera. Preglednik bez File System Access (mobitel, Firefox, Safari) dobije objašnjenje.
-function renderWelcome() {
+// Prvo postavljanje na jednom ekranu (Marko 2026-11-02): 1. zajednički folder, 2. tko radi na ovom računalu.
+// Drugi korak se otvori na istom mjestu čim je folder otvoren; zapamćeno ime ga preskače (render ide dalje).
+// Preglednik bez File System Access (mobitel, Firefox, Safari) dobije samo objašnjenje.
+function renderSetup() {
   const can = !!window.showDirectoryPicker;
-  const actions = h('div', { class: 'welcome-actions' },
-    can ? h('button', { class: 'primary', onclick: () => guard(pickFolder) }, 'Choose folder') : null);
-  const box = h('section', { class: 'who-pick welcome-studio' },
+  const open = !!state.store;
+  const step = (n, title, done, body) => h('div', { class: `setup-step${done ? ' done' : ''}${body ? ' active' : ''}` },
+    h('span', { class: 'setup-num', 'aria-hidden': 'true' }, done ? '✓' : String(n)),
+    h('div', { class: 'setup-body' }, h('strong', {}, title), body));
+
+  let folderBody = null;
+  if (open) {
+    const n = state.db.cards.length;
+    folderBody = h('span', { class: 'muted' }, `${state.store.name} · ${n} ${plural(n, 'card', 'cards')}`);
+  } else {
+    const actions = h('div', { class: 'welcome-actions' },
+      can ? h('button', { class: 'primary', onclick: () => guard(pickFolder) }, 'Choose folder') : null);
+    folderBody = h('div', { class: 'setup-detail' },
+      h('p', { class: 'muted' }, 'The shared Evil Boće folder that Syncthing keeps in step, with data/ inside. The browser remembers it.'),
+      actions,
+      can ? null : h('p', { class: 'error-text' }, 'This browser can\'t open a folder. Open the page on a computer in Chrome or Edge.'));
+    if (can) fs.loadRoot().then(handle => {
+      if (!handle || state.store) return;
+      actions.append(h('button', { class: 'ghost', onclick: () => guard(() => resume(handle)) }, `Continue with "${handle.name}"`));
+    });
+  }
+
+  let whoBody = null;
+  if (open) {
+    const pick = name => { cardEditor.setWho(name); render(); };
+    whoBody = h('div', { class: 'setup-detail' },
+      h('p', { class: 'muted' }, 'The Card editor locks the card you edit under your name, and history shows who changed what. Change it later under "Signed in as".'),
+      h('div', { class: 'who-tiles' }, PEOPLE.map(([name, role]) => h('button', { class: 'who-tile', type: 'button', onclick: () => pick(name) },
+        h('span', { class: 'who-initial', 'aria-hidden': 'true' }, name[0]), h('strong', {}, name), h('span', { class: 'muted' }, role)))),
+      h('button', { class: 'link', type: 'button', onclick: () => { state.whoLater = true; render(); } }, 'Just looking for now'));
+  }
+
+  return h('section', { class: 'who-pick welcome-studio' },
     studioLogo('big'),
     h('h1', {}, 'Card Studio'),
     h('p', { class: 'muted' }, 'Make, check and publish the cards of Evil Boće, build decks and keep an eye on the balance.'),
-    h('ul', { class: 'welcome-list' },
+    open ? null : h('ul', { class: 'welcome-list' },
       h('li', {}, h('strong', {}, 'Cards'), ' every card, its effect and its look'),
       h('li', {}, h('strong', {}, 'Card editor'), ' new cards, sets, tags, text guide, Publish into the game'),
       h('li', {}, h('strong', {}, 'Decks'), ' deck builder with deck codes for the game'),
       h('li', {}, h('strong', {}, 'Balance'), ' cost curves and colour coverage')),
-    h('p', { class: 'muted' }, 'Open the shared Evil Boće folder, the one Syncthing keeps in step, with data/ inside. The browser remembers it, so you choose it once.'),
-    actions,
-    can ? null : h('p', { class: 'error-text' }, 'This browser can\'t open a folder. Open the page on a computer in Chrome or Edge.'));
-  if (can) fs.loadRoot().then(handle => {
-    if (!handle || state.store) return;
-    actions.append(h('button', { class: 'ghost', onclick: () => guard(() => resume(handle)) }, `Continue with "${handle.name}"`));
-  });
-  return box;
+    h('div', { class: 'setup-steps' },
+      step(1, 'Shared folder', open, folderBody),
+      can ? step(2, 'Who works on this computer?', false, whoBody) : null));
 }
 
 // Import je uz podatke gore (samo s odabranim folderom); kad u sanduču export/ nešto čeka, gumb je crven s brojem.
