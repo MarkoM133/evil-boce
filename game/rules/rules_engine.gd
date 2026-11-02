@@ -1375,7 +1375,7 @@ func heal(s: GameState, h: HeroState, amount: int) -> void:
 
 
 ## A lost battle's damage: at least half of it (rounded up) lands on the hero; the rest the loser
-## may take as cards from the hand, one card per DMG (Marko and Tarik, 2026-11-02). The deck
+## may take as cards from the hand, one card per DMG (Marko, 2026-11-02). The deck
 ## never takes damage and the match is never lost by running out of cards.
 static func hero_share(amount: int) -> int:
 	return (amount + 1) / 2
@@ -1600,7 +1600,7 @@ func _check_claims(s: GameState) -> void:
 
 
 # =====================================================================================
-# Energy claim variant (Marko and Tarik 2026-11-02, MatchSettings.CLAIM_ENERGY, under test)
+# Energy claim variant (Marko 2026-11-02, MatchSettings.CLAIM_ENERGY, under test)
 # =====================================================================================
 
 ## End phase: each player's energy left goes into the unclaimed stages its own heroes stand on.

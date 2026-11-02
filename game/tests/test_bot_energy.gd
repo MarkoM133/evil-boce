@@ -1,6 +1,6 @@
 extends GutTest
 ## How the bots split the End phase energy between two open stages (energy claim variant,
-## Marko and Tarik 2026-11-02): finish a stage when the energy reaches, else all into one.
+## Marko 2026-11-02): finish a stage when the energy reaches, else all into one.
 
 var catalog: CardCatalog
 var engine: RulesEngine

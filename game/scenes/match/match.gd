@@ -1980,6 +1980,22 @@ func demo_autoplay() -> void:
 	hud.local_slots = PackedInt32Array()
 
 
+## The bots play both sides under the energy claim variant (a smoke run of the whole scene).
+func demo_autoplay_energy() -> void:
+	state.settings.stage_claim = MatchSettings.CLAIM_ENERGY
+	state.settings.stage_goal = 14
+	demo_autoplay()
+
+
+## Presses CONFIRM in the energy split box (after demo_energy): the move goes through the engine.
+func demo_energy_confirm() -> void:
+	for c: Node in hud._dialog_box.get_children():
+		if c is Button and (c as Button).theme_type_variation == &"Gold":
+			(c as Button).pressed.emit()
+			return
+	push_error("no CONFIRM button in the energy box")
+
+
 ## Makes the next local move as if clicked (an Easy bot decides). At the aim it only draws the
 ## slingshot on the activated hero and stops, so a screenshot shows the aim.
 func demo_step() -> void:

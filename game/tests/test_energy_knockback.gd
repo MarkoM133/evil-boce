@@ -1,5 +1,5 @@
 extends GutTest
-## Energy claims (Marko and Tarik 2026-11-02) under physics knockback: whose doing each knocked
+## Energy claims (Marko 2026-11-02) under physics knockback: whose doing each knocked
 ## hero's leaving a stage is. A tie-break sends each side back by the other's doing, so both
 ## lose half of their energy; a ball a knocked hero hits off a stage is the same team's doing.
 

@@ -41,7 +41,7 @@ resets the passes.
 
 ## Energy claim variant (`MatchSettings.stage_claim = "energy"`, under test)
 
-A rule option from Marko and Tarik (2026-11-02), next to the Stay claims, not instead of them.
+A rule option from Marko (2026-11-02), next to the Stay claims, not instead of them.
 `stage_goal` (default 14) is the energy a stage needs. The rules panel offers both.
 
 - No Stay claim and no battle claim. Energy is as always: +1 a turn up to `max_energy`, and
@@ -131,7 +131,7 @@ Paths use the JSON form of the state: `players.p0.hand`, `heroes.<id>.hp`, `core
 Things the GDD does not spell out; each is one line to confirm or veto.
 
 1. **Hits:** (confirmed 2026-10-26) every winner that reaches a loser hits once with its own DMG; the owner of the
-   first reachable loser chooses which reachable hero takes it. (Marko and Tarik, 2026-11-02:)
+   first reachable loser chooses which reachable hero takes it. (Marko, 2026-11-02:)
    at least half of the hit, rounded up, lands on that hero; for the rest the loser may discard
    cards from the hand, 1 card per DMG (the player picks which), or take it on the hero too. With
    no cards in the hand it all lands on the hero. The deck never takes damage and there is no

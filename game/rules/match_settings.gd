@@ -40,7 +40,7 @@ var first_initiative: int = -1
 ## The game mode these settings came from ("standard", "fast", "chaos") or "custom".
 var mode: String = "standard"
 ## How a stage is claimed. CLAIM_STAY (GDD 6): Stay on it twice in a row, two heroes on it
-## without a battle, or win the battle fought on it. CLAIM_ENERGY (a variant, Marko and Tarik
+## without a battle, or win the battle fought on it. CLAIM_ENERGY (a variant, Marko
 ## 2026-11-02, under test): in the End phase the energy left goes into the stage under your
 ## hero; `stage_goal` energy in one stage claims it. See docs/rules.md.
 var stage_claim: String = CLAIM_STAY

@@ -2343,7 +2343,7 @@ func _damage_dialog(d: Dictionary, who: int) -> void:
 	confirm.disabled = hero == null
 
 
-## The energy claim variant's End phase (Marko and Tarik 2026-11-02): the energy left goes into
+## The energy claim variant's End phase (Marko 2026-11-02): the energy left goes into
 ## the stages the player's heroes stand on. With more than one, the player shares it out here,
 ## all of it, with − and + per stage (+ with nothing left takes one from another stage), and
 ## CONFIRMs. It starts filling the stage with the most energy in it up to the goal, then the next.
