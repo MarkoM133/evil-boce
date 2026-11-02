@@ -19,6 +19,8 @@ var catalog: CardCatalog = CardCatalog.new()
 var error: String = ""
 
 var _textures: Dictionary[String, Texture2D] = {}
+## Core hex tokens cut out of their cards (core_token).
+var _tokens: Dictionary[String, Texture2D] = {}
 
 
 ## `root` is the shared folder (the one with data/, decks/, ...).
@@ -107,6 +109,50 @@ func large(card_id: String) -> Texture2D:
 ## The card's small image, or null.
 func thumb(card_id: String) -> Texture2D:
 	return texture(thumbs[card_id]) if thumbs.has(card_id) else null
+
+
+## The hex token in the middle of a core card, cut out with the white card around it made
+## transparent (Marko 2026-11-02: no white squares in the setup tray); cached.
+func core_token(card_id: String) -> Texture2D:
+	if _tokens.has(card_id):
+		return _tokens[card_id]
+	var tex: Texture2D = thumb(card_id)
+	if tex == null:
+		return null
+	var src: Image = tex.get_image()
+	if src == null:
+		return null
+	var sz := Vector2(src.get_width(), src.get_height())
+	var img: Image = src.get_region(Rect2i(Vector2i(CORE_HEX.position * sz), Vector2i(CORE_HEX.size * sz)))
+	img.convert(Image.FORMAT_RGBA8)
+	var w: int = img.get_width()
+	var h: int = img.get_height()
+	# White reached in a straight line from any edge goes; the token's white letters stay.
+	for y: int in h:
+		var x: int = 0
+		while x < w and _whitish(img.get_pixel(x, y)):
+			img.set_pixel(x, y, Color(0, 0, 0, 0))
+			x += 1
+		x = w - 1
+		while x >= 0 and _whitish(img.get_pixel(x, y)):
+			img.set_pixel(x, y, Color(0, 0, 0, 0))
+			x -= 1
+	for x: int in w:
+		var y: int = 0
+		while y < h and _whitish(img.get_pixel(x, y)):
+			img.set_pixel(x, y, Color(0, 0, 0, 0))
+			y += 1
+		y = h - 1
+		while y >= 0 and _whitish(img.get_pixel(x, y)):
+			img.set_pixel(x, y, Color(0, 0, 0, 0))
+			y -= 1
+	var out: Texture2D = ImageTexture.create_from_image(img)
+	_tokens[card_id] = out
+	return out
+
+
+static func _whitish(c: Color) -> bool:
+	return c.a == 0.0 or (c.r > 0.78 and c.g > 0.78 and c.b > 0.78)
 
 
 ## A core's face-down back, by family (data/cores/<Family> Cardback.png), or null.

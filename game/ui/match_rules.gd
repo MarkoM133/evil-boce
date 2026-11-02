@@ -32,12 +32,15 @@ const COLUMNS: Array = [
 		["TIME", [
 			["timer_seconds", "Move timer", "Seconds for each move. When it runs out the game makes the safe move: pass, keep, stay, a missed roll.", [0, 15, 20, 30, 45, 60, 90]],
 		]],
+		["SERIES", [
+			["series_wins", "Series", "Wins that take the match. The loser starts the next game; stages and cores are picked again, the decks stay.", [1, 2, 3]],
+		]],
 	],
 	[
 		["STAGES & CORES", [
 			["manual_setup", "Placement", "Who puts the stages and cores on the map before the first turn.", [true, false]],
 			["stages_to_win", "Stages to win", "Stages a player must hold at once to win.", [2, 3, 4]],
-			["stage_claim", "Stage claims", "Stay: stay on a stage two turns in a row, two heroes on it, or win the battle there. Energy (a variant on test): the energy left at the end of the turn goes into the stage under your hero; enough of it claims the stage. When the other side knocks your last hero off it, you lose half of it.", [MatchSettings.CLAIM_STAY, MatchSettings.CLAIM_ENERGY]],
+			["stage_claim", "Stage claims", "Stay: two turns in a row on a stage, two heroes on it, or the battle there won. Energy (on test): the energy left at the end of the turn goes into the stage under your hero until it is claimed; the other side knocking your last hero off it takes half.", [MatchSettings.CLAIM_STAY, MatchSettings.CLAIM_ENERGY]],
 			["stage_goal", "Energy to claim", "With energy claims: the energy one stage needs.", [8, 10, 12, 14, 16, 18, 20]],
 		]],
 		["CARDS & ENERGY", [
@@ -45,9 +48,6 @@ const COLUMNS: Array = [
 			["start_hand", "Starting hand", "Cards drawn at the start, and again after a mulligan.", [3, 4, 5, 6, 7]],
 			["max_energy", "Most energy", "Energy grows by one each turn up to this.", [5, 6, 7, 8, 9, 10, 12]],
 			["assist_limit", "Assists", "How many assists one player can have out.", [1, 2, 3, 4, 5]],
-		]],
-		["SERIES", [
-			["series_wins", "Series", "Wins that take the match. The loser starts the next game; stages and cores are picked again, the decks stay.", [1, 2, 3]],
 		]],
 	],
 ]
@@ -198,12 +198,6 @@ func _build() -> void:
 	_rules_changes.add_theme_font_size_override("font_size", 14)
 	_rules_changes.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rcol.add_child(_rules_changes)
-	_rules_btn = Button.new()
-	_rules_btn.theme_type_variation = &"Ghost"
-	_rules_btn.add_theme_font_size_override("font_size", 15)
-	_rules_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_rules_btn.pressed.connect(open_rules)
-	rrow.add_child(_rules_btn)
 
 
 ## A tile that lights up on hover and calls `on_click` when clicked, while `active` says so.
@@ -258,6 +252,17 @@ func _refresh() -> void:
 		_rules_chip.add_child(b)
 	if settings.mode == "custom":
 		_rules_chip.add_child(UiShape.chip("CUSTOM · %d" % diff.size(), Palette.ACCENT, Palette.FG, 13, 22.0, 10.0))
+	# RULES at the end of the mode row, level with the mode buttons.
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rules_chip.add_child(gap)
+	_rules_btn = Button.new()
+	_rules_btn.theme_type_variation = &"Ghost"
+	_rules_btn.focus_mode = Control.FOCUS_NONE
+	_rules_btn.add_theme_font_size_override("font_size", 15)
+	_rules_btn.pressed.connect(open_rules)
+	_rules_chip.add_child(_rules_btn)
 	_rules_line.text = str(MatchSettings.MODE_LINES.get(settings.mode, ""))
 	# A mode says what it is in its line; only a custom mix lists what it changed.
 	var custom: bool = settings.mode == "custom" and not diff.is_empty()
@@ -436,9 +441,20 @@ func open_rules() -> void:
 	_mode_line.add_theme_color_override("font_color", Palette.MUTED)
 	_mode_line.add_theme_font_size_override("font_size", 14)
 	col.add_child(_mode_line)
+	# The rules scroll when the screen is too short for them (Marko 2026-11-02: cut off below).
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(scroll)
 	_rules_body = HBoxContainer.new()
 	_rules_body.add_theme_constant_override("separation", 40)
-	col.add_child(_rules_body)
+	_rules_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_rules_body)
+	var fit := func() -> void:
+		var room: float = get_viewport().get_visible_rect().size.y - 330.0
+		scroll.custom_minimum_size.y = minf(_rules_body.get_combined_minimum_size().y, maxf(room, 200.0))
+	_rules_body.minimum_size_changed.connect(fit)
+	fit.call_deferred()
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 12)
 	col.add_child(foot)

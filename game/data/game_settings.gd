@@ -336,8 +336,9 @@ static func table_text() -> bool:
 
 
 ## The stage and core boxes under the heroes, open (true) or folded. Key G, or a click on a header.
-static func stage_strip() -> bool:
-	return JsonUtil.as_bool(_config().get_value("display", "stage_strip", true))
+## The stage and core box open (true) or folded: your own side's, or the other side's.
+static func stage_strip(own: bool = true) -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "stage_strip" if own else "stage_strip_other", true))
 
 
 ## Banners in the middle: "all" (phases too), "moments" (battles, KOs, ring-outs, claims), "off".

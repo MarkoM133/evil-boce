@@ -221,6 +221,11 @@ func demo_loadout() -> void:
 	_cards[0]._pick_stage(0)
 
 
+## Screenshot helper: player 1's core picker.
+func demo_cores() -> void:
+	_cards[0]._open_core_picker()
+
+
 func demo_rules() -> void:
 	_rules.open_rules()
 

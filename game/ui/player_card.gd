@@ -22,7 +22,6 @@ var built: Dictionary = {}
 ## A random deck built after hero picks is shown only after BUILD / REROLL (the others stay "?").
 var _show_built: bool = true
 var loadout: Loadout = Loadout.new()
-var _rolling: bool = false
 var team: int = 0
 ## Extra controls in the header (the opponent type in Play setup).
 var header_extra: HBoxContainer
@@ -579,13 +578,23 @@ func _open_core_picker() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		col.add_child(row)
-		var row_tiles: Array[HeroSlice] = []
 		var row_ids := PackedStringArray()
 		var kind_color: Color = KIND_COLORS.get(kind, Palette.FG)
+		# The row's name with ROLL right under it (Marko 2026-11-02: at the left, not a bar below).
+		var head := VBoxContainer.new()
+		head.custom_minimum_size = Vector2(90, 0)
+		head.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		head.add_theme_constant_override("separation", 6)
+		row.add_child(head)
 		var name_l: Label = UiTheme.label(kind.to_upper(), 18, kind_color)
-		name_l.custom_minimum_size = Vector2(90, 0)
-		name_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(name_l)
+		head.add_child(name_l)
+		var roll := Button.new()
+		roll.text = "ROLL"
+		roll.focus_mode = Control.FOCUS_NONE
+		roll.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		roll.add_theme_font_size_override("font_size", 14)
+		roll.tooltip_text = "Two %s cores at random" % kind
+		head.add_child(roll)
 		for c: CardDef in db.catalog.of_type("Core"):
 			if c.kind != kind:
 				continue
@@ -610,22 +619,8 @@ func _open_core_picker() -> void:
 					loadout.cores[free] = id
 				_core_picked())
 			row.add_child(tile)
-			row_tiles.append(tile)
 			row_ids.append(id)
-		# ROLL under the row's cores (Marko 2026-11-01: under, not beside).
-		var under := HBoxContainer.new()
-		under.add_theme_constant_override("separation", 10)
-		col.add_child(under)
-		var pad := Control.new()
-		pad.custom_minimum_size = Vector2(90, 0)
-		under.add_child(pad)
-		var roll := Button.new()
-		roll.text = "ROLL %s" % kind.to_upper()
-		roll.focus_mode = Control.FOCUS_NONE
-		roll.custom_minimum_size = Vector2(150.0 * row_ids.size() + 10.0 * (row_ids.size() - 1), 36)
-		roll.add_theme_font_size_override("font_size", 16)
-		roll.pressed.connect(func() -> void: _roll_row(first, row_tiles, row_ids))
-		under.add_child(roll)
+		roll.pressed.connect(func() -> void: _roll_row(first, row_ids))
 	var done := Button.new()
 	done.text = "DONE"
 	done.theme_type_variation = &"Primary"
@@ -658,31 +653,15 @@ static func _set_edge(tile: HeroSlice, on: bool) -> void:
 	tile.queue_redraw()
 
 
-## ROLL on a row: the gold edge runs over the row's cores like a slot machine, slowing down, and
-## stops on two of them, which become the row's picks (Marko 2026-11-01).
-func _roll_row(first: int, tiles: Array[HeroSlice], ids: PackedStringArray) -> void:
-	if ids.size() < Loadout.CORES_PER_KIND or _rolling:
+## ROLL on a row: two of the row's cores at random, at once (Marko 2026-11-02: no slot machine here).
+func _roll_row(first: int, ids: PackedStringArray) -> void:
+	if ids.size() < Loadout.CORES_PER_KIND:
 		return
-	_rolling = true
 	var order: Array = range(ids.size())
 	order.shuffle()
-	var result: Array = order.slice(0, Loadout.CORES_PER_KIND)
-	var steps: int = 14
-	var t: Tween = create_tween()
-	for i: int in steps:
-		var lit: Array = [(i * 2) % ids.size(), (i * 2 + 1) % ids.size()] if i < steps - 1 else result
-		t.tween_callback(func() -> void:
-			for k: int in tiles.size():
-				if is_instance_valid(tiles[k]):
-					_set_edge(tiles[k], lit.has(k)))
-		# Fast at first, then slower, like reels coming to rest.
-		t.tween_interval(0.04 + 0.012 * i * i * 0.5)
-	t.tween_interval(0.25)
-	t.tween_callback(func() -> void:
-		_rolling = false
-		for j: int in Loadout.CORES_PER_KIND:
-			loadout.cores[first + j] = ids[JsonUtil.as_int(result[j])]
-		_core_picked())
+	for j: int in Loadout.CORES_PER_KIND:
+		loadout.cores[first + j] = ids[JsonUtil.as_int(order[j])]
+	_core_picked()
 
 
 func _core_picked() -> void:

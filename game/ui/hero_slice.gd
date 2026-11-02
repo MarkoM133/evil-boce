@@ -57,8 +57,10 @@ func _set_margins() -> void:
 static func region_for(tex: Texture2D) -> Rect2:
 	if tex == null:
 		return Rect2(0, 0, 1, 1)
+	# The art box on a landscape card ends at 0.445 of its width; past it is the frame, which a
+	# slanted tile shows in its top corner (Marko 2026-11-02: a purple corner on every hero).
 	if tex.get_width() > tex.get_height():
-		return Rect2(0.03, 0.10, 0.44, 0.62)
+		return Rect2(0.03, 0.10, 0.41, 0.62)
 	return Rect2(0.08, 0.10, 0.84, 0.45)
 
 

@@ -157,7 +157,9 @@ func _build_interface(col: VBoxContainer) -> void:
 	words.item_selected.connect(func(i: int) -> void: _store("display", "table_text", i == 0))
 	_hint(col, "TIED · FIGHT AGAIN, STAYED 1 TURN and the like over the heroes and stages. Key T switches it in a match.")
 	var strip := _option(col, "Stage and core boxes", ["Open", "Folded"], 0 if GameSettings.stage_strip() else 1)
-	strip.item_selected.connect(func(i: int) -> void: _store("display", "stage_strip", i == 0))
+	strip.item_selected.connect(func(i: int) -> void:
+		_store("display", "stage_strip", i == 0)
+		_store("display", "stage_strip_other", i == 0))
 	_hint(col, "Each side's stages and cores in a box under its heroes. Key G, or a click on the box's header, folds and opens them in a match.")
 	var rng := _option(col, "Range circles", ["Activated heroes always, others on hover", "Only on hover"],
 		GameSettings.RANGE_MODES.find(GameSettings.range_mode()))

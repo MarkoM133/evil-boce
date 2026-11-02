@@ -622,7 +622,8 @@ func _build() -> void:
 	_tray.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_tray.position = Vector2(0, -30)
 	_tray.alignment = BoxContainer.ALIGNMENT_CENTER
-	_tray.add_theme_constant_override("separation", 8)
+	# Room for a picked or hovered tile to grow without lying over its neighbours (Marko 2026-11-02).
+	_tray.add_theme_constant_override("separation", 26)
 	add_child(_tray)
 
 	# The deck and the graveyard of the player whose hand shows: the graveyard left of the hand,
@@ -1569,19 +1570,13 @@ func _setup_core(id: String, card_id: String) -> Control:
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_theme_constant_override("separation", 2)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var tex: Texture2D = db.large(card_id) if db.large(card_id) != null else db.thumb(card_id)
 	var pic := TextureRect.new()
 	pic.custom_minimum_size = Vector2(78, 82)
 	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if tex != null:
-		# Only the hex token in the middle of the white core card.
-		var cut := AtlasTexture.new()
-		cut.atlas = tex
-		var sz := Vector2(tex.get_width(), tex.get_height())
-		cut.region = Rect2(CardDb.CORE_HEX.position * sz, CardDb.CORE_HEX.size * sz)
-		pic.texture = cut
+	# Only the hex token in the middle of the core card, the white card around it gone.
+	pic.texture = db.core_token(card_id)
 	col.add_child(pic)
 	var family: String = card.core_family() if card != null else ""
 	var tint: Color = PlayerCard.CORE_FAMILY_COLORS[family] if PlayerCard.CORE_FAMILY_COLORS.has(family) else Palette.FG
@@ -1614,10 +1609,12 @@ func _setup_tile(id: String, card_id: String, content: Control) -> Control:
 	tile.scale = Vector2.ONE * rest
 	holder.z_index = 2 if picked else 0
 	if picked:
+		# On the card's top left corner, half over its edge (Marko 2026-11-02: not inside the card).
 		var chip: UiShape = UiShape.chip("PICKED", Palette.GOLD, Color.BLACK, 12, 20.0, 8.0)
-		chip.position = Vector2(6, 4)
+		chip.position = Vector2(tile.size.x * (1.0 - rest) * 0.5 + 2.0, tile.size.y * (1.0 - rest) - 10.0)
+		chip.z_index = 1
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		content.add_child(chip)
+		holder.add_child(chip)
 	tile.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var tip: String = _setup_tip(id)
 	tile.tooltip_text = _card_tip((tip + "\n" if not tip.is_empty() else "") + "Click to pick, right click to see it big")
@@ -3528,6 +3525,13 @@ func show_ball_choice(hero_id: String, at: Vector2) -> void:
 	_ball_choice.visible = true
 
 
+## Puts the Roll / Stay under `at` (their ball moved on the screen); nothing else changes.
+func move_ball_choice(at: Vector2) -> void:
+	if _ball_choice == null or not _ball_choice.visible:
+		return
+	_ball_choice.position = at - Vector2(_ball_choice.size.x * 0.5, 0)
+
+
 ## Hides the ball's Roll / Stay, unless the mouse is on them or was off them for less than
 ## CHOICE_GRACE seconds (it is on its way from the ball to them).
 func hide_ball_choice(force: bool = false) -> void:
@@ -3735,8 +3739,17 @@ func _heroes_line(e: Dictionary) -> String:
 ## they turn face up; the other side's as "?" until then) and your cores (HIDDEN or PUBLIC, and
 ## on whom). Hover shows where it is on the table, a click shows the card big.
 ## The stage strip on or off (key G, or its tab); kept in the settings.
-func toggle_stage_strip() -> void:
-	GameSettings.set_value("display", "stage_strip", not GameSettings.stage_strip())
+## Folds or opens your own side's box, or the other side's (a click on its header).
+func toggle_stage_strip(own: bool = true) -> void:
+	GameSettings.set_value("display", "stage_strip" if own else "stage_strip_other", not GameSettings.stage_strip(own))
+	refresh()
+
+
+## Key G: both boxes together, to the opposite of your own.
+func toggle_stage_strips() -> void:
+	var open: bool = not GameSettings.stage_strip(true)
+	GameSettings.set_value("display", "stage_strip", open)
+	GameSettings.set_value("display", "stage_strip_other", open)
 	refresh()
 
 
@@ -3771,7 +3784,7 @@ func _side_board(slot: int, right: bool) -> Control:
 	var fit := func() -> void: box.custom_minimum_size.y = box.content.get_combined_minimum_size().y
 	box.content.minimum_size_changed.connect(fit)
 	fit.call_deferred()
-	var open: bool = GameSettings.stage_strip()
+	var open: bool = GameSettings.stage_strip(local_slots.has(slot))
 	var claimed: int = engine.claimed_count(state, slot)
 	var mine: Array[StageState] = []
 	for st: StageState in state.stages:
@@ -3806,7 +3819,7 @@ func _side_board(slot: int, right: bool) -> Control:
 	head.tooltip_text = "Fold or open the stages and cores (key G)"
 	head.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-			toggle_stage_strip()
+			toggle_stage_strip(local_slots.has(slot))
 			head.accept_event())
 	var title: String = ("STAGES" if own else "%s STAGES" % player_name(slot).to_upper()) if open \
 			else ("STAGES %d/%d · CORES %s" % [claimed, state.settings.stages_to_win, ("%d/%d" % [placed, cores.size()]) if own else ("%d KNOWN" % known)])
@@ -3818,6 +3831,12 @@ func _side_board(slot: int, right: bool) -> Control:
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(spacer)
 	head.add_child(_fold_chevron(open))
+	if right:
+		# The lean puts the colour edge right by the content at the top: the same room as on the left.
+		var room := Control.new()
+		room.custom_minimum_size = Vector2(16, 0)
+		room.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		head.add_child(room)
 	col.add_child(head)
 	if not open:
 		return box

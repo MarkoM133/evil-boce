@@ -1817,7 +1817,7 @@ func _on_key(k: InputEventKey) -> void:
 			_rebuild_tokens()
 			hud.toast("Words over the table %s" % ("on" if GameSettings.table_text() else "off"), Palette.FG)
 		KEY_G:
-			hud.toggle_stage_strip()
+			hud.toggle_stage_strips()
 
 
 func _on_left(pressed: bool) -> void:
@@ -2127,7 +2127,7 @@ func demo_strip_off() -> void:
 	demo_choose_hero()
 	state.pending.clear()
 	GameSettings.in_memory = true
-	hud.toggle_stage_strip()
+	hud.toggle_stage_strips()
 	_sync()
 
 ## Hits hero 0, knocks hero 1 three hexes away and knocks out hero 2.
@@ -2839,6 +2839,11 @@ func _update_ball_choice() -> void:
 				id = picked
 	if id.is_empty():
 		hud.hide_ball_choice()
+		# Still showing (the mouse near it, or its grace): it keeps its ball all the same, so a
+		# camera move (W / S) cannot leave it hanging where the ball was (Marko 2026-11-02).
+		var shown: String = hud.ball_choice_hero()
+		if _bodies.has(shown):
+			hud.move_ball_choice(cam.camera.unproject_position(_bodies[shown].global_position) + Vector2(0, 34))
 		return
 	hud.show_ball_choice(id, cam.camera.unproject_position(_bodies[id].global_position) + Vector2(0, 34))
 
@@ -2861,6 +2866,22 @@ func demo_start_hover() -> void:
 	demo_pick()
 	var mine: Array[HeroState] = state.heroes_of(0)
 	_set_hover(mine[2].id, true)
+
+
+## Screenshot helper: as demo_start_hover, then the camera pans back (as keys W / S do): the
+## Roll / Stay must stay under the ball.
+func demo_start_hover_pan() -> void:
+	demo_start_hover()
+	cam._pan(Vector2(0, 8.0))
+
+
+## Screenshot helper: the first stage (or core) to place is picked in the tray.
+func demo_setup_picked() -> void:
+	_demo = true
+	var items: PackedStringArray = MatchHud.setup_items(state, state.setup_turn)
+	if not items.is_empty():
+		hud.setup_pick = items[0]
+	hud.refresh()
 
 
 ## Screenshot helper: player 1's first hero carries two equipment cards.
