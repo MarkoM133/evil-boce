@@ -2753,6 +2753,21 @@ func demo_ability_fx() -> void:
 	_ability_fx(h.id, h.card_id)
 
 
+## Screenshot helper: the End phase of demo_energy with one open stage under player 1's heroes:
+## the energy goes in by itself and the HUD says so.
+func demo_energy_auto() -> void:
+	demo_energy()
+	state.pending = []
+	state.heroes_of(0)[1].zone = HeroState.ZONE_STRIP
+	state.player(0).energy = 3
+	state.energy_banked = false
+	_sync()
+	hud.refresh()
+	engine._bank_energy(state)
+	_sync()
+	hud.refresh()
+
+
 ## Screenshot helper (after demo_dice): player 1 throws its dice.
 func demo_dice_throw() -> void:
 	for n: Node in hud.get_parent().get_children():

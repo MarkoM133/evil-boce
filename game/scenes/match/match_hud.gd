@@ -136,6 +136,10 @@ var _over: Control
 var _over_box: VBoxContainer
 var _toast_box: Control
 var _toast_tween: Tween
+## Energy that just went into a stage (Marko 2026-11-02: with one stage it went in without a
+## word): stage id -> {"amount", "player", "until" (msec)}; its tile shows "+N" until then.
+var _energy_flash: Dictionary = {}
+const ENERGY_FLASH_MS: int = 3500
 var _banner_layer: Control
 var _banners: Array[Dictionary] = []
 var _banner_busy: bool = false
@@ -319,7 +323,7 @@ func _refresh_battle_bar() -> void:
 
 
 ## A short message under the ribbon on a slanted chip of `color`.
-func toast(text: String, color: Color = Palette.GOLD) -> void:
+func toast(text: String, color: Color = Palette.GOLD, hold: float = 1.5) -> void:
 	for c: Node in _toast_box.get_children():
 		c.queue_free()
 	var fg: Color = Color.BLACK if color.get_luminance() > 0.5 else Palette.FG
@@ -334,7 +338,7 @@ func toast(text: String, color: Color = Palette.GOLD) -> void:
 	_toast_box.position.y = base - 6.0
 	_toast_tween = create_tween()
 	_toast_tween.tween_property(_toast_box, "position:y", base, 0.12).from(base - 18.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	_toast_tween.tween_interval(1.5)
+	_toast_tween.tween_interval(hold)
 	_toast_tween.tween_property(_toast_box, "modulate:a", 0.0, 0.4)
 
 
@@ -2620,9 +2624,12 @@ func _scan_log() -> void:
 		_log_seen = n
 		return
 	var fresh: Array[Dictionary] = []
+	var banked: Array[Dictionary] = []
 	for i: int in range(_log_seen, n):
 		var e: Dictionary = state.log[i]
 		var t: String = str(e.get("type", ""))
+		if t == "stage_energy":
+			banked.append(e)
 		if (t == "equipped" or t == "evolved" or t == "action") and not str(e.get("hero", "")).is_empty():
 			card_played.emit(str(e.get("card", "")), str(e.get("hero", "")))
 		if (t == "triggered" or t == "ability") and not str(e.get("hero", "")).is_empty():
@@ -2641,6 +2648,8 @@ func _scan_log() -> void:
 			# A stage's bonus is easy to miss on the table: say it.
 			toast(_describe(e))
 	_log_seen = n
+	if not banked.is_empty():
+		_energy_note(banked)
 	# The moment's bands together, merged (a replay jumping ahead shows only the last few).
 	_grouping = true
 	for e: Dictionary in fresh.slice(maxi(0, fresh.size() - 8)):
@@ -3918,6 +3927,42 @@ func _fold_chevron(open: bool) -> Control:
 
 ## One stage as a tile in its owner's box: the art, a band with the name (CLAIMED, HIDDEN) and,
 ## with energy claims, `slot`'s energy in it as a bar and a number.
+## End phase, energy claims: where the energy went, said at the top and lit on the stage tiles
+## for a few seconds ("+3 ENERGY INTO ONIGASHIMA · 9/14"), so one stage taking it all without
+## a split box does not pass unnoticed.
+func _energy_note(events: Array[Dictionary]) -> void:
+	var parts := PackedStringArray()
+	var until: int = Time.get_ticks_msec() + int(ENERGY_FLASH_MS * GameSettings.anim_scale())
+	var who_all: int = -2
+	for e: Dictionary in events:
+		var st: StageState = state.stage(str(e.get("stage", "")))
+		var amount: int = JsonUtil.as_int(e.get("amount", 0))
+		var who: int = JsonUtil.as_int(e.get("player", -1), -1)
+		var wasted: int = JsonUtil.as_int(e.get("wasted", 0))
+		if st == null or (amount <= 0 and wasted <= 0):
+			continue
+		who_all = who if who_all == -2 or who_all == who else -1
+		_energy_flash[st.id] = {"amount": amount, "player": who, "until": until, "start": Time.get_ticks_msec()}
+		var known: bool = st.revealed or local_slots.has(st.owner)
+		var where: String = _card_name(st.card_id) if known else "a hidden stage"
+		var text: String = "+%d energy into %s · %d/%d" % [amount, where,
+			JsonUtil.as_int(e.get("progress", 0)), JsonUtil.as_int(e.get("goal", 0))]
+		if wasted > 0:
+			text += " (%d lost)" % wasted
+		if not local_slots.has(who):
+			text = "%s %s" % [player_name(who), text]
+		parts.append(text)
+	if parts.is_empty():
+		return
+	var color: Color = Palette.GOLD if who_all < 0 else Palette.team(state.team_of(who_all))
+	toast("   ·   ".join(parts), color, 2.6)
+	# The tiles light up now and go back to normal by themselves.
+	refresh.call_deferred()
+	get_tree().create_timer(ENERGY_FLASH_MS * GameSettings.anim_scale() / 1000.0 + 0.05).timeout.connect(func() -> void:
+		if state != null:
+			refresh())
+
+
 func _board_stage(st: StageState, slot: int) -> Control:
 	var known: bool = st.revealed or local_slots.has(st.owner)
 	var card: CardDef = engine.catalog.get_card(st.card_id) if known and not st.card_id.is_empty() else null
@@ -3928,6 +3973,17 @@ func _board_stage(st: StageState, slot: int) -> Control:
 	var sb: StyleBoxFlat = UiTheme.box(Palette.SURFACE_2, 3, Color(0, 0, 0, 0), 0, 0)
 	sb.set_border_width_all(3 if st.is_claimed() else 2)
 	sb.border_color = Palette.team(state.team_of(st.claimed_by)) if st.is_claimed() else (Palette.DIM if contested else Color(Palette.team(state.team_of(st.owner)), 0.7))
+	var flash: Dictionary = _energy_flash.get(st.id, {})
+	var lit: bool = not flash.is_empty() and Time.get_ticks_msec() < JsonUtil.as_int(flash.get("until", 0))
+	if lit:
+		# Energy just went in: a gold edge (the "+N" chip comes over the art below).
+		sb.set_border_width_all(3)
+		sb.border_color = Palette.GOLD
+		# Room for the edge: the art fills the tile and would cover it.
+		for side: int in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+			sb.set_content_margin(side, 3)
+	elif not flash.is_empty():
+		_energy_flash.erase(st.id)
 	tile.add_theme_stylebox_override("panel", sb)
 	# A plain layer inside: the panel would stretch the band over the art.
 	var inner := Control.new()
@@ -4014,6 +4070,16 @@ func _board_stage(st: StageState, slot: int) -> Control:
 				theirs.anchor_left = 1.0 - clampf(float(st.progress_of(other)) / maxf(float(goal), 1.0), 0.0, 1.0)
 				theirs.mouse_filter = Control.MOUSE_FILTER_IGNORE
 				track.add_child(theirs)
+	if lit:
+		var gain: UiShape = UiShape.chip("+%d" % JsonUtil.as_int(flash.get("amount", 0)),
+			Palette.team(state.team_of(JsonUtil.as_int(flash.get("player", 0)))), Palette.FG, 12, 18.0, 6.0)
+		gain.position = Vector2(2, 2)
+		gain.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		inner.add_child(gain)
+		# It pops in once; the tiles are rebuilt on every refresh.
+		if Time.get_ticks_msec() - JsonUtil.as_int(flash.get("start", 0)) < 400:
+			gain.scale = Vector2(1.4, 1.4)
+			gain.create_tween().tween_property(gain, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	var whose: String = player_name(st.owner)
 	if card != null:
 		tile.tooltip_text = "%s (%s's stage%s)%s" % [card.name, whose, ", face down" if not st.revealed else "",
