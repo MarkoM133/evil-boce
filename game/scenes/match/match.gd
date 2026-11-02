@@ -786,6 +786,7 @@ func _sync_hero(h: HeroState) -> void:
 				if h.hp < was:
 					v.hit(was - h.hp)
 				v.ko()
+				cam.shake()
 				v.ko_finished.connect(func() -> void: b.visible = not _ko_shown.has(h.id), CONNECT_ONE_SHOT)
 			else:
 				b.visible = false
@@ -2138,6 +2139,20 @@ func demo_fx_hit() -> void:
 	state.heroes[2].hp = 0
 	state.heroes[2].zone = HeroState.ZONE_KO
 	_sync()
+
+
+## Screenshot helper (after demo_fx_place): the camera on the hero demo_fx_hit will KO, its
+## ball open so the standee shows.
+func demo_ko_focus() -> void:
+	_demo = true
+	var h: HeroState = state.heroes[2]
+	if _views.has(h.id):
+		_views[h.id].open()
+	cam.focus(arena.hex_center(h.hex), 8.0)
+	# At once, so a screenshot a few frames later is steady.
+	cam._cur_target = cam.target
+	cam._cur_distance = cam.distance
+	cam._cur_pitch = cam.pitch
 
 
 ## Both of the above, 1.2 s apart (screenshot: --call=demo_fx --wait=82 --frames=0).

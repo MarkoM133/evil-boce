@@ -21,7 +21,9 @@ const CLOSE_TIME_FAST: float = 0.2
 const FIGURE_HEIGHT: float = 3.0
 const FIGURE_MAX_WIDTH: float = 3.6
 const HIT_TINT := Color(1.0, 0.32, 0.28)
-const KO_TIME: float = 0.55
+## KO (Marko 2026-11-02, a bigger blow): the ball swells, cracks and bursts into shards of the
+## team's colour, the standee flies off the table.
+const KO_TIME: float = 1.0
 ## Idle sway of an open standee: bob height (radii) and speed.
 const IDLE_BOB: float = 0.05
 const IDLE_SPEED: float = 2.2
@@ -43,6 +45,11 @@ var _evo_level: int = 0
 var _aura: Node3D
 var _flash: MeshInstance3D
 var _burst: CPUParticles3D
+## KO shards (pieces of the shell) and the dust under them.
+var _shards: CPUParticles3D
+var _shard_mat := StandardMaterial3D.new()
+## Where the standee stands before a KO throws it off (revive puts it back).
+var _figure_home := Vector3.ZERO
 
 var _top_mat := StandardMaterial3D.new()
 var _bottom_mat := StandardMaterial3D.new()
@@ -112,6 +119,7 @@ func set_radius(r: float) -> void:
 	_ground_ring.scale = Vector3.ONE * r
 	_ground_ring.position.y = -r + 0.015
 	_burst.scale = Vector3.ONE * r
+	_shards.scale = Vector3.ONE * r
 	_fit_figure()
 
 
@@ -376,20 +384,42 @@ func land() -> void:
 	_fx_tween.tween_property(_body, "scale", Vector3.ONE * radius, 0.32) 		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 
-## KO: the standee tips over and sinks, the ball shrinks into a grey puff; then ko_finished.
+## KO: the ball swells for a blink, then bursts into shards of the team's colour and grey dust
+## while the standee is thrown off, tumbling; then ko_finished (Marko 2026-11-02: a bigger blow).
 func ko() -> void:
 	_fx_kill()
 	_glow = false
 	_seam_mat.emission_energy_multiplier = 0.0
 	_burst_mat.albedo_color = Color(0.62, 0.6, 0.58)
-	_burst.restart()
-	_burst.emitting = true
+	_shard_mat.albedo_color = _team_color.lightened(0.2)
+	_figure_home = _figure_pivot.position
 	_fx_tween = create_tween()
+	# The crack: a quick swell with a hint of the team's colour on the seam.
+	_fx_tween.tween_property(_body, "scale", Vector3(1.16, 0.92, 1.16) * radius, 0.1) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_fx_tween.parallel().tween_property(_seam_mat, "emission_energy_multiplier", 2.5, 0.1)
+	_fx_tween.tween_callback(func() -> void:
+		_shards.restart()
+		_shards.emitting = true
+		_burst.restart()
+		_burst.emitting = true)
+	# The shell is gone at once; the shards are what is left of it.
+	_fx_tween.tween_property(_body, "scale", Vector3.ONE * radius * 0.001, 0.06)
+	_fx_tween.parallel().tween_property(_ground_ring, "scale", Vector3.ONE * radius * 0.001, 0.3)
 	if _figure_pivot.visible:
-		_fx_tween.tween_property(_figure_pivot, "rotation:z", -PI * 0.5, KO_TIME * 0.5) 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		_fx_tween.parallel().tween_property(_figure, "modulate", Color(0.4, 0.4, 0.4, 0.0), KO_TIME * 0.6)
-	_fx_tween.parallel().tween_property(_body, "scale", Vector3.ONE * radius * 0.001, KO_TIME) 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-	_fx_tween.parallel().tween_property(_ground_ring, "scale", Vector3.ONE * radius * 0.001, KO_TIME)
+		# The standee flies off sideways, tumbling, and fades as it falls past the table.
+		var fly: float = KO_TIME - 0.16
+		var away := Vector3(-2.6, 2.2, 1.2) * radius
+		_fx_tween.parallel().tween_property(_figure_pivot, "position", _figure_home + away, fly * 0.55) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_fx_tween.tween_property(_figure_pivot, "position", _figure_home + away + Vector3(-1.2, -4.0, 0.6) * radius, fly * 0.45) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		_fx_tween.parallel().tween_property(_figure_pivot, "rotation:z", -PI * 1.6, fly) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_fx_tween.parallel().tween_property(_figure, "modulate", Color(0.5, 0.5, 0.5, 0.0), fly * 0.45) \
+			.set_delay(fly * 0.5)
+	else:
+		_fx_tween.tween_interval(KO_TIME - 0.16)
 	_fx_tween.tween_callback(func() -> void: ko_finished.emit())
 
 
@@ -399,8 +429,10 @@ func revive() -> void:
 	_body.scale = Vector3.ONE * radius
 	_ground_ring.scale = Vector3.ONE * radius
 	_figure_pivot.rotation = Vector3.ZERO
+	_figure_pivot.position = _figure_home
 	_figure.modulate = Color.WHITE
 	_burst_mat.albedo_color = _hero_color
+	_shards.emitting = false
 	close_now()
 
 
@@ -586,6 +618,37 @@ func _build() -> void:
 	fade.set_color(1, Color(1, 1, 1, 0))
 	_burst.color_ramp = fade
 	add_child(_burst)
+
+	# KO shards: flat chips of the shell, thrown out hard, tumbling down past the table.
+	_shards = CPUParticles3D.new()
+	_shards.emitting = false
+	_shards.one_shot = true
+	_shards.amount = 28
+	_shards.lifetime = 1.1
+	_shards.explosiveness = 1.0
+	_shards.direction = Vector3.UP
+	_shards.spread = 80.0
+	_shards.initial_velocity_min = 4.0
+	_shards.initial_velocity_max = 8.0
+	_shards.angular_velocity_min = -720.0
+	_shards.angular_velocity_max = 720.0
+	_shards.scale_amount_min = 0.6
+	_shards.scale_amount_max = 1.4
+	_shards.gravity = Vector3(0, -16, 0)
+	_shards.local_coords = true
+	var chip := BoxMesh.new()
+	chip.size = Vector3(0.16, 0.03, 0.12)
+	_shard_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_shard_mat.vertex_color_use_as_albedo = true
+	_shard_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	chip.material = _shard_mat
+	_shards.mesh = chip
+	var chip_fade := Gradient.new()
+	chip_fade.set_color(0, Color(1, 1, 1, 1))
+	chip_fade.add_point(0.7, Color(1, 1, 1, 1))
+	chip_fade.set_color(1, Color(1, 1, 1, 0))
+	_shards.color_ramp = chip_fade
+	add_child(_shards)
 
 	set_radius(radius)
 

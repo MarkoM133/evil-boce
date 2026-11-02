@@ -27,6 +27,10 @@ var _cur_distance: float = 30.0
 var _drag: Drag = Drag.NONE
 var _home_target := Vector3.ZERO
 var _home_distance: float = 30.0
+## A short shake (a KO): how much is left of it and how hard it started.
+var _shake_t: float = 0.0
+var _shake_time: float = 0.0
+var _shake_amp: float = 0.0
 
 
 func _init() -> void:
@@ -125,7 +129,16 @@ func _process(delta: float) -> void:
 	_cur_yaw = lerp_angle(_cur_yaw, yaw, a)
 	_cur_pitch = lerpf(_cur_pitch, pitch, a)
 	_cur_distance = lerpf(_cur_distance, distance, a)
+	if _shake_t > 0.0:
+		_shake_t = maxf(_shake_t - delta, 0.0)
 	_apply()
+
+
+## A short jolt of the view, fading out over `time` seconds (a KO on the table).
+func shake(amp: float = 0.35, time: float = 0.28) -> void:
+	_shake_amp = amp
+	_shake_time = time
+	_shake_t = time
 
 
 ## `d.x` right, `d.y` forward, in metres on the table.
@@ -147,4 +160,9 @@ func _snap_now() -> void:
 
 func _apply() -> void:
 	var off := Vector3(sin(_cur_yaw) * cos(_cur_pitch), sin(_cur_pitch), cos(_cur_yaw) * cos(_cur_pitch))
-	camera.transform = Transform3D(Basis.looking_at(-off, Vector3.UP), _cur_target + off * _cur_distance)
+	var jolt := Vector3.ZERO
+	if _shake_t > 0.0 and _shake_time > 0.0:
+		var k: float = _shake_t / _shake_time
+		jolt = Vector3(randf_range(-1.0, 1.0), randf_range(-0.6, 0.6), randf_range(-1.0, 1.0)) \
+			* _shake_amp * k * k * (_cur_distance / 30.0)
+	camera.transform = Transform3D(Basis.looking_at(-off, Vector3.UP), _cur_target + off * _cur_distance + jolt)
