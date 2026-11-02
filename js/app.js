@@ -773,17 +773,25 @@ function renderWhoPick() {
     h('button', { class: 'link', type: 'button', onclick: () => { state.whoLater = true; render(); } }, 'Just looking for now'));
 }
 
+// Prvi ekran bez foldera: logo Card Studija (kao "Tko radi na ovom računalu?"), što je u appu i odabir
+// zajedničkog Syncthing foldera. Preglednik bez File System Access (mobitel, Firefox, Safari) dobije objašnjenje.
 function renderWelcome() {
+  const can = !!window.showDirectoryPicker;
   const actions = h('div', { class: 'welcome-actions' },
-    h('button', { class: 'primary', onclick: () => guard(pickFolder) }, 'Choose folder'));
-  const box = h('section', { class: 'welcome' },
-    h('div', { class: 'emblem', 'aria-hidden': 'true' }, h('span', { class: 'ring' }), wordmark('big')),
-    h('div', { class: 'welcome-text' },
-      h('h1', {}, 'Card database'),
-      h('p', {}, 'Choose the shared Drive folder "Evil Boce". It holds export/ with the Card Engine exports and data/ with the card database. The browser remembers it, so you only choose it once.'),
-      actions,
-      !window.showDirectoryPicker ? h('p', { class: 'error-text' }, 'This browser can\'t open a folder. Open the page in Chrome or Edge.') : null));
-  fs.loadRoot().then(handle => {
+    can ? h('button', { class: 'primary', onclick: () => guard(pickFolder) }, 'Choose folder') : null);
+  const box = h('section', { class: 'who-pick welcome-studio' },
+    studioLogo('big'),
+    h('h1', {}, 'Card Studio'),
+    h('p', { class: 'muted' }, 'Make, check and publish the cards of Evil Boće, build decks and keep an eye on the balance.'),
+    h('ul', { class: 'welcome-list' },
+      h('li', {}, h('strong', {}, 'Cards'), ' every card, its effect and its look'),
+      h('li', {}, h('strong', {}, 'Card editor'), ' new cards, sets, tags, text guide, Publish into the game'),
+      h('li', {}, h('strong', {}, 'Decks'), ' deck builder with deck codes for the game'),
+      h('li', {}, h('strong', {}, 'Balance'), ' cost curves and colour coverage')),
+    h('p', { class: 'muted' }, 'Open the shared Evil Boće folder, the one Syncthing keeps in step, with data/ inside. The browser remembers it, so you choose it once.'),
+    actions,
+    can ? null : h('p', { class: 'error-text' }, 'This browser can\'t open a folder. Open the page on a computer in Chrome or Edge.'));
+  if (can) fs.loadRoot().then(handle => {
     if (!handle || state.store) return;
     actions.append(h('button', { class: 'ghost', onclick: () => guard(() => resume(handle)) }, `Continue with "${handle.name}"`));
   });

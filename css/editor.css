@@ -251,6 +251,15 @@ button.link.accent, .accent { color: var(--straw); }
 .studio-logo.small .sl-card { width: 32px; height: 46px; border-width: 2px; }
 .studio-logo.small .wordmark { font-size: 19px; }
 .who-pick .studio-logo { margin-bottom: -10px; }
+/* Welcome without a folder: the same frame as the who-pick screen, with what the app holds. */
+.welcome-studio .welcome-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; text-align: left; max-width: 520px; }
+.welcome-studio .welcome-list li { color: var(--muted); }
+.welcome-studio .welcome-list strong { color: var(--bone); font-family: var(--display); text-transform: uppercase; letter-spacing: .02em; margin-right: 6px; }
+.welcome-studio .welcome-actions { justify-content: center; }
+.welcome-studio .error-text { max-width: 520px; }
+.who-pick.welcome-studio { grid-template-columns: minmax(0, min(560px, 100%)); padding-inline: 16px; }
+.who-pick.welcome-studio > * { max-width: 100%; }
+@media (max-width: 720px) { .who-pick.welcome-studio h1 { font-size: 40px; } .who-pick.welcome-studio { padding-block: 24px; } }
 .ce-swatch, .ce-swatch:hover { background: var(--sw); }
 .ce-swatch:hover { filter: brightness(1.15); }
 .ce-chip-add { padding: 9px 14px; font-size: 15px; }
