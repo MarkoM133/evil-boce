@@ -3748,18 +3748,24 @@ func toggle_stage_strip() -> void:
 func _side_board(slot: int, right: bool) -> Control:
 	var p: PlayerState = state.player(slot)
 	var team_col: Color = Palette.team(state.team_of(slot))
-	var box := PanelContainer.new()
-	var sb: StyleBoxFlat = UiTheme.box(Palette.PANEL, 0, Color(0, 0, 0, 0), 10, 6)
-	if right:
-		sb.border_width_right = 4
-	else:
-		sb.border_width_left = 4
-	sb.border_color = team_col
-	box.add_theme_stylebox_override("panel", sb)
+	# The same slanted slice as a hero panel, as wide, with no art and the team's colour edge.
+	var box := HeroSlice.new()
+	box.set_mirrored(right)
+	box.art_w = 0.0
+	box.bg = Palette.PANEL_SOLID
+	box.color_edge = team_col
+	box.custom_minimum_size = Vector2(ROSTER_WIDTH, 40)
+	var near_cut: int = int(HeroSlice.CUT) + 8
+	box.content.add_theme_constant_override("margin_left", 12 if right else near_cut)
+	box.content.add_theme_constant_override("margin_right", near_cut if right else 12)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 4)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(col)
+	box.content.add_child(col)
+	# The slice is a plain control: it takes its height from what is inside.
+	var fit := func() -> void: box.custom_minimum_size.y = box.content.get_combined_minimum_size().y
+	box.content.minimum_size_changed.connect(fit)
+	fit.call_deferred()
 	var open: bool = GameSettings.stage_strip()
 	var claimed: int = engine.claimed_count(state, slot)
 	var mine: Array[StageState] = []
@@ -3853,7 +3859,7 @@ func _board_stage(st: StageState, slot: int) -> Control:
 	var card: CardDef = engine.catalog.get_card(st.card_id) if known and not st.card_id.is_empty() else null
 	var contested: bool = state.settings.energy_claims() and engine.contested(state, st)
 	var tile := PanelContainer.new()
-	tile.custom_minimum_size = Vector2(88, 50)
+	tile.custom_minimum_size = Vector2(82, 48)
 	tile.clip_contents = true
 	var sb: StyleBoxFlat = UiTheme.box(Palette.SURFACE_2, 3, Color(0, 0, 0, 0), 0, 0)
 	sb.set_border_width_all(3 if st.is_claimed() else 2)
