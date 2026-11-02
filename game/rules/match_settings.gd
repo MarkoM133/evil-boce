@@ -40,9 +40,10 @@ var first_initiative: int = -1
 ## The game mode these settings came from ("standard", "fast", "chaos") or "custom".
 var mode: String = "standard"
 ## How a stage is claimed. CLAIM_STAY (GDD 6): Stay on it twice in a row, two heroes on it
-## without a battle, or win the battle fought on it. CLAIM_ENERGY (a variant, Marko
-## 2026-11-02, under test): in the End phase the energy left goes into the stage under your
-## hero; `stage_goal` energy in one stage claims it. See docs/rules.md.
+## without a battle, or win the battle fought on it. CLAIM_ENERGY (Marko 2026-11-02): in the
+## End phase the energy left goes into the stage under your hero; `stage_goal` energy in one
+## stage claims it. See docs/rules.md. `new()` keeps Stay (the scenario tests); Standard and
+## every mode play Energy (Marko 2026-11-02: the default).
 var stage_claim: String = CLAIM_STAY
 ## Energy that claims a stage with CLAIM_ENERGY.
 var stage_goal: int = 14
@@ -63,6 +64,7 @@ static func standard() -> MatchSettings:
 	var s := MatchSettings.new()
 	s.map_size = 23
 	s.knockback = "physics"
+	s.stage_claim = CLAIM_ENERGY
 	return s
 
 
@@ -71,7 +73,7 @@ static func standard() -> MatchSettings:
 ## brings its map, changing the map afterwards keeps the name.
 const MODES: Array[String] = ["standard", "fast", "chaos", "bo3", "draft", "custom"]
 const MODE_LINES: Dictionary[String, String] = {
-	"standard": "The rules as written: a 23 × 23 map, three stages to win, no timer.",
+	"standard": "A 23 × 23 map, three stages to win, stages claimed with energy, no timer.",
 	"fast": "30 seconds a move, 20 cards, two stages to win, a 17 × 17 map.",
 	"chaos": "Random heroes and decks, random stages and cores dropped on a random map.",
 	"bo3": "Best of 3: first to two wins. The loser starts the next game; stages and cores are picked again.",

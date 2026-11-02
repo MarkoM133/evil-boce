@@ -40,7 +40,7 @@ const COLUMNS: Array = [
 		["STAGES & CORES", [
 			["manual_setup", "Placement", "Who puts the stages and cores on the map before the first turn.", [true, false]],
 			["stages_to_win", "Stages to win", "Stages a player must hold at once to win.", [2, 3, 4]],
-			["stage_claim", "Stage claims", "Stay: two turns in a row on a stage, two heroes on it, or the battle there won. Energy (on test): the energy left at the end of the turn goes into the stage under your hero until it is claimed; the other side knocking your last hero off it takes half.", [MatchSettings.CLAIM_STAY, MatchSettings.CLAIM_ENERGY]],
+			["stage_claim", "Stage claims", "Energy: the energy left at the end of the turn goes into the stage under your hero until it is claimed; the other side knocking your last hero off it takes half. Stay (the old rule): two turns in a row on a stage, two heroes on it, or the battle there won.", [MatchSettings.CLAIM_ENERGY, MatchSettings.CLAIM_STAY]],
 			["stage_goal", "Energy to claim", "With energy claims: the energy one stage needs.", [8, 10, 12, 14, 16, 18, 20]],
 		]],
 		["CARDS & ENERGY", [

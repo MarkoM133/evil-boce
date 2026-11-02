@@ -39,10 +39,12 @@ engine is shaped and which gaps it had to fill on its own (see **Assumptions**).
 when every player has passed in a row; playing a card hands the turn to the next player and
 resets the passes.
 
-## Energy claim variant (`MatchSettings.stage_claim = "energy"`, under test)
+## Energy claims (`MatchSettings.stage_claim = "energy"`, the default)
 
-A rule option from Marko (2026-11-02), next to the Stay claims, not instead of them.
-`stage_goal` (default 14) is the energy a stage needs. The rules panel offers both.
+From Marko (2026-11-02); the default of Standard and every mode since 2026-11-02, with the
+Stay claims still offered in the rules panel. `MatchSettings.new()` keeps Stay, which the
+scenario tests use. `stage_goal` (default 14) is the energy a stage needs. The GDD still
+describes Stay: it waits for the decision on the variant.
 
 - No Stay claim and no battle claim. Energy is as always: +1 a turn up to `max_energy`, and
   what is left at the end of the turn does not carry over.

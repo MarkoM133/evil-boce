@@ -71,6 +71,10 @@ static func match_rules(mode: String) -> MatchSettings:
 		s.map_size = MatchSettings.standard().map_size
 	# The knockback is always physical (2026-10-26); older saved rules may still say grid.
 	s.knockback = "physics"
+	# Saved as "custom" when it differed from a mode that has since changed (Energy became the
+	# default, 2026-11-02): a mix that now matches a mode is that mode again.
+	if s.mode == "custom":
+		s.mode = s.mode_of()
 	return s
 
 
