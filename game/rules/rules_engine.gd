@@ -586,7 +586,9 @@ func _offer_roll_effects(s: GameState) -> void:
 	for _n: int in s.players.size():
 		var p: PlayerState = s.player(slot)
 		var h: HeroState = s.active_hero(slot)
-		if p != null and not p.surrendered and h != null and not h.is_ko():
+		# Only a hero that rolled gets the offer: one that stayed has nothing to roll again
+		# (Marko 2026-11-02). Roll or Stay is public, so no offer gives nothing away.
+		if p != null and not p.surrendered and h != null and not h.is_ko() and s.choices.get(slot, false):
 			var abilities := PackedStringArray()
 			for a: Dictionary in fx.usable_abilities(s, slot):
 				abilities.append(str(a["key"]))

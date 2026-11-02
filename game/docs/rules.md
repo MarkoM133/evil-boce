@@ -158,7 +158,8 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    standing on that stage.
 9. (2026-10-26) The turn has six phases: Start (draw + hero + Roll/Stay in one `select` move, all
    revealed together), Preroll (cards), Roll (aims and throws only; "Roll Phase:" cards and
-   abilities come as one `roll_offer` per active player and stop, options or none, so nobody can
+   abilities come as one `roll_offer` per player whose hero rolled (a hero that stayed has
+   nothing to roll again, Marko 2026-11-02) and stop, options or none, so nobody can
    read "has a Roll Phase card" off who is asked; the offers of one stop are answered in any
    order; a roll again brings a new stop and new offers), Postroll, Battle, End. Declining an
    empty offer after a fixed wait is the client's job (auto-pass), not a rule. A hero's own

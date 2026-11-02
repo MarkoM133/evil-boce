@@ -19,6 +19,9 @@ func before_each() -> void:
 	], 1)
 	state.active[0] = "p0:TA-001"
 	state.active[1] = "p1:TB-001"
+	# Both rolled: a hero that stayed gets no offer (Marko 2026-11-02).
+	state.choices[0] = true
+	state.choices[1] = true
 	for p: PlayerState in state.players:
 		p.energy = 5
 
@@ -55,3 +58,10 @@ func test_the_decisions_an_answer_asks_for_come_first() -> void:
 	assert_eq(str(state.pending[1]["type"]), "roll_offer")
 	engine._decisions_first(state, 2)
 	assert_eq(str(state.pending[0]["type"]), "choose", "nothing added, nothing moves")
+
+
+func test_a_hero_that_stayed_gets_no_offer() -> void:
+	state.choices[1] = false
+	_offers()
+	assert_eq(state.pending.size(), 1, "only the player whose hero rolled is asked")
+	assert_eq(JsonUtil.as_int(state.pending[0].get("player", -1)), 0)

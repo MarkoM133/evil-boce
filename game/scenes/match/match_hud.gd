@@ -1199,8 +1199,8 @@ func _roll_offer_prompt(d: Dictionary, who: int) -> void:
 		var cost: int = engine.card_cost(state, state.player(who), card) if card != null else 0
 		_action("PLAY %s  ·  %d" % [(card.name if card != null else cid).to_upper(), cost],
 			func() -> void: card_pressed.emit(who, cid, ""), &"Gold")
-	if cards.size() == 1 and _big_cid != cards[0]:
-		_show_big(cards[0])
+	# The card is not thrown up big by itself: the button says it, hover or right click shows it
+	# (Marko 2026-11-02).
 	_action("GO ON", func() -> void: pass_pressed.emit(who), &"Primary")
 
 
