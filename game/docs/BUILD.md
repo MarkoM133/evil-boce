@@ -42,6 +42,10 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
 
 - **Online smoke test** (headless; host, guest and the match scene in both roles over
   127.0.0.1): `godot_console --headless --path game -s res://tools/net_smoke.gd`
+- **Bot games** (headless, engine only: grid knockback and the analytic roll of `test_bot.gd`; random
+  decks from the shared folder, `--fixtures` for the test cards). Counts hero damage by source, hand
+  cards discarded for hits, KOs, how the matches ended and turns, for weighing a rule change:
+  `godot_console --headless --path game -s res://tools/bot_games.gd -- --games=20 --seed=1 [--level=easy]`
 - **Soak** (headless; Hard bots play both sides of the real match scene in every mode and
   it prints results, errors and stalls; exit code 1 on any problem):
   `godot_console --headless --fixed-fps 60 --path game -s res://tools/soak.gd -- --games=3`

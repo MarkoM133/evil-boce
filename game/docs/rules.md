@@ -15,7 +15,8 @@ engine is shaped and which gaps it had to fill on its own (see **Assumptions**).
   `state.awaiting_roll` is true. Results whose `ball` is a hero id move that hero; anything
   else is ignored.
 - `state.pending` lists decisions the engine waits for before anything else:
-  `damage` (loser picks `"deck"` or a hero among `targets`) and `return_core`.
+  `damage` (the loser answers `damage_to {target: a hero among targets, cards: [hand card ids]}`:
+  at least `min_hero` = ⌈amount/2⌉ lands on the hero, each card takes 1 DMG of the rest) and `return_core`.
 - Nothing in `rules/` touches Node, FileAccess or randomness outside `state.random_int()`
   (seeded, stored in the state, so replays and the host/client agree).
 
@@ -95,9 +96,13 @@ Paths use the JSON form of the state: `players.p0.hand`, `heroes.<id>.hp`, `core
 Things the GDD does not spell out; each is one line to confirm or veto.
 
 1. **Hits:** (confirmed 2026-10-26) every winner that reaches a loser hits once with its own DMG; the owner of the
-   first reachable loser chooses hero or deck. Deck damage takes cards from the top of the
-   deck; with an empty deck from the hand (last drawn first); with an empty hand the player
-   loses.
+   first reachable loser chooses which reachable hero takes it. (Marko and Tarik, 2026-11-02:)
+   at least half of the hit, rounded up, lands on that hero; for the rest the loser may discard
+   cards from the hand, 1 card per DMG (the player picks which), or take it on the hero too. With
+   no cards in the hand it all lands on the hero. The deck never takes damage and there is no
+   deck-out win any more (an empty deck only means no draw). Damage from cards ("take 3 DMG")
+   is not a battle hit and goes where the card says. Event `hand_damage` {player, cards, amount,
+   hand, by}; `deck_damage` / `deck_out` / result `deckout` live on only in old replays.
 2. **Battle order:** (confirmed 2026-10-26) locked (tied) groups first, then the battle with the initiative player's
    activated hero, the other activated hero, then the rest in initiative order.
 3. **Second tie:** (confirmed 2026-10-26) each hero flies straight towards its own strip (team 0 → +z, team 1 → −z)
@@ -130,8 +135,8 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    stop, so the answering player is not kept waiting.
 9b. (2026-10-26) The move timer is not a rule: `MatchClock` (rules/) only says whom the game waits
    for, what for (`wait_key`) and the safe move when the time runs out (pass, keep, the marked
-   or a random hero that stays when it may, a missed roll, a random legal placement, damage to
-   the deck, the gentlest choice). The match scene keeps the clocks locally and as the host;
+   or a random hero that stays when it may, a missed roll, a random legal placement, all the
+   damage on the first hero offered, the gentlest choice). The match scene keeps the clocks locally and as the host;
    guests only show them. `timer_seconds` 0 = off.
    `deck_size` below the deck's cards (the Fast mode, GDD 13) plays the first that many of the
 9c. (2026-10-26) Knockback mode `knockback`: "physics" (the game, 2026-10-26: every

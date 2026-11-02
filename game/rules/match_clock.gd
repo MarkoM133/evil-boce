@@ -111,13 +111,15 @@ static func _place(engine: RulesEngine, s: GameState, slot: int, rng: RandomNumb
 	return null
 
 
-## The gentlest answer to the pending decision: damage to the deck, a core back on a random
+## The gentlest answer to the pending decision: all the damage on the first hero offered, a core back on a random
 ## hex it may take, the first branch or a random option of a card's choice.
 static func _decide(engine: RulesEngine, s: GameState, slot: int, rng: RandomNumberGenerator) -> Move:
 	var d: Dictionary = s.pending[0]
 	match str(d.get("type", "")):
 		RulesEngine.DECISION_DAMAGE:
-			return Move.make(Move.DAMAGE_TO, slot, {"target": "deck"})
+			# All of it on the first hero offered; no card leaves the hand unasked.
+			var targets: PackedStringArray = JsonUtil.as_strings(d.get("targets", []))
+			return Move.make(Move.DAMAGE_TO, slot, {"target": targets[0] if not targets.is_empty() else ""})
 		RulesEngine.DECISION_RETURN_CORE:
 			var c: CoreState = s.core(str(d.get("core", "")))
 			if c == null:

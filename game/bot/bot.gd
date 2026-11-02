@@ -142,17 +142,7 @@ func _decide(engine: RulesEngine, s: GameState, slot: int, d: Dictionary) -> Mov
 					return best
 			return Move.make(Move.PASS, slot)
 		RulesEngine.DECISION_DAMAGE:
-			var amount: int = JsonUtil.as_int(d.get("amount", 0))
-			var options: Array[Move] = [Move.make(Move.DAMAGE_TO, slot, {"target": "deck"})]
-			for id: String in JsonUtil.as_strings(d.get("targets", [])):
-				options.append(Move.make(Move.DAMAGE_TO, slot, {"target": id}))
-			if hard():
-				return _best(engine, s, slot, options)
-			for id: String in JsonUtil.as_strings(d.get("targets", [])):
-				var h: HeroState = s.hero(id)
-				if h != null and h.hp > amount + 2:
-					return Move.make(Move.DAMAGE_TO, slot, {"target": id})
-			return options[0]
+			return _damage_split(engine, s, slot, d)
 		RulesEngine.DECISION_RETURN_CORE:
 			var c: CoreState = s.core(str(d.get("core", "")))
 			var cells: Array[Vector2i] = s.map().cells()
@@ -173,6 +163,97 @@ func _decide(engine: RulesEngine, s: GameState, slot: int, d: Dictionary) -> Mov
 				return _best(engine, s, slot, moves)
 			return moves[rng.randi_range(0, moves.size() - 1)]
 	return null
+
+
+## A lost battle's hit (GDD 10, 2026-11-02): at least half lands on a hero, the rest may be cards
+## from the hand, one per DMG. The hero takes it while it can afford to; cards go instead when
+## the hero would fall or be left low, and the least useful cards go first. Each extra card is
+## weighed against the HP it saves: an HP is worth more the fewer are left, a card less when it
+## cannot be played (no living hero of its colour) or the hand is full. Hard also picks the hero
+## by trying the hit on each (Easy: the one with the most HP).
+func _damage_split(engine: RulesEngine, s: GameState, slot: int, d: Dictionary) -> Move:
+	var amount: int = JsonUtil.as_int(d.get("amount", 0))
+	var min_hero: int = JsonUtil.as_int(d.get("min_hero", RulesEngine.hero_share(amount)))
+	var targets: PackedStringArray = JsonUtil.as_strings(d.get("targets", []))
+	var p: PlayerState = s.player(slot)
+	var target: String = targets[0] if not targets.is_empty() else ""
+	if targets.size() > 1:
+		if hard():
+			var options: Array[Move] = []
+			for id: String in targets:
+				options.append(Move.make(Move.DAMAGE_TO, slot, {"target": id}))
+			target = _best(engine, s, slot, options).str_arg("target")
+		else:
+			for id: String in targets:
+				var h: HeroState = s.hero(id)
+				var t: HeroState = s.hero(target)
+				if h != null and (t == null or h.hp > t.hp):
+					target = id
+	var hero: HeroState = s.hero(target)
+	var spare: int = mini(amount - min_hero, p.hand.size())
+	if hero == null or spare <= 0:
+		return Move.make(Move.DAMAGE_TO, slot, {"target": target})
+	# The hand, least useful card first.
+	var ranked: Array = Array(p.hand)
+	var worth: Dictionary = {}
+	for cid: String in p.hand:
+		worth[cid] = _card_worth(engine, s, slot, cid)
+	ranked.sort_custom(func(a: String, b: String) -> bool: return JsonUtil.as_float(worth[a]) < JsonUtil.as_float(worth[b]))
+	# Each plan: k cards and amount - k on the hero; the cheapest in HP worth plus card worth wins.
+	var best_k: int = 0
+	var best_cost: float = INF
+	var cards_cost: float = 0.0
+	for k: int in spare + 1:
+		if k > 0:
+			cards_cost += JsonUtil.as_float(worth[ranked[k - 1]])
+		var cost: float = _hp_cost(hero.hp, amount - k) + cards_cost
+		if cost < best_cost - 0.001:
+			best_cost = cost
+			best_k = k
+	var picked: Array = ranked.slice(0, best_k)
+	return Move.make(Move.DAMAGE_TO, slot, {"target": target, "cards": picked})
+
+
+## What `dmg` on a hero with `hp` costs the bot: a KO is a disaster, the last HP are dear, the
+## first ones cheap (one HP is about one card when the hero is healthy).
+func _hp_cost(hp: int, dmg: int) -> float:
+	if dmg <= 0:
+		return 0.0
+	if dmg >= hp:
+		return 40.0
+	var cost: float = 0.0
+	for i: int in dmg:
+		var at: int = hp - i
+		cost += 3.0 if at <= 3 else (1.8 if at <= 6 else 1.0)
+	return cost
+
+
+## How much the bot minds losing `cid` from its hand, in HP: nothing for a card no living hero of
+## its colour can play, less for a dear one or when the hand is full, more for a cheap one that
+## will be played soon (Hard looks at the cost and the colour; Easy only at the colour).
+func _card_worth(engine: RulesEngine, s: GameState, slot: int, cid: String) -> float:
+	var c: CardDef = engine.catalog.get_card(cid)
+	if c == null or not c.is_ready():
+		return 0.2
+	var playable: bool = c.color == "None"
+	for h: HeroState in s.heroes_of(slot):
+		if h.is_ko():
+			continue
+		var hc: CardDef = engine.catalog.get_card(h.card_id)
+		if hc != null and (hc.color == c.color or c.has_bonus_for(hc.color)):
+			playable = true
+	if not playable:
+		return 0.2
+	if not hard():
+		return 1.2
+	var w: float = 1.4
+	if c.cost >= 4:
+		w -= 0.4
+	elif c.cost <= 1:
+		w += 0.3
+	if s.player(slot).hand.size() >= 7:
+		w -= 0.4
+	return w
 
 
 ## The move whose resulting state evaluates best (refused moves are skipped).

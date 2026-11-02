@@ -400,7 +400,7 @@ func _build_hud() -> void:
 		_apply(Move.make(Move.SELECT, slot, {"hero": hero_id, "roll": roll})))
 	hud.battle_cam_pressed.connect(_toggle_battle_cam)
 	hud.battle_resolved.connect(_on_battle_resolved)
-	hud.damage_pressed.connect(func(slot: int, target: String) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target})))
+	hud.damage_pressed.connect(func(slot: int, target: String, cards: Array) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target, "cards": cards})))
 	hud.choose_pressed.connect(func(slot: int, value: Variant) -> void: _apply(Move.make(Move.CHOOSE, slot, {"value": value})))
 	hud.ability_pressed.connect(func(slot: int, hero_id: String, card_id: String, index: int) -> void:
 		_apply(Move.make(Move.USE_ABILITY, slot, {"hero": hero_id, "card": card_id, "index": index})))
@@ -1931,9 +1931,9 @@ func _on_hero_clicked(id: String) -> void:
 	if hud.choice_heroes.has(id):
 		_apply(Move.make(Move.CHOOSE, hud.choice_slot, {"value": id}))
 		return
-	# A lost battle's DMG: a lit hero takes it (the dialog's buttons do the same).
+	# A lost battle's DMG: a lit hero is picked to take it (CONFIRM in the dialog sends it).
 	if hud.damage_heroes.has(id):
-		_apply(Move.make(Move.DAMAGE_TO, hud.choice_slot, {"target": id}))
+		hud.pick_damage_hero(id)
 		return
 	var h: HeroState = state.hero(id)
 	if h == null:
@@ -2195,10 +2195,19 @@ func demo_damage() -> void:
 	var mine: Array = []
 	for h: HeroState in state.heroes_of(0):
 		mine.append(h.id)
-	state.pending = [{"type": RulesEngine.DECISION_DAMAGE, "player": 0, "amount": 3,
+	state.pending = [{"type": RulesEngine.DECISION_DAMAGE, "player": 0, "amount": 5, "min_hero": 3,
 		"winner": state.heroes_of(1)[0].id, "targets": mine}]
+	# A hand to pick from, with one card already taking 1 DMG.
+	var p: PlayerState = state.player(0)
+	if p.hand.is_empty():
+		p.hand = p.deck.slice(0, 5)
+	# The hand only shows from turn 1; the Battle call-out band holds the dialog a few seconds.
+	state.turn = maxi(state.turn, 1)
+	state.phase = GameState.PHASE_BATTLE
 	hud.local_slots = PackedInt32Array([0])
 	hud.refresh()
+	hud.pick_damage_hero(str(mine[0]))
+	hud.toggle_damage_card(1)
 
 
 ## Screenshot helper: the end screen as if player 1 won on stages (drawn only).

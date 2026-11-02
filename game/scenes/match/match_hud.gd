@@ -22,7 +22,8 @@ signal targeting_changed
 signal battle_cam_pressed
 ## A battle was decided (the BATTLE! banner): its index and the winning team (-1: a tie).
 signal battle_resolved(index: int, winner_team: int)
-signal damage_pressed(slot: int, target: String)
+## A lost battle's hit confirmed: the hero that takes it and the hand cards (ids) that take 1 DMG each.
+signal damage_pressed(slot: int, target: String, cards: Array)
 ## Answer to a "choose" decision (hero, core, card id or branch index; hexes go by click).
 signal choose_pressed(slot: int, value: Variant)
 signal ability_pressed(slot: int, hero_id: String, card_id: String, index: int)
@@ -66,7 +67,7 @@ const MERGED_MAX_TIME: float = 6.0
 const LIFT: float = 56.0
 ## Log events that get a banner (the rest only go to the log).
 const BANNER_EVENTS: Array[String] = ["battle", "battle_locked", "battle_tie_break", "ring_out", "ko", "stage_claimed", "triggered",
-	"damage", "deck_damage"]
+	"damage", "deck_damage", "hand_damage"]
 
 var engine: RulesEngine
 var state: GameState
@@ -170,6 +171,13 @@ var choice_cores: PackedStringArray = PackedStringArray()
 var choice_cards: PackedStringArray = PackedStringArray()
 ## The heroes a lost battle's DMG may go to: lit on the table while the dialog asks.
 var damage_heroes: PackedStringArray = PackedStringArray()
+## The hero picked to take it ("" until picked, or the only one) and the hand cards picked to take
+## 1 DMG each, as positions in the hand (the same card may be there twice). CONFIRM sends them.
+var damage_target: String = ""
+var damage_cards: PackedInt32Array = PackedInt32Array()
+## Which hit the picks belong to (slot, hitter, targets): a new hit starts with nothing picked,
+## a band passing over the same hit keeps them.
+var _damage_key: String = ""
 var _target_why: Dictionary = {}
 var _last_why_by: Dictionary = {}
 var _aim_line: Control
@@ -1414,6 +1422,11 @@ func _refresh_prompt() -> void:
 			_detail.text = "%s: click a lit card in your hand." % player_name(who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
 			_roll_offer_prompt(d, who)
+		elif str(d.get("type", "")) == RulesEngine.DECISION_DAMAGE:
+			_prompt.text = "Take the hit"
+			_detail.text = "%s: %s%sthen CONFIRM." % [player_name(who),
+				"pick the hero on the table or in the box, " if damage_heroes.size() > 1 else "",
+				"click cards in your hand to put 1 DMG on each, " if damage_picking(who) else ""]
 		return
 	var any_local: bool = false
 	for slot: int in local_slots:
@@ -1740,7 +1753,7 @@ func _process(delta: float) -> void:
 		return
 	# Up while the mouse is near the bottom of the screen (or a hero is being picked for a
 	# card, or a card effect asks for a card from it), else only the tops of the cards show.
-	var up: bool = (get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0 and state.phase != GameState.PHASE_START) or is_targeting() or (not choice_cards.is_empty() and choice_slot == hand_slot())
+	var up: bool = (get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0 and state.phase != GameState.PHASE_START) or is_targeting() or (not choice_cards.is_empty() and choice_slot == hand_slot()) or damage_picking(hand_slot())
 	if _aim_line != null and (is_targeting() or _aim_line.get_meta("drawn", false)):
 		_aim_line.set_meta("drawn", is_targeting())
 		_aim_line.queue_redraw()
@@ -1783,7 +1796,7 @@ func _refresh_hand() -> void:
 		var check: Dictionary = _play_check(slot, cid) if my_round else {}
 		var playable: bool = my_round and check.get("ok", false) == true
 		var card: Control = _hand_card(slot, cid, playable, my_round, str(check.get("why", "")),
-			JsonUtil.as_strings(check.get("heroes", [])))
+			JsonUtil.as_strings(check.get("heroes", [])), i)
 		var t: float = i - (n - 1) * 0.5
 		card.position = Vector2(_hand.size.x * 0.5 + t * step - CARD_SIZE.x * 0.5, 16.0 + (0.0 if mulligan else t * t * 4.0))
 		card.rotation_degrees = 0.0 if mulligan else t * 5.0
@@ -1935,10 +1948,13 @@ static func _card_rect(tex: Texture2D) -> Rect2:
 ## One card of the hand: its image, the cost on a diamond, and how it can be used now; `why`
 ## (shown on hover) says what keeps it from being played.
 func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: String = "",
-		heroes: PackedStringArray = PackedStringArray()) -> Control:
+		heroes: PackedStringArray = PackedStringArray(), index: int = -1) -> Control:
 	var c: CardDef = engine.catalog.get_card(cid)
-	var picking: bool = not choice_cards.is_empty() and choice_slot == slot
-	var picks_it: bool = picking and choice_cards.has(cid)
+	# A lost battle's hit: every card may take 1 DMG (up to the spare part); picked ones are marked.
+	var hurting: bool = damage_picking(slot)
+	var hurt_it: bool = hurting and damage_cards.has(index)
+	var picking: bool = hurting or (not choice_cards.is_empty() and choice_slot == slot)
+	var picks_it: bool = hurt_it or (not hurting and picking and choice_cards.has(cid))
 	var root := Control.new()
 	root.custom_minimum_size = CARD_SIZE
 	root.size = CARD_SIZE
@@ -2012,7 +2028,10 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 			w.position = Vector2(CARD_SIZE.x * 0.5 - w.custom_minimum_size.x * 0.5, pic.position.y - 26.0)
 			face.add_child(w)
 		root.tooltip_text = _card_tip("%s  ·  %s %s  ·  cost %d\n%s" % [c.name, c.color, c.type, c.cost, c.text])
-		if picking:
+		if hurting:
+			# Picked cards and the ones that may still be picked stay in colour.
+			root.modulate = Color.WHITE if hurt_it or damage_cards.size() < damage_spare() else Color(0.35, 0.35, 0.35)
+		elif picking:
 			root.modulate = Color.WHITE if picks_it else Color(0.35, 0.35, 0.35)
 		elif my_round and not playable:
 			# Why it is grey shows above the card on hover; the text block keeps the card's text.
@@ -2040,7 +2059,7 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 			face.add_child(halo)
 			face.move_child(cost_node, -1)
 		# Above the card: the bottom of the hand is off the screen.
-		var chip: UiShape = UiShape.chip("PICK", Palette.GOLD, Color.BLACK, 14, 24.0, 8.0)
+		var chip: UiShape = UiShape.chip("1 DMG" if hurt_it else "PICK", Palette.ACCENT if hurt_it else Palette.GOLD, Palette.FG if hurt_it else Color.BLACK, 14, 24.0, 8.0)
 		chip.position = Vector2(CARD_SIZE.x * 0.5 - chip.custom_minimum_size.x * 0.5, pic.position.y - 30.0)
 		face.add_child(chip)
 	root.mouse_entered.connect(func() -> void:
@@ -2052,6 +2071,11 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		_lift(root, false, playable or picks_it))
 	root.gui_input.connect(func(e: InputEvent) -> void:
 		if _card_click(e, cid):
+			return
+		# A lost battle's hit: a click puts 1 DMG on this card, another takes it off.
+		if hurting and e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
+				and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			toggle_damage_card(index)
 			return
 		# A card effect asks for a card from this hand: a lit one answers it.
 		if picks_it and e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
@@ -2266,30 +2290,106 @@ func _refresh_dialog() -> void:
 		return
 	if str(d.get("type", "")) != RulesEngine.DECISION_DAMAGE:
 		return
+	_damage_dialog(d, who)
+
+
+## A lost battle's hit (GDD 10, 2026-11-02): at least half of it (rounded up) lands on a hero, the
+## rest the loser may put on cards from the hand, 1 DMG each, picked by clicking them in the hand.
+## With more than one hero in reach the hero is picked here or on the table. CONFIRM sends it.
+func _damage_dialog(d: Dictionary, who: int) -> void:
 	_dialog.visible = true
 	var amount: int = JsonUtil.as_int(d.get("amount", 0))
+	var min_hero: int = JsonUtil.as_int(d.get("min_hero", RulesEngine.hero_share(amount)))
 	var winner: HeroState = state.hero(str(d.get("winner", "")))
+	var targets: PackedStringArray = JsonUtil.as_strings(d.get("targets", []))
+	var p: PlayerState = state.player(who)
+	var spare: int = damage_spare()
+	var on_hero: int = amount - damage_cards.size()
 	_dialog_box.add_child(UiTheme.label("BATTLE LOST · %s" % player_name(who).to_upper(), 15, Palette.GOLD))
-	_dialog_box.add_child(UiTheme.label("Where do %d DMG go?" % amount, 36))
+	_dialog_box.add_child(UiTheme.label("%d DMG FROM %s" % [amount, hero_name(winner).to_upper() if winner != null else "?"], 36))
 	var sub := Label.new()
 	sub.add_theme_color_override("font_color", Palette.MUTED)
-	sub.text = "The hit from %s lands on a hero, or on the deck." % (hero_name(winner) if winner != null else "?")
+	if spare <= 0:
+		sub.text = "At least %d must land on a hero%s." % [min_hero, "; with no cards in your hand it all does" if p.hand.is_empty() and amount > min_hero else ""]
+	else:
+		sub.text = "At least %d land on a hero. Up to %d more can go on cards from your hand instead, 1 DMG each: click them in your hand." % [min_hero, spare]
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sub.custom_minimum_size.x = 420
 	_dialog_box.add_child(sub)
-	for id: String in JsonUtil.as_strings(d.get("targets", [])):
+	# The hero: a line for one, a button per hero when there is a choice (the picked one in straw).
+	for id: String in targets:
 		var h: HeroState = state.hero(id)
 		if h == null:
 			continue
-		_option_button("%s   HP %d → %d" % [hero_name(h).to_upper(), h.hp, maxi(h.hp - amount, 0)],
-			func() -> void: damage_pressed.emit(who, id))
-	var p: PlayerState = state.player(who)
-	# How many cards go and what is left, like the hero lines (playtest 2026-10-30).
-	var from_deck: int = mini(amount, p.deck.size())
-	var from_hand: int = amount - from_deck
-	var deck_line: String = "DECK   %d cards → %d" % [p.deck.size(), p.deck.size() - from_deck]
-	if from_hand > 0:
-		deck_line += "   + %d from your hand (%d)" % [from_hand, p.hand.size()]
-	_option_button(deck_line, func() -> void: damage_pressed.emit(who, "deck"))
+		var line: String = "%s   HP %d → %d" % [hero_name(h).to_upper(), h.hp, maxi(h.hp - on_hero, 0)]
+		if targets.size() == 1:
+			_dialog_box.add_child(UiTheme.label(line, 22))
+		else:
+			var b: Button = _option_button(line, func() -> void: pick_damage_hero(id))
+			if id == damage_target:
+				b.theme_type_variation = &"Gold"
+	# The cards picked so far, by name.
+	if spare > 0:
+		var names := PackedStringArray()
+		for i: int in damage_cards:
+			if i >= 0 and i < p.hand.size():
+				names.append(_card_name(p.hand[i]))
+		var cards_l := Label.new()
+		cards_l.add_theme_color_override("font_color", Palette.MUTED if names.is_empty() else Palette.FG)
+		cards_l.text = "CARDS   %d of %d%s" % [names.size(), spare, (": " + ", ".join(names)) if not names.is_empty() else ""]
+		cards_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		cards_l.custom_minimum_size.x = 420
+		_dialog_box.add_child(cards_l)
+	var target: String = damage_target if not damage_target.is_empty() else (targets[0] if targets.size() == 1 else "")
+	var hero: HeroState = state.hero(target)
+	var confirm: Button = _option_button("CONFIRM%s" % (("   %s TAKES %d" % [hero_name(hero).to_upper(), on_hero]) if hero != null else "   PICK A HERO"), func() -> void:
+		var cards: Array = []
+		for i: int in damage_cards:
+			if i >= 0 and i < p.hand.size():
+				cards.append(p.hand[i])
+		damage_pressed.emit(who, target, cards))
+	confirm.theme_type_variation = &"Gold"
+	confirm.disabled = hero == null
+
+
+## Whether `slot` is picking hand cards for a lost battle's hit now.
+func damage_picking(slot: int) -> bool:
+	return slot >= 0 and slot == choice_slot and not damage_heroes.is_empty() and damage_spare() > 0
+
+
+## How many DMG of the pending hit may go on hand cards (the part above the hero's share).
+func damage_spare() -> int:
+	if state == null or state.pending.is_empty():
+		return 0
+	var d: Dictionary = state.pending[0]
+	if str(d.get("type", "")) != RulesEngine.DECISION_DAMAGE:
+		return 0
+	var amount: int = JsonUtil.as_int(d.get("amount", 0))
+	var p: PlayerState = state.player(JsonUtil.as_int(d.get("player", -1), -1))
+	if p == null:
+		return 0
+	return mini(amount - JsonUtil.as_int(d.get("min_hero", RulesEngine.hero_share(amount))), p.hand.size())
+
+
+## The hero that takes the pending hit was picked (dialog button or a lit ball on the table).
+func pick_damage_hero(id: String) -> void:
+	var d: Dictionary = state.pending[0] if state != null and not state.pending.is_empty() else {}
+	if str(d.get("type", "")) != RulesEngine.DECISION_DAMAGE or not JsonUtil.as_strings(d.get("targets", [])).has(id):
+		return
+	damage_target = id
+	refresh()
+
+
+## A hand card (by position) takes 1 DMG of the pending hit, or stops taking it.
+func toggle_damage_card(index: int) -> void:
+	var at: int = damage_cards.find(index)
+	if at >= 0:
+		damage_cards.remove_at(at)
+	elif damage_cards.size() < damage_spare():
+		damage_cards.append(index)
+	else:
+		return
+	refresh()
 
 
 ## The hero choice waiting on a local player, if any; `targeting_changed` tells the table.
@@ -2316,6 +2416,16 @@ func _refresh_choice() -> void:
 		elif local_slots.has(who) and str(d.get("type", "")) == RulesEngine.DECISION_DAMAGE:
 			hurt = JsonUtil.as_strings(d.get("targets", []))
 			slot = who
+	var key: String = ""
+	if not state.pending.is_empty() and str(state.pending[0].get("type", "")) == RulesEngine.DECISION_DAMAGE:
+		var d0: Dictionary = state.pending[0]
+		key = "%s|%s|%s" % [str(d0.get("player", "")), str(d0.get("winner", "")), ",".join(JsonUtil.as_strings(d0.get("targets", [])))]
+	if key != _damage_key:
+		# A new hit: nothing picked yet (the only hero in reach picks itself).
+		_damage_key = key
+		var targets: PackedStringArray = JsonUtil.as_strings(state.pending[0].get("targets", [])) if not key.is_empty() else PackedStringArray()
+		damage_target = targets[0] if targets.size() == 1 else ""
+		damage_cards = PackedInt32Array()
 	if heroes != choice_heroes or cores != choice_cores or cards != choice_cards or hurt != damage_heroes or slot != choice_slot:
 		choice_heroes = heroes
 		choice_cores = cores
@@ -2479,9 +2589,14 @@ func _banner_for(e: Dictionary) -> void:
 			if str(e.get("phase", "")) == GameState.PHASE_BATTLE and amount > 0:
 				banner("%s TAKES %d DAMAGE" % [_hero_label(str(e.get("hero", ""))).to_upper(), amount], Palette.ACCENT_DEEP, "", "HP %d" % JsonUtil.as_int(e.get("hp", 0)), 1.6)
 		"deck_damage":
+			# Replays from before 2026-11-02 only.
 			if str(e.get("phase", "")) == GameState.PHASE_BATTLE:
 				var p: PlayerState = state.player(JsonUtil.as_int(e.get("player", 0)))
 				banner("%s DECKS %d!" % [player_name(p.slot).to_upper(), JsonUtil.as_int(e.get("amount", 0))], Palette.ACCENT_DEEP, "", "%d LEFT IN THE DECK" % p.deck.size(), 1.6)
+		"hand_damage":
+			var n: int = JsonUtil.as_int(e.get("amount", 0))
+			banner("%s DISCARDS %d CARD%s" % [player_name(JsonUtil.as_int(e.get("player", 0))).to_upper(), n, "" if n == 1 else "S"], Palette.ACCENT_DEEP, "",
+				", ".join(_card_names(JsonUtil.as_strings(e.get("cards", [])))).to_upper(), 1.6)
 		"ring_out":
 			banner("RING-OUT", Palette.GOLD, "", _hero_label(str(e.get("hero", ""))).to_upper())
 		"ko":
@@ -2579,6 +2694,8 @@ func _describe(e: Dictionary) -> String:
 			return "%s takes %d (HP %d)" % [hero_l, JsonUtil.as_int(e.get("amount", 0)), JsonUtil.as_int(e.get("hp", 0))]
 		"deck_damage":
 			return "%s: %d cards from the deck" % [player_name(JsonUtil.as_int(e.get("player", 0))), JsonUtil.as_int(e.get("amount", 0))]
+		"hand_damage":
+			return "%s discards %d for the hit" % [player_name(JsonUtil.as_int(e.get("player", 0))), JsonUtil.as_int(e.get("amount", 0))]
 		"ko":
 			return "%s is KO" % hero_l
 		"ring_out":
@@ -2856,6 +2973,14 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			var left: String = (", %d left" % JsonUtil.as_int(e.get("left", 0))) if e.has("left") else ""
 			return dot + "%s takes %s to the deck%s%s%s." % [_who(slot), "[color=#%s]%d[/color]" % [Palette.ACCENT.lightened(0.25).to_html(false), amt],
 				(" from %s" % _hero_b(by2)) if not by2.is_empty() and state.hero(by2) != null else "", left, (", %d from the hand" % hand) if hand > 0 else ""]
+		"hand_damage":
+			var by3: String = str(e.get("by", ""))
+			var names := PackedStringArray()
+			for cid: String in JsonUtil.as_strings(e.get("cards", [])):
+				names.append(_card_b(cid))
+			return dot + "%s takes %s of %s hit on the hand: %s discarded." % [_who(slot),
+				"[color=#%s]%d DMG[/color]" % [Palette.ACCENT.lightened(0.25).to_html(false), JsonUtil.as_int(e.get("amount", 0))],
+				("%s's" % _hero_b(by3)) if not by3.is_empty() and state.hero(by3) != null else "the", ", ".join(names)]
 		"deck_out":
 			return dot + "[color=#%s]DECK-OUT[/color]: %s has no cards left." % [Palette.ACCENT.to_html(false), _who(slot)]
 		"ko":

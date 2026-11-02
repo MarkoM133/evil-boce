@@ -1,5 +1,5 @@
 {
-  "name": "Deck damage with an empty deck eats the hand; an empty hand loses",
+  "name": "An empty deck loses nothing: no deck damage, no deck-out; the hit lands on the hero",
   "steps": [
     {"setup": {"seed": 1}},
     {"move": {"type": "mulligan", "player": 0, "keep": true}},
@@ -14,11 +14,13 @@
     {"pass_round": true},
     {"pass_round": true},
     {"pass_round": true},
-    {"move": {"type": "damage_to", "player": 0, "target": "deck"}},
+    {"move": {"type": "damage_to", "player": 0, "target": "deck"}, "error": "deck takes no damage"},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001", "cards": ["TX-011"]}},
     {"expect": {
-      "players.p0.hand": {"$size": 0},
-      "players.p0.graveyard": ["TX-011", "TX-010"],
-      "phase": "over", "winner": 1, "result": "deckout"
+      "players.p0.hand": ["TX-010"],
+      "players.p0.graveyard": ["TX-011"],
+      "heroes.p0:TA-001.hp": 8,
+      "phase": "start", "turn": 2, "winner": -1
     }}
   ]
 }

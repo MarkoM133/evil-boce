@@ -1,0 +1,35 @@
+{
+  "name": "Lost battle, 3 DMG: at least 2 on the hero, the third may be a card from the hand",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8],
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 8],
+      "players.p0.hand": ["TX-010", "TX-010", "TX-011"]
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002", "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {
+      "pending.0.type": "damage", "pending.0.player": 0, "pending.0.amount": 3, "pending.0.min_hero": 2,
+      "pending.0.targets": ["p0:TA-001"]
+    }},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001", "cards": ["TX-010", "TX-011"]}, "error": "at least 2 DMG must go to the hero"},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001", "cards": ["TA-999"]}, "error": "not in your hand"},
+    {"move": {"type": "damage_to", "player": 0, "target": "p1:TB-002", "cards": []}, "error": "target must be"},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001", "cards": ["TX-011"]}},
+    {"expect": {
+      "heroes.p0:TA-001.hp": 8,
+      "players.p0.hand": {"$size": 3},
+      "players.p0.hand.0": "TX-010", "players.p0.hand.1": "TX-010",
+      "players.p0.graveyard": ["TX-011"],
+      "players.p0.deck": {"$size": 33},
+      "heroes.p0:TA-001.hex": [2, 8],
+      "phase": "start", "turn": 2
+    }}
+  ]
+}

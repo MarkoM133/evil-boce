@@ -92,7 +92,8 @@ func test_a_roll_offer_is_declined_and_damage_goes_to_the_deck() -> void:
 	assert_eq(MatchClock.waiting_on(engine, state), PackedInt32Array([0]))
 	m = MatchClock.timeout_move(engine, state, 0, rng)
 	assert_eq(m.type, Move.DAMAGE_TO)
-	assert_eq(m.str_arg("target"), "deck")
+	assert_eq(m.str_arg("target"), "p0:TA-001")
+	assert_true(JsonUtil.as_strings(m.data.get("cards", [])).is_empty(), "the timeout keeps the hand")
 
 
 func test_nobody_is_waited_for_while_the_balls_roll_or_after_the_end() -> void:

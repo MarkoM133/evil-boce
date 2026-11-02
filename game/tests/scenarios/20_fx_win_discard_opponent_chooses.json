@@ -28,12 +28,13 @@
     {"move": {"type": "pass", "player": 1}},
     {"move": {"type": "pass", "player": 0}},
     {"expect": {"battles.0.winner_team": 0, "pending.0.type": "damage", "pending.0.player": 1}},
-    {"move": {"type": "damage_to", "player": 1, "target": "deck"}},
+    {"move": {"type": "damage_to", "player": 1, "target": "p1:TB-002"}},
     {"expect": {"pending.0.type": "choose", "pending.0.kind": "card", "pending.0.player": 1, "pending.0.options": ["TX-010", "TX-011"]}},
     {"move": {"type": "choose", "player": 1, "value": "TX-011"}},
     {"expect": {
       "players.p1.hand": {"$size": 2},
-      "players.p1.graveyard": {"$size": 4},
+      "players.p1.graveyard": {"$size": 1},
+      "heroes.p1:TB-002.hp": 4,
       "deferred": {"$size": 0},
       "heroes.p1:TB-002.hex": [8, 8],
       "turn": 2

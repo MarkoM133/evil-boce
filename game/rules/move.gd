@@ -16,7 +16,8 @@ const AIM: String = "aim"
 const PASS: String = "pass"
 ## {"card": id, ...targets} (step 2b).
 const PLAY_CARD: String = "play_card"
-## Battle: loser picks where a hit lands: {"target": "deck"} or {"target": hero id}.
+## Battle: the loser takes a hit: {"target": hero id, "cards": [card ids]}. At least half the
+## damage (rounded up) lands on the hero; each card from the hand (optional) takes 1 DMG instead.
 const DAMAGE_TO: String = "damage_to"
 ## {"core": id, "hex": [q, r]} for a core from the inventory.
 const RETURN_CORE: String = "return_core"

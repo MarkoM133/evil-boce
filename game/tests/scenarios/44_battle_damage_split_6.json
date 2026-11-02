@@ -1,0 +1,29 @@
+{
+  "name": "Lost battle, 6 DMG: 3 on the hero and 3 cards, the same card twice counts twice",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8],
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 8],
+      "heroes.p1:TB-002.turn_bonus": {"dmg": 3},
+      "players.p0.hand": ["TX-010", "TX-010", "TX-011", "TA-040"]
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002", "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {"pending.0.type": "damage", "pending.0.amount": 6, "pending.0.min_hero": 3}},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001", "cards": ["TX-010", "TX-010", "TX-010"]}, "error": "not in your hand"},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001", "cards": ["TX-010", "TX-010", "TX-011", "TA-040"]}, "error": "at most 3 cards"},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001", "cards": ["TX-010", "TX-010", "TA-040"]}},
+    {"expect": {
+      "heroes.p0:TA-001.hp": 7,
+      "players.p0.hand": {"$size": 2}, "players.p0.hand.0": "TX-011",
+      "players.p0.graveyard": ["TX-010", "TX-010", "TA-040"],
+      "phase": "start", "turn": 2
+    }}
+  ]
+}

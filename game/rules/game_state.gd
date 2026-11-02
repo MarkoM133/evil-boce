@@ -73,7 +73,7 @@ var stage_buffs: Array[Dictionary] = []
 var setup_turn: int = 0
 
 var winner: int = -1
-## "ko", "stages", "deckout", "surrender", "draw".
+## "ko", "stages", "surrender", "draw" ("deckout" only in replays from before 2026-11-02).
 var result: String = ""
 var log: Array[Dictionary] = []
 

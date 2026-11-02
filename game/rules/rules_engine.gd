@@ -429,19 +429,29 @@ func _apply_decision(s: GameState, m: Move) -> String:
 	match str(d.get("type", "")):
 		DECISION_DAMAGE:
 			if m.type != Move.DAMAGE_TO:
-				return "choose where the damage goes"
+				return "choose who takes the damage"
 			var target: String = m.str_arg("target")
 			var amount: int = JsonUtil.as_int(d.get("amount", 0))
 			var targets: PackedStringArray = JsonUtil.as_strings(d.get("targets", []))
 			var winner: String = str(d.get("winner", ""))
+			var min_hero: int = JsonUtil.as_int(d.get("min_hero", hero_share(amount)))
 			if target == "deck":
-				s.pending.pop_front()
-				deck_damage(s, s.player(who), amount, winner)
-			elif targets.has(target):
-				s.pending.pop_front()
-				hero_damage(s, s.hero(target), amount, false, winner)
-			else:
-				return "target must be \"deck\" or one of %s" % ", ".join(targets)
+				return "the deck takes no damage: pick a hero, and cards from your hand for the rest"
+			if not targets.has(target):
+				return "target must be one of %s" % ", ".join(targets)
+			var cards: PackedStringArray = JsonUtil.as_strings(m.data.get("cards", []))
+			if cards.size() > amount - min_hero:
+				return "at least %d DMG must go to the hero: at most %d cards from the hand" % [min_hero, amount - min_hero]
+			var p: PlayerState = s.player(who)
+			var left: PackedStringArray = p.hand.duplicate()
+			for cid: String in cards:
+				var at: int = left.find(cid)
+				if at < 0:
+					return "%s is not in your hand" % cid
+				left.remove_at(at)
+			s.pending.pop_front()
+			hand_damage(s, p, cards, winner)
+			hero_damage(s, s.hero(target), amount - cards.size(), false, winner)
 		DECISION_RETURN_CORE:
 			if m.type != Move.RETURN_CORE:
 				return "put a core back first"
@@ -1138,9 +1148,10 @@ func _resolve_battle(s: GameState, index: int) -> void:
 		if fx.hold_hit_effect(s, w) != null:
 			fx.offer_hold_hit(s, w)
 		var loser_owner: int = s.hero(str(targets[0])).owner
+		var amount: int = stat(s, w, "dmg")
 		s.pending.append({
 			"type": DECISION_DAMAGE, "player": loser_owner, "winner": w.id,
-			"amount": stat(s, w, "dmg"), "targets": targets,
+			"amount": amount, "targets": targets, "min_hero": hero_share(amount),
 		})
 
 
@@ -1247,23 +1258,27 @@ func heal(s: GameState, h: HeroState, amount: int) -> void:
 	h.hp = mini(h.hp + amount, max_hp(s, h))
 
 
-## Deck damage: cards from the top of the deck to the graveyard; from the hand once the deck
-## is empty; losing the match when the hand runs out too.
-func deck_damage(s: GameState, p: PlayerState, amount: int, by: String = "") -> void:
-	var from_hand: int = 0
-	for _i: int in amount:
-		if not p.deck.is_empty():
-			p.graveyard.append(p.deck[0])
-			p.deck.remove_at(0)
-		elif not p.hand.is_empty():
-			p.graveyard.append(p.hand[p.hand.size() - 1])
-			p.hand.remove_at(p.hand.size() - 1)
-			from_hand += 1
-		else:
-			s.event("deck_out", {"player": p.slot})
-			_end_match(s, other_slot(s, p.slot), "deckout")
-			return
-	s.event("deck_damage", {"player": p.slot, "amount": amount, "by": by, "left": p.deck.size(), "from_hand": from_hand})
+## A lost battle's damage: at least half of it (rounded up) lands on the hero; the rest the loser
+## may take as cards from the hand, one card per DMG (Marko and Tarik, 2026-11-02). The deck
+## never takes damage and the match is never lost by running out of cards.
+static func hero_share(amount: int) -> int:
+	return (amount + 1) / 2
+
+
+## Cards from the hand to the graveyard in place of damage (one per DMG); `by` is the hitter.
+func hand_damage(s: GameState, p: PlayerState, cards: PackedStringArray, by: String = "") -> void:
+	if cards.is_empty():
+		return
+	for cid: String in cards:
+		var at: int = p.hand.find(cid)
+		if at < 0:
+			continue
+		p.hand.remove_at(at)
+		p.graveyard.append(cid)
+	var info: Dictionary = {"player": p.slot, "cards": Array(cards), "amount": cards.size(), "hand": p.hand.size()}
+	if not by.is_empty():
+		info["by"] = by
+	s.event("hand_damage", info)
 
 
 func knock_out(s: GameState, h: HeroState) -> void:

@@ -1,0 +1,28 @@
+{
+  "name": "Lost battle, odd damage (5): half rounded up (3) on the hero, up to 2 cards; all on the hero is also fine",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8],
+      "heroes.p1:TB-002.zone": "map", "heroes.p1:TB-002.hex": [6, 8],
+      "heroes.p1:TB-002.turn_bonus": {"dmg": 2},
+      "players.p0.hand": ["TX-010", "TX-011", "TA-040"]
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-002", "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {"pending.0.type": "damage", "pending.0.amount": 5, "pending.0.min_hero": 3}},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001", "cards": ["TX-010", "TX-011", "TA-040"]}, "error": "at least 3 DMG"},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001", "cards": []}},
+    {"expect": {
+      "heroes.p0:TA-001.hp": 5,
+      "players.p0.hand": {"$size": 4},
+      "players.p0.graveyard": {"$size": 0},
+      "phase": "start", "turn": 2
+    }}
+  ]
+}
