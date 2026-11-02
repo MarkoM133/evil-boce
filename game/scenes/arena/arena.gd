@@ -169,6 +169,7 @@ func _refresh_props() -> void:
 		mi.material_override = _ground_mat
 		mi.position = hex_center(c)
 		_props.add_child(mi)
+		_add_hill_marks(hex_center(c))
 
 
 func _add_arrow(a: Vector2i, dir: int) -> void:
@@ -183,6 +184,67 @@ func _add_arrow(a: Vector2i, dir: int) -> void:
 	mi.rotation.y = -atan2(d.y, d.x)
 	_props.add_child(mi)
 	_arrows.append([mi, base, d, randf()])
+
+
+## A Ramp says what it is without a word (Marko 2026-11-02: the RAMP label over the table):
+## contour lines round the hill like on a map, and arrows down the slope, where a ball runs.
+func _add_hill_marks(center: Vector3) -> void:
+	var r: float = hill_radius()
+	var h: float = tuning.hill_height
+	var mi := MeshInstance3D.new()
+	mi.mesh = _contour_mesh(r, h)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.material_override = _ramp_mat(0.5)
+	mi.position = center
+	_props.add_child(mi)
+	var arrow_mat: StandardMaterial3D = _ramp_mat(0.85)
+	for i: int in 6:
+		var ang: float = TAU * (i + 0.5) / 6.0
+		var k: float = 0.72
+		var out := Vector3(cos(ang), 0, sin(ang))
+		var a := MeshInstance3D.new()
+		a.mesh = _chevron_mesh()
+		a.material_override = arrow_mat
+		a.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		a.scale = Vector3.ONE * map.hex_size * 0.8
+		a.position = center + out * (k * r) + Vector3(0, h * (1.0 - k * k) + 0.05, 0)
+		# Pointing out and tipped down the slope (Z first, then the turn about Y).
+		var slope: float = atan(2.0 * h * k / r)
+		a.rotation = Vector3(0, -ang, -slope)
+		_props.add_child(a)
+
+
+## Thin rings on the hill at a few heights, lying on its surface.
+static func _contour_mesh(r: float, h: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var segs: int = 48
+	var w: float = 0.035
+	for k: float in [0.3, 0.55, 0.8]:
+		var y: float = h * (1.0 - k * k) + 0.04
+		for j: int in segs:
+			var a0: float = TAU * j / segs
+			var a1: float = TAU * (j + 1) / segs
+			var i0 := Vector3(cos(a0) * (k * r - w), y, sin(a0) * (k * r - w))
+			var o0 := Vector3(cos(a0) * (k * r + w), y, sin(a0) * (k * r + w))
+			var i1 := Vector3(cos(a1) * (k * r - w), y, sin(a1) * (k * r - w))
+			var o1 := Vector3(cos(a1) * (k * r + w), y, sin(a1) * (k * r + w))
+			for v: Vector3 in [i0, o0, o1, i0, o1, i1]:
+				st.set_normal(Vector3.UP)
+				st.add_vertex(v)
+	return st.commit()
+
+
+## The Ramp marks' look: the Ramp's straw, unshaded, over a revealed stage's picture too.
+static func _ramp_mat(alpha: float) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(Color("f4c22f"), alpha)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.no_depth_test = true
+	mat.render_priority = 2
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return mat
 
 
 ## A paraboloid cap: height h at the centre, 0 at radius r (the shape height_at() follows).

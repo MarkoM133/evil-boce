@@ -21,8 +21,6 @@ const CORE_RADIUS: float = 0.34
 const CORE_LOOK: float = 1.3
 ## How strongly a revealed stage's art shows on its hexes.
 const STAGE_ART_ALPHA: float = 0.6
-## Terrain labels by revealed stages.
-const TERRAIN_TAG_COLORS: Dictionary = {Terrain.Type.ICE: Color("bfe9ff"), Terrain.Type.MUD: Color("c89a6a"), Terrain.Type.RAMP: Color("f4c22f"), Terrain.Type.WIND: Color("c8fff4")}
 ## Battle camera: its tilt (the opening view's) and how long it stays after the last battle.
 const BATTLE_CAM_PITCH: float = 34.0
 const BATTLE_CAM_HOLD: float = 1.8
@@ -1011,8 +1009,7 @@ func _stage_art(st: StageState) -> Node3D:
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	mi.material_override = mat
 	# The terrain shows on the picture (Marko 2026-10-26: it was felt, not seen): ice is pale
-	# and shiny, mud dark and dull; snow, mud and wind play over it (_refresh_terrain_fx). Only a
-	# Ramp, a hill already, keeps a label.
+	# and shiny, mud dark and dull; snow, mud and wind play over it (_refresh_terrain_fx).
 	var kind: Terrain.Type = world.terrain.at(st.center) if world != null and world.terrain != null else Terrain.Type.NONE
 	match kind:
 		Terrain.Type.ICE:
@@ -1022,18 +1019,8 @@ func _stage_art(st: StageState) -> Node3D:
 		Terrain.Type.MUD:
 			mat.albedo_color = Color(0.72, 0.55, 0.38, STAGE_ART_ALPHA + 0.15)
 			mat.roughness = 1.0
-	if kind == Terrain.Type.RAMP and GameSettings.table_text():
-		var tag := Label3D.new()
-		tag.text = Terrain.name_of(kind).to_upper()
-		tag.font_size = 44
-		tag.pixel_size = 0.012
-		tag.outline_size = 10
-		tag.modulate = TERRAIN_TAG_COLORS.get(kind, Color.WHITE)
-		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		tag.no_depth_test = true
-		var edge: Vector2 = arena.map.to_world(st.center) + Vector2(0, tuning.hex_size * 2.4)
-		tag.position = Vector3(edge.x, 0.35, edge.y) - mi.position
-		mi.add_child(tag)
+	# A Ramp shows as contour lines and downhill arrows on the hill (Arena._add_hill_marks), no
+	# label (Marko 2026-11-02).
 	return mi
 
 
