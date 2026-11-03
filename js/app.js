@@ -839,11 +839,13 @@ function importButton() {
 // Traits & aliases (kartica Tags) i Text guide (kartica Phrases). Stare adrese (traits, guide, wishlist) i dalje rade.
 const EDITOR_PAGES = [['sets', 'Sets'], ['publish', 'Publish'], ['traits', 'Words'], ['frames', 'Frames']];
 const EDITOR_GROUP = { wishlist: 'publish', guide: 'traits', words: 'traits' };
+// Gledanje gore, izrada dolje (Marko 2026-11-03): Cards, Decks, Balance, crta, Card editor, Tools.
 const NAV = [
   ['browse', 'Cards'],
-  ['editor', 'Card editor', EDITOR_PAGES],
   ['decks', 'Decks'],
   ['balance', 'Balance', [['balance', 'Balance'], ['coverage', 'Coverage']]],
+  ['-'],
+  ['editor', 'Card editor', EDITOR_PAGES],
   ['tools', 'Tools'],
 ];
 const navOf = tab => (tab === 'coverage' ? 'balance' : tab === 'import' || tab === 'history' ? 'browse' : tab);
@@ -863,7 +865,7 @@ function renderNav() {
     } }, label, n ? h('span', { class: 'tab-badge', title: 'Drafts waiting for Publish' }, n) : null,
       wish ? h('span', { class: 'tab-badge alt', title: 'Words waiting for the game (fx wishlist)' }, wish) : null);
   }));
-  return h('nav', { class: 'tabs', role: 'tablist' }, NAV.map(([key, label, items]) => [
+  return h('nav', { class: 'tabs', role: 'tablist' }, NAV.map(([key, label, items]) => key === '-' ? h('span', { class: 'tabs-sep', 'aria-hidden': 'true' }) : [
     h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(cur === key), class: cur === key ? 'active' : '', onclick: () => {
       state.tab = key;
       if (key === 'editor') state.editId = 'sets';
