@@ -103,18 +103,22 @@ export function createSetsView(ctx) {
     }
     const list = sets();
     v.code ??= list[0]?.code ?? 'Stage';
-    const tabs = [...list.map(s => [s.code, `${s.name} · ${s.code}`]), ['Stage', 'Stages'], ['Core', 'Cores']];
+    // Lijevo setovi | Stages, Cores; desno rijetke stvari: Draft packs (default paket) i + New set (Marko 2026-11-03).
+    const tab = ([code, label]) => h('button', { type: 'button', class: code === v.code ? 'active' : '', onclick: () => { v.code = code; v.settings = false; ctx.render(); } },
+      NOT_SETS.includes(code) ? null : packImg(code, 'ce-settab-pack'), label);
     return h('div', { class: 'ce-page ce-sets' },
       h('nav', { class: 'ce-settabs' },
-        tabs.map(([code, label]) => h('button', { type: 'button', class: code === v.code ? 'active' : '', onclick: () => { v.code = code; v.settings = false; ctx.render(); } },
-          NOT_SETS.includes(code) ? null : packImg(code, 'ce-settab-pack'), label)),
-        h('button', { type: 'button', class: `ce-settab-new${v.code === 'default' ? ' active' : ''}`, onclick: () => { v.code = 'default'; ctx.render(); } }, 'Default pack'),
-        newSetButton(list)),
+        list.map(s => tab([s.code, `${s.name} · ${s.code}`])),
+        h('span', { class: 'ce-settab-sep', 'aria-hidden': 'true' }),
+        tab(['Stage', 'Stages']), tab(['Core', 'Cores']),
+        h('span', { class: 'ce-settab-rest' },
+          h('button', { type: 'button', class: `ce-settab-pref${v.code === 'default' ? ' active' : ''}`, title: 'Pack size, pack image and Draft background for packs that mix sets', onclick: () => { v.code = 'default'; ctx.render(); } }, '⚙ Draft packs'),
+          newSetButton(list))),
       v.code === 'default' ? renderDefault() : renderSet(list.find(s => s.code === v.code) ?? { code: v.code, name: nameOf(v.code) }, list));
   }
 
   function newSetButton(list) {
-    return h('button', { type: 'button', class: 'ce-settab-new', disabled: !ctx.canWrite(), onclick: () => ctx.guard(async () => {
+    return h('button', { type: 'button', class: 'ce-settab-add', disabled: !ctx.canWrite(), onclick: () => ctx.guard(async () => {
       const code = (prompt('Code of the new set, e.g. OP2 or NR1:') ?? '').trim().toUpperCase();
       if (!code) return;
       if (!CODE_RE.test(code)) throw new Error('A set code is 2–4 capital letters and a number, e.g. OP2 or NR1.');
@@ -123,7 +127,7 @@ export function createSetsView(ctx) {
       v.code = code;
       v.settings = true;
       ctx.render();
-    }) }, 'New set');
+    }) }, '+ New set');
   }
 
   const needsFx = c => !!(c.text ?? '').trim() && !NOT_SETS.includes(c.type) && (!c.fx || c.fxStatus === 'check') && !!ctx.state.fxProposals?.cards?.[c.id]?.unparsed?.length;

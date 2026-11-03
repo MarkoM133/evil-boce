@@ -164,7 +164,12 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-settabs button { clip-path: none; background: none; display: inline-flex; gap: 10px; align-items: center; padding: 10px 14px; font-size: 16px; color: var(--muted); border-bottom: 3px solid transparent; }
 .ce-settabs button.active { color: var(--bone); background: var(--surface); border-bottom-color: var(--red); }
 .ce-settab-pack { width: 24px; height: 34px; object-fit: cover; border-radius: 2px; background: var(--surface-2); display: inline-block; }
-.ce-settab-new { font-style: italic; }
+.ce-settab-sep { width: 1px; background: var(--line); margin: 8px 6px; align-self: stretch; }
+.ce-settab-rest { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; padding-bottom: 6px; }
+.ce-settabs .ce-settab-pref { font-size: 14px; padding: 6px 10px; border-bottom: 0; }
+.ce-settabs .ce-settab-pref.active { color: var(--bone); background: var(--surface); }
+.ce-settabs .ce-settab-add { clip-path: var(--slant); background: var(--surface-2); color: var(--bone); font-style: italic; font-weight: 700; padding: 8px 16px; border-bottom: 0; }
+.ce-settabs .ce-settab-add:hover:not(:disabled) { background: var(--red); }
 .ce-set { display: grid; gap: 18px; }
 .ce-set-head { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
 .ce-set-pack { width: 72px; height: 100px; object-fit: cover; border-radius: 3px; background: var(--surface); display: block; }
