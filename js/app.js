@@ -536,7 +536,9 @@ function render() {
     // Stranice Card editora (i otvorena karta) su u istom okviru s izbornikom, bez trake heroja.
     // Tko radi na ovom računalu: pita se jednom, kad je folder otvoren (samo tada se sprema), i pamti se na računalu.
     if (state.store.kind === 'folder' && !cardEditor.who() && !state.whoLater) app.replaceChildren(renderSetup());
-    else if (state.tab === 'editor') app.replaceChildren(renderMain());
+    // Traka heroja samo na stranicama za gledanje (Cards, Decks, Balance); izrada (Card editor, Tools) je bez nje,
+    // kao dio izbornika ispod crte, pa traka ne skače unutar iste grupe (Marko 2026-11-03).
+    else if (state.tab === 'editor' || state.tab === 'tools') app.replaceChildren(renderMain());
     else app.replaceChildren(renderHeader(), renderMain());
     updateStrip();
     cardPushed = false;
