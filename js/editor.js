@@ -224,6 +224,45 @@ export function createEditor(env) {
 
   // ---------- stranica karte ----------
 
+  // Pregled karta po karta (Marko 2026-11-03, iz mockupa): Prev / Next idu redom kojim je karta otvorena (mreža seta s
+  // filterima, ili popis nacrta u Publishu), a "Looks good, next" označi kartu kao done, spremi je i otvori iduću.
+  function reviewOrder(id) {
+    let ids = ed.from === 'publish' ? draftList().map(x => x.id) : sets.order();
+    if (!ids.includes(id)) {
+      const set = setOf(id);
+      ids = allCards().filter(c => setOf(c.id) === set).map(c => c.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    }
+    return ids;
+  }
+
+  function step(dir) {
+    const ids = reviewOrder(ed.id);
+    const i = ids.indexOf(ed.id);
+    const to = ids[i + dir];
+    if (to) go(to);
+    return !!to;
+  }
+
+  async function looksGood() {
+    const w = ed.work;
+    if (w.type !== 'Core' && (w.status ?? 'draft') !== 'done') { snap(true); w.status = 'done'; changed(); }
+    if (ed.dirty) await saveDraft();
+    if (!step(1)) { env.toast('That was the last card here.'); go(ed.from); }
+  }
+
+  // ← i → listaju karte dok se ne tipka (polja, popisi, tekst).
+  if (!globalThis.__ceArrows) {
+    globalThis.__ceArrows = true;
+    document.addEventListener('keydown', e => {
+      if (!ed.id || !ed.work || e.altKey || e.ctrlKey || e.metaKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+      const t = e.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (ed.artMode) return;
+      e.preventDefault();
+      step(e.key === 'ArrowRight' ? 1 : -1);
+    });
+  }
+
   function renderCardPage() {
     const w = ed.work;
     const setName = sets.nameOf(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id));
@@ -238,12 +277,24 @@ export function createEditor(env) {
         h('button', { class: 'link', type: 'button', onclick: () => { sets.pick(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id)); go('sets'); } }, setName), ' / ',
         h('strong', {}, `${w.id} ${w.name || 'New card'}`),
         h('span', { class: `ce-badge ${TYPE_BADGE[w.type]}${w.type === 'Action' || w.type === 'Equipment' || w.type === 'Assist' ? ` c-bg-${w.color}` : ''}` }, w.type.toUpperCase())),
-      h('div', { class: 'ce-top-actions' }, lockChip,
+      h('div', { class: 'ce-top-actions' }, lockChip, reviewNav(w),
         w.type === 'Core' ? null : h('button', { class: 'ghost', type: 'button', disabled: !ed.undo.length, onclick: undo }, 'Undo'),
         h('button', { class: 'ghost', type: 'button', onclick: () => go(ed.from) }, 'Close'),
         h('button', { class: 'primary', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(saveDraft) }, 'Save')));
     return h('div', { class: 'ce-full' }, top, readOnlyNote(),
       h('div', { class: `ce-cols${HEROISH.includes(w.type) ? ' wide' : ''}` }, renderSide(), renderCentre(), renderForm()));
+  }
+
+  function reviewNav(w) {
+    const ids = reviewOrder(w.id);
+    const i = ids.indexOf(w.id);
+    if (i < 0) return null;
+    return h('span', { class: 'ce-review' },
+      h('button', { class: 'ghost', type: 'button', disabled: i <= 0, title: 'Previous card (←)', onclick: () => step(-1) }, '‹'),
+      h('span', { class: 'small muted' }, `${i + 1} / ${ids.length}`),
+      h('button', { class: 'ghost', type: 'button', disabled: i >= ids.length - 1, title: 'Next card (→)', onclick: () => step(1) }, '›'),
+      w.type === 'Core' ? null : h('button', { class: 'ghost ce-good', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other',
+        title: 'Mark it done, save it and open the next card', onclick: () => env.guard(looksGood) }, 'Looks good, next'));
   }
 
   // Podaci preko servera su samo za gledanje: spremanje, upload i Objava trebaju otvoren zajednički folder.

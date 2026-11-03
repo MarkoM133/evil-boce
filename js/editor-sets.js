@@ -162,7 +162,7 @@ export function createSetsView(ctx) {
         special ? null : sel(v.color, [['', 'All colors'], ...COLORS.map(c => [c, c])], x => { v.color = x; ctx.render(); }),
         sel(v.status, STATUS_FILTERS, x => { v.status = x; ctx.render(); })),
       h('div', { class: 'ce-grid' },
-        shown.map(c => tile(c, drafts[c.id])),
+        (v.order = shown.map(c => c.id), shown.map(c => tile(c, drafts[c.id]))),
         h('div', { class: 'ce-tile ce-tile-new' },
           h('span', { class: 'plus' }, '+'), h('span', {}, 'New card'),
           h('div', { class: 'ce-newtypes' }, (special ? [newType] : NEW_TYPES).map(t => h('button', { type: 'button', class: 'ghost', onclick: () => ctx.newCard(s.code, t) }, t))),
@@ -247,6 +247,8 @@ export function createSetsView(ctx) {
     render, nameOf, newCardButton, ensure: () => (v.saved ? null : load()),
     pick: code => { v.code = code; },
     current: () => (v.code && !NOT_SETS.includes(v.code) && v.code !== 'default' ? v.code : null),
+    // Karte kako ih mreža seta zadnji put pokazala (s filterima): redoslijed za Prev / Next na stranici karte.
+    order: () => v.order ?? [],
     reload: () => { v.saved = null; v.urls = {}; },
   };
 }
