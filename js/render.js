@@ -14,6 +14,9 @@ const LIGHT = new Set(['Cyan', 'Yellow', 'Green', 'None']);
 const CARD_TINTS = { ...TINTS, None: '#c4cad1' };
 const BONUS_DOT = { Cyan: '#00ffff', Yellow: '#ffee00', Purple: '#b040ff', Red: '#ff2a1f', Blue: '#2a6bff', Green: '#00ff40' };
 const COLOR_WORD = '(Cyan|Yellow|Purple|Red|Blue|Green)';
+// Pokusno (mockup 2026-11-03): bonus boje koji je samo "+N stat" crta se kao obojeni čip u traci bonusa, ne kao tekst.
+export const RENDER_OPTS = { bonusChips: false };
+const STAT_WORDS = { power: 'pwr', dmg: 'dmg', hp: 'hp', range: 'rng', kb: 'kb', knockback: 'kb' };
 // "Red Bonus:" ili "Cyan / Purple Bonus:" na početku retka: bonus za te boje.
 const BONUS_RE = new RegExp(`^${COLOR_WORD}(?:\\s*/\\s*${COLOR_WORD})?(?:\\s*/\\s*${COLOR_WORD})?\\s+Bonus\\s*:\\s*`, 'i');
 
@@ -125,7 +128,12 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: ink(L.code) });
   drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
   if (L.tags && !drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag bar.');
-  const t = drawEffect(ctx, card.text ?? '', color, L.effect, tpl.icons);
+  let text = card.text ?? '';
+  if (RENDER_OPTS.bonusChips && L.bonus) {
+    const { rest, chips } = statBonusLines(text);
+    if (chips.length) { text = rest; drawBonusChips(ctx, chips, card.bonus ?? {}, L, tpl.icons); }
+  }
+  const t = drawEffect(ctx, text, color, L.effect, tpl.icons);
   if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
   return warnings;
 }
@@ -203,6 +211,70 @@ function fitLine(ctx, text, box, { font, color, bold = false }) {
   const tx = ctx.textAlign === 'left' ? x : ctx.textAlign === 'right' ? x + w : x + w / 2;
   ctx.fillText(text, tx, y + h / 2 + size * 0.04);
   return ctx.measureText(text).width <= w;
+}
+
+// Retci "Yellow Bonus: +1 DMG." (samo broj na stat) izlaze iz teksta i postaju čipovi; ostali ostaju.
+export function statBonusLines(text) {
+  const chips = [];
+  const rest = [];
+  for (const raw of String(text ?? '').split('\n')) {
+    const line = raw.trim();
+    const b = line.match(BONUS_RE);
+    const m = b && line.slice(b[0].length).match(/^([+-]\d+)\s*(Power|DMG|HP|Range|KB|Knockback)\.?$/i);
+    if (m) chips.push({ stat: STAT_WORDS[m[2].toLowerCase()], value: Number(m[1]), colors: b.slice(1).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1).toLowerCase()) });
+    else rest.push(raw);
+  }
+  // A phase line left with nothing under it ("Battle Phase:") still says when the card is played.
+  return { rest: rest.join('\n'), chips };
+}
+
+// Čip: zaobljen, rub u boji bonusa (dvije boje: pola-pola), točka boje, ikona stata i broj. Na mjestu stata kad
+// je prazno, inače odmah ispod njega.
+function drawBonusChips(ctx, chips, bonus, L, icons) {
+  for (const c of chips) {
+    const slot = L.bonus[c.stat];
+    if (!slot) continue;
+    const taken = !!bonus[c.stat];
+    const [ix, iy] = slot.icon;
+    const [vx, , vw] = slot.value;
+    const h = taken ? 92 : 128;
+    const y = taken ? iy + 128 + 6 : iy;
+    const x = ix - 30;
+    const w = vx + vw - ix + 60;
+    const cols = c.colors.length ? c.colors : ['Yellow'];
+    ctx.save();
+    roundRect(ctx, x, y, w, h, h / 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fill();
+    ctx.lineWidth = 9;
+    cols.slice(0, 2).forEach((col, i) => {
+      ctx.save();
+      if (cols.length > 1) { ctx.beginPath(); ctx.rect(x + (i ? w / 2 : 0) - 10, y - 10, w / 2 + 20, h + 20); ctx.clip(); }
+      roundRect(ctx, x, y, w, h, h / 2);
+      ctx.strokeStyle = BONUS_DOT[col] ?? '#ffffff';
+      ctx.stroke();
+      ctx.restore();
+    });
+    // Dot(s) of the colour, then the stat icon and the value.
+    const r = h * 0.17;
+    let cx = x + h * 0.42;
+    cols.slice(0, 2).forEach((col, i) => {
+      ctx.beginPath();
+      ctx.arc(cx + i * r * 1.6, y + h / 2, r, 0, Math.PI * 2);
+      ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff';
+      ctx.fill();
+    });
+    cx += (cols.length > 1 ? r * 1.6 : 0) + r * 2.2;
+    const icon = icons[`stat-${c.stat}`];
+    const is = h * 0.62;
+    if (icon) {
+      const s = Math.min(is / icon.width, is / icon.height);
+      ctx.drawImage(tinted(icon, STAT_TINTS[c.stat]), cx, y + (h - icon.height * s) / 2, icon.width * s, icon.height * s);
+      cx += is + 10;
+    }
+    fitLine(ctx, `${c.value > 0 ? '+' : ''}${c.value}`, { box: [cx, y, x + w - cx - h * 0.3, h], size: Math.round(h * 0.8), min: 30 }, { font: TITLE_FONT, color: '#ffffff' });
+    ctx.restore();
+  }
 }
 
 // Bonusi statova (Action/Equipment: "+2000 Power"): ikona u boji stata i broj, na mjestima iz predloška.
