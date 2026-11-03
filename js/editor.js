@@ -34,7 +34,7 @@ const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'PWR'], ['rng', 'RNG'],
 const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
 const FIELDS = ['name', 'type', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain',
-  'fx', 'fxStatus', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status'];
+  'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status'];
 const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equipment: 'action', Assist: 'action', Stage: 'stage', Core: 'core' };
 
 // Prazan objekt ili popis je isto što i polje kojeg nema (Stage bez bonusa, karta bez tagova).
@@ -350,10 +350,18 @@ export function createEditor(env) {
   const CLAUDE_RES = id => `data/fx-claude/${id}.json`;
   const claudeText = w => toWords(w.text ?? '');
 
+  function claudeRequest(c, text, at) {
+    const p = env.state.fxProposals?.cards?.[c.id];
+    const base = db().cards.find(x => x.id === c.id);
+    // Čitanje parsera vrijedi samo za objavljeni tekst; server ga uspoređuje, Claude ga ne vidi.
+    const read = p && !p.unparsed?.length && base && toWords(base.text ?? '') === text ? (p.read ?? '') : undefined;
+    return { id: c.id, name: c.name, type: c.type, color: c.color, bonusColors: c.bonusColors, hero: c.hero, cost: c.cost,
+      traits: c.traits, text, read, who: who(), at };
+  }
+
   async function askClaude(w) {
     const at = new Date().toISOString();
-    const req = { id: w.id, name: w.name, type: w.type, color: w.color, bonusColors: w.bonusColors, hero: w.hero, cost: w.cost,
-      traits: w.traits, text: claudeText(w), who: who(), at };
+    const req = claudeRequest(w, claudeText(w), at);
     await fs.writeFile(store().root, CLAUDE_REQ(w.id), JSON.stringify(req, null, 2) + '\n');
     ed.claude[w.id] = { waiting: true, at, res: ed.claude[w.id]?.res ?? null };
     env.render();
@@ -401,6 +409,7 @@ export function createEditor(env) {
         r.problems?.length ? h('p', { class: 'small warn' }, 'The game would not read: ', r.problems.map(p => `${p.line} (${p.problem})`).join(' · ')) : null,
         r.unsure?.length ? h('ul', { class: 'small ce-claude-unsure' }, r.unsure.map(u => h('li', {}, u))) : null,
         r.notes ? h('p', { class: 'small' }, r.notes) : null,
+        r.agree === true ? h('p', { class: 'small ok' }, '✓ Claude reads the card the same way as the game.') : r.agree === false && !w.fx ? h('p', { class: 'small warn' }, 'Claude reads it differently from the game: compare the two and fix the text, or use Claude\'s fx.') : null,
         r.extensions?.length ? h('p', { class: 'small' }, 'Needs new words, on the ', h('button', { class: 'link', type: 'button', onclick: () => go('wishlist') }, 'fx wishlist'), ': ', r.extensions.map(x => x.word).join(' · ')) : null,
         h('button', { class: 'ghost', type: 'button', disabled: !!r.problems?.length || stale, title: r.problems?.length ? 'The game would not read it' : stale ? 'Ask again: the text changed' : 'Put it in the fx box, still to be confirmed', onclick: use }, 'Use this')));
     }
@@ -436,6 +445,57 @@ export function createEditor(env) {
     env.render();
   }
 
+  // Claude pročita svaku kartu sam i server usporedi s parserom igre (Marko 2026-11-03).
+  const checkable = () => allCards().filter(c => c.type !== 'Core' && !c.deleted && (c.text ?? '').trim());
+
+  async function loadAllClaude() {
+    if (ed.claudeAllAt && Date.now() - ed.claudeAllAt < HEARTBEAT_MS) return;
+    ed.claudeAllAt = Date.now();
+    await Promise.all(checkable().map(async c => {
+      const res = await readJson(CLAUDE_RES(c.id), null).catch(() => null);
+      if (res && !ed.claude[c.id]?.waiting) ed.claude[c.id] = { waiting: false, at: res.askedAt, res };
+    }));
+    env.render();
+  }
+
+  async function checkAll() {
+    const todo = checkable().filter(c => {
+      const r = ed.claude[c.id]?.res;
+      return !ed.claude[c.id]?.waiting && (!r || r.error || r.askedText !== toWords(c.text ?? ''));
+    });
+    if (!todo.length) { env.toast('Every card already has an answer from Claude for its current text.'); return; }
+    if (!confirm(`Ask Claude to read ${todo.length} cards (about ${Math.max(1, Math.round(todo.length * 0.03))} USD)? The answers come in while the server on Marko's computer runs.`)) return;
+    for (const c of todo) {
+      const at = new Date().toISOString();
+      await fs.writeFile(store().root, CLAUDE_REQ(c.id), JSON.stringify(claudeRequest(c, toWords(c.text ?? ''), at), null, 2) + '\n');
+      ed.claude[c.id] = { waiting: true, at, res: ed.claude[c.id]?.res ?? null };
+      pollClaude(c.id, at);
+    }
+    env.toast(`${todo.length} cards asked.`);
+    env.render();
+  }
+
+  function claudeCheckSection() {
+    loadAllClaude();
+    const cards = checkable();
+    const st = c => ed.claude[c.id] ?? {};
+    const differ = cards.filter(c => st(c).res?.agree === false && !c.fx);
+    const agree = cards.filter(c => st(c).res?.agree === true).length;
+    const waiting = cards.filter(c => st(c).waiting).length;
+    const unchecked = cards.filter(c => !st(c).res && !st(c).waiting).length;
+    return h('section', { class: 'ce-claude-check' },
+      h('h3', {}, 'Claude reads every card'),
+      h('p', { class: 'muted small' }, 'Claude writes the fx of each card from its text on its own, and the server compares it with what the game reads. Where they agree the reading is checked twice; where they differ, one of them misread the text.'),
+      h('p', { class: 'small' }, `${agree} agree · ${differ.length} differ · ${waiting} waiting · ${unchecked} not checked`),
+      h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(checkAll) }, 'Check every card with Claude'),
+      differ.length ? h('div', { class: 'ce-wish-list' }, differ.map(c => h('article', { class: 'ce-wish' },
+        h('div', { class: 'ce-wish-head' }, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, `${c.id} ${c.name}`)),
+        h('p', { class: 'small muted' }, toWords(c.text ?? '')),
+        h('div', { class: 'ce-fx-pair' },
+          h('div', {}, h('p', { class: 'small muted' }, 'The game reads'), h('pre', { class: 'ce-fx-code ce-claude-fx' }, st(c).res.read || '(nothing)')),
+          h('div', {}, h('p', { class: 'small muted' }, 'Claude reads'), h('pre', { class: 'ce-fx-code ce-claude-fx' }, st(c).res.fx || '(nothing)')))))) : null);
+  }
+
   function renderWishlist() {
     if (Date.now() - (ed.wishAt ?? 0) > HEARTBEAT_MS) {
       ed.wishAt = Date.now();
@@ -454,12 +514,25 @@ export function createEditor(env) {
     const rules = open.filter(i => i.kind === 'rule');
     const closed = items.filter(i => i.status !== 'open');
     return h('section', { class: 'ce-wishlist' },
+      claudeCheckSection(),
       h('p', { class: 'muted' }, 'Words the fx language does not have yet, proposed by Claude while it wrote fx (Ask Claude on a card). New verbs, conditions and targets wait for Claude Code to build them into the game: tell it "napravi wishlist". Rules are questions for Marko.'),
       h('h3', {}, `For the game (${words.length})`),
       words.length ? h('div', { class: 'ce-wish-list' }, words.map(i => card(i, i.kind))) : h('p', { class: 'muted small' }, 'Nothing waiting.'),
       h('h3', {}, `Rule questions for Marko (${rules.length})`),
       rules.length ? h('div', { class: 'ce-wish-list' }, rules.map(i => card(i, 'rule'))) : h('p', { class: 'muted small' }, 'None.'),
       closed.length ? h('details', {}, h('summary', {}, `Done or not needed (${closed.length})`), h('div', { class: 'ce-wish-list' }, closed.map(i => card(i, i.kind)))) : null);
+  }
+
+  // Karta bez ručnog fx-a: kako je igra čita (parser), i potvrda tog čitanja (fxRead) (Marko 2026-11-03).
+  function gameReading(w, p, textChanged) {
+    if (w.fx || textChanged || !p || p.unparsed?.length || !(w.text ?? '').trim()) return null;
+    const read = p.read ?? '';
+    const ok = w.fxRead === read;
+    return h('div', { class: 'ce-claude' },
+      h('p', { class: 'small muted' }, 'What the game reads:'),
+      h('pre', { class: 'ce-fx-code ce-claude-fx' }, read || '(nothing to run)'),
+      ok ? h('p', { class: 'small ok' }, `✓ Reading confirmed${w.fxReadBy ? ` by ${w.fxReadBy}` : ''}.`)
+        : h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), title: 'The game does what these lines say; confirm it matches the card text', onclick: () => { snap(true); w.fxRead = read; changed(); env.render(); } }, 'Confirm reading'));
   }
 
   // fx za igru: prijedlog iz data/fx-proposals.json (igrin alat nakon Objave), potvrđuje se ovdje (GDD 14).
@@ -483,6 +556,7 @@ export function createEditor(env) {
       h('div', { class: 'ce-panel-head' }, h('h3', {}, 'fx for the game'),
         h('button', { class: 'ghost', type: 'button', disabled: textChanged || !p?.proposal, title: textChanged ? 'Publish first: the proposal is for the published text' : '', onclick: propose }, 'Propose fx')),
       box, h('p', { class: `small ${p?.unparsed?.length && !w.fx ? 'warn' : 'muted'}` }, note),
+      gameReading(w, p, textChanged),
       claudeBlock(w, box),
       w.fx && w.fxStatus === 'check' ? h('p', { class: 'small warn' }, 'Not confirmed: a proposal, or the text changed after it. Check it against the text, then Confirm (or edit it) and Save.') : null,
       w.fx && w.fxStatus === 'check' ? h('button', { class: 'ghost', type: 'button', onclick: () => { snap(true); w.fxStatus = 'ok'; changed(); env.render(); } }, 'Confirm fx') : null,
@@ -1203,7 +1277,7 @@ export function createEditor(env) {
       else if (textChanged || w.new) out.push([false, 'The game reads the text after Publish']);
       else if (!fxp) out.push([false, 'No report from the game yet']);
       else if (fxp.unparsed?.length) out.push([false, `"${fxp.unparsed[0]}" needs fx`]);
-      else out.push([true, 'The game reads the text']);
+      else out.push([w.fxRead === (fxp.read ?? ''), w.fxRead === (fxp.read ?? '') ? 'The game reads the text (reading confirmed)' : 'The game reads the text; the reading is not confirmed yet']);
     };
     if (!(w.name ?? '').trim()) out.push([false, 'No name yet']);
     if (PORTRAIT.includes(w.type)) {
@@ -1446,7 +1520,7 @@ export function createEditor(env) {
     const w = ed.work;
     if (ed.dirty && !confirm('Discard the unsaved changes to this card?')) return;
     const copy = cardOf(w);
-    for (const k of ['image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted', 'fx', 'fxStatus', 'aliases', 'updated', 'who', 'new']) delete copy[k];
+    for (const k of ['image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted', 'fx', 'fxStatus', 'fxRead', 'aliases', 'updated', 'who', 'new']) delete copy[k];
     startCard(nextId(setOf(w.id)), { ...copy, name: `${w.name ?? ''} (copy)` });
   }
 

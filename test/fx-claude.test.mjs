@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createFxWorker } from '../server/fx-claude.mjs';
+import { createFxWorker, sameFx } from '../server/fx-claude.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -76,4 +76,17 @@ test('missing words go on the fx wishlist, one item per word with every card tha
   await w.tick();
   const again = JSON.parse(await fs.readFile(path.join(dir, 'data', 'fx-wishlist.json'), 'utf8'));
   assert.equal(again.items.find(i => i.key === 'verb:STEAL_ENERGY').cards.length, 2);
+});
+
+test("Claude's own reading is compared with the game's, and Claude never sees the game's", async () => {
+  assert.ok(sameFx('PLAY: HEAL SELF 2\nEND: DRAW ME 1', ' end:  draw me 1 \nplay: heal self 2'));
+  assert.ok(!sameFx('PLAY: HEAL SELF 2', 'PLAY: HEAL SELF 3'));
+  const dir = await drive();
+  await fs.writeFile(path.join(dir, 'data', 'fx-requests', 'OP1-001.json'), JSON.stringify({ ...request('OP1-001', 'Luffy may activate a Core.'), read: 'POSTROLL ONCE OPTIONAL RANGE: ACTIVATE_CORE' }));
+  const client = fakeClient({ fx: 'POSTROLL ONCE OPTIONAL RANGE: ACTIVATE_CORE', unsure: [], notes: '', extensions: [] });
+  const w = createFxWorker({ root: ROOT, drive: dir, client, log: () => {} });
+  await w.tick();
+  const res = JSON.parse(await fs.readFile(path.join(dir, 'data', 'fx-claude', 'OP1-001.json'), 'utf8'));
+  assert.equal(res.agree, true);
+  assert.doesNotMatch(client.calls[0].messages[0].content, /ACTIVATE_CORE/);
 });

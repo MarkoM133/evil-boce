@@ -39,6 +39,12 @@ const SCHEMA = {
   },
 };
 
+// Isti fx bez obzira na razmake, velika slova i redoslijed redaka.
+export const sameFx = (a, b) => {
+  const norm = s => String(s ?? '').split('\n').map(l => l.trim().replace(/\s+/g, ' ').toUpperCase()).filter(Boolean).sort().join('\n');
+  return norm(a) === norm(b);
+};
+
 const hashText = s => crypto.createHash('sha1').update(String(s ?? '')).digest('hex').slice(0, 12);
 
 async function readJson(file, fallback = null) {
@@ -131,6 +137,8 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
       const parsed = JSON.parse(text);
       const fx = String(parsed.fx ?? '').trim();
       result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, textHash, askedText: req.text, model: msg.model, fx, unsure: parsed.unsure ?? [], notes: parsed.notes ?? '', extensions: parsed.extensions ?? [], problems: fxProblems(fx) };
+      // Kako ga čita parser igre (Claude ga ne vidi): kad se slažu, čitanje je dvaput potvrđeno.
+      if (typeof req.read === 'string') { result.read = req.read; result.agree = sameFx(fx, req.read); }
       if (result.extensions.length) await addWishes(drive, { id, name: req.name, who: req.who }, result.extensions);
     } catch (e) {
       result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, textHash, error: e?.message ?? String(e) };
