@@ -231,12 +231,11 @@ export function statBonusLines(text) {
 // Kao drawBonus, ali iza broja stata s bonusom boje ide "(+ukupno)" u boji bonusa; nema li običnog bonusa, samo
 // "(+n)". Tekst ide od lijevog ruba broja do ikone idućeg stata u redu (ili ruba karte), smanjen dok ne stane.
 function drawBonusInline(ctx, bonus, chips, L, icons) {
-  const extra = Object.fromEntries(chips.map(c => [c.stat, c]));
   const slots = Object.entries(L.bonus ?? {});
   for (const [k, slot] of slots) {
     const v = bonus[k];
-    const c = extra[k];
-    if (!v && !c) continue;
+    const mine = chips.filter(c => c.stat === k);
+    if (!v && !mine.length) continue;
     const icon = icons[`stat-${k}`];
     if (icon) {
       const [ix, iy, iw, ih] = slot.icon;
@@ -244,46 +243,53 @@ function drawBonusInline(ctx, bonus, chips, L, icons) {
       ctx.drawImage(tinted(icon, STAT_TINTS[k]), ix + (iw - icon.width * s) / 2, iy + (ih - icon.height * s) / 2, icon.width * s, icon.height * s);
     }
     const [vx, vy, vw, vh] = slot.value;
-    if (!c) { fitLine(ctx, `${v > 0 ? '+' : ''}${v}`, { box: slot.value, size: slot.size ?? 106, min: 40 }, { font: TITLE_FONT, color: '#ffffff' }); continue; }
+    if (!mine.length) { fitLine(ctx, `${v > 0 ? '+' : ''}${v}`, { box: slot.value, size: slot.size ?? 106, min: 40 }, { font: TITLE_FONT, color: '#ffffff' }); continue; }
     // Room to the right: up to the next icon in the same row, else to the card's edge.
     const next = slots.map(([, s2]) => s2.icon).filter(i => Math.abs(i[1] - vy) < 10 && i[0] > vx).map(i => i[0]);
     const right = (next.length ? Math.min(...next) : CARD_W - 60) - 12;
-    const total = (v ?? 0) + c.value;
-    const head = v ? `${v > 0 ? '+' : ''}${v} ` : '';
-    const tail = `(${total > 0 ? '+' : ''}${total})`;
+    const sign = n => `${n > 0 ? '+' : ''}${n}`;
+    const head = v ? `${sign(v)} ` : '';
+    // One bracket per colour bonus, each the total for its colour (they never add up: one hero, one colour).
+    const tails = mine.map(c => ({ text: `(${sign((v ?? 0) + c.value)})`, cols: c.colors.length ? c.colors : ['Yellow'] }));
+    const all = head + tails.map(t => t.text).join(' ');
     let size = slot.size ?? 106;
     ctx.font = `${size}px ${TITLE_FONT}`;
-    while (size > 40 && ctx.measureText(head + tail).width > right - vx) { size -= 2; ctx.font = `${size}px ${TITLE_FONT}`; }
+    while (size > 40 && ctx.measureText(all).width > right - vx) { size -= 2; ctx.font = `${size}px ${TITLE_FONT}`; }
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     const ty = vy + vh / 2 + size * 0.04;
     ctx.fillStyle = '#ffffff';
     ctx.fillText(head, vx, ty);
-    const tx = vx + ctx.measureText(head).width;
-    const cols = c.colors.length ? c.colors : ['Yellow'];
-    if (cols.length > 1) {
-      // Two colours: the bracket text in a left-to-right blend of both.
-      const tw = ctx.measureText(tail).width;
-      const g = ctx.createLinearGradient(tx, 0, tx + tw, 0);
-      g.addColorStop(0, BONUS_DOT[cols[0]] ?? '#ffffff');
-      g.addColorStop(1, BONUS_DOT[cols[1]] ?? '#ffffff');
-      ctx.fillStyle = g;
-    } else ctx.fillStyle = BONUS_DOT[cols[0]] ?? '#ffffff';
-    ctx.fillText(tail, tx, ty);
+    let tx = vx + ctx.measureText(head).width;
+    for (const t of tails) {
+      const tw = ctx.measureText(t.text).width;
+      if (t.cols.length > 1) {
+        const g = ctx.createLinearGradient(tx, 0, tx + tw, 0);
+        g.addColorStop(0, BONUS_DOT[t.cols[0]] ?? '#ffffff');
+        g.addColorStop(1, BONUS_DOT[t.cols[1]] ?? '#ffffff');
+        ctx.fillStyle = g;
+      } else ctx.fillStyle = BONUS_DOT[t.cols[0]] ?? '#ffffff';
+      ctx.fillText(t.text, tx, ty);
+      tx += tw + ctx.measureText(' ').width;
+    }
   }
 }
 
 // Čip: zaobljen, rub u boji bonusa (dvije boje: pola-pola), točka boje, ikona stata i broj. Na mjestu stata kad
 // je prazno, inače odmah ispod njega.
 function drawBonusChips(ctx, chips, bonus, L, icons) {
+  const nth = {};
   for (const c of chips) {
     const slot = L.bonus[c.stat];
     if (!slot) continue;
-    const taken = !!bonus[c.stat];
+    const i = nth[c.stat] = (nth[c.stat] ?? -1) + 1;
+    const taken = !!bonus[c.stat] || i > 0;
     const [ix, iy] = slot.icon;
     const [vx, , vw] = slot.value;
     const h = taken ? 92 : 128;
-    const y = taken ? iy + 128 + 6 : iy;
+    // Under the stat, one below the other; the bottom row grows upwards so it stays on the card.
+    const row = bonus[c.stat] ? i : i - 1;
+    const y = !taken ? iy : iy > 1600 ? iy - (row + 1) * 98 : iy + 134 + row * 98;
     const x = ix - 30;
     const w = vx + vw - ix + 60;
     const cols = c.colors.length ? c.colors : ['Yellow'];
@@ -466,7 +472,9 @@ export function parseEffect(text) {
   }
   const c = t.match(COND_RE);
   if (c) { out.cond = c[1]; t = t.slice(c[0].length); }
-  out.lines = t.split('\n').map(s => s.trim()).filter(Boolean).map(s => ({ bullet: /^[-•]\s*/.test(s), text: s.replace(/^[-•]\s*/, '') }));
+  // A bullet is "•" or "- " at the start; "-1 KB" is a negative number, not a bullet (2026-11-03).
+  const BULLET = /^(?:•\s*|-\s+(?!\d))/;
+  out.lines = t.split('\n').map(s => s.trim()).filter(Boolean).map(s => ({ bullet: BULLET.test(s), text: s.replace(BULLET, '') }));
   return out;
 }
 

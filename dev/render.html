@@ -36,10 +36,24 @@
       return templates[name];
     };
     if (!hasAgency) out.append(Object.assign(document.createElement('p'), { textContent: 'Agency FB is not installed: a stand-in font is used.' }));
-    for (const id of ids) {
-      const base = db.cards.find(c => c.id === id);
-      if (!base) continue;
-      const card = { ...base, ...(drafts.cards?.[id] ?? {}) };
+    // ?test=1: izmišljene karte s najgorim slučajevima bonusa boje (nisu u bazi; art posuđen s OP1-017).
+    const artFrom = { ...(db.cards.find(c => c.id === 'OP1-017') ?? {}), ...(drafts.cards?.['OP1-017'] ?? {}) };
+    const TEST = [
+      { id: 'TEST-1', name: 'Every stat', type: 'Action', color: 'None', bonusColors: ['Yellow', 'Red', 'Blue', 'Cyan', 'Green'], cost: 3,
+        bonus: { hp: 2, dmg: 1, pwr: 1000, kb: 1, rng: 1 }, traits: ['General'],
+        text: 'Battle Phase:\nGreen Bonus: +2 HP.\nYellow Bonus: +1 DMG.\nRed Bonus: +1000 Power.\nBlue Bonus: +1 KB.\nCyan Bonus: +1 Range.' },
+      { id: 'TEST-2', name: 'Two colours, one bonus', type: 'Equipment', color: 'None', bonusColors: ['Cyan', 'Purple'], cost: 2,
+        bonus: { dmg: 1 }, traits: ['Sword'], text: 'The equipped Hero takes +1 DMG from all sources.\nCyan / Purple Bonus: +1 DMG.' },
+      { id: 'TEST-3', name: 'Two colours, two bonuses', type: 'Action', color: 'None', bonusColors: ['Yellow', 'Red'], cost: 2,
+        bonus: { dmg: 1, pwr: 2000 }, traits: ['Haki'], text: 'Battle Phase:\nYellow Bonus: +1 DMG.\nRed Bonus: +2 DMG.\nRed Bonus: +2000 Power.' },
+      { id: 'TEST-4', name: 'Bonus only for a colour', type: 'Assist', color: 'None', bonusColors: ['Blue'], cost: 1,
+        bonus: {}, traits: ['General'], text: 'Preroll Phase: A friendly Hero heals 2 HP.\nBlue Bonus: +1000 Power.\nBlue Bonus: +1 KB.' },
+      { id: 'TEST-5', name: 'Minus and a sentence', type: 'Action', color: 'None', bonusColors: ['Purple', 'Green'], cost: 2,
+        bonus: { kb: 2, pwr: 1000 }, traits: ['General'], text: '[Range] Postroll Phase: Knockback an Opponent\'s Hero 2 spaces.\nPurple Bonus: -1 KB.\nGreen Bonus: It also heals 2 HP.' },
+    ].map(c => ({ ...c, art: artFrom.art, artCrop: artFrom.artCrop }));
+    const cards = q.get('test') ? TEST : ids.map(id => { const base = db.cards.find(c => c.id === id); return base ? { ...base, ...(drafts.cards?.[id] ?? {}) } : null; }).filter(Boolean);
+    for (const card of cards) {
+      const id = card.id;
       const tpl = await templateOf(card);
       const row = document.createElement('div');
       row.className = tpl.layout.kind === 'hero' ? 'row wide' : 'row';
