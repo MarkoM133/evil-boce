@@ -15,11 +15,27 @@ const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,40}$/;
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['fx', 'unsure', 'notes'],
+  required: ['fx', 'unsure', 'notes', 'extensions'],
   properties: {
     fx: { type: 'string', description: 'The fx lines for the card, one effect per line; empty when the card needs none.' },
     unsure: { type: 'array', items: { type: 'string' }, description: 'Sentences of the card text the fx could not express exactly, each with why.' },
     notes: { type: 'string', description: 'One or two sentences for the person confirming: what to check.' },
+    extensions: {
+      type: 'array',
+      description: 'New words the fx language would need for sentences it cannot express; empty when none.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['kind', 'word', 'meaning', 'why', 'fx'],
+        properties: {
+          kind: { type: 'string', enum: ['verb', 'condition', 'target', 'rule'], description: 'rule: anything that changes how the game plays beyond one new word (a phase, a battle step, a win condition).' },
+          word: { type: 'string', description: 'The new keyword in the fx style, e.g. STEAL_ENERGY <ME|OPP> <n>; for a rule, a short name.' },
+          meaning: { type: 'string', description: 'What it does in the game, exactly.' },
+          why: { type: 'string', description: 'Why the existing words do not cover it.' },
+          fx: { type: 'string', description: "This card's fx line using it." },
+        },
+      },
+    },
   },
 };
 
@@ -42,6 +58,11 @@ async function systemPrompt(root, drive) {
     'use only its words, targets and verbs. Write one effect per line. Keep the meaning of the text exactly: when a',
     'sentence cannot be said in fx, leave it out of fx and list it under "unsure" with the reason. A card whose text',
     'needs nothing (or that the game reads by itself) may get an empty fx. A person checks every proposal before the game uses it.',
+    'The "fx" field uses only words that exist today. When a sentence needs something the language lacks, keep it out of',
+    '"fx", list it under "unsure", and propose the missing word under "extensions": a verb, condition or target in the',
+    'same style as the existing ones, with what it does and this card\'s fx line using it. Prefer existing words and the',
+    'smallest addition. Anything that would change how the game plays beyond one word (a new phase, a battle or claim',
+    'rule, a win condition) is kind "rule": it is a question for the designer, not a word to add.',
     '',
     '# The fx language (game/docs/fx-keywords.md)',
     rules,
@@ -49,6 +70,33 @@ async function systemPrompt(root, drive) {
     '# Confirmed examples (text and the fx the game uses for it)',
     examples.join('\n\n'),
   ].join('\n');
+}
+
+// Wishlist (Marko 2026-11-03): riječi koje fx jeziku fale skupljaju se u data/fx-wishlist.json; ista riječ s više
+// karata je jedna stavka. Glagoli, uvjeti i mete su zadaci za Claude Code (ugradnja u igru), "rule" je pitanje za Marka.
+export const WISHLIST = path.join('data', 'fx-wishlist.json');
+const wishKey = (kind, word) => `${kind}:${String(word).trim().split(/\s+/)[0].toUpperCase()}`;
+
+export async function addWishes(drive, card, extensions) {
+  const file = path.join(drive, WISHLIST);
+  const list = await readJson(file, { version: 1, items: [] });
+  const now = new Date().toISOString();
+  for (const x of extensions) {
+    const key = wishKey(x.kind, x.word);
+    let item = list.items.find(i => i.key === key);
+    if (!item) {
+      item = { key, kind: x.kind, word: x.word, meaning: x.meaning, why: x.why, status: 'open', firstAt: now, cards: [] };
+      list.items.push(item);
+    }
+    item.lastAt = now;
+    // A word dismissed or done before comes back open only for a card it did not cover yet.
+    const known = item.cards.some(c => c.id === card.id);
+    item.cards = item.cards.filter(c => c.id !== card.id);
+    item.cards.push({ id: card.id, name: card.name, fx: x.fx, who: card.who, at: now });
+    if (item.status !== 'open' && !known) item.status = 'open';
+  }
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(list, null, 2) + '\n');
 }
 
 // Radnik bez rasporeda: tick() obradi sve zahtjeve koji čekaju (testovi ga zovu s lažnim klijentom).
@@ -82,7 +130,8 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
       const text = msg.content.find(b => b.type === 'text')?.text ?? '';
       const parsed = JSON.parse(text);
       const fx = String(parsed.fx ?? '').trim();
-      result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, textHash, askedText: req.text, model: msg.model, fx, unsure: parsed.unsure ?? [], notes: parsed.notes ?? '', problems: fxProblems(fx) };
+      result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, textHash, askedText: req.text, model: msg.model, fx, unsure: parsed.unsure ?? [], notes: parsed.notes ?? '', extensions: parsed.extensions ?? [], problems: fxProblems(fx) };
+      if (result.extensions.length) await addWishes(drive, { id, name: req.name, who: req.who }, result.extensions);
     } catch (e) {
       result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, textHash, error: e?.message ?? String(e) };
     }

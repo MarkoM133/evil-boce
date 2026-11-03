@@ -17,11 +17,12 @@ import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
 const NOTES_PATH = 'data/editor/notes.json';
+const WISH_PATH = 'data/fx-wishlist.json';
 const HISTORY_PATH = 'data/editor/history.json';
 // Zadnja Objava iz editora: baza prije nje i objavljeni nacrti, za Undo.
 const LAST_PUBLISH_PATH = 'data/editor/last-publish.json';
 export const EDIT_TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core'];
-export const PAGES = ['sets', 'publish', 'traits', 'guide', 'frames'];
+export const PAGES = ['sets', 'publish', 'traits', 'guide', 'frames', 'wishlist'];
 const PORTRAIT = ['Action', 'Equipment', 'Assist'];
 const HEROISH = ['Hero', 'Evolution'];
 const COLORS = Object.keys(TINTS);
@@ -69,7 +70,7 @@ export function createEditor(env) {
     ed.loading = true;
     try {
       ed.agency = await fontsReady();
-      [ed.drafts, ed.guide, ed.notes, ed.history] = await Promise.all([readJson(DRAFTS_PATH, { version: 1, cards: {} }), readGuide(store()), readJson(NOTES_PATH, { cards: {} }), readJson(HISTORY_PATH, { cards: {} })]);
+      [ed.drafts, ed.guide, ed.notes, ed.history, ed.wishlist] = await Promise.all([readJson(DRAFTS_PATH, { version: 1, cards: {} }), readGuide(store()), readJson(NOTES_PATH, { cards: {} }), readJson(HISTORY_PATH, { cards: {} }), readJson(WISH_PATH, { version: 1, items: [] })]);
       await readLocks();
       await sets.ensure();
       ed.ready = true;
@@ -183,7 +184,7 @@ export function createEditor(env) {
       if (Date.now() - ed.locksAt > HEARTBEAT_MS) {
         Promise.all([readLocks(), refreshDb()]).then(([a, b]) => { if (a || b) env.render(); }).catch(() => {});
       }
-      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, frames: frames.render, publish: renderPublish }[want]());
+      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, frames: frames.render, publish: renderPublish, wishlist: renderWishlist }[want]());
     }
     if (want !== ed.id) {
       if (!leaveOk()) return renderCardPage();
@@ -349,9 +350,51 @@ export function createEditor(env) {
         r.problems?.length ? h('p', { class: 'small warn' }, 'The game would not read: ', r.problems.map(p => `${p.line} (${p.problem})`).join(' · ')) : null,
         r.unsure?.length ? h('ul', { class: 'small ce-claude-unsure' }, r.unsure.map(u => h('li', {}, u))) : null,
         r.notes ? h('p', { class: 'small' }, r.notes) : null,
+        r.extensions?.length ? h('p', { class: 'small' }, 'Needs new words, on the ', h('button', { class: 'link', type: 'button', onclick: () => go('wishlist') }, 'fx wishlist'), ': ', r.extensions.map(x => x.word).join(' · ')) : null,
         h('button', { class: 'ghost', type: 'button', disabled: !!r.problems?.length || stale, title: r.problems?.length ? 'The game would not read it' : stale ? 'Ask again: the text changed' : 'Put it in the fx box, still to be confirmed', onclick: use }, 'Use this')));
     }
     return h('div', { class: 'ce-claude-box' }, parts);
+  }
+
+  // fx wishlist (Marko 2026-11-03): riječi koje fx jeziku fale, iz Claude prijedloga (server/fx-claude.mjs).
+  // Glagoli, uvjeti i mete čekaju Claude Code da ih ugradi u igru ("napravi wishlist"); "rule" je pitanje za Marka.
+  async function setWish(key, status) {
+    const fresh = await readJson(WISH_PATH, { version: 1, items: [] });
+    const item = fresh.items.find(i => i.key === key);
+    if (!item) return;
+    item.status = status;
+    item.by = who();
+    item.changedAt = new Date().toISOString();
+    await writeJson(WISH_PATH, fresh);
+    ed.wishlist = fresh;
+    env.render();
+  }
+
+  function renderWishlist() {
+    if (Date.now() - (ed.wishAt ?? 0) > HEARTBEAT_MS) {
+      ed.wishAt = Date.now();
+      readJson(WISH_PATH, { version: 1, items: [] }).then(x => { if (JSON.stringify(x) !== JSON.stringify(ed.wishlist)) { ed.wishlist = x; env.render(); } }).catch(() => {});
+    }
+    const items = ed.wishlist?.items ?? [];
+    const card = (it, label) => h('article', { class: `ce-wish ${it.status}` },
+      h('div', { class: 'ce-wish-head' }, h('code', {}, it.word), h('span', { class: 'ce-chip' }, label), it.status !== 'open' ? h('span', { class: 'muted small' }, it.status === 'done' ? 'in the game' : 'not needed') : null),
+      h('p', {}, it.meaning),
+      h('p', { class: 'small muted' }, it.why),
+      h('ul', { class: 'small ce-wish-cards' }, it.cards.map(c => h('li', {}, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, `${c.id} ${c.name ?? ''}`), c.fx ? [' ', h('code', {}, c.fx)] : null))),
+      it.status === 'open' ? h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(() => setWish(it.key, 'dismissed')) }, 'Not needed')
+        : it.status === 'dismissed' ? h('button', { class: 'link small', type: 'button', disabled: !canWrite(), onclick: () => env.guard(() => setWish(it.key, 'open')) }, 'Back on the list') : null);
+    const open = items.filter(i => i.status === 'open');
+    const words = open.filter(i => i.kind !== 'rule');
+    const rules = open.filter(i => i.kind === 'rule');
+    const closed = items.filter(i => i.status !== 'open');
+    return h('section', { class: 'ce-wishlist' },
+      h('h2', {}, 'fx wishlist'),
+      h('p', { class: 'muted' }, 'Words the fx language does not have yet, proposed by Claude while it wrote fx (Ask Claude on a card). New verbs, conditions and targets wait for Claude Code to build them into the game: tell it "napravi wishlist". Rules are questions for Marko.'),
+      h('h3', {}, `For the game (${words.length})`),
+      words.length ? h('div', { class: 'ce-wish-list' }, words.map(i => card(i, i.kind))) : h('p', { class: 'muted small' }, 'Nothing waiting.'),
+      h('h3', {}, `Rule questions for Marko (${rules.length})`),
+      rules.length ? h('div', { class: 'ce-wish-list' }, rules.map(i => card(i, 'rule'))) : h('p', { class: 'muted small' }, 'None.'),
+      closed.length ? h('details', {}, h('summary', {}, `Done or not needed (${closed.length})`), h('div', { class: 'ce-wish-list' }, closed.map(i => card(i, i.kind)))) : null);
   }
 
   // fx za igru: prijedlog iz data/fx-proposals.json (igrin alat nakon Objave), potvrđuje se ovdje (GDD 14).
@@ -1730,5 +1773,6 @@ export function createEditor(env) {
   return {
     render, isCardPage, isDirty: () => ed.dirty, newCard, who, setWho, leave,
     waiting: () => Object.keys(ed.drafts?.cards ?? {}).length,
+    wishes: () => (ed.wishlist?.items ?? []).filter(i => i.status === 'open').length,
   };
 }

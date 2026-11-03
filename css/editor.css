@@ -309,3 +309,15 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-claude { display: grid; gap: 6px; width: 100%; border-left: 3px solid var(--straw); padding-left: 10px; }
 .ce-claude-fx { margin: 0; white-space: pre-wrap; background: var(--surface-2); padding: 8px 10px; }
 .ce-claude-unsure { margin: 0; padding-left: 18px; color: var(--muted); }
+
+/* fx wishlist */
+.ce-wishlist { display: grid; gap: 14px; max-width: 980px; }
+.ce-wishlist h3 { margin: 10px 0 0; }
+.ce-wish-list { display: grid; gap: 12px; }
+.ce-wish { background: var(--surface); padding: 14px 16px; display: grid; gap: 6px; justify-items: start; border-left: 3px solid var(--straw); }
+.ce-wish.dismissed, .ce-wish.done { border-left-color: var(--line); opacity: .7; }
+.ce-wish p { margin: 0; }
+.ce-wish-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ce-wish-head code { font-size: 16px; color: var(--bone); }
+.ce-wish .ce-chip { font: 700 12px var(--display); text-transform: uppercase; background: var(--surface-2); padding: 2px 8px; }
+.ce-wish-cards { margin: 0; padding-left: 18px; }

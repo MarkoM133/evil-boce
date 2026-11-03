@@ -835,7 +835,7 @@ function importButton() {
 
 // Izbornik kao u mockupu Card editora: Cards, Card editor (Sets, Publish, Traits & aliases, Text guide, Frames),
 // Decks, Balance (i Coverage), Tools. Podstavke se vide dok je njihova stavka otvorena.
-const EDITOR_PAGES = [['sets', 'Sets'], ['publish', 'Publish'], ['traits', 'Traits & aliases'], ['guide', 'Text guide'], ['frames', 'Frames']];
+const EDITOR_PAGES = [['sets', 'Sets'], ['publish', 'Publish'], ['traits', 'Traits & aliases'], ['guide', 'Text guide'], ['frames', 'Frames'], ['wishlist', 'fx wishlist']];
 const NAV = [
   ['browse', 'Cards'],
   ['editor', 'Card editor', EDITOR_PAGES],
@@ -849,7 +849,7 @@ function renderNav() {
   const cur = navOf(state.tab);
   const sub = (key, items) => h('div', { class: 'tabs-sub' }, items.map(([k, label]) => {
     const active = key === 'editor' ? (state.editId ?? 'sets') === k : state.tab === k;
-    const n = key === 'editor' && k === 'publish' ? cardEditor.waiting() : 0;
+    const n = key === 'editor' && k === 'publish' ? cardEditor.waiting() : key === 'editor' && k === 'wishlist' ? cardEditor.wishes() : 0;
     return h('button', { class: active ? 'active' : '', onclick: () => {
       if (key === 'editor') { state.tab = 'editor'; state.editId = k; } else state.tab = k;
       replaceNext = false;
