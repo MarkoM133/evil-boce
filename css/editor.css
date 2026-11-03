@@ -321,3 +321,8 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-wish-head code { font-size: 16px; color: var(--bone); }
 .ce-wish .ce-chip { font: 700 12px var(--display); text-transform: uppercase; background: var(--surface-2); padding: 2px 8px; }
 .ce-wish-cards { margin: 0; padding-left: 18px; }
+
+/* Kartice spojenih podstranica (Publish | Waiting for the game, Tags | Phrases) i drugi brojač u izborniku. */
+.ce-page-tabs { margin-bottom: 18px; justify-self: start; width: max-content; }
+.ce-page-tabs .tab-badge { margin-left: 8px; background: var(--straw); color: var(--black); border-radius: 999px; min-width: 20px; height: 20px; display: inline-grid; place-items: center; font: 700 13px var(--text); padding: 0 6px; }
+.tabs-sub .tab-badge.alt { background: none; color: var(--straw); box-shadow: inset 0 0 0 2px var(--straw); margin-left: 4px; }

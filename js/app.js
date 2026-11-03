@@ -835,7 +835,10 @@ function importButton() {
 
 // Izbornik kao u mockupu Card editora: Cards, Card editor (Sets, Publish, Traits & aliases, Text guide, Frames),
 // Decks, Balance (i Coverage), Tools. Podstavke se vide dok je njihova stavka otvorena.
-const EDITOR_PAGES = [['sets', 'Sets'], ['publish', 'Publish'], ['traits', 'Traits & aliases'], ['guide', 'Text guide'], ['frames', 'Frames'], ['wishlist', 'fx wishlist']];
+// Četiri podstranice (Marko 2026-11-03): Publish drži i fx wishlist (kartica Waiting for the game), Words drži
+// Traits & aliases (kartica Tags) i Text guide (kartica Phrases). Stare adrese (traits, guide, wishlist) i dalje rade.
+const EDITOR_PAGES = [['sets', 'Sets'], ['publish', 'Publish'], ['traits', 'Words'], ['frames', 'Frames']];
+const EDITOR_GROUP = { wishlist: 'publish', guide: 'traits', words: 'traits' };
 const NAV = [
   ['browse', 'Cards'],
   ['editor', 'Card editor', EDITOR_PAGES],
@@ -848,13 +851,17 @@ const navOf = tab => (tab === 'coverage' ? 'balance' : tab === 'import' || tab =
 function renderNav() {
   const cur = navOf(state.tab);
   const sub = (key, items) => h('div', { class: 'tabs-sub' }, items.map(([k, label]) => {
-    const active = key === 'editor' ? (state.editId ?? 'sets') === k : state.tab === k;
-    const n = key === 'editor' && k === 'publish' ? cardEditor.waiting() : key === 'editor' && k === 'wishlist' ? cardEditor.wishes() : 0;
+    const id = state.editId ?? 'sets';
+    const active = key === 'editor' ? (EDITOR_GROUP[id] ?? id) === k : state.tab === k;
+    const n = key === 'editor' && k === 'publish' ? cardEditor.waiting() : 0;
+    // Publish: nacrti koji čekaju Objavu, a uz njih riječi koje čekaju igru (fx wishlist), obrubljeno.
+    const wish = key === 'editor' && k === 'publish' ? cardEditor.wishes() : 0;
     return h('button', { class: active ? 'active' : '', onclick: () => {
       if (key === 'editor') { state.tab = 'editor'; state.editId = k; } else state.tab = k;
       replaceNext = false;
       render();
-    } }, label, n ? h('span', { class: 'tab-badge' }, n) : null);
+    } }, label, n ? h('span', { class: 'tab-badge', title: 'Drafts waiting for Publish' }, n) : null,
+      wish ? h('span', { class: 'tab-badge alt', title: 'Words waiting for the game (fx wishlist)' }, wish) : null);
   }));
   return h('nav', { class: 'tabs', role: 'tablist' }, NAV.map(([key, label, items]) => [
     h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(cur === key), class: cur === key ? 'active' : '', onclick: () => {

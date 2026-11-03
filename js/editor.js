@@ -22,7 +22,7 @@ const HISTORY_PATH = 'data/editor/history.json';
 // Zadnja Objava iz editora: baza prije nje i objavljeni nacrti, za Undo.
 const LAST_PUBLISH_PATH = 'data/editor/last-publish.json';
 export const EDIT_TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core'];
-export const PAGES = ['sets', 'publish', 'traits', 'guide', 'frames', 'wishlist'];
+export const PAGES = ['sets', 'publish', 'traits', 'guide', 'frames', 'wishlist', 'words'];
 const PORTRAIT = ['Action', 'Equipment', 'Assist'];
 const HEROISH = ['Hero', 'Evolution'];
 const COLORS = Object.keys(TINTS);
@@ -184,7 +184,7 @@ export function createEditor(env) {
       if (Date.now() - ed.locksAt > HEARTBEAT_MS) {
         Promise.all([readLocks(), refreshDb()]).then(([a, b]) => { if (a || b) env.render(); }).catch(() => {});
       }
-      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, frames: frames.render, publish: renderPublish, wishlist: renderWishlist }[want]());
+      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), pageTabs(want), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, words: renderTraitsPage, frames: frames.render, publish: renderPublish, wishlist: renderWishlist }[want]());
     }
     if (want !== ed.id) {
       if (!leaveOk()) return renderCardPage();
@@ -356,6 +356,21 @@ export function createEditor(env) {
     return h('div', { class: 'ce-claude-box' }, parts);
   }
 
+  // Kartice na vrhu spojenih stranica: Publish | Waiting for the game, Tags | Phrases (Marko 2026-11-03).
+  function pageTabs(want) {
+    const groups = [
+      [['publish', 'Publish'], ['wishlist', 'Waiting for the game']],
+      [['traits', 'Tags'], ['guide', 'Phrases']],
+    ];
+    const cur = want === 'words' ? 'traits' : want;
+    const group = groups.find(g => g.some(([k]) => k === cur));
+    if (!group) return null;
+    const wishes = (ed.wishlist?.items ?? []).filter(i => i.status === 'open').length;
+    const drafts = Object.keys(ed.drafts?.cards ?? {}).length;
+    return h('div', { class: 'ce-views ce-page-tabs' }, group.map(([k, label]) => h('button', { type: 'button', class: k === cur ? 'active' : '', onclick: () => go(k) },
+      label, k === 'wishlist' && wishes ? h('span', { class: 'tab-badge' }, wishes) : k === 'publish' && drafts ? h('span', { class: 'tab-badge' }, drafts) : null)));
+  }
+
   // fx wishlist (Marko 2026-11-03): riječi koje fx jeziku fale, iz Claude prijedloga (server/fx-claude.mjs).
   // Glagoli, uvjeti i mete čekaju Claude Code da ih ugradi u igru ("napravi wishlist"); "rule" je pitanje za Marka.
   async function setWish(key, status) {
@@ -388,7 +403,6 @@ export function createEditor(env) {
     const rules = open.filter(i => i.kind === 'rule');
     const closed = items.filter(i => i.status !== 'open');
     return h('section', { class: 'ce-wishlist' },
-      h('h2', {}, 'fx wishlist'),
       h('p', { class: 'muted' }, 'Words the fx language does not have yet, proposed by Claude while it wrote fx (Ask Claude on a card). New verbs, conditions and targets wait for Claude Code to build them into the game: tell it "napravi wishlist". Rules are questions for Marko.'),
       h('h3', {}, `For the game (${words.length})`),
       words.length ? h('div', { class: 'ce-wish-list' }, words.map(i => card(i, i.kind))) : h('p', { class: 'muted small' }, 'Nothing waiting.'),
