@@ -163,12 +163,30 @@ export function createSetsView(ctx) {
         special ? null : sel(v.type, [['', 'All types'], ...TYPES.map(t => [t, t])], x => { v.type = x; ctx.render(); }),
         special ? null : sel(v.color, [['', 'All colors'], ...COLORS.map(c => [c, c])], x => { v.color = x; ctx.render(); }),
         sel(v.status, STATUS_FILTERS, x => { v.status = x; ctx.render(); })),
-      h('div', { class: 'ce-grid' },
-        (v.order = shown.map(c => c.id), shown.map(c => tile(c, drafts[c.id]))),
-        h('div', { class: 'ce-tile ce-tile-new' },
+      ...groupedGrid(shown, drafts, h('div', { class: 'ce-tile ce-tile-new' },
           h('span', { class: 'plus' }, '+'), h('span', {}, 'New card'),
           h('div', { class: 'ce-newtypes' }, (special ? [newType] : NEW_TYPES).map(t => h('button', { type: 'button', class: 'ghost', onclick: () => ctx.newCard(s.code, t) }, t))),
           h('small', { class: 'muted' }, `Next code: ${next}`))));
+  }
+
+  // Heroji i evolucije su vodoravni, ostale karte okomite (Marko 2026-11-03): dvije mreže, a u prvoj ispod svakog
+  // heroja njegove evolucije (po razini). Redoslijed mreže je i redoslijed za Prev / Next na stranici karte.
+  function groupedGrid(shown, drafts, newTile) {
+    const byId = (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true });
+    const heroes = shown.filter(c => c.type === 'Hero').sort(byId);
+    const evos = shown.filter(c => c.type === 'Evolution');
+    const wide = [];
+    for (const hero of heroes) {
+      wide.push(hero);
+      wide.push(...evos.filter(e => e.hero === hero.name).sort((a, b) => (a.evo ?? 0) - (b.evo ?? 0) || byId(a, b)));
+    }
+    wide.push(...evos.filter(e => !wide.includes(e)).sort(byId));
+    const tall = shown.filter(c => c.type !== 'Hero' && c.type !== 'Evolution').sort(byId);
+    v.order = [...wide, ...tall].map(c => c.id);
+    const out = [];
+    if (wide.length) out.push(h('h3', { class: 'ce-grid-head' }, `Heroes & evolutions (${wide.length})`), h('div', { class: 'ce-grid wide' }, wide.map(c => tile(c, drafts[c.id]))));
+    out.push(h('h3', { class: 'ce-grid-head' }, wide.length ? `Cards (${tall.length})` : `${tall.length} cards`), h('div', { class: 'ce-grid' }, tall.map(c => tile(c, drafts[c.id])), newTile));
+    return out;
   }
 
   // Nova karta: tip se bira (Hero, Evolution, Action, Equipment, Assist); Stage i Core imaju svoj.
