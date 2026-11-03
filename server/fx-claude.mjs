@@ -1,5 +1,5 @@
 // Claude predlaže fx (GDD 14: Claude predlaže, Marko potvrđuje), a ključ ostaje samo na ovom računalu.
-// Card Studio (kod Marka ili Tarika) zapiše zahtjev u data/fx-requests/<kod>.json u zajedničkom folderu;
+// Card Studio (na bilo kojem računalu sa zajedničkim folderom) zapiše zahtjev u data/fx-requests/<kod>.json u zajedničkom folderu;
 // ovaj radnik ga vidi, pita Claude API, provjeri retke gramatikom igre i zapiše odgovor u
 // data/fx-claude/<kod>.json; Syncthing ga vrati onome tko je pitao. Bez ključa radnik ne radi ništa.
 import fs from 'node:fs/promises';
