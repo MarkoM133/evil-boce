@@ -6,6 +6,7 @@ import fs from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startFxWorker } from './fx-claude.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = path.join(ROOT, 'server', 'config.local.json');
@@ -22,6 +23,8 @@ async function loadConfig() {
   return {
     drive: path.resolve(drive),
     port: Number(process.env.PORT || cfg.port || 5100),
+    // Ključ za Claude prijedloge fx-a (server/fx-claude.mjs); samo ovdje, nikad u gitu ni u pregledniku.
+    anthropicApiKey: cfg.anthropicApiKey || '',
     hosts: (process.env.HOST ? process.env.HOST.split(',') : cfg.hosts || ['127.0.0.1']).map(s => s.trim()).filter(Boolean),
   };
 }
@@ -279,3 +282,4 @@ function listen(host, retry = false) {
 }
 
 for (const host of cfg.hosts) listen(host);
+startFxWorker({ root: ROOT, drive: cfg.drive, apiKey: cfg.anthropicApiKey });

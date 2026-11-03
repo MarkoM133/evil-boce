@@ -56,6 +56,7 @@ export function createEditor(env) {
     id: null, base: null, work: null, art: null, artFor: null, emblem: null, emblemFor: null, dirty: false,
     undo: [], snapAt: 0, view: 'card', artMode: false, lock: null, last: undefined, balOpen: true, pubOff: new Set(),
     canvas: null, frame: 0, from: 'sets', thumbs: new Map(),
+    claude: {}, // Claude prijedlozi fx-a po karti: { waiting, at, res } (vidi askClaude)
   };
   const store = () => env.state.store;
   const canWrite = () => store()?.kind === 'folder';
@@ -291,6 +292,68 @@ export function createEditor(env) {
     return panel('Same frame', h('p', { class: 'small' }, `${PORTRAIT.join(', ').replace(/, (?=[^,]*$)/, ' and ')} share this frame. Only the small type label changes.`), h('div', { class: 'ce-minis' }, figs));
   }
 
+  // Claude prijedlog fx-a (Marko 2026-11-03): zahtjev ide u data/fx-requests/ u zajedničkom folderu, server na
+  // Markovom računalu (server/fx-claude.mjs, ključ samo tamo) pita Claude i vrati odgovor u data/fx-claude/.
+  const CLAUDE_REQ = id => `data/fx-requests/${id}.json`;
+  const CLAUDE_RES = id => `data/fx-claude/${id}.json`;
+  const claudeText = w => toWords(w.text ?? '');
+
+  async function askClaude(w) {
+    const at = new Date().toISOString();
+    const req = { id: w.id, name: w.name, type: w.type, color: w.color, bonusColors: w.bonusColors, hero: w.hero, cost: w.cost,
+      traits: w.traits, text: claudeText(w), who: who(), at };
+    await fs.writeFile(store().root, CLAUDE_REQ(w.id), JSON.stringify(req, null, 2) + '\n');
+    ed.claude[w.id] = { waiting: true, at, res: ed.claude[w.id]?.res ?? null };
+    env.render();
+    pollClaude(w.id, at);
+  }
+
+  // Čeka odgovor (Syncthing ga donese za par sekundi dok je Markov server upaljen); najviše ~10 minuta.
+  async function pollClaude(id, at, tries = 0) {
+    const res = await readJson(CLAUDE_RES(id), null).catch(() => null);
+    const st = ed.claude[id];
+    if (!st || st.at !== at) return;
+    if (res && res.askedAt === at) {
+      ed.claude[id] = { waiting: false, at, res };
+      if (ed.id === id) env.render();
+      return;
+    }
+    if (tries > 200) { ed.claude[id] = { ...st, waiting: false, late: true }; if (ed.id === id) env.render(); return; }
+    setTimeout(() => pollClaude(id, at, tries + 1), 3000);
+  }
+
+  async function loadClaude(id) {
+    if (ed.claude[id] || !store()) return;
+    ed.claude[id] = { waiting: false, at: null, res: null };
+    const res = await readJson(CLAUDE_RES(id), null).catch(() => null);
+    if (res) { ed.claude[id] = { waiting: false, at: res.askedAt, res }; if (ed.id === id) env.render(); }
+  }
+
+  function claudeBlock(w, box) {
+    loadClaude(w.id);
+    const st = ed.claude[w.id] ?? {};
+    const r = st.res;
+    const ask = h('button', { class: 'ghost', type: 'button', disabled: !canWrite() || st.waiting || !claudeText(w).trim(),
+      title: !canWrite() ? 'Open the shared folder to ask Claude' : 'Claude proposes the fx on Marko\'s computer; it comes back here in a few seconds',
+      onclick: () => env.guard(() => askClaude(w)) }, st.waiting ? 'Asking Claude…' : r ? 'Ask Claude again' : 'Ask Claude');
+    const parts = [ask];
+    if (st.waiting) parts.push(h('p', { class: 'small muted' }, 'Waiting for Claude. Marko\'s computer answers while its Card Studio server runs; the request waits in the folder otherwise.'));
+    if (st.late) parts.push(h('p', { class: 'small warn' }, 'No answer yet. Is the server on Marko\'s computer running? The request is still in the folder.'));
+    if (r?.error) parts.push(h('p', { class: 'small warn' }, `Claude could not answer: ${r.error}`));
+    else if (r) {
+      const stale = r.askedText != null && r.askedText !== claudeText(w);
+      const use = () => { snap(true); w.fx = r.fx || undefined; w.fxStatus = r.fx ? 'check' : undefined; box.value = r.fx ?? ''; changed(); env.render(); };
+      parts.push(h('div', { class: 'ce-claude' },
+        h('p', { class: 'small muted' }, `Claude's proposal${r.who ? ` (asked by ${r.who})` : ''}${stale ? ', for an older text' : ''}:`),
+        h('pre', { class: 'ce-fx-code ce-claude-fx' }, r.fx || '(no fx needed)'),
+        r.problems?.length ? h('p', { class: 'small warn' }, 'The game would not read: ', r.problems.map(p => `${p.line} (${p.problem})`).join(' · ')) : null,
+        r.unsure?.length ? h('ul', { class: 'small ce-claude-unsure' }, r.unsure.map(u => h('li', {}, u))) : null,
+        r.notes ? h('p', { class: 'small' }, r.notes) : null,
+        h('button', { class: 'ghost', type: 'button', disabled: !!r.problems?.length || stale, title: r.problems?.length ? 'The game would not read it' : stale ? 'Ask again: the text changed' : 'Put it in the fx box, still to be confirmed', onclick: use }, 'Use this')));
+    }
+    return h('div', { class: 'ce-claude-box' }, parts);
+  }
+
   // fx za igru: prijedlog iz data/fx-proposals.json (igrin alat nakon Objave), potvrđuje se ovdje (GDD 14).
   function fxPanel(w) {
     const p = env.state.fxProposals?.cards?.[w.id];
@@ -312,6 +375,7 @@ export function createEditor(env) {
       h('div', { class: 'ce-panel-head' }, h('h3', {}, 'fx for the game'),
         h('button', { class: 'ghost', type: 'button', disabled: textChanged || !p?.proposal, title: textChanged ? 'Publish first: the proposal is for the published text' : '', onclick: propose }, 'Propose fx')),
       box, h('p', { class: `small ${p?.unparsed?.length && !w.fx ? 'warn' : 'muted'}` }, note),
+      claudeBlock(w, box),
       w.fx && w.fxStatus === 'check' ? h('p', { class: 'small warn' }, 'Not confirmed: a proposal, or the text changed after it. Check it against the text, then Confirm (or edit it) and Save.') : null,
       w.fx && w.fxStatus === 'check' ? h('button', { class: 'ghost', type: 'button', onclick: () => { snap(true); w.fxStatus = 'ok'; changed(); env.render(); } }, 'Confirm fx') : null,
       !w.new && env.openEffect ? h('button', { class: 'link small', type: 'button', onclick: () => env.openEffect(w.id) }, 'What the game reads →') : null);
