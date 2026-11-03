@@ -59,15 +59,18 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-lockchip { font: 600 14px var(--text); color: var(--straw); background: var(--straw-wash); padding: 9px 14px; display: inline-flex; gap: 10px; align-items: center; }
 .ce-lockchip.other { color: var(--bone); background: var(--red-wash); }
 .ce-lockchip.muted { color: var(--muted); background: none; }
-.ce-cols { display: grid; grid-template-columns: 280px minmax(320px, 1fr) minmax(360px, 480px); grid-template-areas: "side centre form"; gap: 28px; align-items: start; }
-.ce-cols.wide { grid-template-columns: 270px minmax(420px, 1.3fr) minmax(360px, 440px); }
+.ce-cols { display: grid; grid-template-columns: minmax(240px, 280px) minmax(300px, 1fr) minmax(340px, 480px); grid-template-areas: "side centre form"; gap: 24px; align-items: start; }
+.ce-cols.wide { grid-template-columns: minmax(240px, 270px) minmax(380px, 1.3fr) minmax(340px, 440px); }
 .ce-cols > .ce-side { grid-area: side; }
 .ce-cols > .ce-centre { grid-area: centre; }
 .ce-cols > .ce-form { grid-area: form; }
-/* Uže (laptop, izbornik lijevo): karta i paneli lijevo, forma desno. */
-@container (max-width: 1180px) {
+/* Uže (laptop, izbornik lijevo): karta i paneli lijevo, forma desno. Tri stupca drže do ~1000 px sadržaja
+   (Marko 2026-11-03: na 100 % u Chromeu na laptopu bila su dva). U dva stupca karta više nije ljepljiva:
+   klizila je preko panela ispod sebe (fx, Balance). */
+@container (max-width: 1000px) {
   .ce-cols, .ce-cols.wide { grid-template-columns: minmax(300px, 0.9fr) minmax(340px, 1.1fr); grid-template-areas: "centre form" "side form"; }
   .ce-cols > .ce-side { position: static; max-height: none; }
+  .ce-cols > .ce-centre { position: static; }
 }
 @container (max-width: 720px) {
   .ce-cols, .ce-cols.wide { grid-template-columns: minmax(0, 1fr); grid-template-areas: "centre" "form" "side"; }

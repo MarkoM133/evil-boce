@@ -765,6 +765,16 @@ const PEOPLE = [['Marko', 'Publishes cards into the game, edits the frames'], ['
 // Prvo postavljanje na jednom ekranu (Marko 2026-11-02): 1. zajednički folder, 2. tko radi na ovom računalu.
 // Drugi korak se otvori na istom mjestu čim je folder otvoren; zapamćeno ime ga preskače (render ide dalje).
 // Preglednik bez File System Access (mobitel, Firefox, Safari) dobije samo objašnjenje.
+// Zašto ne ide (Marko 2026-11-03: Tarik je probao u Firefoxu): Firefox i Safari nemaju pristup folderu iz stranice,
+// pa ni s računala; na mobitelu ga nema nijedan preglednik.
+function noFolderNote() {
+  const ua = navigator.userAgent;
+  const phone = /Android|iPhone|iPad|Mobile/i.test(ua);
+  if (phone) return 'A phone browser can\'t open a folder. Open the page on a computer in Chrome or Edge.';
+  const name = /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) && !/Chrome\//.test(ua) ? 'Safari' : 'This browser';
+  return `${name} can't open a folder from a web page, so Card Studio can't read or save the cards here. Open the page in Chrome or Edge.`;
+}
+
 function renderSetup() {
   const can = !!window.showDirectoryPicker;
   const open = !!state.store;
@@ -782,7 +792,7 @@ function renderSetup() {
     folderBody = h('div', { class: 'setup-detail' },
       h('p', { class: 'muted' }, 'The shared Evil Boće folder that Syncthing keeps in step, with data/ inside. The browser remembers it.'),
       actions,
-      can ? null : h('p', { class: 'error-text' }, 'This browser can\'t open a folder. Open the page on a computer in Chrome or Edge.'));
+      can ? null : h('p', { class: 'error-text' }, noFolderNote()));
     if (can) fs.loadRoot().then(handle => {
       if (!handle || state.store) return;
       actions.append(h('button', { class: 'ghost', onclick: () => guard(() => resume(handle)) }, `Continue with "${handle.name}"`));
