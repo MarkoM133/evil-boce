@@ -59,17 +59,17 @@
       const canvas = document.createElement('canvas');
       const art = card.art ? await loadImage(`/data/${card.art}`).catch(() => null) : null;
       const emblem = card.emblem ? await loadImage(`/data/${card.emblem}`).catch(() => null) : null;
-      RENDER_OPTS.bonusChips = chipsMode === '1';
+      RENDER_OPTS.bonusChips = chipsMode === '1' ? true : chipsMode === 'inline' ? 'inline' : false;
       const warnings = renderCard(canvas, card, tpl, art, emblem);
       fig.append(canvas, Object.assign(document.createElement('figcaption'), { textContent: `${chipsMode === 'both' ? 'Now · ' : ''}Editor renderer${tpl.layers || tpl.frames ? '' : ' (interim frame)'} · ${warnings.join(' ') || 'no warnings'}` }));
       row.append(fig);
-      if (chipsMode === 'both') {
+      for (const [mode, label] of chipsMode === 'both' ? [[true, 'Bonus as a chip'], ['inline', 'Bonus after the number']] : []) {
         const fig2 = document.createElement('figure');
         const c2 = document.createElement('canvas');
-        RENDER_OPTS.bonusChips = true;
+        RENDER_OPTS.bonusChips = mode;
         renderCard(c2, card, tpl, art, emblem);
         RENDER_OPTS.bonusChips = false;
-        fig2.append(c2, Object.assign(document.createElement('figcaption'), { textContent: 'Bonus as a chip' }));
+        fig2.append(c2, Object.assign(document.createElement('figcaption'), { textContent: label }));
         row.append(fig2);
       }
       out.append(row);

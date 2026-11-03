@@ -126,13 +126,13 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   if (color === 'None' && L.cost && card.cost != null) drawCostRim(ctx, L.cost.box, card.bonusColors ?? []);
   fitLine(ctx, card.type ?? '', L.type, { font: TITLE_FONT, color: ink(L.type) });
   fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: ink(L.code) });
-  drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
-  if (L.tags && !drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag bar.');
   let text = card.text ?? '';
-  if (RENDER_OPTS.bonusChips && L.bonus) {
-    const { rest, chips } = statBonusLines(text);
-    if (chips.length) { text = rest; drawBonusChips(ctx, chips, card.bonus ?? {}, L, tpl.icons); }
-  }
+  let chips = [];
+  if (RENDER_OPTS.bonusChips && L.bonus) ({ rest: text, chips } = statBonusLines(text));
+  if (RENDER_OPTS.bonusChips === 'inline' && chips.length) drawBonusInline(ctx, card.bonus ?? {}, chips, L, tpl.icons);
+  else drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
+  if (chips.length && RENDER_OPTS.bonusChips !== 'inline') drawBonusChips(ctx, chips, card.bonus ?? {}, L, tpl.icons);
+  if (L.tags && !drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag bar.');
   const t = drawEffect(ctx, text, color, L.effect, tpl.icons);
   if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
   return warnings;
@@ -226,6 +226,51 @@ export function statBonusLines(text) {
   }
   // A phase line left with nothing under it ("Battle Phase:") still says when the card is played.
   return { rest: rest.join('\n'), chips };
+}
+
+// Kao drawBonus, ali iza broja stata s bonusom boje ide "(+ukupno)" u boji bonusa; nema li običnog bonusa, samo
+// "(+n)". Tekst ide od lijevog ruba broja do ikone idućeg stata u redu (ili ruba karte), smanjen dok ne stane.
+function drawBonusInline(ctx, bonus, chips, L, icons) {
+  const extra = Object.fromEntries(chips.map(c => [c.stat, c]));
+  const slots = Object.entries(L.bonus ?? {});
+  for (const [k, slot] of slots) {
+    const v = bonus[k];
+    const c = extra[k];
+    if (!v && !c) continue;
+    const icon = icons[`stat-${k}`];
+    if (icon) {
+      const [ix, iy, iw, ih] = slot.icon;
+      const s = Math.min(iw / icon.width, ih / icon.height) * 0.72;
+      ctx.drawImage(tinted(icon, STAT_TINTS[k]), ix + (iw - icon.width * s) / 2, iy + (ih - icon.height * s) / 2, icon.width * s, icon.height * s);
+    }
+    const [vx, vy, vw, vh] = slot.value;
+    if (!c) { fitLine(ctx, `${v > 0 ? '+' : ''}${v}`, { box: slot.value, size: slot.size ?? 106, min: 40 }, { font: TITLE_FONT, color: '#ffffff' }); continue; }
+    // Room to the right: up to the next icon in the same row, else to the card's edge.
+    const next = slots.map(([, s2]) => s2.icon).filter(i => Math.abs(i[1] - vy) < 10 && i[0] > vx).map(i => i[0]);
+    const right = (next.length ? Math.min(...next) : CARD_W - 60) - 12;
+    const total = (v ?? 0) + c.value;
+    const head = v ? `${v > 0 ? '+' : ''}${v} ` : '';
+    const tail = `(${total > 0 ? '+' : ''}${total})`;
+    let size = slot.size ?? 106;
+    ctx.font = `${size}px ${TITLE_FONT}`;
+    while (size > 40 && ctx.measureText(head + tail).width > right - vx) { size -= 2; ctx.font = `${size}px ${TITLE_FONT}`; }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const ty = vy + vh / 2 + size * 0.04;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(head, vx, ty);
+    const tx = vx + ctx.measureText(head).width;
+    const cols = c.colors.length ? c.colors : ['Yellow'];
+    if (cols.length > 1) {
+      // Two colours: the bracket text in a left-to-right blend of both.
+      const tw = ctx.measureText(tail).width;
+      const g = ctx.createLinearGradient(tx, 0, tx + tw, 0);
+      g.addColorStop(0, BONUS_DOT[cols[0]] ?? '#ffffff');
+      g.addColorStop(1, BONUS_DOT[cols[1]] ?? '#ffffff');
+      ctx.fillStyle = g;
+    } else ctx.fillStyle = BONUS_DOT[cols[0]] ?? '#ffffff';
+    ctx.fillText(tail, tx, ty);
+  }
 }
 
 // Čip: zaobljen, rub u boji bonusa (dvije boje: pola-pola), točka boje, ikona stata i broj. Na mjestu stata kad
