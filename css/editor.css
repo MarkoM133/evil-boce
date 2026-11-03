@@ -339,3 +339,9 @@ button.link.accent, .accent { color: var(--straw); }
 
 /* Crta u lijevoj navigaciji između gledanja (Cards, Decks, Balance) i izrade (Card editor, Tools). */
 .tabs .tabs-sep { display: block; height: 1px; background: var(--line); margin: 10px 14px; }
+
+/* Sets & packs: blok po setu i Mixed packs */
+.ce-all-settings { display: grid; gap: 22px; }
+.ce-settings-block { display: grid; gap: 10px; scroll-margin-top: 20px; }
+.ce-settings-head { display: flex; gap: 12px; align-items: center; }
+.ce-settings-head h2 { margin: 0; }

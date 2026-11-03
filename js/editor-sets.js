@@ -104,7 +104,7 @@ export function createSetsView(ctx) {
     const list = sets();
     v.code ??= list[0]?.code ?? 'Stage';
     // Lijevo setovi | Stages, Cores; desno rijetke stvari: Draft packs (default paket) i + New set (Marko 2026-11-03).
-    const tab = ([code, label]) => h('button', { type: 'button', class: code === v.code ? 'active' : '', onclick: () => { v.code = code; v.settings = false; ctx.render(); } },
+    const tab = ([code, label]) => h('button', { type: 'button', class: code === v.code ? 'active' : '', onclick: () => { v.code = code; ctx.render(); } },
       NOT_SETS.includes(code) ? null : packImg(code, 'ce-settab-pack'), label);
     return h('div', { class: 'ce-page ce-sets' },
       h('nav', { class: 'ce-settabs' },
@@ -112,9 +112,9 @@ export function createSetsView(ctx) {
         h('span', { class: 'ce-settab-sep', 'aria-hidden': 'true' }),
         tab(['Stage', 'Stages']), tab(['Core', 'Cores']),
         h('span', { class: 'ce-settab-rest' },
-          h('button', { type: 'button', class: `ce-settab-pref${v.code === 'default' ? ' active' : ''}`, title: 'Pack size, pack image and Draft background for packs that mix sets', onclick: () => { v.code = 'default'; ctx.render(); } }, '⚙ Draft packs'),
+          h('button', { type: 'button', class: `ce-settab-pref${v.code === 'default' ? ' active' : ''}`, title: 'Name, number, pack size, pack image and Draft background of every set, and of packs that mix sets', onclick: () => { v.code = 'default'; v.focus = null; ctx.render(); } }, '⚙ Sets & packs'),
           newSetButton(list))),
-      v.code === 'default' ? renderDefault() : renderSet(list.find(s => s.code === v.code) ?? { code: v.code, name: nameOf(v.code) }, list));
+      v.code === 'default' ? renderAllSettings(list) : renderSet(list.find(s => s.code === v.code) ?? { code: v.code, name: nameOf(v.code) }, list));
   }
 
   function newSetButton(list) {
@@ -124,8 +124,8 @@ export function createSetsView(ctx) {
       if (!CODE_RE.test(code)) throw new Error('A set code is 2–4 capital letters and a number, e.g. OP2 or NR1.');
       if (list.some(s => s.code === code)) throw new Error(`Set ${code} already exists.`);
       await save({ code, name: code, number: Math.max(0, ...list.map(s => s.number)) + 1, packSize: DEFAULT_PACK });
-      v.code = code;
-      v.settings = true;
+      v.code = 'default';
+      v.focus = code;
       ctx.render();
     }) }, '+ New set');
   }
@@ -157,9 +157,7 @@ export function createSetsView(ctx) {
           h('h1', {}, s.name),
           h('p', { class: 'muted' }, special ? `${all.length} cards` : `Set ${String(s.number).padStart(2, '0')} · ${all.length} cards · ${s.packSize ?? DEFAULT_PACK} per pack`)),
         h('div', { class: 'ce-page-actions' },
-          special ? null : h('button', { class: 'ghost', type: 'button', onclick: () => { v.settings = !v.settings; ctx.render(); } }, 'Set settings'),
           newCardButton(s.code, special ? [newType] : NEW_TYPES, 'primary'))),
-      v.settings && !special ? renderSettings(s, list) : null,
       h('div', { class: 'ce-filters' },
         h('input', { type: 'search', placeholder: 'Search name, text or tag…', value: v.q, oninput: e => { v.q = e.target.value; clearTimeout(v.qt); v.qt = setTimeout(ctx.render, 250); } }),
         special ? null : sel(v.type, [['', 'All types'], ...TYPES.map(t => [t, t])], x => { v.type = x; ctx.render(); }),
@@ -204,6 +202,22 @@ export function createSetsView(ctx) {
       h('small', { class: 'muted' }, `data/sets/${code}/${name}${hint ? ` · ${hint}` : ''}`));
   }
 
+  // Sve postavke setova i miješanih paketa na jednom mjestu (Marko 2026-11-03): blok po setu, Mixed packs na dnu.
+  function renderAllSettings(list) {
+    const page = h('section', { class: 'ce-set ce-all-settings' },
+      h('header', { class: 'ce-set-head' },
+        h('div', { class: 'ce-set-title' }, h('p', { class: 'muted small' }, 'Card editor / Sets'), h('h1', {}, 'Sets & packs'),
+          h('p', { class: 'muted' }, 'Name, number and Draft pack of every set; the mixed pack is for a Draft whose cards come from several sets.'))),
+      list.map(s => h('div', { class: 'ce-settings-block', id: `set-${s.code}` },
+        h('div', { class: 'ce-settings-head' }, packImg(s.code, 'ce-settab-pack'), h('h2', {}, `${s.name} · ${s.code}`)),
+        renderSettings(s, list))),
+      h('div', { class: 'ce-settings-block', id: 'set-default' },
+        h('div', { class: 'ce-settings-head' }, packImg('default', 'ce-settab-pack'), h('h2', {}, 'Mixed packs')),
+        renderDefaultPanel()));
+    if (v.focus) { const at = v.focus; v.focus = null; setTimeout(() => document.getElementById(`set-${at}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
+    return page;
+  }
+
   function renderSettings(s, list) {
     const work = { ...s };
     const field = (label, input, hint) => h('label', { class: 'ce-field' }, h('span', {}, label), input, hint ? h('small', { class: 'muted' }, hint) : null);
@@ -218,20 +232,15 @@ export function createSetsView(ctx) {
       h('div', { class: 'ce-actions' },
         h('button', { class: 'primary', type: 'button', disabled: !ctx.canWrite(), onclick: () => ctx.guard(async () => {
           await save(work);
-          v.settings = false;
           ctx.toast(`Set ${s.code} saved.`);
           ctx.render();
         }) }, 'Save set'),
         ctx.canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer).')));
   }
 
-  function renderDefault() {
+  function renderDefaultPanel() {
     const size = { packSize: v.saved?.default?.packSize ?? DEFAULT_PACK };
-    return h('section', { class: 'ce-set' },
-      h('header', { class: 'ce-set-head' }, packImg('default', 'ce-set-pack'),
-        h('div', { class: 'ce-set-title' }, h('p', { class: 'muted small' }, 'Card editor / Sets / default'), h('h1', {}, 'Default pack'),
-          h('p', { class: 'muted' }, 'The pack for a Draft that mixes several sets (black, with the logo).'))),
-      h('section', { class: 'ce-panel ce-set-settings' },
+    return h('section', { class: 'ce-panel ce-set-settings' },
         h('div', { class: 'ce-row' },
           h('label', { class: 'ce-field' }, h('span', {}, 'CARDS PER PACK'),
             h('input', { type: 'number', min: 1, max: 30, value: size.packSize, oninput: e => { size.packSize = Number(e.target.value) || DEFAULT_PACK; } }),
@@ -242,9 +251,9 @@ export function createSetsView(ctx) {
         h('div', { class: 'ce-actions' },
           h('button', { class: 'primary', type: 'button', disabled: !ctx.canWrite(), onclick: () => ctx.guard(async () => {
             await save(null, size);
-            ctx.toast('Default pack saved.');
+            ctx.toast('Mixed packs saved.');
             ctx.render();
-          }) }, 'Save'))));
+          }) }, 'Save')));
   }
 
   return {
