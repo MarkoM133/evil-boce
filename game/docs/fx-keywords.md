@@ -65,6 +65,11 @@ equipment), `ENEMY` / `FRIENDLY` (the player picks one; one candidate is picked 
 `EACH_HERO` (on a stage: those standing on it), `MOST_HP`, `MOST_PWR` (on a stage; nobody on a tie).
 Players: `ME`, `OPP`.
 
+Who a group holds: `ALL_FRIENDLY` and `ALL_ENEMY` are every hero of that side that is not KO, SELF
+included in `ALL_FRIENDLY`. `ALL_OTHER_IN_RANGE` and `ALL_FRIENDLY_IN_RANGE` never include SELF ("other
+friendly Heroes in range" is `ALL_FRIENDLY_IN_RANGE`). Under `PASSIVE` every group is read live: a hero that
+moves into or out of range gains or loses the effect at once.
+
 ### VERBS
 
 | Verb | Args | What it does |
