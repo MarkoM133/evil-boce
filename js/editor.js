@@ -389,35 +389,58 @@ export function createEditor(env) {
     if (res) { ed.claude[id] = { waiting: false, at: res.askedAt, res }; if (ed.id === id) env.render(); }
   }
 
+  const normFx = x => String(x ?? '').split('\n').map(l => l.trim().replace(/\s+/g, ' ').toUpperCase()).filter(Boolean).join('\n');
+
+  // Gumb Ask Claude: uvijek isti natpis i isto mjesto (desno u redu ispod fx kutije).
+  function askClaudeButton(w) {
+    const st = ed.claude[w.id] ?? {};
+    return h('button', { class: 'ce-fx-ask', type: 'button', disabled: !canWrite() || st.waiting || !claudeText(w).trim(),
+      title: !canWrite() ? 'Open the shared folder to ask Claude' : st.res ? 'Ask Claude again for this text' : 'Claude proposes the fx on Marko\'s computer; it comes back here in a few seconds',
+      onclick: () => env.guard(() => askClaude(w)) }, st.waiting ? '✦ Asking…' : '✦ Ask Claude');
+  }
+
+  // Claudeov prijedlog ispod fx kutije. Ako je već u kutiji, jedan redak; napomene se otvaraju na klik.
   function claudeBlock(w, box) {
     loadClaude(w.id);
     const st = ed.claude[w.id] ?? {};
     const r = st.res;
-    const ask = h('button', { class: 'ghost', type: 'button', disabled: !canWrite() || st.waiting || !claudeText(w).trim(),
-      title: !canWrite() ? 'Open the shared folder to ask Claude' : 'Claude proposes the fx on Marko\'s computer; it comes back here in a few seconds',
-      onclick: () => env.guard(() => askClaude(w)) }, st.waiting ? 'Asking Claude…' : r ? 'Ask Claude again' : 'Ask Claude');
-    const parts = [ask];
+    const parts = [];
     if (st.waiting) parts.push(h('p', { class: 'small muted' }, 'Waiting for Claude. Marko\'s computer answers while its Card Studio server runs; the request waits in the folder otherwise.'));
     if (st.late) parts.push(h('p', { class: 'small warn' }, 'No answer yet. Is the server on Marko\'s computer running? The request is still in the folder.'));
     if (r?.error) parts.push(h('p', { class: 'small warn' }, `Claude could not answer: ${r.error}`));
     else if (r) {
       const stale = r.askedText != null && r.askedText !== claudeText(w);
       const use = () => { snap(true); w.fx = r.fx || undefined; w.fxStatus = r.fx ? 'check' : undefined; box.value = r.fx ?? ''; changed(); env.render(); };
-      const normFx = x => String(x ?? '').split('\n').map(l => l.trim().replace(/\s+/g, ' ').toUpperCase()).filter(Boolean).join('\n');
       const inUse = !!r.fx && normFx(w.fx) === normFx(r.fx);
-      parts.push(h('div', { class: 'ce-claude' },
-        h('p', { class: 'small muted' }, `Claude's proposal${r.who ? ` (asked by ${r.who})` : ''}${stale ? ', for an older text' : ''}:`),
-        h('pre', { class: 'ce-fx-code ce-claude-fx' }, r.fx || '(no fx needed)'),
-        r.problems?.length ? h('p', { class: 'small warn' }, 'The game would not read: ', r.problems.map(p => `${p.line} (${p.problem})`).join(' · ')) : null,
+      const src = h('span', { class: 'ce-prop-src' }, 'Claude', r.who ? ` · ${r.who}` : '');
+      const staleLine = stale ? h('p', { class: 'small warn' }, 'For an older text: ask again.') : null;
+      const gameRead = env.state.fxProposals?.cards?.[w.id]?.read;
+      const sameAsGame = !!r.fx && !!gameRead && normFx(r.fx) === normFx(gameRead) && !stale;
+      const notes = [
         r.unsure?.length ? h('ul', { class: 'small ce-claude-unsure' }, r.unsure.map(u => h('li', {}, u))) : null,
         r.notes ? h('p', { class: 'small' }, r.notes) : null,
-        r.agree === true ? h('p', { class: 'small ok' }, '✓ Claude reads the card the same way as the game.') : r.agree === false ? h('p', { class: 'small warn' }, 'Claude reads it differently from the game: compare the two and fix the text, or use Claude\'s fx.') : null,
+        r.agree === true ? h('p', { class: 'small ok' }, '✓ Claude reads the card the same way as the game.') : null,
+      ].filter(Boolean);
+      const warns = [
+        r.problems?.length ? h('p', { class: 'small warn' }, 'The game would not read: ', r.problems.map(p => `${p.line} (${p.problem})`).join(' · ')) : null,
+        r.agree === false ? h('p', { class: 'small warn' }, 'Claude reads it differently from the game: compare the two and fix the text, or use Claude\'s fx.') : null,
         r.extensions?.length ? h('p', { class: 'small' }, 'Needs new words, on the ', h('button', { class: 'link', type: 'button', onclick: () => go('wishlist') }, 'fx wishlist'), ': ', r.extensions.map(x => x.word).join(' · ')) : null,
-        // Once the fx box holds this proposal, say so instead of offering it again (Marko 2026-11-05).
-        inUse ? h('p', { class: `small ${w.fxStatus === 'check' ? 'warn' : 'ok'}` }, w.fxStatus === 'check' ? '✓ In the fx box. Confirm it below.' : '✓ In the fx box and confirmed.')
-          : h('button', { class: 'ghost', type: 'button', disabled: !!r.problems?.length || stale, title: r.problems?.length ? 'The game would not read it' : stale ? 'Ask again: the text changed' : 'Put it in the fx box, still to be confirmed', onclick: use }, 'Use this')));
+      ].filter(Boolean);
+      const noteList = n => n.length ? h('details', { class: 'ce-prop-notes' }, h('summary', { class: 'small' }, `▸ ${n.length === 1 ? '1 note' : n.length + ' notes'}`), n) : null;
+      if (inUse || sameAsGame) {
+        parts.push(h('div', { class: 'ce-claude ce-prop-same' },
+          h('p', { class: 'ce-prop-head' }, src, h('span', { class: 'small ok' }, inUse ? '✓ in the box' : '✓ same as the game')),
+          staleLine, ...warns, noteList(notes)));
+      } else {
+        parts.push(h('div', { class: 'ce-claude' },
+          h('p', { class: 'ce-prop-head' }, src, h('button', { class: 'ce-prop-use', type: 'button', disabled: !r.fx || !!r.problems?.length || stale,
+            title: !r.fx ? 'Claude proposes no fx' : r.problems?.length ? 'The game would not read it' : stale ? 'Ask again: the text changed' : 'Put it in the fx box, still to be confirmed', onclick: use }, 'Use this')),
+          staleLine,
+          h('pre', { class: 'ce-fx-code ce-claude-fx' }, r.fx || '(no fx needed)'),
+          ...warns, ...notes));
+      }
     }
-    return h('div', { class: 'ce-claude-box' }, parts);
+    return parts.length ? h('div', { class: 'ce-claude-box' }, parts) : null;
   }
 
   // Kartice na vrhu spojenih stranica: Publish | Waiting for the game, Tags | Phrases (Marko 2026-11-03).
@@ -534,29 +557,36 @@ export function createEditor(env) {
   function gameProposal(w, p, textChanged) {
     if (textChanged || !p || p.unparsed?.length || !(w.text ?? '').trim()) return null;
     const read = p.read ?? '';
-    const norm = x => String(x ?? '').split('\n').map(l => l.trim().replace(/\s+/g, ' ').toUpperCase()).filter(Boolean).join('\n');
-    if (w.fx && norm(w.fx) === norm(read)) return null;
-    return h('div', { class: 'ce-claude' },
-      h('p', { class: 'small muted' }, w.fx ? 'The game would read the text as:' : 'The game reads the text as (proposal):'),
-      h('pre', { class: 'ce-fx-code ce-claude-fx' }, read || '(nothing to run)'),
-      h('button', { class: 'ghost', type: 'button', disabled: !canWrite() || !read, title: 'Put it in the fx box, still to be confirmed', onclick: () => { snap(true); w.fx = read; w.fxStatus = 'check'; changed(); env.render(); } }, 'Use this'));
+    if (w.fx && normFx(w.fx) === normFx(read)) return null;
+    return h('div', { class: 'ce-claude ce-prop-game' },
+      h('p', { class: 'ce-prop-head' }, h('span', { class: 'ce-prop-src' }, 'The game reads'),
+        h('button', { class: 'ce-prop-use', type: 'button', disabled: !canWrite() || !read, title: 'Put it in the fx box, still to be confirmed', onclick: () => { snap(true); w.fx = read; w.fxStatus = 'check'; changed(); env.render(); } }, 'Use this')),
+      h('pre', { class: 'ce-fx-code ce-claude-fx' }, read || '(nothing to run)'));
   }
 
   function fxPanel(w) {
     const p = env.state.fxProposals?.cards?.[w.id];
     const textChanged = !w.new && toWords(w.text ?? '') !== (ed.base.type === 'Stage' ? stripTerrain(ed.base.text) : ed.base.text ?? '');
-    const box = h('textarea', { class: 'ce-fx-code', rows: 4, spellcheck: false, placeholder: 'No fx yet: use a proposal below, or write it.', value: w.fx ?? '',
-      oninput: e => { snap(); w.fx = e.target.value.trim() ? e.target.value : undefined; w.fxStatus = w.fx ? 'ok' : undefined; changed(); } });
-    const note = !w.fx ? (textChanged || w.new ? 'No fx yet. The game\'s proposal comes after Publish; Ask Claude works now.' : !p ? 'No fx yet, and no report from the game for this card.' : p.unparsed?.length ? `No fx yet. The game does not understand: ${p.unparsed.join(' · ')}` : 'No fx yet.')
-      : w.fxStatus === 'check' ? 'Not confirmed: a proposal, or the text changed after it. Check it against the text, then Confirm (or edit it) and Save.'
-        : '✓ Confirmed: the game plays this fx.';
-    return h('section', { class: 'ce-panel' },
-      h('div', { class: 'ce-panel-head' }, h('h3', {}, 'fx for the game')),
-      box, h('p', { class: `small ${!w.fx || w.fxStatus === 'check' ? 'warn' : 'ok'}` }, note),
-      w.fx && w.fxStatus === 'check' ? h('button', { class: 'ghost', type: 'button', onclick: () => { snap(true); w.fxStatus = 'ok'; changed(); env.render(); } }, 'Confirm fx') : null,
+    const fit = el => { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px`; };
+    const box = h('textarea', { class: 'ce-fx-code ce-fx-box', rows: 2, spellcheck: false, placeholder: 'No fx yet: use a proposal below, or write it.', value: w.fx ?? '',
+      oninput: e => { snap(); fit(e.target); w.fx = e.target.value.trim() ? e.target.value : undefined; w.fxStatus = w.fx ? 'ok' : undefined; changed(); } });
+    requestAnimationFrame(() => fit(box));
+    const state = !w.fx ? 'none' : w.fxStatus === 'check' ? 'check' : 'ok';
+    const pill = h('span', { class: `ce-fx-state ${state}` }, { none: 'No fx', check: 'To confirm', ok: '✓ Confirmed' }[state]);
+    // Objašnjenje samo kad treba nešto napraviti; potvrđen fx ima samo pločicu.
+    const hint = state === 'ok' ? null : state === 'check' ? 'Check it against the text, then Confirm fx (or edit it) and Save.'
+      : textChanged || w.new ? 'The game\'s proposal comes after Publish; Ask Claude works now.'
+        : !p ? 'No report from the game for this card yet.' : p.unparsed?.length ? `The game does not understand: ${p.unparsed.join(' · ')}` : null;
+    return h('section', { class: 'ce-panel ce-fx-panel' },
+      h('div', { class: 'ce-panel-head' }, h('h3', {}, 'fx for the game'), pill),
+      box,
+      h('div', { class: 'ce-fx-actions' },
+        state === 'check' ? h('button', { class: 'publish', type: 'button', onclick: () => { snap(true); w.fxStatus = 'ok'; changed(); env.render(); } }, 'Confirm fx') : h('span'),
+        askClaudeButton(w)),
+      hint ? h('p', { class: 'small muted' }, hint) : null,
       gameProposal(w, p, textChanged),
       claudeBlock(w, box),
-      !w.new && env.openEffect ? h('button', { class: 'link small', type: 'button', onclick: () => env.openEffect(w.id) }, 'What the game reads →') : null);
+      !w.new && env.openEffect ? h('button', { class: 'link ce-fx-more', type: 'button', onclick: () => env.openEffect(w.id) }, 'What the game reads →') : null);
   }
 
   // Jednom za sve: kartama bez fx-a upiše prijedlog igre (nepotvrđen); potvrđuje se tijekom pregleda.

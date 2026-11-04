@@ -310,9 +310,27 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-bonuscol.on { color: var(--bone); box-shadow: inset 0 0 0 2px var(--sw); background: var(--surface-2); }
 
 /* Claude prijedlog fx-a u panelu fx */
-.ce-claude-box { display: grid; gap: 8px; justify-items: start; margin-top: 6px; }
+.ce-claude-box { display: grid; gap: 8px; margin-top: 4px; }
 .ce-claude { display: grid; gap: 6px; width: 100%; border-left: 3px solid var(--straw); padding-left: 10px; }
-.ce-claude-fx { margin: 0; white-space: pre-wrap; background: var(--surface-2); padding: 8px 10px; }
+.ce-claude.ce-prop-game { border-left-color: var(--muted); margin-top: 4px; }
+.ce-claude-fx { margin: 0; white-space: pre-wrap; background: var(--surface-2); padding: 8px 10px; min-height: 0; }
+/* fx panel, look A (2026-11-05): pill in the heading, a fixed button row, compact proposals. */
+.ce-fx-box { min-height: 0; resize: vertical; }
+.ce-fx-state { font: 700 12px var(--text); letter-spacing: .06em; text-transform: uppercase; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
+.ce-fx-state.ok { color: var(--c-Green, #23b14d); box-shadow: inset 0 0 0 1px currentColor; }
+.ce-fx-state.check { background: var(--straw); color: var(--black); }
+.ce-fx-state.none { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.ce-fx-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.ce-fx-actions button { font-size: 15px; padding: 8px 14px; white-space: nowrap; }
+.ce-fx-ask { min-width: 124px; }
+.ce-prop-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 8px; }
+.ce-prop-head > * { white-space: nowrap; }
+.ce-prop-src { font: 600 12px var(--text); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.ce-prop-use { font-size: 14px; padding: 6px 12px; }
+.ce-prop-notes summary { color: var(--muted); }
+.ce-prop-notes[open] summary { margin-bottom: 6px; }
+.ce-prop-notes > :not(summary) + :not(summary) { margin-top: 6px; }
+button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justify-self: start; margin-top: 2px; }
 .ce-claude-unsure { margin: 0; padding-left: 18px; color: var(--muted); }
 
 /* fx wishlist */
