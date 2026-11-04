@@ -140,14 +140,33 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-tools button { clip-path: none; font-size: 15px; padding: 9px 12px; background: var(--surface-2); }
 .ce-tools button.on { background: var(--tint, var(--straw)); color: var(--black); }
 .ce-tools button[data-range].on { background: none; box-shadow: inset 0 0 0 1px var(--tint, var(--c-Cyan)); color: var(--bone); }
-.ce-tools .tok { font: 700 14px ui-monospace, Consolas, monospace; }
-.ce-tools .tok-hp { color: var(--c-Green); background: #0d2014; }
-.ce-tools .tok-dmg { color: #ff5a4f; background: #2a0d0b; }
-.ce-tools .tok-pwr { color: var(--straw); background: var(--straw-wash); }
-.ce-tools .tok-rng { color: var(--c-Cyan); background: #0a2226; }
-.ce-tools .tok-kb { color: #7fa2ff; background: #0d1530; }
-.ce-tools .tok-en { color: #f4b62a; background: #2b2108; box-shadow: inset 0 0 0 1px #f4b62a55; }
-.ce-phrase { font-size: 14px; padding: 8px 10px; max-width: 280px; }
+.ce-tools .tok, .ce-tokbar .tok { font: 700 14px ui-monospace, Consolas, monospace; }
+.ce-tools .tok-hp, .ce-tokbar .tok-hp { color: var(--c-Green); background: #0d2014; }
+.ce-tools .tok-dmg, .ce-tokbar .tok-dmg { color: #ff5a4f; background: #2a0d0b; }
+.ce-tools .tok-pwr, .ce-tokbar .tok-pwr { color: var(--straw); background: var(--straw-wash); }
+.ce-tools .tok-rng, .ce-tokbar .tok-rng { color: var(--c-Cyan); background: #0a2226; }
+.ce-tools .tok-kb, .ce-tokbar .tok-kb { color: #7fa2ff; background: #0d1530; }
+.ce-tools .tok-en, .ce-tokbar .tok-en { color: #f4b62a; background: #2b2108; box-shadow: inset 0 0 0 1px #f4b62a55; }
+/* Effect text, look A (2026-11-05): phase switch, checkboxes, a token bar on the text, add buttons under it. */
+.ce-effect-tools { display: grid; gap: 10px; }
+.ce-phase-seg { display: flex; background: var(--surface-2); padding: 3px; gap: 2px; overflow-x: auto; }
+.ce-phase-seg button { flex: 1 0 auto; clip-path: none; background: none; padding: 8px 9px; font-size: 15px; color: var(--muted); }
+.ce-phase-seg button:hover { background: none; color: var(--bone); }
+.ce-phase-seg button.on { background: var(--tint, var(--straw)); color: var(--black); }
+.ce-mods { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
+.ce-mods button { clip-path: none; font-size: 15px; padding: 8px 12px; }
+.ce-check { display: inline-flex; gap: 7px; align-items: center; font: 500 14px var(--text); color: var(--bone); cursor: pointer; user-select: none; }
+.ce-check input { accent-color: var(--straw); width: 16px; height: 16px; margin: 0; }
+.ce-text-box { display: grid; }
+.ce-tokbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; background: var(--surface-2); border: 1px solid var(--line); border-bottom: 0; padding: 5px; }
+.ce-tokbar button { clip-path: none; padding: 6px 8px; font-size: 13px; }
+.ce-tokbar .tok-trait { background: #2a2a2a; color: var(--bone); }
+.ce-tokbar-sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+.ce-tokbar .ce-phrase { margin-left: auto; flex: none; width: 7.5em; font: 600 13px var(--text); padding: 6px 8px; background: transparent; border: 0; color: var(--muted); cursor: pointer; }
+.ce-tokbar .ce-phrase:hover { color: var(--bone); }
+.ce-adds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -4px; }
+.ce-adds .ce-add-effect { background: transparent; box-shadow: inset 0 0 0 1px var(--line); font-size: 15px; padding: 8px 14px; }
+.ce-adds .ce-add-effect:hover { box-shadow: inset 0 0 0 1px var(--muted); }
 .ce-suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
 .ce-suggest:empty { display: none; }
 .ce-suggest button { font: 500 14px var(--text); padding: 5px 10px; }

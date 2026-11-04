@@ -1278,8 +1278,11 @@ export function createEditor(env) {
     // Passive: the effect has no phase (cards that stay in play draw a PASSIVE chip for it; Marko 2026-11-05).
     const passiveType = ['Hero', 'Evolution', 'Equipment', 'Assist'].includes(w.type);
     const passiveBtn = passiveType ? h('button', { type: 'button', 'data-passive': '1', style: `--tint: ${PHASE_COLORS.PASSIVE}`, title: 'No phase: the effect counts all the time', onmousedown: e => e.preventDefault(), onclick: () => setHead({ phase: null, once: false }) }, 'Passive') : null;
-    const once = stage ? null : h('button', { type: 'button', 'data-once': '1', onmousedown: e => e.preventDefault(), onclick: () => { const hd = here(); setHead({ once: !hd.once, phase: hd.phase ?? 'Battle' }); } }, 'Once per turn');
-    const range = stage ? null : h('button', { type: 'button', 'data-range': '1', onmousedown: e => e.preventDefault(), onclick: () => setHead({ range: !here().range }) }, '◎ Range');
+    // Once per turn and Range change the effect line the cursor is in: checkboxes under the phase.
+    const check = (attr, label, title, onchange) => h('label', { class: 'ce-check', title },
+      h('input', { type: 'checkbox', [attr]: '1', onchange }), label);
+    const once = stage ? null : check('data-once', 'Once per turn', 'Once per turn, for the effect the cursor is in', () => { const hd = here(); setHead({ once: !hd.once, phase: hd.phase ?? 'Battle' }); });
+    const range = stage ? null : check('data-range', '◎ Range', '[Range]: targets must be in the hero\'s range', () => setHead({ range: !here().range }));
     // Novi efekt: novi redak na kraju, kursor u njemu (pa se bira njegova faza).
     const addEffect = stage ? null : h('button', { type: 'button', class: 'ce-add-effect', onmousedown: e => e.preventDefault(), onclick: () => {
       snap(true);
@@ -1291,10 +1294,11 @@ export function createEditor(env) {
     } }, '+ Effect');
     for (const ev of ['click', 'keyup', 'select']) area.addEventListener(ev, () => { caret = area.selectionStart ?? caret; refreshToggles(); });
     const revealed = stage ? h('button', { type: 'button', onclick: () => { if (!/^When this Stage is revealed/i.test(area.value)) { area.value = `When this Stage is revealed, ${area.value}`; area.selectionStart = area.selectionEnd = area.value.length; sync(); } } }, 'When revealed') : null;
-    const toks = TOKENS.map(t => h('button', { type: 'button', class: `tok tok-${t.toLowerCase()}`, onclick: () => insert(`[${t}]`) }, `[${t}]`));
-    const trait = PORTRAIT.includes(w.type) ? h('button', { type: 'button', class: 'tok', title: 'A trait in the text, e.g. {Sword}', onclick: () => insert('{}') }, '{Trait}') : null;
-    const phrase = ed.guide?.phrases?.length ? h('select', { class: 'ce-phrase', 'aria-label': 'Insert a phrase', onchange: e => { const p = ed.guide.phrases[Number(e.target.value)]; e.target.value = ''; if (p) insert(toTokens(p.text)); } },
-      h('option', { value: '' }, 'Phrase from the guide…'), ed.guide.phrases.map((p, i) => h('option', { value: i, title: p.note ?? '' }, `${p.label}: ${p.text.trim()}`))) : null;
+    const toks = TOKENS.map(t => h('button', { type: 'button', class: `tok tok-${t.toLowerCase()}`, title: `[${t}] at the cursor`, onmousedown: e => e.preventDefault(), onclick: () => insert(`[${t}]`) }, t));
+    const trait = PORTRAIT.includes(w.type) ? h('button', { type: 'button', class: 'tok tok-trait', title: 'A trait in the text, e.g. {Sword}', onmousedown: e => e.preventDefault(), onclick: () => insert('{}') }, '{Trait}') : null;
+    // Phrases from the Text guide (Card editor › Phrases): the same ones come up while typing; the list shows them all.
+    const phrase = ed.guide?.phrases?.length ? h('select', { class: 'ce-phrase', 'aria-label': 'Insert a phrase from the Text guide', title: 'Phrases from the Text guide', onchange: e => { const p = ed.guide.phrases[Number(e.target.value)]; e.target.value = ''; if (p) insert(toTokens(p.text)); } },
+      h('option', { value: '' }, 'Phrases'), ed.guide.phrases.map((p, i) => h('option', { value: i, title: p.note ?? '' }, `${p.label}: ${p.text.trim()}`))) : null;
     // Colorless: red s bonusom za odabrane boje ("Cyan / Purple Bonus: ").
     const bonusBtn = w.color === 'None' ? h('button', { type: 'button', class: 'ce-add-effect', onmousedown: e => e.preventDefault(), onclick: () => {
       const cols = (w.bonusColors ?? []).length ? w.bonusColors : ['Red'];
@@ -1305,18 +1309,25 @@ export function createEditor(env) {
       area.selectionStart = area.selectionEnd = caret;
       sync();
     } }, '+ Bonus') : null;
-    const tools = h('div', { class: 'ce-tools' }, revealed, passiveBtn, phaseBtns, once, range, addEffect, bonusBtn, toks, trait, phrase);
+    const seg = h('div', { class: 'ce-phase-seg', role: 'group', 'aria-label': 'Phase of the effect the cursor is in' }, passiveBtn, phaseBtns);
+    const mods = once || range || revealed ? h('div', { class: 'ce-mods' }, revealed, once, range) : null;
+    const bar = h('div', { class: 'ce-tokbar' }, toks, trait ? h('span', { class: 'ce-tokbar-sep' }) : null, trait, phrase);
+    const adds = addEffect || bonusBtn ? h('div', { class: 'ce-adds' }, addEffect, bonusBtn) : null;
+    const tools = h('div', { class: 'ce-effect-tools' }, seg, mods);
     function refreshToggles() {
       const hd = here();
-      for (const b of tools.querySelectorAll('[data-phase]')) b.classList.toggle('on', b.dataset.phase === hd.phase);
-      tools.querySelector('[data-passive]')?.classList.toggle('on', !hd.phase && !!hd.rest?.trim());
-      tools.querySelector('[data-once]')?.classList.toggle('on', hd.once);
-      tools.querySelector('[data-range]')?.classList.toggle('on', hd.range);
+      for (const b of seg.querySelectorAll('[data-phase]')) b.classList.toggle('on', b.dataset.phase === hd.phase);
+      seg.querySelector('[data-passive]')?.classList.toggle('on', !hd.phase && !!hd.rest?.trim());
+      const o = mods?.querySelector('[data-once]');
+      if (o) o.checked = !!hd.once;
+      const r = mods?.querySelector('[data-range]');
+      if (r) r.checked = !!hd.range;
     }
     refreshToggles();
-    return [tools, h('label', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-ac-wrap' }, area, pop)),
+    area.setAttribute('aria-label', 'Effect text');
+    return [tools, h('div', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-text-box' }, bar, h('div', { class: 'ce-ac-wrap' }, area, pop))), adds,
       h('p', { class: 'muted small ce-ac-hint' }, stage ? 'Type [ for a stat icon, or the start of a phrase from the Text guide: a list opens under the text.'
-        : 'Each effect is its own line; the phase buttons set the effect the cursor is in (+ Effect starts a new one). Type [ for a stat icon or the start of a phrase for suggestions.')];
+        : 'Each effect is its own line; the phase and the checkboxes set the effect the cursor is in (+ Effect starts a new one). Type [ for a stat icon or the start of a phrase for suggestions.')];
   }
 
   // ---------- izmjene, Undo ----------
