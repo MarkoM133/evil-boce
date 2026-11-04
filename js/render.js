@@ -146,10 +146,14 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   } else if (chips.length && mode === 'slot') {
     drawBonusSlot(ctx, chips, L, tpl.icons, CARD_TINTS[color]);
   } else if (chips.length && mode === 'foot') {
+    // The footnote ends well above the tag panel's frame (its outer line sits about 30 px above the tag box), so it
+    // never runs into it, whatever the text above it does (Marko 2026-11-04).
     const [ex, ey, ew, eh] = L.effect.box;
-    const strip = 78;
-    effectBox = { ...L.effect, box: [ex, ey, ew, eh - strip] };
-    drawBonusFoot(ctx, chips, [ex, ey + eh - strip, ew, strip], tpl.icons);
+    const strip = 70;
+    const bottom = Math.min(ey + eh, (L.tags?.box?.[1] ?? ey + eh + 60) - 62);
+    const top = bottom - strip;
+    effectBox = { ...L.effect, box: [ex, ey, ew, top - ey] };
+    drawBonusFoot(ctx, chips, [ex, top, ew, strip], tpl.icons);
   } else if (chips.length && mode === 'rows') {
     const low = chips.some(c => (L.bonus[c.stat]?.icon[1] ?? 0) > 1600);
     if (low) { const [ex, ey, ew, eh] = L.effect.box; effectBox = { ...L.effect, box: [ex, ey, ew, eh - 100] }; }
