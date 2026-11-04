@@ -13,6 +13,8 @@ const LIGHT = new Set(['Cyan', 'Yellow', 'Green', 'None']);
 // Pokusno (mockup boja faza, 2026-11-05): { START: '#hex', …, PASSIVE: null }; null ili bez ključa = boja karte.
 let PHASE_PALETTE = null;
 export function setPhasePalette(p) { PHASE_PALETTE = p; }
+// Za mockup: samo oznake faza u retku (texts: ['START PHASE', …]).
+export function drawPhaseChips(ctx, texts, cx, top, h, color) { drawChips(ctx, texts.map(t => ({ kind: 'phase', text: t })), cx, top, h, color, {}); }
 const darkInk = hex => { const n = parseInt(hex.slice(1), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 > 150; };
 // Colorless karta (color "None"): siv okvir; boje bonusa (bonusColors) su na rubu costa i u oznaci bonusa.
 const CARD_TINTS = { ...TINTS, None: '#c4cad1' };
