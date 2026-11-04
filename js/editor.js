@@ -31,7 +31,7 @@ const CORE_KINDS = ['Buff', 'Major', 'Debuff'];
 const ROMAN = ['I', 'II', 'III'];
 const WHO_KEY = 'evil-boce-who';
 const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'PWR'], ['rng', 'RNG'], ['kb', 'KB']];
-const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB'];
+const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB', 'EN'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
 const FIELDS = ['name', 'type', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain',
   'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status'];
@@ -1229,7 +1229,7 @@ export function createEditor(env) {
       const caret = area.selectionStart ?? area.value.length;
       const before = area.value.slice(0, caret);
       if (before.endsWith('[')) {
-        sug = { from: caret - 1, items: TOKENS.map(t => ({ label: `[${t}]`, insert: `[${t}]`, token: t, note: { HP: 'heal / health', DMG: 'damage', PWR: 'Power', RNG: 'Range', KB: 'Knockback' }[t] })) };
+        sug = { from: caret - 1, items: TOKENS.map(t => ({ label: `[${t}]`, insert: `[${t}]`, token: t, note: { HP: 'heal / health', DMG: 'damage', PWR: 'Power', RNG: 'Range', KB: 'Knockback', EN: 'Energy' }[t] })) };
       } else {
         const g = suggest(ed.guide, area.value, caret);
         const notes = new Map((ed.guide?.phrases ?? []).map(p => [p.text, p.label]));
@@ -1408,7 +1408,7 @@ export function createEditor(env) {
       const n = deckPool(liveDb(card), [w.id], heroEvolutions(liveDb(card), [w.id])).filter(c => c.color === w.color).length;
       out.push([n >= 8, `${w.name || 'This hero'} has ${n} cards to play`]);
     }
-    if (/\[(?!HP\]|DMG\]|PWR\]|RNG\]|KB\])[^\]]*\]/i.test(w.text ?? '')) out.push([false, 'Only [HP] [DMG] [PWR] [RNG] [KB] go in brackets']);
+    if (/\[(?!HP\]|DMG\]|PWR\]|RNG\]|KB\]|EN\])[^\]]*\]/i.test(w.text ?? '')) out.push([false, 'Only [HP] [DMG] [PWR] [RNG] [KB] [EN] go in brackets']);
     return out;
   }
 

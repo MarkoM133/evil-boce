@@ -9,6 +9,11 @@ test('card text: words in cards.json, tokens in the editor, and back', () => {
   assert.equal(toWords(tokens), words);
   assert.equal(toTokens('the Hero with more HP gains +3000 Power.'), 'the Hero with more [HP] gains +3000[PWR].');
   assert.equal(toWords('the Hero with more [HP] gains +3000[PWR].'), 'the Hero with more HP gains +3000 Power.');
+  for (const [words, tokens] of [['You must discharge 1 Energy if', 'You must discharge 1[EN] if'],
+    ['cost 2 more Energy this turn', 'cost 2 more [EN] this turn'], ['for every charged Energy their', 'for every charged [EN] their']]) {
+    assert.equal(toTokens(words), tokens);
+    assert.equal(toWords(tokens), words);
+  }
   assert.equal(toTokens("Knockback an Opponent's Hero 3 spaces"), "Knockback an Opponent's Hero 3 spaces");
   assert.equal(toWords('**Battle Phase:** gain +1[KB]'), 'Battle Phase: gain +1 Knockback');
 });

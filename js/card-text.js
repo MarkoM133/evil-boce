@@ -1,9 +1,9 @@
-// Tekst karte u editoru i u bazi. Editor pokazuje tokene kao mockup ([HP], [PWR], [DMG], [RNG], [KB];
+// Tekst karte u editoru i u bazi. Editor pokazuje tokene kao mockup ([HP], [PWR], [DMG], [RNG], [KB], [EN];
 // [RNG] na početku = efekt u rangeu), a cards.json i igra čitaju riječi ("3 HP", "+2000 Power", "[Range] ").
 // Faza, Once Per Turn i Range se biraju prekidačima; tekst ih drži na početku ("Battle Phase Once Per Turn: …").
 
-const WORD = { HP: 'HP', DMG: 'DMG', PWR: 'Power', RNG: 'Range', KB: 'Knockback' };
-const TOKEN = { HP: 'HP', DMG: 'DMG', Power: 'PWR', Range: 'RNG', Knockback: 'KB' };
+const WORD = { HP: 'HP', DMG: 'DMG', PWR: 'Power', RNG: 'Range', KB: 'Knockback', EN: 'Energy' };
+const TOKEN = { HP: 'HP', DMG: 'DMG', Power: 'PWR', Range: 'RNG', Knockback: 'KB', Energy: 'EN' };
 export const PHASES = ['Start', 'Preroll', 'Roll', 'Postroll', 'Battle', 'End'];
 const HEAD_RE = /^(\[(?:RNG|Range)\]\s*)?(?:(Start|Preroll|Roll|Postroll|Battle|End)(?: Phase)?(\s+Once Per Turn)?\s*:\s*)?/i;
 
@@ -12,15 +12,17 @@ const HEAD_RE = /^(\[(?:RNG|Range)\]\s*)?(?:(Start|Preroll|Roll|Postroll|Battle|
 export function toTokens(text) {
   return (text ?? '')
     .replace(/^\[Range\]\s*/gim, '[RNG]')
-    .replace(/(\d)\s?(HP|DMG|Power|Range|Knockback)\b/g, (_, d, w) => `${d}[${TOKEN[w]}]`)
-    .replace(/\b(more|less)\s(HP|DMG|Power|Range|Knockback)\b/g, (_, m, w) => `${m} [${TOKEN[w]}]`);
+    .replace(/(\d)\s?(HP|DMG|Power|Range|Knockback|Energy)\b/g, (_, d, w) => `${d}[${TOKEN[w]}]`)
+    .replace(/\b(more|less)\s(HP|DMG|Power|Range|Knockback|Energy)\b/g, (_, m, w) => `${m} [${TOKEN[w]}]`)
+    // Energy je token i bez broja ("charged Energy" → "charged [EN]"), kao što je na karti dijamant.
+    .replace(/\bEnergy\b/g, '[EN]');
 }
 
 // Tokeni (editor) → riječi (baza): "2[DMG]" → "2 DMG", "more [HP]" → "more HP", "[RNG]" na početku → "[Range] ".
 export function toWords(text) {
   return (text ?? '')
     .replace(/^\[RNG\]\s*/gim, '[Range] ')
-    .replace(/\[(HP|DMG|PWR|RNG|KB)\]/g, (_, k, off, s) => {
+    .replace(/\[(HP|DMG|PWR|RNG|KB|EN)\]/g, (_, k, off, s) => {
       const prev = s[off - 1];
       return (prev && !/\s/.test(prev) ? ' ' : '') + WORD[k];
     })

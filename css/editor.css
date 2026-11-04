@@ -146,6 +146,7 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-tools .tok-pwr { color: var(--straw); background: var(--straw-wash); }
 .ce-tools .tok-rng { color: var(--c-Cyan); background: #0a2226; }
 .ce-tools .tok-kb { color: #7fa2ff; background: #0d1530; }
+.ce-tools .tok-en { color: #f4b62a; background: #2b2108; box-shadow: inset 0 0 0 1px #f4b62a55; }
 .ce-phrase { font-size: 14px; padding: 8px 10px; max-width: 280px; }
 .ce-suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
 .ce-suggest:empty { display: none; }

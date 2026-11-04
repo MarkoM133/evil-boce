@@ -548,7 +548,7 @@ function layoutParas(ctx, paras, maxW, size, icons) {
     for (const r of p.runs) {
       if (r.icon) {
         const prev = words.at(-1);
-        const iw = size * 0.95;
+        const iw = size * (r.icon === 'energy' ? 0.7 : 0.95);
         if (prev && !prev.space) prev.parts.push({ icon: r.icon, w: iw });
         else words.push({ parts: [{ icon: r.icon, w: iw }] });
         continue;
@@ -594,7 +594,7 @@ function drawEnergyGlyph(ctx, x, y, size) {
   const d = size * 0.56;
   ctx.save();
   ctx.beginPath();
-  ctx.moveTo(x, y - d); ctx.lineTo(x + d * 0.86, y); ctx.lineTo(x, y + d); ctx.lineTo(x - d * 0.86, y);
+  ctx.moveTo(x, y - d); ctx.lineTo(x + d * 0.62, y); ctx.lineTo(x, y + d); ctx.lineTo(x - d * 0.62, y);
   ctx.closePath();
   ctx.fillStyle = '#f4b62a';
   ctx.fill();
