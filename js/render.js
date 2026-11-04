@@ -14,8 +14,6 @@ const LIGHT = new Set(['Cyan', 'Yellow', 'Green', 'None']);
 const CARD_TINTS = { ...TINTS, None: '#c4cad1' };
 const BONUS_DOT = { Cyan: '#00ffff', Yellow: '#ffee00', Purple: '#b040ff', Red: '#ff2a1f', Blue: '#2a6bff', Green: '#00ff40' };
 const COLOR_WORD = '(Cyan|Yellow|Purple|Red|Blue|Green)';
-// Pokusno (mockup 2026-11-03): bonus boje koji je samo "+N stat" crta se kao obojeni čip u traci bonusa, ne kao tekst.
-export const RENDER_OPTS = { bonusChips: false };
 const STAT_WORDS = { power: 'pwr', dmg: 'dmg', hp: 'hp', range: 'rng', kb: 'kb', knockback: 'kb' };
 // "Red Bonus:" ili "Cyan / Purple Bonus:" na početku retka: bonus za te boje.
 const BONUS_RE = new RegExp(`^${COLOR_WORD}(?:\\s*/\\s*${COLOR_WORD})?(?:\\s*/\\s*${COLOR_WORD})?\\s+Bonus\\s*:\\s*`, 'i');
@@ -126,41 +124,19 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   if (color === 'None' && L.cost && card.cost != null) drawCostRim(ctx, L.cost.box, card.bonusColors ?? []);
   fitLine(ctx, card.type ?? '', L.type, { font: TITLE_FONT, color: ink(L.type) });
   fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: ink(L.code) });
-  let text = card.text ?? '';
-  let chips = [];
-  if (RENDER_OPTS.bonusChips && L.bonus) ({ rest: text, chips } = statBonusLines(text));
-  const mode = RENDER_OPTS.bonusChips;
-  if (mode === 'inline' && chips.length) drawBonusInline(ctx, card.bonus ?? {}, chips, L, tpl.icons);
-  else drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
-  if (chips.length && mode === true) drawBonusChips(ctx, chips, card.bonus ?? {}, L, tpl.icons);
+  drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
   if (L.tags && !drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag bar.');
-  // The band and the hex badges take a strip off the top of the text box; the rows take one off its bottom
-  // when a bottom-row stat (KB, Range) carries a bonus.
+  // A colour bonus that is only "+N stat" ("Yellow Bonus: +1 DMG.") leaves the text and goes into a box per colour,
+  // hanging under the line below the stats; the text box then starts below the boxes. Card text stays as it is.
+  let text = card.text ?? '';
   let effectBox = L.effect;
-  if (chips.length && (mode === 'band' || mode === 'hex')) {
-    const [ex, ey, ew, eh] = L.effect.box;
-    const strip = mode === 'band' ? 96 : 120;
-    effectBox = { ...L.effect, box: [ex, ey + strip, ew, eh - strip] };
-    if (mode === 'band') drawBonusBand(ctx, chips, [ex, ey, ew, strip], tpl.icons);
-    else drawBonusHexes(ctx, chips, [ex, ey, ew, strip], tpl.icons);
-  } else if (chips.length && String(mode).startsWith('slot')) {
-    const bottom = drawBonusSlot(ctx, chips, L, tpl.icons, CARD_TINTS[color], mode === 'slot' ? 'dots' : mode.slice(5));
+  const sb = L.bonus ? statBonusLines(text) : { chips: [] };
+  if (sb.chips.length) {
+    text = sb.rest;
+    const bottom = drawBonusBoxes(ctx, sb.chips, L, tpl.icons, CARD_TINTS[color]);
     const [ex, ey, ew, eh] = L.effect.box;
     const push = Math.max(0, bottom + 12 - ey);
     effectBox = { ...L.effect, box: [ex, ey + push, ew, eh - push] };
-  } else if (chips.length && mode === 'foot') {
-    // The footnote ends well above the tag panel's frame (its outer line sits about 30 px above the tag box), so it
-    // never runs into it, whatever the text above it does (Marko 2026-11-04).
-    const [ex, ey, ew, eh] = L.effect.box;
-    const strip = 70;
-    const bottom = Math.min(ey + eh, (L.tags?.box?.[1] ?? ey + eh + 60) - 62);
-    const top = bottom - strip;
-    effectBox = { ...L.effect, box: [ex, ey, ew, top - ey] };
-    drawBonusFoot(ctx, chips, [ex, top, ew, strip], tpl.icons);
-  } else if (chips.length && mode === 'rows') {
-    const low = chips.some(c => (L.bonus[c.stat]?.icon[1] ?? 0) > 1600);
-    if (low) { const [ex, ey, ew, eh] = L.effect.box; effectBox = { ...L.effect, box: [ex, ey, ew, eh - 100] }; }
-    drawBonusRows(ctx, chips, L, tpl.icons);
   }
   const t = drawEffect(ctx, text, color, effectBox, tpl.icons);
   if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
@@ -242,7 +218,7 @@ function fitLine(ctx, text, box, { font, color, bold = false }) {
   return ctx.measureText(text).width <= w;
 }
 
-// Retci "Yellow Bonus: +1 DMG." (samo broj na stat) izlaze iz teksta i postaju čipovi; ostali ostaju.
+// Retci "Yellow Bonus: +1 DMG." (samo broj na stat) izlaze iz teksta i idu u kutije bonusa; ostali ostaju.
 export function statBonusLines(text) {
   const chips = [];
   const rest = [];
@@ -257,217 +233,16 @@ export function statBonusLines(text) {
   return { rest: rest.join('\n'), chips };
 }
 
-// Kao drawBonus, ali iza broja stata s bonusom boje ide "(+ukupno)" u boji bonusa; nema li običnog bonusa, samo
-// "(+n)". Tekst ide od lijevog ruba broja do ikone idućeg stata u redu (ili ruba karte), smanjen dok ne stane.
-function drawBonusInline(ctx, bonus, chips, L, icons) {
-  const slots = Object.entries(L.bonus ?? {});
-  for (const [k, slot] of slots) {
-    const v = bonus[k];
-    const mine = chips.filter(c => c.stat === k);
-    if (!v && !mine.length) continue;
-    const icon = icons[`stat-${k}`];
-    if (icon) {
-      const [ix, iy, iw, ih] = slot.icon;
-      const s = Math.min(iw / icon.width, ih / icon.height) * 0.72;
-      ctx.drawImage(tinted(icon, STAT_TINTS[k]), ix + (iw - icon.width * s) / 2, iy + (ih - icon.height * s) / 2, icon.width * s, icon.height * s);
-    }
-    const [vx, vy, vw, vh] = slot.value;
-    if (!mine.length) { fitLine(ctx, `${v > 0 ? '+' : ''}${v}`, { box: slot.value, size: slot.size ?? 106, min: 40 }, { font: TITLE_FONT, color: '#ffffff' }); continue; }
-    // Room to the right: up to the next icon in the same row, else to the card's edge.
-    const next = slots.map(([, s2]) => s2.icon).filter(i => Math.abs(i[1] - vy) < 10 && i[0] > vx).map(i => i[0]);
-    const right = (next.length ? Math.min(...next) : CARD_W - 60) - 12;
-    const sign = n => `${n > 0 ? '+' : ''}${n}`;
-    const head = v ? `${sign(v)} ` : '';
-    // One bracket per colour bonus, each the total for its colour (they never add up: one hero, one colour).
-    const tails = mine.map(c => ({ text: `(${sign((v ?? 0) + c.value)})`, cols: c.colors.length ? c.colors : ['Yellow'] }));
-    const all = head + tails.map(t => t.text).join(' ');
-    let size = slot.size ?? 106;
-    ctx.font = `${size}px ${TITLE_FONT}`;
-    while (size > 40 && ctx.measureText(all).width > right - vx) { size -= 2; ctx.font = `${size}px ${TITLE_FONT}`; }
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    const ty = vy + vh / 2 + size * 0.04;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(head, vx, ty);
-    let tx = vx + ctx.measureText(head).width;
-    for (const t of tails) {
-      const tw = ctx.measureText(t.text).width;
-      if (t.cols.length > 1) {
-        const g = ctx.createLinearGradient(tx, 0, tx + tw, 0);
-        g.addColorStop(0, BONUS_DOT[t.cols[0]] ?? '#ffffff');
-        g.addColorStop(1, BONUS_DOT[t.cols[1]] ?? '#ffffff');
-        ctx.fillStyle = g;
-      } else ctx.fillStyle = BONUS_DOT[t.cols[0]] ?? '#ffffff';
-      ctx.fillText(t.text, tx, ty);
-      tx += tw + ctx.measureText(' ').width;
-    }
-  }
-}
-
-// Pill text: "+1" with the stat icon; a pill background in the colour (two colours: halves), dark text on light
-// colours (Yellow, Cyan, Green), white on the rest.
-const DARK_ON = { Yellow: true, Cyan: true, Green: true };
-function pillColors(cols) {
-  return (cols.length ? cols : ['Yellow']).slice(0, 2);
-}
-
-// 1. A band of pills across the card: dot(s) of the colour are the pill itself; the stat icon and the value sit in it.
-function drawBonusBand(ctx, chips, strip, icons) {
-  const [sx, sy, sw, sh] = strip;
-  const h = 72;
-  const gap = 18;
-  const size = 52;
-  ctx.font = `${size}px ${TITLE_FONT}`;
-  const pills = chips.map(c => {
-    const label = `${c.value > 0 ? '+' : ''}${c.value}`;
-    return { c, label, w: 34 + 56 + 10 + ctx.measureText(label).width + 34 };
-  });
-  const total = pills.reduce((a, p) => a + p.w, 0) + gap * (pills.length - 1);
-  let x = sx + sw / 2 - total / 2;
-  const y = sy + (sh - h) / 2;
-  for (const p of pills) {
-    const cols = pillColors(p.c.colors);
-    ctx.save();
-    roundRect(ctx, x, y, p.w, h, h / 2);
-    ctx.clip();
-    cols.forEach((col, i) => {
-      ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff';
-      ctx.fillRect(x + (cols.length > 1 && i ? p.w / 2 : 0), y, cols.length > 1 ? p.w / 2 : p.w, h);
-    });
-    ctx.restore();
-    ctx.save();
-    roundRect(ctx, x, y, p.w, h, h / 2);
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-    ctx.stroke();
-    ctx.restore();
-    const dark = cols.every(col => DARK_ON[col]);
-    const ink = dark ? '#111111' : '#ffffff';
-    const icon = icons[`stat-${p.c.stat}`];
-    let cx = x + 30;
-    if (icon) {
-      const s = Math.min(56 / icon.width, 56 / icon.height);
-      ctx.drawImage(tinted(icon, dark ? '#111111' : '#ffffff'), cx, y + (h - icon.height * s) / 2, icon.width * s, icon.height * s);
-      cx += 56 + 10;
-    }
-    ctx.font = `bold ${size}px ${TITLE_FONT}`;
-    ctx.fillStyle = ink;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(p.label, cx, y + h / 2 + 2);
-    x += p.w + gap;
-  }
-}
-
-// 2. A second (and third) row under the stat columns: the number in the colour with a dot before it, under
-// its own stat; no icons repeated. The bottom row (KB, Range) gets its coloured row above itself.
-function drawBonusRows(ctx, chips, L, icons) {
-  const nth = {};
-  for (const c of chips) {
-    const slot = L.bonus[c.stat];
-    if (!slot) continue;
-    const i = nth[c.stat] = (nth[c.stat] ?? 0) + 1;
-    const [ix, iy, iw] = slot.icon;
-    const [vx, , vw] = slot.value;
-    const low = iy > 1600;
-    const rowH = 84;
-    const y = low ? iy - i * rowH : iy + 128 + 2 + (i - 1) * rowH;
-    const cols = pillColors(c.colors);
-    const r = 15;
-    cols.forEach((col, k) => {
-      ctx.beginPath();
-      ctx.arc(ix + iw / 2 + (cols.length > 1 ? (k ? r : -r) : 0), y + rowH / 2, r, 0, Math.PI * 2);
-      ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff';
-      ctx.fill();
-    });
-    const label = `${c.value > 0 ? '+' : ''}${c.value}`;
-    const g = cols.length > 1 ? (() => { const gr = ctx.createLinearGradient(vx, 0, vx + vw, 0); gr.addColorStop(0, BONUS_DOT[cols[0]]); gr.addColorStop(1, BONUS_DOT[cols[1]]); return gr; })() : (BONUS_DOT[cols[0]] ?? '#ffffff');
-    fitLine(ctx, label, { box: [vx, y, vw, rowH], size: 72, min: 36, align: slot.value[2] > 200 ? 'left' : 'center' }, { font: TITLE_FONT, color: g });
-  }
-}
-
-// 3. Hex badges in the text box's top right, like core tokens: the colour fills the hex, the stat icon and the
-// value sit inside; two colours split the hex top / bottom.
-function drawBonusHexes(ctx, chips, strip, icons) {
-  const [sx, sy, sw, sh] = strip;
-  const R = 54;
-  const gap = 14;
-  const hw = Math.sqrt(3) * R;
-  let x = sx + sw - 20 - hw / 2 - (chips.length - 1) * (hw + gap);
-  const cy = sy + sh / 2;
-  for (const c of chips) {
-    const cols = pillColors(c.colors);
-    const hex = () => {
-      ctx.beginPath();
-      for (let k = 0; k < 6; k++) {
-        const a = Math.PI / 6 + (Math.PI / 3) * k;
-        const px = x + R * Math.cos(a);
-        const py = cy + R * Math.sin(a);
-        if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py);
-      }
-      ctx.closePath();
-    };
-    ctx.save();
-    hex();
-    ctx.clip();
-    cols.forEach((col, i) => {
-      ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff';
-      ctx.fillRect(x - hw, cols.length > 1 && i ? cy : cy - R, hw * 2, cols.length > 1 ? R : R * 2);
-    });
-    ctx.restore();
-    hex();
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = '#111111';
-    ctx.stroke();
-    const dark = cols.every(col => DARK_ON[col]);
-    const ink = dark ? '#111111' : '#ffffff';
-    const icon = icons[`stat-${c.stat}`];
-    if (icon) {
-      const s = Math.min(40 / icon.width, 40 / icon.height);
-      ctx.drawImage(tinted(icon, ink), x - icon.width * s / 2, cy - R * 0.62, icon.width * s, icon.height * s);
-    }
-    ctx.font = `bold 40px ${TITLE_FONT}`;
-    ctx.fillStyle = ink;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`${c.value > 0 ? '+' : ''}${c.value}`, x, cy + R * 0.3);
-    x += hw + gap;
-  }
-}
-
-// One bonus as runs: dot(s) of the colour, the stat icon in its stat colour, the value. Returns the width.
-function bonusRun(ctx, c, x, cy, size, icons, ink, draw) {
-  const cols = (c.colors.length ? c.colors : ['Yellow']).slice(0, 2);
-  const r = size * 0.19;
-  let cx = x;
-  cols.forEach((col, i) => {
-    if (draw) { ctx.beginPath(); ctx.arc(cx + r, cy, r, 0, Math.PI * 2); ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff'; ctx.fill(); }
-    cx += r * 2 + (i < cols.length - 1 ? r * 0.5 : 0);
-  });
-  cx += size * 0.22;
-  const icon = icons[`stat-${c.stat}`];
-  if (icon) {
-    const is = size * 0.9;
-    const s = Math.min(is / icon.width, is / icon.height);
-    if (draw) ctx.drawImage(tinted(icon, STAT_TINTS[c.stat]), cx, cy - icon.height * s / 2, icon.width * s, icon.height * s);
-    cx += icon.width * s + size * 0.12;
-  }
-  const label = `${c.value > 0 ? '+' : ''}${c.value}`;
-  ctx.font = `${size}px ${TITLE_FONT}`;
-  if (draw) { ctx.fillStyle = ink; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(label, cx, cy + size * 0.04); }
-  cx += ctx.measureText(label).width;
-  return cx - x;
-}
-
-// A compartment in the frame's style: a box hanging under the line below the stats, on its right end, like the
-// type label on the left. Bonuses are grouped by colour; style says how a group shows its colour:
-// dots (a dot before each bonus), bar (a colour bar before the group), tint (the group's ground in the colour),
-// rim (one box per colour, rimmed in it), ball (a little boća in the colour before the group), num (the numbers
-// in the colour). Two colours sharing one bonus split the marker in halves. Returns the slot's bottom edge.
-function drawBonusSlot(ctx, chips, L, icons, tint, style) {
-  const lineY = 1326;
-  const lineRight = 1362;
-  const leftLimit = 480;
+// Kutije bonusa boje (odluka 2026-11-04): jedna kutija po boji (ili paru boja koji dijeli bonus), visi ispod
+// linije ispod statova, desno, kao oznaka tipa lijevo; rub u boji bonusa (dvije boje: pola-pola), unutra ikona
+// stata u njegovoj boji i broj. Kutije su desno poravnate; slova se smanje da sve stane do oznake tipa.
+// Mjesto daje predložak (layout.bonusBoxes: line y, desni rub, lijeva granica), inače vrijednosti okvira Actiona.
+// Vraća donji rub kutija.
+function drawBonusBoxes(ctx, chips, L, icons, frameTint) {
+  const at = L.bonusBoxes ?? {};
+  const lineY = at.y ?? 1326;
+  const right = at.right ?? 1362;
+  const leftLimit = at.left ?? 480;
   const groups = [];
   for (const c of chips) {
     const cols = (c.colors.length ? c.colors : ['Yellow']).slice(0, 2);
@@ -476,195 +251,59 @@ function drawBonusSlot(ctx, chips, L, icons, tint, style) {
     if (!g) groups.push(g = { key, cols, items: [] });
     g.items.push(c);
   }
-  const ink = cols => cols.length > 1 ? null : (BONUS_DOT[cols[0]] ?? '#ffffff');
   const label = c => `${c.value > 0 ? '+' : ''}${c.value}`;
-  // Sizes for a font size; widths of items, markers and groups.
   const measure = size => {
     ctx.font = `${size}px ${TITLE_FONT}`;
     const icon = size * 0.9;
     const itemW = c => icon + size * 0.12 + ctx.measureText(label(c)).width;
-    const dotW = cols => size * 0.38 * cols.length + size * 0.1 * (cols.length - 1) + size * 0.22;
-    const markW = g => style === 'bar' ? 12 * g.cols.length + 4 * (g.cols.length - 1) + size * 0.3
-      : style === 'ball' ? size * 0.8 + size * 0.25 : 0;
-    const inner = style === 'tint' || style === 'rim' ? size * 0.35 : 0;
-    const gw = g => inner * 2 + markW(g) + g.items.reduce((acc, c, i) => acc + itemW(c) + (style === 'dots' ? dotW(g.cols) : 0) + (i ? size * 0.5 : 0), 0);
-    const pad = style === 'tint' || style === 'rim' ? 10 : 26;
-    const groupGap = style === 'rim' ? 14 : style === 'tint' ? 6 : size * 0.8;
-    const boxes = style === 'rim' ? groups.map(g => gw(g) + pad * 2) : [pad * 2 + groups.reduce((acc, g, i) => acc + gw(g) + (i ? groupGap : 0), 0)];
-    const total = boxes.reduce((x, y) => x + y, 0) + (style === 'rim' ? 14 * (boxes.length - 1) : 0);
-    return { size, icon, itemW, dotW, markW, inner, gw, pad, groupGap, boxes, total };
+    const inner = size * 0.35;
+    const pad = 10;
+    const boxes = groups.map(g => pad * 2 + inner * 2 + g.items.reduce((acc, c, i) => acc + itemW(c) + (i ? size * 0.5 : 0), 0));
+    const total = boxes.reduce((x, y) => x + y, 0) + 14 * (boxes.length - 1);
+    return { size, icon, inner, pad, boxes, total };
   };
-  let size = 58;
-  let M = measure(size);
-  while (M.total > lineRight - leftLimit && size > 34) M = measure(size -= 2);
+  let M = measure(58);
+  while (M.total > right - leftLimit && M.size > 34) M = measure(M.size - 2);
+  const size = M.size;
   const h = Math.round(size * 1.75);
   const cy = lineY + h / 2 + 4;
-
   const boxPath = (x, w) => { ctx.beginPath(); ctx.roundRect(x, lineY, w, h, [0, 0, 18, 18]); };
-  const stroke = (x, w, cols) => {
-    ctx.lineWidth = 9;
-    if (!cols || cols.length < 2) { boxPath(x, w); ctx.strokeStyle = cols ? BONUS_DOT[cols[0]] : tint; ctx.stroke(); return; }
-    cols.forEach((col, i) => {
-      ctx.save();
-      ctx.beginPath(); ctx.rect(x - 10 + (i ? w / 2 + 10 : 0), lineY - 10, w / 2 + 10, h + 20); ctx.clip();
-      boxPath(x, w); ctx.strokeStyle = BONUS_DOT[col]; ctx.stroke();
-      ctx.restore();
-    });
-  };
-  const fillHalves = (x, y, w, hh, cols, alpha) => {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    cols.forEach((col, i) => { ctx.fillStyle = BONUS_DOT[col]; ctx.fillRect(x + (cols.length > 1 && i ? w / 2 : 0), y, cols.length > 1 ? w / 2 : w, hh); });
-    ctx.restore();
-  };
-  const drawItem = (c, x, cols) => {
-    const icon = icons[`stat-${c.stat}`];
-    let cx = x;
-    if (icon) {
-      const sc = Math.min(M.icon / icon.width, M.icon / icon.height);
-      ctx.drawImage(tinted(icon, STAT_TINTS[c.stat]), cx, cy - icon.height * sc / 2, icon.width * sc, icon.height * sc);
-      cx += M.icon + size * 0.12;
-    }
-    ctx.font = `${size}px ${TITLE_FONT}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    const text = label(c);
-    if (style === 'num') {
-      const one = ink(cols);
-      if (one) ctx.fillStyle = one;
-      else { const tw = ctx.measureText(text).width; const g = ctx.createLinearGradient(cx, 0, cx + tw, 0); g.addColorStop(0, BONUS_DOT[cols[0]]); g.addColorStop(1, BONUS_DOT[cols[1]]); ctx.fillStyle = g; }
-    } else ctx.fillStyle = '#ffffff';
-    ctx.fillText(text, cx, cy + size * 0.04);
-    return cx + ctx.measureText(text).width;
-  };
-  const drawBall = (x, cols) => {
-    const r = size * 0.4;
-    const bx = x + r;
-    ctx.save();
-    ctx.beginPath(); ctx.arc(bx, cy, r, 0, Math.PI * 2); ctx.clip();
-    ctx.fillStyle = '#d9d2c5'; ctx.fillRect(bx - r, cy, r * 2, r);
-    cols.forEach((col, i) => { ctx.fillStyle = BONUS_DOT[col]; ctx.fillRect(bx - r + (cols.length > 1 && i ? r : 0), cy - r, cols.length > 1 ? r : r * 2, r); });
-    ctx.fillStyle = '#111111'; ctx.fillRect(bx - r, cy - r * 0.09, r * 2, r * 0.18);
-    ctx.restore();
-    ctx.beginPath(); ctx.arc(bx, cy, r, 0, Math.PI * 2); ctx.lineWidth = 4; ctx.strokeStyle = '#111111'; ctx.stroke();
-    ctx.beginPath(); ctx.arc(bx, cy, r * 0.28, 0, Math.PI * 2); ctx.fillStyle = '#f3efe7'; ctx.fill(); ctx.lineWidth = 3; ctx.stroke();
-    return x + r * 2 + size * 0.25;
-  };
-  const drawGroup = (g, x) => {
-    let cx = x + M.inner;
-    if (style === 'bar') {
-      g.cols.forEach((col, i) => { ctx.fillStyle = BONUS_DOT[col]; ctx.fillRect(cx + i * 16, lineY + h * 0.22, 12, h * 0.56); });
-      cx += M.markW(g);
-    } else if (style === 'ball') cx = drawBall(cx, g.cols);
-    g.items.forEach((c, i) => {
-      if (i) cx += size * 0.5;
-      if (style === 'dots') {
-        const r = size * 0.19;
-        g.cols.forEach((col, k) => { ctx.beginPath(); ctx.arc(cx + r + k * (r * 2 + size * 0.1), cy, r, 0, Math.PI * 2); ctx.fillStyle = BONUS_DOT[col]; ctx.fill(); });
-        cx += M.dotW(g.cols);
-      }
-      cx = drawItem(c, cx, g.cols);
-    });
-  };
-
   ctx.save();
-  if (style === 'rim') {
-    let x = lineRight - M.total;
-    groups.forEach((g, i) => {
-      const w = M.boxes[i];
-      boxPath(x, w); ctx.fillStyle = '#1a1a1c'; ctx.fill();
-      stroke(x, w, g.cols);
-      drawGroup(g, x + M.pad);
-      x += w + 14;
-    });
-  } else {
-    const w = M.boxes[0];
-    const x = lineRight - w;
-    boxPath(x, w); ctx.fillStyle = '#1a1a1c'; ctx.fill();
-    let gx = x + M.pad;
-    groups.forEach((g, i) => {
-      if (i) gx += M.groupGap;
-      const gw = M.gw(g);
-      if (style === 'tint') {
-        ctx.save(); boxPath(x, w); ctx.clip();
-        fillHalves(gx, lineY, gw, h, g.cols, 0.34);
-        ctx.restore();
-      }
-      drawGroup(g, gx);
-      gx += gw;
-    });
-    stroke(x, w, null);
-  }
-  ctx.restore();
-  return lineY + h;
-}
-
-// A quiet last line in the text box: smaller, dimmer, the bonuses centred with their colour dots.
-function drawBonusFoot(ctx, chips, strip, icons) {
-  const [sx, sy, sw, sh] = strip;
-  const size = 46;
-  const gap = size * 0.9;
-  const widths = chips.map(c => bonusRun(ctx, c, 0, 0, size, icons, '#fff', false));
-  const total = widths.reduce((a, b) => a + b, 0) + gap * (chips.length - 1);
-  let cx = sx + sw / 2 - total / 2;
-  const cy = sy + sh / 2;
-  for (let i = 0; i < chips.length; i++) {
-    bonusRun(ctx, chips[i], cx, cy, size, icons, 'rgba(255,255,255,0.85)', true);
-    cx += widths[i] + gap;
-  }
-}
-
-// Čip: zaobljen, rub u boji bonusa (dvije boje: pola-pola), točka boje, ikona stata i broj. Na mjestu stata kad
-// je prazno, inače odmah ispod njega.
-function drawBonusChips(ctx, chips, bonus, L, icons) {
-  const nth = {};
-  for (const c of chips) {
-    const slot = L.bonus[c.stat];
-    if (!slot) continue;
-    const i = nth[c.stat] = (nth[c.stat] ?? -1) + 1;
-    const taken = !!bonus[c.stat] || i > 0;
-    const [ix, iy] = slot.icon;
-    const [vx, , vw] = slot.value;
-    const h = taken ? 92 : 128;
-    // Under the stat, one below the other; the bottom row grows upwards so it stays on the card.
-    const row = bonus[c.stat] ? i : i - 1;
-    const y = !taken ? iy : iy > 1600 ? iy - (row + 1) * 98 : iy + 134 + row * 98;
-    const x = ix - 30;
-    const w = vx + vw - ix + 60;
-    const cols = c.colors.length ? c.colors : ['Yellow'];
-    ctx.save();
-    roundRect(ctx, x, y, w, h, h / 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  let x = right - M.total;
+  groups.forEach((g, gi) => {
+    const w = M.boxes[gi];
+    boxPath(x, w);
+    ctx.fillStyle = '#1a1a1c';
     ctx.fill();
     ctx.lineWidth = 9;
-    cols.slice(0, 2).forEach((col, i) => {
+    g.cols.forEach((col, i) => {
       ctx.save();
-      if (cols.length > 1) { ctx.beginPath(); ctx.rect(x + (i ? w / 2 : 0) - 10, y - 10, w / 2 + 20, h + 20); ctx.clip(); }
-      roundRect(ctx, x, y, w, h, h / 2);
-      ctx.strokeStyle = BONUS_DOT[col] ?? '#ffffff';
+      if (g.cols.length > 1) { ctx.beginPath(); ctx.rect(x - 10 + (i ? w / 2 + 10 : 0), lineY - 10, w / 2 + 10, h + 20); ctx.clip(); }
+      boxPath(x, w);
+      ctx.strokeStyle = BONUS_DOT[col] ?? frameTint;
       ctx.stroke();
       ctx.restore();
     });
-    // Dot(s) of the colour, then the stat icon and the value.
-    const r = h * 0.17;
-    let cx = x + h * 0.42;
-    cols.slice(0, 2).forEach((col, i) => {
-      ctx.beginPath();
-      ctx.arc(cx + i * r * 1.6, y + h / 2, r, 0, Math.PI * 2);
-      ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff';
-      ctx.fill();
+    let cx = x + M.pad + M.inner;
+    g.items.forEach((c, i) => {
+      if (i) cx += size * 0.5;
+      const icon = icons[`stat-${c.stat}`];
+      if (icon) {
+        const sc = Math.min(M.icon / icon.width, M.icon / icon.height);
+        ctx.drawImage(tinted(icon, STAT_TINTS[c.stat]), cx, cy - icon.height * sc / 2, icon.width * sc, icon.height * sc);
+        cx += M.icon + size * 0.12;
+      }
+      ctx.font = `${size}px ${TITLE_FONT}`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label(c), cx, cy + size * 0.04);
+      cx += ctx.measureText(label(c)).width;
     });
-    cx += (cols.length > 1 ? r * 1.6 : 0) + r * 2.2;
-    const icon = icons[`stat-${c.stat}`];
-    const is = h * 0.62;
-    if (icon) {
-      const s = Math.min(is / icon.width, is / icon.height);
-      ctx.drawImage(tinted(icon, STAT_TINTS[c.stat]), cx, y + (h - icon.height * s) / 2, icon.width * s, icon.height * s);
-      cx += is + 10;
-    }
-    fitLine(ctx, `${c.value > 0 ? '+' : ''}${c.value}`, { box: [cx, y, x + w - cx - h * 0.3, h], size: Math.round(h * 0.8), min: 30 }, { font: TITLE_FONT, color: '#ffffff' });
-    ctx.restore();
-  }
+    x += w + 14;
+  });
+  ctx.restore();
+  return lineY + h;
 }
 
 // Bonusi statova (Action/Equipment: "+2000 Power"): ikona u boji stata i broj, na mjestima iz predloška.

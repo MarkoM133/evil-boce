@@ -19,12 +19,11 @@
        Card data and frames come from data/ in the shared folder, never from the repo. -->
   <div id="out"></div>
   <script type="module">
-    import { loadTemplate, renderCard, fontsReady, loadImage, templateName, RENDER_OPTS } from '../js/render.js';
+    import { loadTemplate, renderCard, fontsReady, loadImage, templateName } from '../js/render.js';
 
     const q = new URLSearchParams(location.search);
     const ids = (q.get('ids') ?? '').split(',').filter(Boolean);
-    // ?chips=1: bonus boje "+N stat" kao čip (mockup); ?chips=both: svaka karta dvaput, sad i s čipom.
-    const chipsMode = q.get('chips');
+    // ?test=1: made-up cards with colour bonuses (boxes under the stats), not in the database.
     const out = document.getElementById('out');
     const db = await (await fetch('/data/cards.json', { cache: 'no-store' })).json();
     const drafts = await fetch('/data/editor/drafts.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : { cards: {} }));
@@ -74,20 +73,9 @@
       const canvas = document.createElement('canvas');
       const art = card.art ? await loadImage(`/data/${card.art}`).catch(() => null) : null;
       const emblem = card.emblem ? await loadImage(`/data/${card.emblem}`).catch(() => null) : null;
-      RENDER_OPTS.bonusChips = chipsMode === '1' ? true : (['inline', 'band', 'rows', 'hex', 'foot'].includes(chipsMode) || String(chipsMode).startsWith('slot')) ? chipsMode : false;
       const warnings = renderCard(canvas, card, tpl, art, emblem);
-      fig.append(canvas, Object.assign(document.createElement('figcaption'), { textContent: `${chipsMode === 'both' ? 'Now · ' : ''}Editor renderer${tpl.layers || tpl.frames ? '' : ' (interim frame)'} · ${warnings.join(' ') || 'no warnings'}` }));
+      fig.append(canvas, Object.assign(document.createElement('figcaption'), { textContent: `Editor renderer${tpl.layers || tpl.frames ? '' : ' (interim frame)'} · ${warnings.join(' ') || 'no warnings'}` }));
       row.append(fig);
-      const SHEET = { both: [[true, 'Bonus as a chip'], ['inline', 'Bonus after the number']], three: [['band', '1 · band of pills'], ['rows', '2 · second row'], ['hex', '3 · hex badges']] };
-      for (const [mode, label] of SHEET[chipsMode] ?? []) {
-        const fig2 = document.createElement('figure');
-        const c2 = document.createElement('canvas');
-        RENDER_OPTS.bonusChips = mode;
-        renderCard(c2, card, tpl, art, emblem);
-        RENDER_OPTS.bonusChips = false;
-        fig2.append(c2, Object.assign(document.createElement('figcaption'), { textContent: label }));
-        row.append(fig2);
-      }
       out.append(row);
     }
     document.body.dataset.ready = '1';

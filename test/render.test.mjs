@@ -1,7 +1,7 @@
 // Rastavljanje teksta efekta za renderer karata (oznake faze, RANGE, uvjet, natuknice).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEffect, parseEffects, richRuns } from '../js/render.js';
+import { parseEffect, parseEffects, richRuns, statBonusLines } from '../js/render.js';
 
 test('range, phase and the rest of the text', () => {
   const e = parseEffect('[Range] Postroll Phase: Knockback an Opponent\'s Hero 3 spaces.');
@@ -40,4 +40,15 @@ test('several effects: each line with a phase or [Range] starts its own effect',
   const blocks = parseEffects('Roll Phase: You may roll again.\nPostroll Phase Once Per Turn: Heal 2 HP.\n- or this');
   assert.deepEqual(blocks.map(b => [b.phase, b.once, b.lines.length]), [['ROLL PHASE', false, 1], ['POSTROLL PHASE', true, 2]]);
   assert.equal(parseEffects('The equipped Hero takes +1 DMG.').length, 1);
+});
+
+test('colour bonuses that are only +N stat leave the text for the bonus boxes; sentences and minus stay right', () => {
+  const { rest, chips } = statBonusLines('Battle Phase:\nYellow Bonus: +1 DMG.\nCyan / Purple Bonus: +1000 Power.\nRed Bonus: -1 KB.\nGreen Bonus: It also heals 2 HP.');
+  assert.equal(rest, 'Battle Phase:\nGreen Bonus: It also heals 2 HP.');
+  assert.deepEqual(chips, [
+    { stat: 'dmg', value: 1, colors: ['Yellow'] },
+    { stat: 'pwr', value: 1000, colors: ['Cyan', 'Purple'] },
+    { stat: 'kb', value: -1, colors: ['Red'] },
+  ]);
+  assert.deepEqual(parseEffect('Purple Bonus: -1 KB.').lines, [{ bullet: false, text: '-1 KB.' }]);
 });
