@@ -1200,6 +1200,9 @@ export function createEditor(env) {
       sync();
     };
     const phaseBtns = PHASES.filter(p => !stage || ['Start', 'Battle', 'End'].includes(p)).map(p => h('button', { type: 'button', 'data-phase': p, onmousedown: e => e.preventDefault(), onclick: () => setHead({ phase: here().phase === p ? null : p }) }, p));
+    // Passive: the effect has no phase (cards that stay in play draw a PASSIVE chip for it; Marko 2026-11-05).
+    const passiveType = ['Hero', 'Evolution', 'Equipment', 'Assist'].includes(w.type);
+    const passiveBtn = passiveType ? h('button', { type: 'button', 'data-passive': '1', title: 'No phase: the effect counts all the time', onmousedown: e => e.preventDefault(), onclick: () => setHead({ phase: null, once: false }) }, 'Passive') : null;
     const once = stage ? null : h('button', { type: 'button', 'data-once': '1', onmousedown: e => e.preventDefault(), onclick: () => { const hd = here(); setHead({ once: !hd.once, phase: hd.phase ?? 'Battle' }); } }, 'Once per turn');
     const range = stage ? null : h('button', { type: 'button', 'data-range': '1', onmousedown: e => e.preventDefault(), onclick: () => setHead({ range: !here().range }) }, '◎ Range');
     // Novi efekt: novi redak na kraju, kursor u njemu (pa se bira njegova faza).
@@ -1227,10 +1230,11 @@ export function createEditor(env) {
       area.selectionStart = area.selectionEnd = caret;
       sync();
     } }, '+ Bonus') : null;
-    const tools = h('div', { class: 'ce-tools' }, revealed, phaseBtns, once, range, addEffect, bonusBtn, toks, trait, phrase);
+    const tools = h('div', { class: 'ce-tools' }, revealed, passiveBtn, phaseBtns, once, range, addEffect, bonusBtn, toks, trait, phrase);
     function refreshToggles() {
       const hd = here();
       for (const b of tools.querySelectorAll('[data-phase]')) b.classList.toggle('on', b.dataset.phase === hd.phase);
+      tools.querySelector('[data-passive]')?.classList.toggle('on', !hd.phase && !!hd.rest?.trim());
       tools.querySelector('[data-once]')?.classList.toggle('on', hd.once);
       tools.querySelector('[data-range]')?.classList.toggle('on', hd.range);
     }
