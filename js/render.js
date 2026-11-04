@@ -143,6 +143,13 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
     effectBox = { ...L.effect, box: [ex, ey + strip, ew, eh - strip] };
     if (mode === 'band') drawBonusBand(ctx, chips, [ex, ey, ew, strip], tpl.icons);
     else drawBonusHexes(ctx, chips, [ex, ey, ew, strip], tpl.icons);
+  } else if (chips.length && mode === 'slot') {
+    drawBonusSlot(ctx, chips, L, tpl.icons, CARD_TINTS[color]);
+  } else if (chips.length && mode === 'foot') {
+    const [ex, ey, ew, eh] = L.effect.box;
+    const strip = 78;
+    effectBox = { ...L.effect, box: [ex, ey, ew, eh - strip] };
+    drawBonusFoot(ctx, chips, [ex, ey + eh - strip, ew, strip], tpl.icons);
   } else if (chips.length && mode === 'rows') {
     const low = chips.some(c => (L.bonus[c.stat]?.icon[1] ?? 0) > 1600);
     if (low) { const [ex, ey, ew, eh] = L.effect.box; effectBox = { ...L.effect, box: [ex, ey, ew, eh - 100] }; }
@@ -418,6 +425,74 @@ function drawBonusHexes(ctx, chips, strip, icons) {
     ctx.textBaseline = 'middle';
     ctx.fillText(`${c.value > 0 ? '+' : ''}${c.value}`, x, cy + R * 0.3);
     x += hw + gap;
+  }
+}
+
+// One bonus as runs: dot(s) of the colour, the stat icon in its stat colour, the value. Returns the width.
+function bonusRun(ctx, c, x, cy, size, icons, ink, draw) {
+  const cols = (c.colors.length ? c.colors : ['Yellow']).slice(0, 2);
+  const r = size * 0.19;
+  let cx = x;
+  cols.forEach((col, i) => {
+    if (draw) { ctx.beginPath(); ctx.arc(cx + r, cy, r, 0, Math.PI * 2); ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff'; ctx.fill(); }
+    cx += r * 2 + (i < cols.length - 1 ? r * 0.5 : 0);
+  });
+  cx += size * 0.22;
+  const icon = icons[`stat-${c.stat}`];
+  if (icon) {
+    const is = size * 0.9;
+    const s = Math.min(is / icon.width, is / icon.height);
+    if (draw) ctx.drawImage(tinted(icon, STAT_TINTS[c.stat]), cx, cy - icon.height * s / 2, icon.width * s, icon.height * s);
+    cx += icon.width * s + size * 0.12;
+  }
+  const label = `${c.value > 0 ? '+' : ''}${c.value}`;
+  ctx.font = `${size}px ${TITLE_FONT}`;
+  if (draw) { ctx.fillStyle = ink; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(label, cx, cy + size * 0.04); }
+  cx += ctx.measureText(label).width;
+  return cx - x;
+}
+
+// A compartment in the frame's style: a box hanging under the line below the stats, on the right end of the
+// line, like the type label on the left. Stroke in the frame's tint; the bonuses inside, right to left.
+function drawBonusSlot(ctx, chips, L, icons, tint) {
+  const lineY = 1326;
+  const lineRight = 1362;
+  const h = 86;
+  const size = 50;
+  const gap = size * 0.6;
+  const pad = 30;
+  const widths = chips.map(c => bonusRun(ctx, c, 0, 0, size, icons, '#fff', false));
+  const w = pad * 2 + widths.reduce((a, b) => a + b, 0) + gap * (chips.length - 1);
+  const x = lineRight - w;
+  ctx.save();
+  // The box: dark inside, the frame's stroke, square top corners on the line, round bottom ones.
+  ctx.beginPath();
+  ctx.roundRect(x, lineY, w, h, [0, 0, 18, 18]);
+  ctx.fillStyle = '#1a1a1c';
+  ctx.fill();
+  ctx.lineWidth = 9;
+  ctx.strokeStyle = tint;
+  ctx.stroke();
+  let cx = x + pad;
+  for (let i = 0; i < chips.length; i++) {
+    bonusRun(ctx, chips[i], cx, lineY + h / 2 + 4, size, icons, '#ffffff', true);
+    cx += widths[i] + gap;
+  }
+  ctx.restore();
+}
+
+// A quiet last line in the text box: smaller, dimmer, the bonuses centred with their colour dots.
+function drawBonusFoot(ctx, chips, strip, icons) {
+  const [sx, sy, sw, sh] = strip;
+  const size = 46;
+  const gap = size * 0.9;
+  const widths = chips.map(c => bonusRun(ctx, c, 0, 0, size, icons, '#fff', false));
+  const total = widths.reduce((a, b) => a + b, 0) + gap * (chips.length - 1);
+  let cx = sx + sw / 2 - total / 2;
+  const cy = sy + sh / 2;
+  for (let i = 0; i < chips.length; i++) {
+    bonusRun(ctx, chips[i], cx, cy, size, icons, 'rgba(255,255,255,0.85)', true);
+    cx += widths[i] + gap;
   }
 }
 
