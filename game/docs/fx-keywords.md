@@ -33,6 +33,11 @@ Examples: `POSTROLL ONCE OPTIONAL: MOVE SELF 2` (Bucciarati),
 A `ROLL` effect (an Action, or an `OPTIONAL` ability) is offered when the balls stop: the engine
 asks each player with one (`roll_offer`), once per stop; the Roll phase has no card round. A stage's `PASSIVE` effect uses `EACH_HERO` = the heroes on it.
 
+An Action's stat boxes (the card's `bonus`, e.g. +2000 Power, +1 DMG, printed on the card, not in its text) are
+not fx: the game gives them by itself to the hero the card is played on, until the end of the phase. An Action
+whose text is only a phase ("Battle Phase:") is such a card: its fx is the WHEN alone (`BATTLE:`), which says
+when it may be played. Anything the text adds goes on lines of its own.
+
 ### Flags and conditions
 
 - `ONCE`: once per turn. `OPTIONAL`: "may"; the player uses it with the `use_ability` move,

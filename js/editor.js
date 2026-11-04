@@ -356,7 +356,7 @@ export function createEditor(env) {
     // Čitanje parsera vrijedi samo za objavljeni tekst; server ga uspoređuje, Claude ga ne vidi.
     const read = p && !p.unparsed?.length && base && toWords(base.text ?? '') === text ? (p.read ?? '') : undefined;
     return { id: c.id, name: c.name, type: c.type, color: c.color, bonusColors: c.bonusColors, hero: c.hero, cost: c.cost,
-      traits: c.traits, text, read, who: who(), at };
+      bonus: c.bonus && Object.keys(c.bonus).length ? c.bonus : undefined, traits: c.traits, text, read, who: who(), at };
   }
 
   async function askClaude(w) {

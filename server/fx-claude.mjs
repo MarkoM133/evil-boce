@@ -122,7 +122,8 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
     log(`fx: asking Claude for ${id} (${req.who || '?'})`);
     let result;
     try {
-      const card = { id, name: req.name, type: req.type, color: req.color, bonusColors: req.bonusColors, hero: req.hero, cost: req.cost, traits: req.traits, text: req.text };
+      // bonus: an Action's stat boxes (+2000 Power …), given by the game itself; without it a bare "Battle Phase:" looks cut off.
+      const card = { id, name: req.name, type: req.type, color: req.color, bonusColors: req.bonusColors, hero: req.hero, cost: req.cost, bonus: req.bonus, traits: req.traits, text: req.text };
       const msg = await client.beta.messages.create({
         model: MODEL,
         max_tokens: 16000,
