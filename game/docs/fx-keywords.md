@@ -38,7 +38,9 @@ game gives them by itself, never write a BUFF for them. An Action's go to the he
 the phase; an Equipment's count while it is equipped. Only what the text adds is fx (a colour bonus such as
 "Yellow Bonus: +1 DMG." is `PASSIVE BONUS: BUFF EQUIPPED DMG 1` on Equipment, on top of the boxes). An Action
 whose text is only a phase ("Battle Phase:") is such a card: its fx is the WHEN alone (`BATTLE:`), which says
-when it may be played. Anything the text adds goes on lines of its own.
+when it may be played. That bare line is only for a card with no effect at all: as soon as the text has an
+effect, its line (`BATTLE IF WIN: FULL_HIT OPP`) already says when the card may be played, and a bare `BATTLE:`
+beside it is never written.
 
 ### Flags and conditions
 
