@@ -86,9 +86,6 @@ var _dragging: bool = false
 const DRAG_START: float = 14.0
 ## True while the physics runs, so the prompt can say so.
 var rolling: bool = false
-## How the phase ribbon uses the phase colours (mockup): "" none, "current" the current phase filled in its
-## colour, "stripe" a stripe of its colour under every phase, "all" every phase in its colour, dimmed until now.
-var ribbon_look: String = ""
 ## Watching a recorded match: no prompts, buttons or end screen, only the table and panels.
 var replay: bool = false
 ## Online: who paused the match ("" when it runs); shown instead of the prompt.
@@ -762,33 +759,16 @@ func _refresh_ribbon() -> void:
 		_ribbon.add_child(first)
 		var now: int = RIBBON_PHASES.find(_ribbon_phase(state.phase))
 		for i: int in RIBBON_PHASES.size():
-			var fill: Color = Palette.PANEL_SOLID
-			var fg: Color = Palette.MUTED
-			if i < now:
-				fill = Palette.SURFACE_2
-				fg = Palette.DIM
-			elif i == now:
-				fill = Palette.FG
-				fg = Color.BLACK
+			# Every phase in its colour, as the phase chips on the cards (Marko 2026-11-05): the current one full,
+			# the ones still to come dimmed, the ones gone darker still.
 			var label: String = RIBBON_PHASES[i].to_upper()
 			var pc: Color = Palette.PHASE_COLORS.get(RIBBON_PHASES[i], Palette.FG)
 			var ink: Color = Color.BLACK if pc.get_luminance() > 0.45 else Palette.FG
-			if ribbon_look == "current" and i == now:
-				fill = pc
-				fg = ink
-			elif ribbon_look == "all":
-				fill = pc if i == now else pc.darkened(0.62 if i > now else 0.78)
-				fg = ink if i == now else pc.lightened(0.15) if i > now else Palette.DIM
+			var fill: Color = pc if i == now else pc.darkened(0.62 if i > now else 0.78)
+			var fg: Color = ink if i == now else pc.lightened(0.15) if i > now else Palette.DIM
 			var w: float = UiTheme.display_heavy().get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 34.0
 			var chev: UiShape = UiShape.make(UiShape.Kind.CHEVRON, fill, Vector2(w, 30), label, 15, fg)
 			chev.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			if ribbon_look == "stripe":
-				var bar := ColorRect.new()
-				bar.color = pc if i >= now else pc.darkened(0.5)
-				bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				bar.position = Vector2(10, 26)
-				bar.size = Vector2(w - 20, 4)
-				chev.add_child(bar)
 			_ribbon.add_child(chev)
 	var tag: UiShape = _status_tag()
 	if tag != null:
