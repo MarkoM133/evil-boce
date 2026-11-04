@@ -117,7 +117,7 @@ later `BUFF` multiplies by that number. `MOVE` with a group target asks every he
 (its own hex = stays). A stage's `REVEAL` bonus counts while the hero stays on that stage
 and it is unclaimed (`GameState.stage_buffs`); once the hero leaves, it is gone.
 
-Counters for `PER`: `TRAIT_EQUIPPED {Trait}` (equipment with the trait on the target),
+Counters for `PER`: `TRAIT_EQUIPPED {Trait}` (equipment with the trait on the target, the card itself included),
 `CORES` (cores on the target), `MISSING_HP <n>` (per n HP missing), `ENERGY` (the owner's
 energy), `LOW_HP_FRIENDLY <n>` (the owner's heroes with ≤ n HP, the hero itself included, KO heroes not), `LOW_HP_OTHER_FRIENDLY <n>` (the same without the hero whose effect it is: "every other friendly Hero").
 
