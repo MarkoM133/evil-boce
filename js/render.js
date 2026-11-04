@@ -143,8 +143,11 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
     effectBox = { ...L.effect, box: [ex, ey + strip, ew, eh - strip] };
     if (mode === 'band') drawBonusBand(ctx, chips, [ex, ey, ew, strip], tpl.icons);
     else drawBonusHexes(ctx, chips, [ex, ey, ew, strip], tpl.icons);
-  } else if (chips.length && mode === 'slot') {
-    drawBonusSlot(ctx, chips, L, tpl.icons, CARD_TINTS[color]);
+  } else if (chips.length && String(mode).startsWith('slot')) {
+    const bottom = drawBonusSlot(ctx, chips, L, tpl.icons, CARD_TINTS[color], mode === 'slot' ? 'dots' : mode.slice(5));
+    const [ex, ey, ew, eh] = L.effect.box;
+    const push = Math.max(0, bottom + 12 - ey);
+    effectBox = { ...L.effect, box: [ex, ey + push, ew, eh - push] };
   } else if (chips.length && mode === 'foot') {
     // The footnote ends well above the tag panel's frame (its outer line sits about 30 px above the tag box), so it
     // never runs into it, whatever the text above it does (Marko 2026-11-04).
@@ -456,33 +459,144 @@ function bonusRun(ctx, c, x, cy, size, icons, ink, draw) {
   return cx - x;
 }
 
-// A compartment in the frame's style: a box hanging under the line below the stats, on the right end of the
-// line, like the type label on the left. Stroke in the frame's tint; the bonuses inside, right to left.
-function drawBonusSlot(ctx, chips, L, icons, tint) {
+// A compartment in the frame's style: a box hanging under the line below the stats, on its right end, like the
+// type label on the left. Bonuses are grouped by colour; style says how a group shows its colour:
+// dots (a dot before each bonus), bar (a colour bar before the group), tint (the group's ground in the colour),
+// rim (one box per colour, rimmed in it), ball (a little boća in the colour before the group), num (the numbers
+// in the colour). Two colours sharing one bonus split the marker in halves. Returns the slot's bottom edge.
+function drawBonusSlot(ctx, chips, L, icons, tint, style) {
   const lineY = 1326;
   const lineRight = 1362;
-  const h = 86;
-  const size = 50;
-  const gap = size * 0.6;
-  const pad = 30;
-  const widths = chips.map(c => bonusRun(ctx, c, 0, 0, size, icons, '#fff', false));
-  const w = pad * 2 + widths.reduce((a, b) => a + b, 0) + gap * (chips.length - 1);
-  const x = lineRight - w;
+  const leftLimit = 480;
+  const groups = [];
+  for (const c of chips) {
+    const cols = (c.colors.length ? c.colors : ['Yellow']).slice(0, 2);
+    const key = cols.join('/');
+    let g = groups.find(x => x.key === key);
+    if (!g) groups.push(g = { key, cols, items: [] });
+    g.items.push(c);
+  }
+  const ink = cols => cols.length > 1 ? null : (BONUS_DOT[cols[0]] ?? '#ffffff');
+  const label = c => `${c.value > 0 ? '+' : ''}${c.value}`;
+  // Sizes for a font size; widths of items, markers and groups.
+  const measure = size => {
+    ctx.font = `${size}px ${TITLE_FONT}`;
+    const icon = size * 0.9;
+    const itemW = c => icon + size * 0.12 + ctx.measureText(label(c)).width;
+    const dotW = cols => size * 0.38 * cols.length + size * 0.1 * (cols.length - 1) + size * 0.22;
+    const markW = g => style === 'bar' ? 12 * g.cols.length + 4 * (g.cols.length - 1) + size * 0.3
+      : style === 'ball' ? size * 0.8 + size * 0.25 : 0;
+    const inner = style === 'tint' || style === 'rim' ? size * 0.35 : 0;
+    const gw = g => inner * 2 + markW(g) + g.items.reduce((acc, c, i) => acc + itemW(c) + (style === 'dots' ? dotW(g.cols) : 0) + (i ? size * 0.5 : 0), 0);
+    const pad = style === 'tint' || style === 'rim' ? 10 : 26;
+    const groupGap = style === 'rim' ? 14 : style === 'tint' ? 6 : size * 0.8;
+    const boxes = style === 'rim' ? groups.map(g => gw(g) + pad * 2) : [pad * 2 + groups.reduce((acc, g, i) => acc + gw(g) + (i ? groupGap : 0), 0)];
+    const total = boxes.reduce((x, y) => x + y, 0) + (style === 'rim' ? 14 * (boxes.length - 1) : 0);
+    return { size, icon, itemW, dotW, markW, inner, gw, pad, groupGap, boxes, total };
+  };
+  let size = 58;
+  let M = measure(size);
+  while (M.total > lineRight - leftLimit && size > 34) M = measure(size -= 2);
+  const h = Math.round(size * 1.75);
+  const cy = lineY + h / 2 + 4;
+
+  const boxPath = (x, w) => { ctx.beginPath(); ctx.roundRect(x, lineY, w, h, [0, 0, 18, 18]); };
+  const stroke = (x, w, cols) => {
+    ctx.lineWidth = 9;
+    if (!cols || cols.length < 2) { boxPath(x, w); ctx.strokeStyle = cols ? BONUS_DOT[cols[0]] : tint; ctx.stroke(); return; }
+    cols.forEach((col, i) => {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x - 10 + (i ? w / 2 + 10 : 0), lineY - 10, w / 2 + 10, h + 20); ctx.clip();
+      boxPath(x, w); ctx.strokeStyle = BONUS_DOT[col]; ctx.stroke();
+      ctx.restore();
+    });
+  };
+  const fillHalves = (x, y, w, hh, cols, alpha) => {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    cols.forEach((col, i) => { ctx.fillStyle = BONUS_DOT[col]; ctx.fillRect(x + (cols.length > 1 && i ? w / 2 : 0), y, cols.length > 1 ? w / 2 : w, hh); });
+    ctx.restore();
+  };
+  const drawItem = (c, x, cols) => {
+    const icon = icons[`stat-${c.stat}`];
+    let cx = x;
+    if (icon) {
+      const sc = Math.min(M.icon / icon.width, M.icon / icon.height);
+      ctx.drawImage(tinted(icon, STAT_TINTS[c.stat]), cx, cy - icon.height * sc / 2, icon.width * sc, icon.height * sc);
+      cx += M.icon + size * 0.12;
+    }
+    ctx.font = `${size}px ${TITLE_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const text = label(c);
+    if (style === 'num') {
+      const one = ink(cols);
+      if (one) ctx.fillStyle = one;
+      else { const tw = ctx.measureText(text).width; const g = ctx.createLinearGradient(cx, 0, cx + tw, 0); g.addColorStop(0, BONUS_DOT[cols[0]]); g.addColorStop(1, BONUS_DOT[cols[1]]); ctx.fillStyle = g; }
+    } else ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, cx, cy + size * 0.04);
+    return cx + ctx.measureText(text).width;
+  };
+  const drawBall = (x, cols) => {
+    const r = size * 0.4;
+    const bx = x + r;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(bx, cy, r, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = '#d9d2c5'; ctx.fillRect(bx - r, cy, r * 2, r);
+    cols.forEach((col, i) => { ctx.fillStyle = BONUS_DOT[col]; ctx.fillRect(bx - r + (cols.length > 1 && i ? r : 0), cy - r, cols.length > 1 ? r : r * 2, r); });
+    ctx.fillStyle = '#111111'; ctx.fillRect(bx - r, cy - r * 0.09, r * 2, r * 0.18);
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(bx, cy, r, 0, Math.PI * 2); ctx.lineWidth = 4; ctx.strokeStyle = '#111111'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(bx, cy, r * 0.28, 0, Math.PI * 2); ctx.fillStyle = '#f3efe7'; ctx.fill(); ctx.lineWidth = 3; ctx.stroke();
+    return x + r * 2 + size * 0.25;
+  };
+  const drawGroup = (g, x) => {
+    let cx = x + M.inner;
+    if (style === 'bar') {
+      g.cols.forEach((col, i) => { ctx.fillStyle = BONUS_DOT[col]; ctx.fillRect(cx + i * 16, lineY + h * 0.22, 12, h * 0.56); });
+      cx += M.markW(g);
+    } else if (style === 'ball') cx = drawBall(cx, g.cols);
+    g.items.forEach((c, i) => {
+      if (i) cx += size * 0.5;
+      if (style === 'dots') {
+        const r = size * 0.19;
+        g.cols.forEach((col, k) => { ctx.beginPath(); ctx.arc(cx + r + k * (r * 2 + size * 0.1), cy, r, 0, Math.PI * 2); ctx.fillStyle = BONUS_DOT[col]; ctx.fill(); });
+        cx += M.dotW(g.cols);
+      }
+      cx = drawItem(c, cx, g.cols);
+    });
+  };
+
   ctx.save();
-  // The box: dark inside, the frame's stroke, square top corners on the line, round bottom ones.
-  ctx.beginPath();
-  ctx.roundRect(x, lineY, w, h, [0, 0, 18, 18]);
-  ctx.fillStyle = '#1a1a1c';
-  ctx.fill();
-  ctx.lineWidth = 9;
-  ctx.strokeStyle = tint;
-  ctx.stroke();
-  let cx = x + pad;
-  for (let i = 0; i < chips.length; i++) {
-    bonusRun(ctx, chips[i], cx, lineY + h / 2 + 4, size, icons, '#ffffff', true);
-    cx += widths[i] + gap;
+  if (style === 'rim') {
+    let x = lineRight - M.total;
+    groups.forEach((g, i) => {
+      const w = M.boxes[i];
+      boxPath(x, w); ctx.fillStyle = '#1a1a1c'; ctx.fill();
+      stroke(x, w, g.cols);
+      drawGroup(g, x + M.pad);
+      x += w + 14;
+    });
+  } else {
+    const w = M.boxes[0];
+    const x = lineRight - w;
+    boxPath(x, w); ctx.fillStyle = '#1a1a1c'; ctx.fill();
+    let gx = x + M.pad;
+    groups.forEach((g, i) => {
+      if (i) gx += M.groupGap;
+      const gw = M.gw(g);
+      if (style === 'tint') {
+        ctx.save(); boxPath(x, w); ctx.clip();
+        fillHalves(gx, lineY, gw, h, g.cols, 0.34);
+        ctx.restore();
+      }
+      drawGroup(g, gx);
+      gx += gw;
+    });
+    stroke(x, w, null);
   }
   ctx.restore();
+  return lineY + h;
 }
 
 // A quiet last line in the text box: smaller, dimmer, the bonuses centred with their colour dots.

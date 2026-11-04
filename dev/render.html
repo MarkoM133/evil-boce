@@ -74,7 +74,7 @@
       const canvas = document.createElement('canvas');
       const art = card.art ? await loadImage(`/data/${card.art}`).catch(() => null) : null;
       const emblem = card.emblem ? await loadImage(`/data/${card.emblem}`).catch(() => null) : null;
-      RENDER_OPTS.bonusChips = chipsMode === '1' ? true : ['inline', 'band', 'rows', 'hex', 'slot', 'foot'].includes(chipsMode) ? chipsMode : false;
+      RENDER_OPTS.bonusChips = chipsMode === '1' ? true : (['inline', 'band', 'rows', 'hex', 'foot'].includes(chipsMode) || String(chipsMode).startsWith('slot')) ? chipsMode : false;
       const warnings = renderCard(canvas, card, tpl, art, emblem);
       fig.append(canvas, Object.assign(document.createElement('figcaption'), { textContent: `${chipsMode === 'both' ? 'Now · ' : ''}Editor renderer${tpl.layers || tpl.frames ? '' : ' (interim frame)'} · ${warnings.join(' ') || 'no warnings'}` }));
       row.append(fig);
