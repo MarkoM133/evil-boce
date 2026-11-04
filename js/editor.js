@@ -403,6 +403,8 @@ export function createEditor(env) {
     else if (r) {
       const stale = r.askedText != null && r.askedText !== claudeText(w);
       const use = () => { snap(true); w.fx = r.fx || undefined; w.fxStatus = r.fx ? 'check' : undefined; box.value = r.fx ?? ''; changed(); env.render(); };
+      const normFx = x => String(x ?? '').split('\n').map(l => l.trim().replace(/\s+/g, ' ').toUpperCase()).filter(Boolean).join('\n');
+      const inUse = !!r.fx && normFx(w.fx) === normFx(r.fx);
       parts.push(h('div', { class: 'ce-claude' },
         h('p', { class: 'small muted' }, `Claude's proposal${r.who ? ` (asked by ${r.who})` : ''}${stale ? ', for an older text' : ''}:`),
         h('pre', { class: 'ce-fx-code ce-claude-fx' }, r.fx || '(no fx needed)'),
@@ -411,7 +413,9 @@ export function createEditor(env) {
         r.notes ? h('p', { class: 'small' }, r.notes) : null,
         r.agree === true ? h('p', { class: 'small ok' }, '✓ Claude reads the card the same way as the game.') : r.agree === false && !w.fx ? h('p', { class: 'small warn' }, 'Claude reads it differently from the game: compare the two and fix the text, or use Claude\'s fx.') : null,
         r.extensions?.length ? h('p', { class: 'small' }, 'Needs new words, on the ', h('button', { class: 'link', type: 'button', onclick: () => go('wishlist') }, 'fx wishlist'), ': ', r.extensions.map(x => x.word).join(' · ')) : null,
-        h('button', { class: 'ghost', type: 'button', disabled: !!r.problems?.length || stale, title: r.problems?.length ? 'The game would not read it' : stale ? 'Ask again: the text changed' : 'Put it in the fx box, still to be confirmed', onclick: use }, 'Use this')));
+        // Once the fx box holds this proposal, say so instead of offering it again (Marko 2026-11-05).
+        inUse ? h('p', { class: `small ${w.fxStatus === 'check' ? 'warn' : 'ok'}` }, w.fxStatus === 'check' ? '✓ In the fx box. Confirm it below.' : '✓ In the fx box and confirmed.')
+          : h('button', { class: 'ghost', type: 'button', disabled: !!r.problems?.length || stale, title: r.problems?.length ? 'The game would not read it' : stale ? 'Ask again: the text changed' : 'Put it in the fx box, still to be confirmed', onclick: use }, 'Use this')));
     }
     return h('div', { class: 'ce-claude-box' }, parts);
   }
