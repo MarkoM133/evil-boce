@@ -129,11 +129,26 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   let text = card.text ?? '';
   let chips = [];
   if (RENDER_OPTS.bonusChips && L.bonus) ({ rest: text, chips } = statBonusLines(text));
-  if (RENDER_OPTS.bonusChips === 'inline' && chips.length) drawBonusInline(ctx, card.bonus ?? {}, chips, L, tpl.icons);
+  const mode = RENDER_OPTS.bonusChips;
+  if (mode === 'inline' && chips.length) drawBonusInline(ctx, card.bonus ?? {}, chips, L, tpl.icons);
   else drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
-  if (chips.length && RENDER_OPTS.bonusChips !== 'inline') drawBonusChips(ctx, chips, card.bonus ?? {}, L, tpl.icons);
+  if (chips.length && mode === true) drawBonusChips(ctx, chips, card.bonus ?? {}, L, tpl.icons);
   if (L.tags && !drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag bar.');
-  const t = drawEffect(ctx, text, color, L.effect, tpl.icons);
+  // The band and the hex badges take a strip off the top of the text box; the rows take one off its bottom
+  // when a bottom-row stat (KB, Range) carries a bonus.
+  let effectBox = L.effect;
+  if (chips.length && (mode === 'band' || mode === 'hex')) {
+    const [ex, ey, ew, eh] = L.effect.box;
+    const strip = mode === 'band' ? 96 : 120;
+    effectBox = { ...L.effect, box: [ex, ey + strip, ew, eh - strip] };
+    if (mode === 'band') drawBonusBand(ctx, chips, [ex, ey, ew, strip], tpl.icons);
+    else drawBonusHexes(ctx, chips, [ex, ey, ew, strip], tpl.icons);
+  } else if (chips.length && mode === 'rows') {
+    const low = chips.some(c => (L.bonus[c.stat]?.icon[1] ?? 0) > 1600);
+    if (low) { const [ex, ey, ew, eh] = L.effect.box; effectBox = { ...L.effect, box: [ex, ey, ew, eh - 100] }; }
+    drawBonusRows(ctx, chips, L, tpl.icons);
+  }
+  const t = drawEffect(ctx, text, color, effectBox, tpl.icons);
   if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
   return warnings;
 }
@@ -272,6 +287,137 @@ function drawBonusInline(ctx, bonus, chips, L, icons) {
       ctx.fillText(t.text, tx, ty);
       tx += tw + ctx.measureText(' ').width;
     }
+  }
+}
+
+// Pill text: "+1" with the stat icon; a pill background in the colour (two colours: halves), dark text on light
+// colours (Yellow, Cyan, Green), white on the rest.
+const DARK_ON = { Yellow: true, Cyan: true, Green: true };
+function pillColors(cols) {
+  return (cols.length ? cols : ['Yellow']).slice(0, 2);
+}
+
+// 1. A band of pills across the card: dot(s) of the colour are the pill itself; the stat icon and the value sit in it.
+function drawBonusBand(ctx, chips, strip, icons) {
+  const [sx, sy, sw, sh] = strip;
+  const h = 72;
+  const gap = 18;
+  const size = 52;
+  ctx.font = `${size}px ${TITLE_FONT}`;
+  const pills = chips.map(c => {
+    const label = `${c.value > 0 ? '+' : ''}${c.value}`;
+    return { c, label, w: 34 + 56 + 10 + ctx.measureText(label).width + 34 };
+  });
+  const total = pills.reduce((a, p) => a + p.w, 0) + gap * (pills.length - 1);
+  let x = sx + sw / 2 - total / 2;
+  const y = sy + (sh - h) / 2;
+  for (const p of pills) {
+    const cols = pillColors(p.c.colors);
+    ctx.save();
+    roundRect(ctx, x, y, p.w, h, h / 2);
+    ctx.clip();
+    cols.forEach((col, i) => {
+      ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff';
+      ctx.fillRect(x + (cols.length > 1 && i ? p.w / 2 : 0), y, cols.length > 1 ? p.w / 2 : p.w, h);
+    });
+    ctx.restore();
+    ctx.save();
+    roundRect(ctx, x, y, p.w, h, h / 2);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.stroke();
+    ctx.restore();
+    const dark = cols.every(col => DARK_ON[col]);
+    const ink = dark ? '#111111' : '#ffffff';
+    const icon = icons[`stat-${p.c.stat}`];
+    let cx = x + 30;
+    if (icon) {
+      const s = Math.min(56 / icon.width, 56 / icon.height);
+      ctx.drawImage(tinted(icon, dark ? '#111111' : '#ffffff'), cx, y + (h - icon.height * s) / 2, icon.width * s, icon.height * s);
+      cx += 56 + 10;
+    }
+    ctx.font = `bold ${size}px ${TITLE_FONT}`;
+    ctx.fillStyle = ink;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.label, cx, y + h / 2 + 2);
+    x += p.w + gap;
+  }
+}
+
+// 2. A second (and third) row under the stat columns: the number in the colour with a dot before it, under
+// its own stat; no icons repeated. The bottom row (KB, Range) gets its coloured row above itself.
+function drawBonusRows(ctx, chips, L, icons) {
+  const nth = {};
+  for (const c of chips) {
+    const slot = L.bonus[c.stat];
+    if (!slot) continue;
+    const i = nth[c.stat] = (nth[c.stat] ?? 0) + 1;
+    const [ix, iy, iw] = slot.icon;
+    const [vx, , vw] = slot.value;
+    const low = iy > 1600;
+    const rowH = 84;
+    const y = low ? iy - i * rowH : iy + 128 + 2 + (i - 1) * rowH;
+    const cols = pillColors(c.colors);
+    const r = 15;
+    cols.forEach((col, k) => {
+      ctx.beginPath();
+      ctx.arc(ix + iw / 2 + (cols.length > 1 ? (k ? r : -r) : 0), y + rowH / 2, r, 0, Math.PI * 2);
+      ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff';
+      ctx.fill();
+    });
+    const label = `${c.value > 0 ? '+' : ''}${c.value}`;
+    const g = cols.length > 1 ? (() => { const gr = ctx.createLinearGradient(vx, 0, vx + vw, 0); gr.addColorStop(0, BONUS_DOT[cols[0]]); gr.addColorStop(1, BONUS_DOT[cols[1]]); return gr; })() : (BONUS_DOT[cols[0]] ?? '#ffffff');
+    fitLine(ctx, label, { box: [vx, y, vw, rowH], size: 72, min: 36, align: slot.value[2] > 200 ? 'left' : 'center' }, { font: TITLE_FONT, color: g });
+  }
+}
+
+// 3. Hex badges in the text box's top right, like core tokens: the colour fills the hex, the stat icon and the
+// value sit inside; two colours split the hex top / bottom.
+function drawBonusHexes(ctx, chips, strip, icons) {
+  const [sx, sy, sw, sh] = strip;
+  const R = 54;
+  const gap = 14;
+  const hw = Math.sqrt(3) * R;
+  let x = sx + sw - 20 - hw / 2 - (chips.length - 1) * (hw + gap);
+  const cy = sy + sh / 2;
+  for (const c of chips) {
+    const cols = pillColors(c.colors);
+    const hex = () => {
+      ctx.beginPath();
+      for (let k = 0; k < 6; k++) {
+        const a = Math.PI / 6 + (Math.PI / 3) * k;
+        const px = x + R * Math.cos(a);
+        const py = cy + R * Math.sin(a);
+        if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+    };
+    ctx.save();
+    hex();
+    ctx.clip();
+    cols.forEach((col, i) => {
+      ctx.fillStyle = BONUS_DOT[col] ?? '#ffffff';
+      ctx.fillRect(x - hw, cols.length > 1 && i ? cy : cy - R, hw * 2, cols.length > 1 ? R : R * 2);
+    });
+    ctx.restore();
+    hex();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#111111';
+    ctx.stroke();
+    const dark = cols.every(col => DARK_ON[col]);
+    const ink = dark ? '#111111' : '#ffffff';
+    const icon = icons[`stat-${c.stat}`];
+    if (icon) {
+      const s = Math.min(40 / icon.width, 40 / icon.height);
+      ctx.drawImage(tinted(icon, ink), x - icon.width * s / 2, cy - R * 0.62, icon.width * s, icon.height * s);
+    }
+    ctx.font = `bold 40px ${TITLE_FONT}`;
+    ctx.fillStyle = ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${c.value > 0 ? '+' : ''}${c.value}`, x, cy + R * 0.3);
+    x += hw + gap;
   }
 }
 

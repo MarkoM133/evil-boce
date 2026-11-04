@@ -39,9 +39,10 @@
     // ?test=1: izmišljene karte s najgorim slučajevima bonusa boje (nisu u bazi; art posuđen s OP1-017).
     const artFrom = { ...(db.cards.find(c => c.id === 'OP1-017') ?? {}), ...(drafts.cards?.['OP1-017'] ?? {}) };
     const TEST = [
-      { id: 'TEST-1', name: 'Every stat', type: 'Action', color: 'None', bonusColors: ['Yellow', 'Red', 'Blue', 'Cyan', 'Green'], cost: 3,
-        bonus: { hp: 2, dmg: 1, pwr: 1000, kb: 1, rng: 1 }, traits: ['General'],
-        text: 'Battle Phase:\nGreen Bonus: +2 HP.\nYellow Bonus: +1 DMG.\nRed Bonus: +1000 Power.\nBlue Bonus: +1 KB.\nCyan Bonus: +1 Range.' },
+      // At most two bonus colours per card (design rule, 2026-11-04).
+      { id: 'TEST-1', name: 'Two colours, four bonuses', type: 'Action', color: 'None', bonusColors: ['Yellow', 'Red'], cost: 3,
+        bonus: { dmg: 1, pwr: 1000, kb: 1 }, traits: ['General'],
+        text: 'Battle Phase:\nYellow Bonus: +1 DMG.\nYellow Bonus: +1 KB.\nRed Bonus: +1000 Power.\nRed Bonus: +1 Range.' },
       { id: 'TEST-2', name: 'Two colours, one bonus', type: 'Equipment', color: 'None', bonusColors: ['Cyan', 'Purple'], cost: 2,
         bonus: { dmg: 1 }, traits: ['Sword'], text: 'The equipped Hero takes +1 DMG from all sources.\nCyan / Purple Bonus: +1 DMG.' },
       { id: 'TEST-3', name: 'Two colours, two bonuses', type: 'Action', color: 'None', bonusColors: ['Yellow', 'Red'], cost: 2,
@@ -73,11 +74,12 @@
       const canvas = document.createElement('canvas');
       const art = card.art ? await loadImage(`/data/${card.art}`).catch(() => null) : null;
       const emblem = card.emblem ? await loadImage(`/data/${card.emblem}`).catch(() => null) : null;
-      RENDER_OPTS.bonusChips = chipsMode === '1' ? true : chipsMode === 'inline' ? 'inline' : false;
+      RENDER_OPTS.bonusChips = chipsMode === '1' ? true : ['inline', 'band', 'rows', 'hex'].includes(chipsMode) ? chipsMode : false;
       const warnings = renderCard(canvas, card, tpl, art, emblem);
       fig.append(canvas, Object.assign(document.createElement('figcaption'), { textContent: `${chipsMode === 'both' ? 'Now · ' : ''}Editor renderer${tpl.layers || tpl.frames ? '' : ' (interim frame)'} · ${warnings.join(' ') || 'no warnings'}` }));
       row.append(fig);
-      for (const [mode, label] of chipsMode === 'both' ? [[true, 'Bonus as a chip'], ['inline', 'Bonus after the number']] : []) {
+      const SHEET = { both: [[true, 'Bonus as a chip'], ['inline', 'Bonus after the number']], three: [['band', '1 · band of pills'], ['rows', '2 · second row'], ['hex', '3 · hex badges']] };
+      for (const [mode, label] of SHEET[chipsMode] ?? []) {
         const fig2 = document.createElement('figure');
         const c2 = document.createElement('canvas');
         RENDER_OPTS.bonusChips = mode;
