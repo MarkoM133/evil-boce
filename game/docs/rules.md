@@ -44,7 +44,7 @@ resets the passes.
 From Marko (2026-11-02); the default of Standard and every mode since 2026-11-02, with the
 Stay claims still offered in the rules panel. `MatchSettings.new()` keeps Stay, which the
 scenario tests use. `stage_goal` (default 14) is the energy a stage needs. The GDD still
-describes Stay: it waits for the decision on the variant.
+describes energy claims as the rule since 2026-11-04 (final); Stay stays an option.
 
 - No Stay claim and no battle claim. Energy is as always: +1 a turn up to `max_energy`, and
   what is left at the end of the turn does not carry over.
@@ -67,7 +67,7 @@ describes Stay: it waits for the decision on the variant.
   card's player; a physics knockback, each knocked hero's own (a tie-break sends each side back
   by the other's), and a ball one of them touches the same. Only a hero's outermost move counts,
   so a knockback's wall damage is part of it.
-- Decided with Marko (2026-11-02; the GDD waits until the variant itself is decided): a KO by
+- Decided with Marko (2026-11-02; final and in the GDD since 2026-11-04): a KO by
   the other side on a stage counts as being knocked off; a card of the other side that moves or
   knocks the hero off counts too; energy may go into any unclaimed stage, whoever placed it; a
   "cannot claim" effect lets the energy go in but holds the claim back until a later End phase;
