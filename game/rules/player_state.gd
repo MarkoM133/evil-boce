@@ -19,6 +19,9 @@ var stage_cards: PackedStringArray = PackedStringArray()
 var core_cards: PackedStringArray = PackedStringArray()
 var mulligan_done: bool = false
 var surrendered: bool = false
+## All the energy this player put into stages over the match, over the goal and later lost included: breaks
+## a tie when both sides reach their stages in the same End phase (Marko 2026-11-04).
+var energy_invested: int = 0
 
 
 func to_dict() -> Dictionary:
@@ -36,6 +39,7 @@ func to_dict() -> Dictionary:
 		"core_cards": Array(core_cards),
 		"mulligan_done": mulligan_done,
 		"surrendered": surrendered,
+		"energy_invested": energy_invested,
 	}
 
 
@@ -54,4 +58,5 @@ static func from_dict(d: Dictionary) -> PlayerState:
 	p.core_cards = JsonUtil.as_strings(d.get("core_cards", []))
 	p.mulligan_done = JsonUtil.as_bool(d.get("mulligan_done", false))
 	p.surrendered = JsonUtil.as_bool(d.get("surrendered", false))
+	p.energy_invested = JsonUtil.as_int(d.get("energy_invested", 0))
 	return p

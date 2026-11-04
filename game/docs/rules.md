@@ -75,7 +75,7 @@ describes energy claims as the rule since 2026-11-04 (final); Stay stays an opti
 - 2v2 is left for later (`pitanja.md`). For now only the player's own heroes count, and a
   teammate's hero does not contest.
 - The move timer's safe move puts it all into the stage with the most energy already in it.
-- **Tie-break** (Marko 2026-11-04): when every winning side reaches its stages in the same End phase, the side with more energy in all stages together wins (claimed stages count the energy that went in; result `stages_energy`, event `tie_broken {by, totals, winner_team}`); equal totals, or a win by KO at the same time, stay a draw. With Stay claims a simultaneous win stays a draw.
+- **Tie-break** (Marko 2026-11-04): when every winning side reaches its stages in the same End phase, the side that put more energy into stages over the whole match wins (`PlayerState.energy_invested`: everything banked into stages, over the goal and later lost included; result `stages_energy`, event `tie_broken {by, totals, winner_team}`); equal totals, or a win by KO at the same time, stay a draw. With Stay claims a simultaneous win stays a draw.
 
 ## Playing cards (`play_card {"card", "hero"?, "replace"?}`)
 

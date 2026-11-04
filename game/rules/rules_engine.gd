@@ -1665,6 +1665,9 @@ func _put_energy(s: GameState, slot: int, st: StageState, n: int) -> void:
 	var have: int = st.progress_of(slot)
 	var added: int = mini(n, maxi(goal - have, 0))
 	st.progress[slot] = have + added
+	var p: PlayerState = s.player(slot)
+	if p != null:
+		p.energy_invested += n
 	var info: Dictionary = {"player": slot, "stage": st.id, "amount": added, "progress": have + added, "goal": goal}
 	if n > added:
 		info["wasted"] = n - added
@@ -1777,17 +1780,16 @@ func _check_win(s: GameState) -> void:
 				return
 	elif winners.size() > 1:
 		# Energy claims (Marko 2026-11-04): when every side reaches its stages in the same End phase, the side
-		# with more energy in all stages together (claimed ones count what went in) wins; equal is a draw.
+		# that put more energy into stages over the whole match (over the goal and later lost included) wins;
+		# equal is a draw.
 		var by_stages: bool = s.settings.energy_claims()
 		for p: PlayerState in s.players:
 			if winners.has(p.team) and claimed_count(s, p.slot) < s.settings.stages_to_win:
 				by_stages = false
 		if by_stages:
 			var totals: Dictionary[int, int] = {}
-			for st: StageState in s.stages:
-				for slot: int in st.progress:
-					var team: int = s.team_of(slot)
-					totals[team] = totals.get(team, 0) + st.progress[slot]
+			for p: PlayerState in s.players:
+				totals[p.team] = totals.get(p.team, 0) + p.energy_invested
 			var best: int = -1
 			var best_total: int = -1
 			var tied: bool = false
