@@ -36,7 +36,9 @@ asks each player with one (`roll_offer`), once per stop; the Roll phase has no c
 ### Flags and conditions
 
 - `ONCE`: once per turn. `OPTIONAL`: "may"; the player uses it with the `use_ability` move,
-  which counts as a turn in the card round. `RANGE`: `[Range]`, chosen targets, walls and
+  which counts as a turn in the card round. An Action needs no `OPTIONAL` and it changes nothing
+  there: playing the card is the "may" (a "Roll Phase:" Action is played from the roll offer, or
+  the offer is passed). `RANGE`: `[Range]`, chosen targets, walls and
   cores must be within the hero's range.
 - `IF ACTIVATED`: the hero is this turn's activated hero. `IF WIN`: the effect waits and runs
   only if the hero's side wins the current battle (after damage, before knockback).
