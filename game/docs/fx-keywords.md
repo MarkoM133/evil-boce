@@ -112,7 +112,7 @@ and it is unclaimed (`GameState.stage_buffs`); once the hero leaves, it is gone.
 
 Counters for `PER`: `TRAIT_EQUIPPED {Trait}` (equipment with the trait on the target),
 `CORES` (cores on the target), `MISSING_HP <n>` (per n HP missing), `ENERGY` (the owner's
-energy), `LOW_HP_FRIENDLY <n>` (the owner's heroes with ≤ n HP).
+energy), `LOW_HP_FRIENDLY <n>` (the owner's heroes with ≤ n HP, the hero itself included, KO heroes not).
 
 ## Choices
 
