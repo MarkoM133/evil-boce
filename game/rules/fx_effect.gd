@@ -51,6 +51,7 @@ const VERBS: Dictionary[String, Array] = {
 	"MOVE_CORE": [false, 1],    # MOVE_CORE <n>  (the picked core, up to n hexes)
 	"TRAP_CORE": [false, 1],    # TRAP_CORE <n>  (an enemy hero activating the picked core this turn takes n)
 	"HOLD_HIT": [true, 0],      # HOLD_HIT SELF  (after a win: deal no DMG, double Knockback)
+	"FULL_HIT": [true, 0],      # FULL_HIT OPP  (with BATTLE IF WIN: the hit lands whole on the loser's hero, none on cards from the hand)
 	"NOOP": [false, 0],         # NOOP  (nothing; a "no" branch for CHOOSE)
 	"FREE_PLAY": [false, 1],    # FREE_PLAY <max cost> [{Trait}] [Type]  (play a card from hand on SELF for free)
 	"SWAP": [true, 0],          # SWAP FRIENDLY [ENGAGED]  (SELF and that hero trade hexes)
@@ -145,6 +146,8 @@ static func describe(a: Dictionary) -> String:
 			return "%s discard %s" % [who, n]
 		"HOLD_HIT":
 			return "Deal no DMG, double Knockback"
+		"FULL_HIT":
+			return "The whole hit lands on the hero"
 		"NOOP":
 			return "Deal DMG as usual"
 		"MOVE":
@@ -152,6 +155,17 @@ static func describe(a: Dictionary) -> String:
 		"KNOCKBACK":
 			return "Knock %s back %s" % [who, n]
 	return action_to_fx(a)
+
+
+## An "if you win" line that must already hold when the hit is dealt (FULL_HIT): it runs as the card
+## is played and only counts on a win, instead of waiting for the battle like other IF WIN lines.
+func arms_on_play() -> bool:
+	if cond != "WIN" or actions.is_empty():
+		return false
+	for a: Dictionary in actions:
+		if str(a["verb"]) != "FULL_HIT":
+			return false
+	return true
 
 
 ## Does this effect fire or become usable in `phase` (GameState phase name)?

@@ -12,7 +12,7 @@ export const VERBS = {
   DEACTIVATE_CORE: [true, 0], CHARGE: [true, 1], DISCHARGE: [true, 1], DRAW: [true, 1], DISCARD: [true, 1], COST: [true, 1],
   NO_CLAIM: [true, 0], ROLL_AGAIN: [false, 0], REVERSE_ROLL: [false, 0], COST_DAMAGE: [false, 1], OWN_COST: [false, 1],
   CHOOSE: [true, 0], RECYCLE: [true, 1], PICK_CORE: [false, 0], MOVE_CORE: [false, 1], TRAP_CORE: [false, 1],
-  HOLD_HIT: [true, 0], NOOP: [false, 0], FREE_PLAY: [false, 1], SWAP: [true, 0], DUEL_TOP: [false, 2], MOVE_ID: [false, 2],
+  HOLD_HIT: [true, 0], FULL_HIT: [true, 0], NOOP: [false, 0], FREE_PLAY: [false, 1], SWAP: [true, 0], DUEL_TOP: [false, 2], MOVE_ID: [false, 2],
 };
 export const HERO_TARGETS = ['SELF', 'EQUIPPED', 'ENEMY', 'FRIENDLY', 'ALL_FRIENDLY', 'ALL_ENEMY', 'ALL_OTHER_IN_RANGE',
   'ALL_FRIENDLY_IN_RANGE', 'ALL_HEROES', 'EACH_HERO', 'MOST_HP', 'MOST_PWR'];

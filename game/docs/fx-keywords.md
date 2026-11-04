@@ -108,6 +108,7 @@ moves into or out of range gains or loses the effect at once.
 | `MOVE_CORE <n>` | | the picked core moves up to n hexes (free hex, not on a stage) |
 | `TRAP_CORE <n>` | | an enemy hero that activates the picked core this turn takes n |
 | `HOLD_HIT SELF` | | with `BATTLE IF WIN`: after winning, the owner may deal no DMG and double the Knockback |
+| `FULL_HIT OPP` | | with `BATTLE IF WIN`, on a line of its own: if the card's hero wins this battle, its hit lands whole on the loser's hero, none of it on cards from the hand (the hit already only goes to a hero of this battle). The line arms as the card is played and counts only on a win |
 | `NOOP` | | nothing (a "no" branch) |
 | `FREE_PLAY <max cost> [{Trait}] [Type]` | | play a card from the hand on SELF without paying (colour rules do not apply); `Type` limits it to Action, Equipment or Assist |
 | `SWAP FRIENDLY [ENGAGED]` | | SELF and a friendly hero trade hexes (`ENGAGED`: one an enemy reaches or that reaches an enemy) |
@@ -138,7 +139,8 @@ not an effect); stat bonuses with `for every …` and `until the end of the turn
 `takes ±N DMG from all sources`; heals; `move up to N spaces`; `Knockback an Opponent's Hero N
 spaces …`; `move N spaces towards you`; `immune to Knockback`; `Place a Wall`; `Reveal /
 activate / deactivate a Core`; `charge / discharge N Energy`; cost changes; `roll … again`;
-`discard a card`; `remove an Evolution`; `cannot take a Stage`; `As an additional cost, take
+`discard a card`; `remove an Evolution`; `cannot take a Stage`; `the Opponent's Hero in this Battle takes all
+of the damage` (`FULL_HIT`; a sentence `Your Opponent can't discard cards to reduce it` after it is skipped); `As an additional cost, take
 N DMG`; `Your Opponent chooses:` with two dashed lines. Clauses joined by "and" are read one by
 one. Colour bonus lines of colorless cards (`Red Bonus: …`, `Cyan / Purple Bonus: …`): `This
 card costs N less to play` (`OWN_COST`), `+N STAT` (a buff on the card's hero), `It also …` /

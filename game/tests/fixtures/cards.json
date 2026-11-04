@@ -976,6 +976,21 @@
         "Haki"
       ],
       "text": "Preroll Phase: Heal 1 HP.\nYellow Bonus: You also charge 1 Energy."
+    },
+    {
+      "id": "TA-058",
+      "name": "Red Divine Strike",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "bonus": {
+        "pwr": 2000
+      },
+      "text": "Battle Phase: If you win this Battle, the Opponent's Hero in this Battle takes all of the damage.",
+      "fx": "BATTLE IF WIN: FULL_HIT OPP"
     }
   ]
 }

@@ -1,0 +1,149 @@
+{
+  "name": "fx full hit: after a win the whole hit lands on the loser's hero, none of it on cards from the hand",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          4,
+          8
+        ],
+        "heroes.p1:TB-002.zone": "map",
+        "heroes.p1:TB-002.hex": [
+          6,
+          8
+        ],
+        "players.p0.hand": [
+          "TA-058"
+        ],
+        "players.p0.energy": 3,
+        "players.p1.hand": [
+          "TX-010",
+          "TX-011"
+        ],
+        "players.p1.energy": 3,
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-002",
+        "roll": false
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "phase": "battle",
+        "to_act": 0
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-058"
+      }
+    },
+    {
+      "expect": {
+        "deferred": {
+          "$size": 0
+        },
+        "turn_mods": {
+          "$size": 1
+        },
+        "turn_mods.0.kind": "full_hit",
+        "heroes.p0:TA-001.phase_bonus.pwr": 2000
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 0
+      }
+    },
+    {
+      "expect": {
+        "battles.0.winner_team": 0,
+        "pending.0.type": "damage",
+        "pending.0.player": 1,
+        "pending.0.amount": 3,
+        "pending.0.min_hero": 3
+      }
+    },
+    {
+      "move": {
+        "type": "damage_to",
+        "player": 1,
+        "target": "p1:TB-002",
+        "cards": [
+          "TX-010"
+        ]
+      },
+      "error": "at most 0 cards"
+    },
+    {
+      "move": {
+        "type": "damage_to",
+        "player": 1,
+        "target": "p1:TB-002"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p1:TB-002.hp": 7,
+        "players.p1.hand": {
+          "$size": 3
+        },
+        "players.p1.graveyard": {
+          "$size": 0
+        },
+        "turn": 2,
+        "turn_mods": {
+          "$size": 0
+        }
+      }
+    }
+  ]
+}

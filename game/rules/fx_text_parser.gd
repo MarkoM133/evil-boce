@@ -43,6 +43,9 @@ static func parse(card: CardDef) -> Dictionary:
 	var prev: FxEffect = null
 	var prev_sentence: String = ""
 	for sentence: String in _sentences(t):
+		# A sentence that only spells out a rule the fx word already holds (FULL_HIT: no cards from the hand).
+		if _rx("^your opponent (?:can't|cannot|can not) discard cards to (?:reduce|lower|pay) (?:it|this|that|the damage)$").search(sentence.to_lower()) != null:
+			continue
 		var e: FxEffect = _parse_sentence(sentence, card, prev, prev_sentence)
 		if e == null:
 			unparsed.append(sentence)
@@ -353,6 +356,10 @@ static func _match(low: String) -> Array[Dictionary]:
 	m = _rx("^your opponent cannot (?:take|claim) a stage this turn$").search(low)
 	if m != null:
 		return [_act("NO_CLAIM", "OPP", [])]
+	# "the Opponent's Hero in this Battle takes all of the damage" (Divine Departure, 2026-11-05).
+	m = _rx("^(?:your |the )?opponent's hero(?: in this battle)? takes all (?:of )?(?:this battle's |the )?(?:battle )?damage$").search(low)
+	if m != null:
+		return [_act("FULL_HIT", "OPP", [])]
 	return out
 
 

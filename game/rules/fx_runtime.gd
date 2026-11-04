@@ -80,7 +80,7 @@ func fire_phase(s: GameState, phase: String) -> void:
 			var ctx: Dictionary = _ctx_of(src)
 			if not cond_ok(s, ctx, e):
 				continue
-			if e.cond == "WIN":
+			if e.cond == "WIN" and not e.arms_on_play():
 				s.deferred.append({"player": ctx["player"], "hero": ctx["hero"], "fx": e.line, "ctx": ctx})
 				continue
 			# A hero's own ability that fires by itself ("If Fugo is activated…"): the HUD shows its
@@ -125,6 +125,14 @@ func hold_hit_effect(s: GameState, h: HeroState) -> FxEffect:
 		if e.when == "BATTLE" and e.cond == "WIN" and e.has_verb("HOLD_HIT"):
 			return e
 	return null
+
+
+## FULL_HIT (2026-11-05): does this winner's hit land whole on the loser's hero this turn?
+func full_hit(s: GameState, w: HeroState) -> bool:
+	for m: Dictionary in s.turn_mods:
+		if str(m.get("kind", "")) == "full_hit" and str(m.get("hero", "")) == w.id:
+			return true
+	return false
 
 
 ## Asks the winner's owner whether to hold the hit (a "choose" decision).
@@ -757,6 +765,12 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			if me != null:
 				me.statuses["hold_hit"] = 1
 				s.event("hold_hit", {"hero": me.id})
+		"FULL_HIT":
+			# Armed as the card is played; read when the battle's damage decision is built, if SELF won.
+			if me == null:
+				return "no hero whose hit it is"
+			s.turn_mods.append({"kind": "full_hit", "hero": me.id, "player": player})
+			s.event("full_hit", {"hero": me.id})
 		"NOOP":
 			return ""
 		"FREE_PLAY":

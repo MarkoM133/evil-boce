@@ -2310,7 +2310,9 @@ func _damage_dialog(d: Dictionary, who: int) -> void:
 	_dialog_box.add_child(UiTheme.label("%d DMG FROM %s" % [amount, hero_name(winner).to_upper() if winner != null else "?"], 36))
 	var sub := Label.new()
 	sub.add_theme_color_override("font_color", Palette.MUTED)
-	if spare <= 0:
+	if min_hero >= amount and not p.hand.is_empty():
+		sub.text = "All %d lands on the hero: this hit cannot go on cards from your hand." % amount
+	elif spare <= 0:
 		sub.text = "At least %d must land on a hero%s." % [min_hero, "; with no cards in your hand it all does" if p.hand.is_empty() and amount > min_hero else ""]
 	else:
 		sub.text = "At least %d land on a hero. Up to %d more can go on cards from your hand instead, 1 DMG each: click them in your hand." % [min_hero, spare]

@@ -1260,9 +1260,11 @@ func _resolve_battle(s: GameState, index: int) -> void:
 			fx.offer_hold_hit(s, w)
 		var loser_owner: int = s.hero(str(targets[0])).owner
 		var amount: int = stat(s, w, "dmg")
+		# FULL_HIT (Divine Departure, 2026-11-05): the whole hit lands on the hero, none on cards from the hand.
+		var min_hero: int = amount if fx.full_hit(s, w) else hero_share(amount)
 		s.pending.append({
 			"type": DECISION_DAMAGE, "player": loser_owner, "winner": w.id,
-			"amount": amount, "targets": targets, "min_hero": hero_share(amount),
+			"amount": amount, "targets": targets, "min_hero": min_hero,
 		})
 
 
@@ -2095,7 +2097,7 @@ func _run_play_effects(s: GameState, slot: int, target: HeroState, card: CardDef
 			continue
 		if not fx.cond_ok(s, ctx, e):
 			continue
-		if e.cond == "WIN":
+		if e.cond == "WIN" and not e.arms_on_play():
 			s.deferred.append({"player": slot, "hero": ctx["hero"], "fx": e.line, "ctx": ctx})
 			continue
 		var err: String = fx.run(s, ctx, e)
