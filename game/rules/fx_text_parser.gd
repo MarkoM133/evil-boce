@@ -243,7 +243,7 @@ static func _match(low: String) -> Array[Dictionary]:
 		return [_act("COST_DAMAGE", "", [m.get_string(1)])]
 
 	# Stat bonuses: "<subject> gains +2000 Power [and +1 DMG] [for every X] [until the end of the turn]"
-	m = _rx("^(.*?)(?:gains?|has|have|get)?\\s*((?:[+-]\\d+ (?:power|pwr|\\[pwr\\]|dmg|damage|\\[dmg\\]|kb|knockback|\\[kb\\]|range|rng|\\[rng\\]|hp|\\[hp\\])(?:,? and |, )?)+)(?: for every (.+?))?( until the end of the turn| this turn)?$").search(low)
+	m = _rx("^(.*?)(?:gains?|has|have|gets?)?\\s*((?:[+-]\\d+ (?:power|pwr|\\[pwr\\]|dmg|damage|\\[dmg\\]|kb|knockback|\\[kb\\]|range|rng|\\[rng\\]|hp|\\[hp\\])(?:,? and |, )?)+)(?: for (?:every|each) (.+?))?( until the end of the turn| this turn)?$").search(low)
 	if m != null:
 		var target: String = _subject(m.get_string(1))
 		if not target.is_empty():
@@ -398,9 +398,11 @@ static func _counter(raw: String) -> PackedStringArray:
 		return PackedStringArray(["MISSING_HP", m.get_string(1)])
 	if _rx("^charged energy(?: their player has)?$").search(s) != null:
 		return PackedStringArray(["ENERGY"])
-	m = _rx("^friendly (?:character|hero) who has (\\d+) or less hp$").search(s)
+	# "friendly Hero who has 5 or less HP" / "with 5 HP or less"; "other" leaves the hero itself out.
+	m = _rx("^(other )?friendly (?:character|hero) (?:who has (\\d+) or less hp|with (\\d+) hp or less)$").search(s)
 	if m != null:
-		return PackedStringArray(["LOW_HP_FRIENDLY", m.get_string(1)])
+		var n: String = m.get_string(2) if not m.get_string(2).is_empty() else m.get_string(3)
+		return PackedStringArray(["LOW_HP_OTHER_FRIENDLY" if not m.get_string(1).is_empty() else "LOW_HP_FRIENDLY", n])
 	return PackedStringArray()
 
 

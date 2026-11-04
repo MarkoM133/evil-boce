@@ -30,6 +30,10 @@ func test_hero_abilities() -> void:
 		"PASSIVE: BUFF ALL_FRIENDLY_IN_RANGE PWR 2000")
 	_assert_fx(_fx("Hero", "Shanks", "Shanks has +1000 Power for every friendly Character who has 5 or less HP."),
 		"PASSIVE: BUFF SELF PWR 1000 PER LOW_HP_FRIENDLY 5")
+	_assert_fx(_fx("Hero", "Shanks", "Shanks has +1000 Power for every other friendly Hero who has 5 or less HP."),
+		"PASSIVE: BUFF SELF PWR 1000 PER LOW_HP_OTHER_FRIENDLY 5")
+	_assert_fx(_fx("Hero", "Shanks", "Shanks gets +1000 Power for each friendly Hero with 5 HP or less."),
+		"PASSIVE: BUFF SELF PWR 1000 PER LOW_HP_FRIENDLY 5")
 	_assert_fx(_fx("Hero", "Narancia Ghirga", "Postroll Phase Once Per Turn: Narancia Ghirga may choose to gain -2 Range and +2 DMG until the end of the turn."),
 		"POSTROLL ONCE OPTIONAL: BUFF SELF RNG -2 TURN; BUFF SELF DMG 2 TURN")
 	_assert_fx(_fx("Hero", "Luffy", "[Range] Postroll Phase Once Per Turn: Luffy may activate a Core."),

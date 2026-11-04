@@ -441,10 +441,14 @@ func _per(s: GameState, src: Dictionary, h: HeroState, args: PackedStringArray) 
 			return maxi(n, 0)
 		"ENERGY":
 			return s.player(h.owner).energy
-		"LOW_HP_FRIENDLY":
+		"LOW_HP_FRIENDLY", "LOW_HP_OTHER_FRIENDLY":
+			# OTHER leaves out the hero whose effect it is ("every other friendly Hero", Marko 2026-11-05).
 			var limit: int = arg.to_int()
+			var source: HeroState = src.get("hero")
 			var n: int = 0
 			for o: HeroState in s.heroes_of(h.owner):
+				if counter == "LOW_HP_OTHER_FRIENDLY" and o == source:
+					continue
 				if not o.is_ko() and o.hp <= limit:
 					n += 1
 			return n
