@@ -1776,6 +1776,38 @@ func _check_win(s: GameState) -> void:
 				_end_match(s, p.slot, reason)
 				return
 	elif winners.size() > 1:
+		# Energy claims (Marko 2026-11-04): when every side reaches its stages in the same End phase, the side
+		# with more energy in all stages together (claimed ones count what went in) wins; equal is a draw.
+		var by_stages: bool = s.settings.energy_claims()
+		for p: PlayerState in s.players:
+			if winners.has(p.team) and claimed_count(s, p.slot) < s.settings.stages_to_win:
+				by_stages = false
+		if by_stages:
+			var totals: Dictionary[int, int] = {}
+			for st: StageState in s.stages:
+				for slot: int in st.progress:
+					var team: int = s.team_of(slot)
+					totals[team] = totals.get(team, 0) + st.progress[slot]
+			var best: int = -1
+			var best_total: int = -1
+			var tied: bool = false
+			for team: int in winners:
+				var t: int = totals.get(team, 0)
+				if t > best_total:
+					best_total = t
+					best = team
+					tied = false
+				elif t == best_total:
+					tied = true
+			var shown: Dictionary = {}
+			for team: int in winners:
+				shown[str(team)] = totals.get(team, 0)
+			s.event("tie_broken", {"by": "energy", "totals": shown, "winner_team": -1 if tied else best})
+			if not tied:
+				for p: PlayerState in s.players:
+					if p.team == best:
+						_end_match(s, p.slot, "stages_energy")
+						return
 		_end_match(s, -1, "draw")
 
 

@@ -3154,7 +3154,7 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			return ""
 		"match_end":
 			var w: int = JsonUtil.as_int(e.get("winner", -1), -1)
-			var reasons: Dictionary = {"ko": "all heroes KO", "stages": "three stages", "deckout": "deck-out", "surrender": "surrender", "draw": "draw"}
+			var reasons: Dictionary = {"ko": "all heroes KO", "stages": "three stages", "stages_energy": "three stages each, more energy in the stages", "deckout": "deck-out", "surrender": "surrender", "draw": "draw"}
 			var why: String = str(reasons.get(str(e.get("result", "")), str(e.get("result", ""))))
 			return "[color=#%s]MATCH OVER[/color]: %s (%s)." % [Palette.GOLD.to_html(false), ("%s wins" % _who(w)) if w >= 0 else "draw", why]
 	return ""
@@ -3171,7 +3171,7 @@ func _refresh_over() -> void:
 	# A leftover choice under the end screen showed through it (playtest 2026-10-30).
 	if _dialog != null:
 		_dialog.visible = false
-	var reasons: Dictionary = {"ko": "ALL HEROES KO", "stages": "STAGES CLAIMED", "deckout": "DECK-OUT",
+	var reasons: Dictionary = {"ko": "ALL HEROES KO", "stages": "STAGES CLAIMED", "stages_energy": "STAGES TIED · MORE ENERGY", "deckout": "DECK-OUT",
 		"surrender": "SURRENDER", "draw": "DRAW"}
 	var won: bool = state.winner >= 0 and local_slots.size() == 1 and local_slots.has(state.winner)
 	var lost: bool = state.winner >= 0 and local_slots.size() == 1 and not local_slots.has(state.winner)
