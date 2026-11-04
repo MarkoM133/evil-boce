@@ -48,7 +48,10 @@ beside it is never written.
   which counts as a turn in the card round. An Action needs no `OPTIONAL` and it changes nothing
   there: playing the card is the "may" (a "Roll Phase:" Action is played from the roll offer, or
   the offer is passed). `RANGE`: `[Range]`, chosen targets, walls and
-  cores must be within the hero's range.
+  cores must be within the hero's range. On an effect that names a player, not a hero (`NO_CLAIM OPP`,
+  `COST OPP …`, `DISCHARGE OPP …`), `RANGE` means an enemy hero must be in range for the card to be played; the
+  effect then still covers the whole opponent (playtest 2026-10-30). Which hero a card may be played for is
+  the card's first tag and colour, read by the game itself: no condition names the hero (`IF HERO` does not exist).
 - `IF ACTIVATED`: the hero is this turn's activated hero. `IF WIN`: the effect waits and runs
   only if the hero's side wins the current battle (after damage, before knockback).
   `IF OPP_EQUIPPED {Trait}`: an enemy (in a battle: an enemy in that battle) has equipment
