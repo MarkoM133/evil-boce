@@ -142,6 +142,7 @@ activate / deactivate a Core`; `charge / discharge N Energy`; cost changes; `rol
 N DMG`; `Your Opponent chooses:` with two dashed lines. Clauses joined by "and" are read one by
 one. Colour bonus lines of colorless cards (`Red Bonus: …`, `Cyan / Purple Bonus: …`): `This
 card costs N less to play` (`OWN_COST`), `+N STAT` (a buff on the card's hero), `It also …` /
-`You also …` (an extra effect with the WHEN of the sentence before), `It … N … instead` (the
+`You also …` and `… gets / gains / heals / takes an additional …` (an extra effect with the WHEN
+and the condition of the sentence before), `It … N … instead` (the
 sentence before with its number swapped, `INSTEAD`). Everything else lands in `unparsed`;
 `tests/test_fx_parser.gd` lists the exact phrases.

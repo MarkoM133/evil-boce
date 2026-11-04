@@ -96,6 +96,9 @@ static func _parse_bonus(colors: String, rest: String, card: CardDef, prev: FxEf
 			text = _rx("\\s+instead$").sub(text, "")
 		# "It also …", "You also …": the extra effect; "It" is the card's hero.
 		text = _rx("^(It|You|They|SELF) also ").sub(text, "$1 ")
+		# "… gets an additional +1000 Power" (Marko 2026-11-05): more on top of the sentence before, with its
+		# condition; the same as "It also gains +1000 Power".
+		text = _rx("\\b(gets?|gains?|takes?|heals?) an additional ").sub(text, "$1 ")
 		if text.to_lower().begins_with("it "):
 			text = "SELF " + text.substr(3)
 		e = _parse_sentence(text, card)

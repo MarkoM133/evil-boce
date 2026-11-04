@@ -134,6 +134,9 @@ func test_colour_bonus_lines() -> void:
 	_assert_fx(_fx("Assist", "Rayleigh", "Your {Haki} cards cost 1 less to play.\nCyan Bonus: This card costs 1 less to play.", none),
 		"PASSIVE: COST ME -1 {Haki}\nPLAY BONUS CYAN: OWN_COST -1")
 	_assert_fx(_fx("Action", "Armament Haki", "Battle Phase:\nYellow Bonus: +1 DMG.", none), "BATTLE:\nBATTLE BONUS YELLOW: BUFF SELF DMG 1")
+	# "an additional": more on top of the sentence before, under its condition (Mihawk's wording, 2026-11-05).
+	_assert_fx(_fx("Action", "Extra", "Battle Phase: If you win this Battle, your Hero heals 2 HP.\nYellow Bonus: Your Hero heals an additional 1 HP.", none),
+		"BATTLE IF WIN: HEAL SELF 2\nBATTLE BONUS YELLOW IF WIN: HEAL SELF 1")
 	_assert_fx(_fx("Action", "Full Body Armament Haki", "Preroll Phase: This Hero is immune to Knockback this turn.\nBlue Bonus: It also takes -1 DMG from all sources this turn.", none),
 		"PREROLL: STATUS SELF IMMUNE_KB TURN\nPREROLL BONUS BLUE: DAMAGE_MOD SELF -1 TURN")
 	_assert_fx(_fx("Equipment", "Sandai Kitetsu", "The equipped Hero takes +1 DMG from all sources.\nYellow Bonus: +1 DMG.", none),
