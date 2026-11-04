@@ -10,6 +10,10 @@ export const CARD_H = 2100;
 export const TINTS = { Cyan: '#00ffff', Yellow: '#ffff00', Purple: '#ff00ff', Red: '#ff0000', Blue: '#0000ff', Green: '#00ff00' };
 const STAT_TINTS = { pwr: '#ffff00', dmg: '#ff0000', kb: '#0000ff', rng: '#00ffff', hp: '#00ff00' };
 const LIGHT = new Set(['Cyan', 'Yellow', 'Green', 'None']);
+// Pokusno (mockup boja faza, 2026-11-05): { START: '#hex', …, PASSIVE: null }; null ili bez ključa = boja karte.
+let PHASE_PALETTE = null;
+export function setPhasePalette(p) { PHASE_PALETTE = p; }
+const darkInk = hex => { const n = parseInt(hex.slice(1), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 > 150; };
 // Colorless karta (color "None"): siv okvir; boje bonusa (bonusColors) su na rubu costa i u oznaci bonusa.
 const CARD_TINTS = { ...TINTS, None: '#c4cad1' };
 // Card types whose effects stay in play: an effect of theirs without a phase is PASSIVE.
@@ -633,13 +637,14 @@ function drawChips(ctx, chips, cx, top, h, color, icons) {
   chips.forEach((c, i) => {
     const m = widths[i];
     if (c.kind === 'phase') {
-      ctx.fillStyle = CARD_TINTS[color];
+      const own = PHASE_PALETTE?.[c.text.split(' ')[0]];
+      ctx.fillStyle = own ?? CARD_TINTS[color];
       roundRect(ctx, x, top, m.a + (m.b ? 12 : 0), h, m.b ? [12, 0, 0, 12] : 12);
       ctx.fill();
-      ctx.fillStyle = LIGHT.has(color) ? '#000000' : '#ffffff';
+      ctx.fillStyle = own ? (darkInk(own) ? '#000000' : '#ffffff') : LIGHT.has(color) ? '#000000' : '#ffffff';
       ctx.fillText(c.text, x + m.a / 2, top + h / 2 + 1);
       if (m.b) {
-        ctx.strokeStyle = CARD_TINTS[color];
+        ctx.strokeStyle = own ?? CARD_TINTS[color];
         ctx.lineWidth = 4;
         roundRect(ctx, x + m.a, top + 2, m.b - 2, h - 4, [0, 12, 12, 0]);
         ctx.fillStyle = 'rgba(0,0,0,0.55)';
