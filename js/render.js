@@ -10,7 +10,7 @@ export const CARD_H = 2100;
 export const TINTS = { Cyan: '#00ffff', Yellow: '#ffff00', Purple: '#ff00ff', Red: '#ff0000', Blue: '#0000ff', Green: '#00ff00' };
 const STAT_TINTS = { pwr: '#ffff00', dmg: '#ff0000', kb: '#0000ff', rng: '#00ffff', hp: '#00ff00' };
 const LIGHT = new Set(['Cyan', 'Yellow', 'Green', 'None']);
-// Boje oznaka faza (Marko i Tarik 2026-11-05): svaka faza svoja boja, a ne boja karte; Start i End tihi (siva),
+// Boje oznaka faza (odluka 2026-11-05): svaka faza svoja boja, a ne boja karte; Start i End tihi (siva),
 // PASSIVE bijel. Tekst crn na svijetloj oznaci, bijel na tamnoj.
 export const PHASE_COLORS = { PASSIVE: '#f3efe7', START: '#80838b', PREROLL: '#ff8a1f', ROLL: '#00ffff', POSTROLL: '#ff6fb1', BATTLE: '#ff0000', END: '#80838b' };
 const darkInk = hex => { const n = parseInt(hex.slice(1), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 > 150; };
