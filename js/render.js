@@ -10,11 +10,9 @@ export const CARD_H = 2100;
 export const TINTS = { Cyan: '#00ffff', Yellow: '#ffff00', Purple: '#ff00ff', Red: '#ff0000', Blue: '#0000ff', Green: '#00ff00' };
 const STAT_TINTS = { pwr: '#ffff00', dmg: '#ff0000', kb: '#0000ff', rng: '#00ffff', hp: '#00ff00' };
 const LIGHT = new Set(['Cyan', 'Yellow', 'Green', 'None']);
-// Pokusno (mockup boja faza, 2026-11-05): { START: '#hex', …, PASSIVE: null }; null ili bez ključa = boja karte.
-let PHASE_PALETTE = null;
-export function setPhasePalette(p) { PHASE_PALETTE = p; }
-// Za mockup: samo oznake faza u retku (texts: ['START PHASE', …]).
-export function drawPhaseChips(ctx, texts, cx, top, h, color) { drawChips(ctx, texts.map(t => ({ kind: 'phase', text: t })), cx, top, h, color, {}); }
+// Boje oznaka faza (Marko i Tarik 2026-11-05): svaka faza svoja boja, a ne boja karte; Start i End tihi (siva),
+// PASSIVE bijel. Tekst crn na svijetloj oznaci, bijel na tamnoj.
+export const PHASE_COLORS = { PASSIVE: '#f3efe7', START: '#80838b', PREROLL: '#ff8a1f', ROLL: '#00ffff', POSTROLL: '#ff6fb1', BATTLE: '#ff0000', END: '#80838b' };
 const darkInk = hex => { const n = parseInt(hex.slice(1), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 > 150; };
 // Colorless karta (color "None"): siv okvir; boje bonusa (bonusColors) su na rubu costa i u oznaci bonusa.
 const CARD_TINTS = { ...TINTS, None: '#c4cad1' };
@@ -639,7 +637,7 @@ function drawChips(ctx, chips, cx, top, h, color, icons) {
   chips.forEach((c, i) => {
     const m = widths[i];
     if (c.kind === 'phase') {
-      const own = PHASE_PALETTE?.[c.text.split(' ')[0]];
+      const own = PHASE_COLORS[c.text.split(' ')[0]];
       ctx.fillStyle = own ?? CARD_TINTS[color];
       roundRect(ctx, x, top, m.a + (m.b ? 12 : 0), h, m.b ? [12, 0, 0, 12] : 12);
       ctx.fill();

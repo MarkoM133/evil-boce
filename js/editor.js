@@ -3,7 +3,7 @@
 // s trakom (breadcrumb, lock, Undo, Close, Save), lijevo paneli (Checks, panel tipa, fx, Balance, Notes & history),
 // u sredini karta, desno forma. Izmjene se spremaju kao nacrti (data/editor/drafts.json); igra ih vidi tek nakon Objave.
 // Tekst je u editoru s tokenima ([HP], [PWR]…), u bazi riječima (js/card-text.js).
-import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, coreMode, TINTS } from './render.js';
+import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, coreMode, TINTS, PHASE_COLORS } from './render.js';
 import { firstTag, traitNames, norm, GENERAL, HEROES, TRAIT, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
 import { applyDrafts, imageHashOf } from './importer.js';
@@ -1199,10 +1199,10 @@ export function createEditor(env) {
       area.selectionStart = area.selectionEnd = caret;
       sync();
     };
-    const phaseBtns = PHASES.filter(p => !stage || ['Start', 'Battle', 'End'].includes(p)).map(p => h('button', { type: 'button', 'data-phase': p, onmousedown: e => e.preventDefault(), onclick: () => setHead({ phase: here().phase === p ? null : p }) }, p));
+    const phaseBtns = PHASES.filter(p => !stage || ['Start', 'Battle', 'End'].includes(p)).map(p => h('button', { type: 'button', 'data-phase': p, style: `--tint: ${PHASE_COLORS[p.toUpperCase()]}`, onmousedown: e => e.preventDefault(), onclick: () => setHead({ phase: here().phase === p ? null : p }) }, p));
     // Passive: the effect has no phase (cards that stay in play draw a PASSIVE chip for it; Marko 2026-11-05).
     const passiveType = ['Hero', 'Evolution', 'Equipment', 'Assist'].includes(w.type);
-    const passiveBtn = passiveType ? h('button', { type: 'button', 'data-passive': '1', title: 'No phase: the effect counts all the time', onmousedown: e => e.preventDefault(), onclick: () => setHead({ phase: null, once: false }) }, 'Passive') : null;
+    const passiveBtn = passiveType ? h('button', { type: 'button', 'data-passive': '1', style: `--tint: ${PHASE_COLORS.PASSIVE}`, title: 'No phase: the effect counts all the time', onmousedown: e => e.preventDefault(), onclick: () => setHead({ phase: null, once: false }) }, 'Passive') : null;
     const once = stage ? null : h('button', { type: 'button', 'data-once': '1', onmousedown: e => e.preventDefault(), onclick: () => { const hd = here(); setHead({ once: !hd.once, phase: hd.phase ?? 'Battle' }); } }, 'Once per turn');
     const range = stage ? null : h('button', { type: 'button', 'data-range': '1', onmousedown: e => e.preventDefault(), onclick: () => setHead({ range: !here().range }) }, '◎ Range');
     // Novi efekt: novi redak na kraju, kursor u njemu (pa se bira njegova faza).
