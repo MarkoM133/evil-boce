@@ -31,9 +31,9 @@ const PHASE_RE = /^((?:Start|Preroll|Roll|Postroll|Battle|End)(?: Phase)?)(\s+On
 const RANGE_RE = /^\[Range\]\s*/i;
 const COND_RE = /^(If [^,]+,)\s*/;
 // Ikone u tekstu: riječ stata iza broja ili iza more/less (kako je Card Engine crtao sprite: "heals 3 HP",
-// "+2000 Power", "more HP"; broj i ikona su spojeni, iza more/less ostaje razmak; HP i DMG su ikona i bez broja), stari tokeni [PWR]…, i {Trait} podebljano. Tekst karte ostaje u riječima (igra ih čita).
-const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}|(?:(?<=\d)\s?|(?<=\b(?:more|less)\s))(HP|DMG|Power|Range|Knockback)\b|\b(HP|DMG)\b/g;
-const WORD_ICON = { HP: 'hp', DMG: 'dmg', Power: 'pwr', Range: 'rng', Knockback: 'kb' };
+// "+2000 Power", "more HP", "1 Energy"; broj i ikona su spojeni, iza more/less ostaje razmak; HP i DMG su ikona i bez broja), stari tokeni [PWR]…, i {Trait} podebljano. Tekst karte ostaje u riječima (igra ih čita).
+const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}|(?:(?<=\d)\s?|(?<=\b(?:more|less)\s))(HP|DMG|Power|Range|Knockback|Energy)\b|\b(HP|DMG|Energy)\b/g;
+const WORD_ICON = { HP: 'hp', DMG: 'dmg', Power: 'pwr', Range: 'rng', Knockback: 'kb', Energy: 'energy' };
 
 // ---------- predložak ----------
 
@@ -589,12 +589,30 @@ function layoutParas(ctx, paras, maxW, size, icons) {
   return { lines, height: lines.reduce((s, l) => s + l.h, 0) };
 }
 
+// Energija u tekstu (Marko 2026-11-05): zlatni dijamant kao brojač energije u igri (EnergyDial, Palette.GOLD).
+function drawEnergyGlyph(ctx, x, y, size) {
+  const d = size * 0.56;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x, y - d); ctx.lineTo(x + d * 0.86, y); ctx.lineTo(x, y + d); ctx.lineTo(x - d * 0.86, y);
+  ctx.closePath();
+  ctx.fillStyle = '#f4b62a';
+  ctx.fill();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(2, size * 0.08);
+  ctx.strokeStyle = '#000000';
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawRich(ctx, line, cx, cy, size, icons, ink = '#ffffff') {
   let x = cx - line.w / 2;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   for (const p of line.parts) {
-    if (p.icon) {
+    if (p.icon === 'energy') {
+      drawEnergyGlyph(ctx, x + p.w / 2, cy, size * 0.9);
+    } else if (p.icon) {
       const img = icons[`text-${p.icon}`];
       if (img) {
         const s = (size * 0.9) / Math.max(img.width, img.height);

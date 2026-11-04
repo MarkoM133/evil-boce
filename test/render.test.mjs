@@ -28,6 +28,12 @@ test('a list becomes bullets; a phase alone has no lines', () => {
   assert.equal(parseEffect('The equipped Hero takes +1 DMG.').phase, null);
 });
 
+test('Energy is a diamond icon: glued to its number, a space after a word', () => {
+  assert.deepEqual(richRuns('You must discharge 1 Energy if'), [{ text: 'You must discharge 1' }, { icon: 'energy' }, { text: ' if' }]);
+  assert.deepEqual(richRuns('cost 2 more Energy this turn'), [{ text: 'cost 2 more ' }, { icon: 'energy' }, { text: ' this turn' }]);
+  assert.deepEqual(richRuns('for every charged Energy their'), [{ text: 'for every charged ' }, { icon: 'energy' }, { text: ' their' }]);
+});
+
 test('stat words after a number or more/less are icons, the rest stays text', () => {
   assert.deepEqual(richRuns('heals 3 HP and takes 3 DMG'), [{ text: 'heals 3' }, { icon: 'hp' }, { text: ' and takes 3' }, { icon: 'dmg' }]);
   assert.deepEqual(richRuns('the Hero with more HP gains +3000 Power.'), [{ text: 'the Hero with more ' }, { icon: 'hp' }, { text: ' gains +3000' }, { icon: 'pwr' }, { text: '.' }]);
