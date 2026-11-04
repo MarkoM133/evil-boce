@@ -12,6 +12,8 @@ const STAT_TINTS = { pwr: '#ffff00', dmg: '#ff0000', kb: '#0000ff', rng: '#00fff
 const LIGHT = new Set(['Cyan', 'Yellow', 'Green', 'None']);
 // Colorless karta (color "None"): siv okvir; boje bonusa (bonusColors) su na rubu costa i u oznaci bonusa.
 const CARD_TINTS = { ...TINTS, None: '#c4cad1' };
+// Card types whose effects stay in play: an effect of theirs without a phase is PASSIVE.
+const PASSIVE_TYPES = ['Hero', 'Evolution', 'Equipment', 'Assist'];
 const BONUS_DOT = { Cyan: '#00ffff', Yellow: '#ffee00', Purple: '#b040ff', Red: '#ff2a1f', Blue: '#2a6bff', Green: '#00ff40' };
 const COLOR_WORD = '(Cyan|Yellow|Purple|Red|Blue|Green)';
 const STAT_WORDS = { power: 'pwr', dmg: 'dmg', hp: 'hp', range: 'rng', kb: 'kb', knockback: 'kb' };
@@ -138,7 +140,7 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
     const push = Math.max(0, bottom + 12 - ey);
     effectBox = { ...L.effect, box: [ex, ey + push, ew, eh - push] };
   }
-  const t = drawEffect(ctx, text, color, effectBox, tpl.icons);
+  const t = drawEffect(ctx, text, color, effectBox, tpl.icons, '', PASSIVE_TYPES.includes(card.type));
   if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
   return warnings;
 }
@@ -458,7 +460,9 @@ export function parseEffect(text) {
 
 // Efekti jedan ispod drugog: svaki ima svoj red oznaka (faza i Once per turn jedna oznaka u dva dijela, RANGE)
 // i svoj tekst. Font se smanjuje od najvećeg do najmanjeg dok sve ne stane; cijeli blok je okomito centriran.
-function drawEffect(ctx, text, color, box, icons, heading = '') {
+// passive: the card type keeps its effects in play (Hero, Evolution, Equipment, Assist), so an effect without a phase
+// gets a PASSIVE chip, like a phase chip (Marko 2026-11-05).
+function drawEffect(ctx, text, color, box, icons, heading = '', passive = false) {
   const blocks = parseEffects(text);
   const [x, y, w, h] = box.box;
   const chipFull = box.chip ?? 64;
@@ -472,6 +476,7 @@ function drawEffect(ctx, text, color, box, icons, heading = '') {
     const chips = [];
     if (e.bonus) chips.push({ kind: 'bonus', text: `${e.bonus.join(' / ').toUpperCase()} BONUS`, colors: e.bonus });
     if (e.phase) chips.push({ kind: 'phase', text: e.phase, once: e.once });
+    else if (passive && !e.bonus && e.lines.some(l => !/^Terrain:/i.test(l.text))) chips.push({ kind: 'phase', text: 'PASSIVE', once: e.once });
     if (e.range) chips.push({ kind: 'range', text: 'RANGE' });
     return { chips, paras: toParas(e) };
   });
@@ -784,7 +789,7 @@ function renderHero(canvas, card, tpl, art, emblem) {
     fitLine(ctx, String(v), { box: slot.value, size: L.statSize ?? 84, min: 40 }, { font: TITLE_FONT, color: '#ffffff' });
   }
   const ability = card.ability ?? card.abilityNames?.[0] ?? '';
-  const t = drawEffect(ctx, card.text ?? '', color, L.effect, tpl.icons, ability);
+  const t = drawEffect(ctx, card.text ?? '', color, L.effect, tpl.icons, ability, PASSIVE_TYPES.includes(card.type));
   if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
   if (!drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag box.');
   fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: plate, bold: true });
