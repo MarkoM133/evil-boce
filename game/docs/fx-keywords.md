@@ -33,8 +33,10 @@ Examples: `POSTROLL ONCE OPTIONAL: MOVE SELF 2` (Bucciarati),
 A `ROLL` effect (an Action, or an `OPTIONAL` ability) is offered when the balls stop: the engine
 asks each player with one (`roll_offer`), once per stop; the Roll phase has no card round. A stage's `PASSIVE` effect uses `EACH_HERO` = the heroes on it.
 
-An Action's stat boxes (the card's `bonus`, e.g. +2000 Power, +1 DMG, printed on the card, not in its text) are
-not fx: the game gives them by itself to the hero the card is played on, until the end of the phase. An Action
+Stat boxes (the card's `bonus`, e.g. +2000 Power, +1 DMG, printed on the card, not in its text) are not fx: the
+game gives them by itself, never write a BUFF for them. An Action's go to the hero it is played on until the end of
+the phase; an Equipment's count while it is equipped. Only what the text adds is fx (a colour bonus such as
+"Yellow Bonus: +1 DMG." is `PASSIVE BONUS: BUFF EQUIPPED DMG 1` on Equipment, on top of the boxes). An Action
 whose text is only a phase ("Battle Phase:") is such a card: its fx is the WHEN alone (`BATTLE:`), which says
 when it may be played. Anything the text adds goes on lines of its own.
 
