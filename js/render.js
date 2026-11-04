@@ -569,7 +569,8 @@ function layoutParas(ctx, paras, maxW, size, icons) {
         line = { parts: p.bullet ? [{ text: '', w: bulletW }] : [], w: bulletW, h: lh };
         pendingSpace = false;
       }
-      if (pendingSpace) { line.parts.push({ text: ' ', w: spaceW }); line.w += spaceW; }
+      // The space between two underlined words is underlined too, so an ability name has one line (2026-11-05).
+      if (pendingSpace) { line.parts.push({ text: ' ', w: spaceW, underline: !!(line.parts.at(-1)?.underline && wd.parts[0]?.underline) }); line.w += spaceW; }
       line.parts.push(...wd.parts);
       line.w += ww;
       pendingSpace = false;
