@@ -254,6 +254,7 @@ export function createEditor(env) {
   if (!globalThis.__ceArrows) {
     globalThis.__ceArrows = true;
     document.addEventListener('keydown', e => {
+      if (ed.artMode && e.key === 'Escape') { e.preventDefault(); cancelArt(); return; }
       if (!ed.id || !ed.work || e.altKey || e.ctrlKey || e.metaKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
       const t = e.target;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
@@ -261,6 +262,26 @@ export function createEditor(env) {
       e.preventDefault();
       step(e.key === 'ArrowRight' ? 1 : -1);
     });
+  }
+
+  // Uređivanje arta (Marko 2026-11-05): Cancel ili Esc vrati izrez kakav je bio prije Edit art, i Undo i "nespremljeno".
+  function startArt() {
+    ed.artBefore = { crop: structuredClone(ed.work.artCrop), dirty: ed.dirty, undo: ed.undo.length };
+    ed.artMode = true;
+    env.render();
+  }
+
+  function cancelArt() {
+    const b = ed.artBefore;
+    if (b && ed.work) {
+      ed.work.artCrop = b.crop;
+      ed.dirty = b.dirty;
+      ed.undo.length = Math.min(ed.undo.length, b.undo);
+    }
+    ed.artBefore = null;
+    ed.artMode = false;
+    queueDraw();
+    env.render();
   }
 
   function renderCardPage() {
@@ -669,7 +690,7 @@ export function createEditor(env) {
     queueDraw();
     const fileIn = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', hidden: true, onchange: e => env.guard(() => uploadArt(e.target.files[0])) });
     const buttons = w.type === 'Core' ? [] : ed.artMode ? [] : [
-      h('button', { class: 'ghost', type: 'button', disabled: !ed.artFor && !w.art, onclick: () => { ed.artMode = true; env.render(); } }, 'Edit art'),
+      h('button', { class: 'ghost', type: 'button', disabled: !ed.artFor && !w.art, onclick: startArt }, 'Edit art'),
       h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => fileIn.click() }, w.art ? 'Replace art' : 'Add art'),
       w.type === 'Stage' ? null : h('button', { class: 'ghost', type: 'button', onclick: () => { if (!leaveOk()) return; ed.work = null; ed.id = null; env.toast('Remove background works on a plain background colour: save the PNG there, then Replace art.'); env.openTab('tools'); } }, 'Remove background'),
       h('button', { class: 'ghost', type: 'button', title: 'A new card with the next code in this set', onclick: duplicate }, 'Duplicate'),
@@ -684,8 +705,9 @@ export function createEditor(env) {
       ed.stage,
       ed.artMode ? h('div', { class: 'ce-zoom' }, h('span', {}, 'ZOOM'),
         h('input', { type: 'range', min: 0.5, max: 3, step: 0.01, value: w.artCrop.zoom, oninput: e => { snap(); w.artCrop = { ...w.artCrop, zoom: Number(e.target.value) }; changed(); } }),
-        h('button', { class: 'primary', type: 'button', onclick: () => { ed.artMode = false; env.render(); } }, 'Done')) : null,
-      ed.artMode ? h('p', { class: 'muted small ce-hint' }, HEROISH.includes(w.type) ? 'Drag the art to move it, scroll to zoom. The frame covers the right edge of the art.' : 'Drag the art to move it, scroll to zoom. The dashed line is the art window.') : null,
+        h('button', { class: 'ghost', type: 'button', title: 'Put the art back as it was (Esc)', onclick: cancelArt }, 'Cancel'),
+        h('button', { class: 'primary', type: 'button', onclick: () => { ed.artBefore = null; ed.artMode = false; env.render(); } }, 'Done')) : null,
+      ed.artMode ? h('p', { class: 'muted small ce-hint' }, HEROISH.includes(w.type) ? 'Drag the art to move it, scroll to zoom. The frame covers the right edge of the art. Esc cancels.' : 'Drag the art to move it, scroll to zoom. The dashed line is the art window. Esc cancels.') : null,
       w.type === 'Core' ? h('p', { class: 'muted small ce-hint' }, 'Image only, no frame') : null,
       buttons.length ? h('div', { class: 'ce-art-buttons' }, buttons, fileIn) : null,
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.'));
