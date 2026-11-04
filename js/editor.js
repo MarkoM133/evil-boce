@@ -411,7 +411,7 @@ export function createEditor(env) {
         r.problems?.length ? h('p', { class: 'small warn' }, 'The game would not read: ', r.problems.map(p => `${p.line} (${p.problem})`).join(' · ')) : null,
         r.unsure?.length ? h('ul', { class: 'small ce-claude-unsure' }, r.unsure.map(u => h('li', {}, u))) : null,
         r.notes ? h('p', { class: 'small' }, r.notes) : null,
-        r.agree === true ? h('p', { class: 'small ok' }, '✓ Claude reads the card the same way as the game.') : r.agree === false && !w.fx ? h('p', { class: 'small warn' }, 'Claude reads it differently from the game: compare the two and fix the text, or use Claude\'s fx.') : null,
+        r.agree === true ? h('p', { class: 'small ok' }, '✓ Claude reads the card the same way as the game.') : r.agree === false ? h('p', { class: 'small warn' }, 'Claude reads it differently from the game: compare the two and fix the text, or use Claude\'s fx.') : null,
         r.extensions?.length ? h('p', { class: 'small' }, 'Needs new words, on the ', h('button', { class: 'link', type: 'button', onclick: () => go('wishlist') }, 'fx wishlist'), ': ', r.extensions.map(x => x.word).join(' · ')) : null,
         // Once the fx box holds this proposal, say so instead of offering it again (Marko 2026-11-05).
         inUse ? h('p', { class: `small ${w.fxStatus === 'check' ? 'warn' : 'ok'}` }, w.fxStatus === 'check' ? '✓ In the fx box. Confirm it below.' : '✓ In the fx box and confirmed.')
@@ -483,7 +483,7 @@ export function createEditor(env) {
     loadAllClaude();
     const cards = checkable();
     const st = c => ed.claude[c.id] ?? {};
-    const differ = cards.filter(c => st(c).res?.agree === false && !c.fx);
+    const differ = cards.filter(c => st(c).res?.agree === false);
     const agree = cards.filter(c => st(c).res?.agree === true).length;
     const waiting = cards.filter(c => st(c).waiting).length;
     const unchecked = cards.filter(c => !st(c).res && !st(c).waiting).length;
@@ -491,7 +491,9 @@ export function createEditor(env) {
       h('h3', {}, 'Claude reads every card'),
       h('p', { class: 'muted small' }, 'Claude writes the fx of each card from its text on its own, and the server compares it with what the game reads. Where they agree the reading is checked twice; where they differ, one of them misread the text.'),
       h('p', { class: 'small' }, `${agree} agree · ${differ.length} differ · ${waiting} waiting · ${unchecked} not checked`),
-      h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(checkAll) }, 'Check every card with Claude'),
+      h('div', { class: 'ce-actions' },
+        h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), title: 'Cards without fx get the game\'s reading, to confirm while you review them', onclick: () => env.guard(fillAllFx) }, 'Write fx on every card'),
+        h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(checkAll) }, 'Check every card with Claude')),
       differ.length ? h('div', { class: 'ce-wish-list' }, differ.map(c => h('article', { class: 'ce-wish' },
         h('div', { class: 'ce-wish-head' }, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, `${c.id} ${c.name}`)),
         h('p', { class: 'small muted' }, toWords(c.text ?? '')),
@@ -527,44 +529,65 @@ export function createEditor(env) {
       closed.length ? h('details', {}, h('summary', {}, `Done or not needed (${closed.length})`), h('div', { class: 'ce-wish-list' }, closed.map(i => card(i, i.kind)))) : null);
   }
 
-  // Karta bez ručnog fx-a: kako je igra čita (parser), i potvrda tog čitanja (fxRead) (Marko 2026-11-03).
-  function gameReading(w, p, textChanged) {
-    if (w.fx || textChanged || !p || p.unparsed?.length || !(w.text ?? '').trim()) return null;
+  // fx za igru (Marko 2026-11-05): svaka karta ima zapisan fx i igra radi po njemu. Parser igre (data/fx-proposals.json,
+  // nakon Objave) i Claude samo predlažu; čovjek potvrdi. Promjena teksta fx vrati na nepotvrđen.
+  function gameProposal(w, p, textChanged) {
+    if (textChanged || !p || p.unparsed?.length || !(w.text ?? '').trim()) return null;
     const read = p.read ?? '';
-    const ok = w.fxRead === read;
+    const norm = x => String(x ?? '').split('\n').map(l => l.trim().replace(/\s+/g, ' ').toUpperCase()).filter(Boolean).join('\n');
+    if (w.fx && norm(w.fx) === norm(read)) return null;
     return h('div', { class: 'ce-claude' },
-      h('p', { class: 'small muted' }, 'What the game reads:'),
+      h('p', { class: 'small muted' }, w.fx ? 'The game would read the text as:' : 'The game reads the text as (proposal):'),
       h('pre', { class: 'ce-fx-code ce-claude-fx' }, read || '(nothing to run)'),
-      ok ? h('p', { class: 'small ok' }, `✓ Reading confirmed${w.fxReadBy ? ` by ${w.fxReadBy}` : ''}.`)
-        : h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), title: 'The game does what these lines say; confirm it matches the card text', onclick: () => { snap(true); w.fxRead = read; changed(); env.render(); } }, 'Confirm reading'));
+      h('button', { class: 'ghost', type: 'button', disabled: !canWrite() || !read, title: 'Put it in the fx box, still to be confirmed', onclick: () => { snap(true); w.fx = read; w.fxStatus = 'check'; changed(); env.render(); } }, 'Use this'));
   }
 
-  // fx za igru: prijedlog iz data/fx-proposals.json (igrin alat nakon Objave), potvrđuje se ovdje (GDD 14).
   function fxPanel(w) {
     const p = env.state.fxProposals?.cards?.[w.id];
     const textChanged = !w.new && toWords(w.text ?? '') !== (ed.base.type === 'Stage' ? stripTerrain(ed.base.text) : ed.base.text ?? '');
-    const box = h('textarea', { class: 'ce-fx-code', rows: 4, spellcheck: false, placeholder: p?.unparsed?.length ? 'The game needs an fx for this card.' : 'No fx: the game reads the text by itself.', value: w.fx ?? '',
+    const box = h('textarea', { class: 'ce-fx-code', rows: 4, spellcheck: false, placeholder: 'No fx yet: use a proposal below, or write it.', value: w.fx ?? '',
       oninput: e => { snap(); w.fx = e.target.value.trim() ? e.target.value : undefined; w.fxStatus = w.fx ? 'ok' : undefined; changed(); } });
-    const propose = () => {
-      if (!p?.proposal) return;
-      snap(true);
-      w.fx = p.proposal;
-      w.fxStatus = 'ok';
-      box.value = p.proposal;
-      changed();
-    };
-    const note = textChanged ? 'The text changed: the game reads it again after Publish, and a new proposal comes with it.'
-      : !p ? 'No report from the game for this card yet (it comes after Publish).'
-        : p.unparsed?.length ? `The game does not understand: ${p.unparsed.join(' · ')}` : 'The game reads the text by itself.';
+    const note = !w.fx ? (textChanged || w.new ? 'No fx yet. The game\'s proposal comes after Publish; Ask Claude works now.' : !p ? 'No fx yet, and no report from the game for this card.' : p.unparsed?.length ? `No fx yet. The game does not understand: ${p.unparsed.join(' · ')}` : 'No fx yet.')
+      : w.fxStatus === 'check' ? 'Not confirmed: a proposal, or the text changed after it. Check it against the text, then Confirm (or edit it) and Save.'
+        : '✓ Confirmed: the game plays this fx.';
     return h('section', { class: 'ce-panel' },
-      h('div', { class: 'ce-panel-head' }, h('h3', {}, 'fx for the game'),
-        h('button', { class: 'ghost', type: 'button', disabled: textChanged || !p?.proposal, title: textChanged ? 'Publish first: the proposal is for the published text' : '', onclick: propose }, 'Propose fx')),
-      box, h('p', { class: `small ${p?.unparsed?.length && !w.fx ? 'warn' : 'muted'}` }, note),
-      gameReading(w, p, textChanged),
-      claudeBlock(w, box),
-      w.fx && w.fxStatus === 'check' ? h('p', { class: 'small warn' }, 'Not confirmed: a proposal, or the text changed after it. Check it against the text, then Confirm (or edit it) and Save.') : null,
+      h('div', { class: 'ce-panel-head' }, h('h3', {}, 'fx for the game')),
+      box, h('p', { class: `small ${!w.fx || w.fxStatus === 'check' ? 'warn' : 'ok'}` }, note),
       w.fx && w.fxStatus === 'check' ? h('button', { class: 'ghost', type: 'button', onclick: () => { snap(true); w.fxStatus = 'ok'; changed(); env.render(); } }, 'Confirm fx') : null,
+      gameProposal(w, p, textChanged),
+      claudeBlock(w, box),
       !w.new && env.openEffect ? h('button', { class: 'link small', type: 'button', onclick: () => env.openEffect(w.id) }, 'What the game reads →') : null);
+  }
+
+  // Jednom za sve: kartama bez fx-a upiše prijedlog igre (nepotvrđen); potvrđuje se tijekom pregleda.
+  // Karta s potvrđenim čitanjem (fxRead, prijašnji način) dobije fx potvrđen.
+  async function fillAllFx() {
+    const fresh = await readDrafts();
+    fresh.cards ??= {};
+    const props = env.state.fxProposals?.cards ?? {};
+    let n = 0;
+    let confirmed = 0;
+    for (const base of db().cards) {
+      if (base.deleted || base.type === 'Core' || !(base.text ?? '').trim()) continue;
+      const d = fresh.cards[base.id] ?? {};
+      if ('text' in d && toWords(d.text ?? '') !== (base.text ?? '')) continue;
+      if (d.fx ?? base.fx) continue;
+      const p = props[base.id];
+      if (!p || p.unparsed?.length || !p.read) continue;
+      if (ed.locks[base.id] && lockState(ed.locks[base.id], who()) === 'other') continue;
+      const was = d.fxRead ?? base.fxRead;
+      const ok = was != null && was === p.read;
+      const nd = { ...d, fx: p.read, fxStatus: ok ? 'ok' : 'check', updated: new Date().toISOString(), who: who() || undefined };
+      delete nd.fxRead;
+      fresh.cards[base.id] = nd;
+      n++;
+      if (ok) confirmed++;
+    }
+    if (!n) { env.toast('Every card with a game reading already has an fx.'); return; }
+    await writeJson(DRAFTS_PATH, fresh);
+    ed.drafts = fresh;
+    env.toast(`fx written on ${n} ${n === 1 ? 'card' : 'cards'} (${n - confirmed} to confirm). They go into the game with the next Publish.`);
+    env.render();
   }
 
   function notesPanel(w) {
@@ -1282,10 +1305,7 @@ export function createEditor(env) {
     const gameReads = () => {
       if (!(card.text ?? '').trim()) return;
       if (w.fx) out.push([w.fxStatus !== 'check', w.fxStatus === 'check' ? 'The fx is not confirmed yet' : 'fx confirmed for the game']);
-      else if (textChanged || w.new) out.push([false, 'The game reads the text after Publish']);
-      else if (!fxp) out.push([false, 'No report from the game yet']);
-      else if (fxp.unparsed?.length) out.push([false, `"${fxp.unparsed[0]}" needs fx`]);
-      else out.push([w.fxRead === (fxp.read ?? ''), w.fxRead === (fxp.read ?? '') ? 'The game reads the text (reading confirmed)' : 'The game reads the text; the reading is not confirmed yet']);
+      else out.push([false, 'No fx yet']);
     };
     if (!(w.name ?? '').trim()) out.push([false, 'No name yet']);
     if (PORTRAIT.includes(w.type)) {

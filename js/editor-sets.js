@@ -130,7 +130,8 @@ export function createSetsView(ctx) {
     }) }, '+ New set');
   }
 
-  const needsFx = c => !!(c.text ?? '').trim() && !NOT_SETS.includes(c.type) && (!c.fx || c.fxStatus === 'check') && !!ctx.state.fxProposals?.cards?.[c.id]?.unparsed?.length;
+  // Every card plays a written fx (2026-11-05): without a confirmed one it needs fx.
+  const needsFx = c => !!(c.text ?? '').trim() && c.type !== 'Core' && (!c.fx || c.fxStatus === 'check');
 
   function renderSet(s, list) {
     const special = NOT_SETS.includes(s.code);
