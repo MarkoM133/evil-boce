@@ -21,6 +21,11 @@ const ACCENT_DEEP := Color("6e0b07")
 const GOLD := Color("f4b62a")
 const HEAL := Color("7ee08a")
 const HP := Color("23b14d")
+## Phase colours, the same as the phase chips on the cards (Card Studio, js/render.js PHASE_COLORS, 2026-11-05).
+const PHASE_COLORS: Dictionary[String, Color] = {
+	"passive": Color("f3efe7"), "start": Color("80838b"), "preroll": Color("ff8a1f"), "roll": Color("00ffff"),
+	"postroll": Color("ff6fb1"), "battle": Color("ff0000"), "end": Color("80838b"),
+}
 
 const TEAM_COLORS: Array[Color] = [Color("2f6bff"), Color("e3120b")]
 const TEAM_NAMES: Array[String] = ["Blue", "Red"]

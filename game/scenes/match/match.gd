@@ -2119,6 +2119,22 @@ func demo_strip_off() -> void:
 	hud.toggle_stage_strips()
 	_sync()
 
+## Screenshot helper: the phase ribbon in a look and a phase from the command line
+## (--ribbon=current|stripe|all|none --phase=preroll|roll|postroll|battle|end).
+func demo_ribbon_shot() -> void:
+	demo_choose_hero()
+	state.pending.clear()
+	var look: String = ""
+	var phase: String = GameState.PHASE_PREROLL
+	for arg: String in OS.get_cmdline_user_args():
+		if arg.begins_with("--ribbon="):
+			look = arg.substr(9).replace("none", "")
+		elif arg.begins_with("--phase="):
+			phase = arg.substr(8)
+	state.phase = phase
+	hud.ribbon_look = look
+	hud.refresh()
+
 ## Hits hero 0, knocks hero 1 three hexes away and knocks out hero 2.
 func demo_fx_hit() -> void:
 	_demo = true
