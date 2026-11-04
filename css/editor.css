@@ -164,6 +164,8 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-tokbar-sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
 .ce-tokbar .ce-phrase { margin-left: auto; flex: none; width: 7.5em; font: 600 13px var(--text); padding: 6px 8px; background: transparent; border: 0; color: var(--muted); cursor: pointer; }
 .ce-tokbar .ce-phrase:hover { color: var(--bone); }
+.ce-tokbar .ce-phrase { color-scheme: dark; }
+.ce-tokbar .ce-phrase option { background: var(--surface-2); color: var(--bone); }
 .ce-adds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -4px; }
 .ce-adds .ce-add-effect { background: transparent; box-shadow: inset 0 0 0 1px var(--line); font-size: 15px; padding: 8px 14px; }
 .ce-adds .ce-add-effect:hover { box-shadow: inset 0 0 0 1px var(--muted); }
