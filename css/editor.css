@@ -395,3 +395,77 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
 .ce-claude-check p { margin: 0; }
 .ce-fx-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; }
 .small.ok { color: var(--c-Green, #23b14d); }
+
+/* Mobitel (Marko 2026-11-05, Card Studio preko servera): jedan stupac koji nikad nije širi od ekrana,
+   gumbi kartice (pregled, Undo, Close, Save) u traci na dnu ekrana, kao u aplikacijama. */
+.ce-cols > *, .ce-form > *, .ce-side > *, .ce-centre > * { min-width: 0; }
+.ce-form, .ce-side, .ce-centre { min-width: 0; }
+@media (max-width: 720px) {
+  .ce-full { padding-bottom: 120px; gap: 16px; }
+  .ce-top { position: static; padding: 8px 0 10px; gap: 8px; flex-wrap: wrap; }
+  .ce-crumbs { font-size: 14px; gap: 4px 6px; }
+  .ce-crumbs strong { font-size: 16px; }
+  .ce-top-actions {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; margin: 0;
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end;
+    background: var(--black); border-top: 1px solid var(--line); box-shadow: 0 -10px 24px rgba(0, 0, 0, .6);
+    padding: 8px max(12px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  }
+  .ce-top-actions > button { font-size: 15px; padding: 10px 14px; }
+  .ce-top-actions .ce-lockchip { flex-basis: 100%; font-size: 13px; padding: 6px 10px; }
+  .ce-review { margin-right: auto; gap: 4px; }
+  .ce-review > button { min-width: 40px; padding: 9px 10px; }
+  .ce-review .ce-good { padding: 9px 10px; font-size: 14px; }
+  .ce-stage { max-width: 100%; }
+  .ce-art-buttons > button { font-size: 14px; padding: 9px 12px; }
+  .ce-views button { font-size: 14px; padding: 8px 10px; }
+  .ce-row > .ce-field { min-width: 0; flex: 1 1 120px; }
+  .ce-row.ce-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .ce-row.ce-stats > .ce-field { min-width: 0; }
+  .ce-row.ce-stats input { padding: 9px 4px; text-align: center; }
+  .ce-swatches { flex-wrap: wrap; }
+  .ce-phase-seg button { padding: 9px 8px; font-size: 14px; }
+  .ce-panel { padding: 14px; }
+  .ce-readonly { flex-direction: column; align-items: stretch; }
+  .ce-oldnew { flex-wrap: wrap; justify-content: center; }
+  .ce-old, .ce-stage.wide .ce-old { width: min(260px, 44vw); }
+  .ce-zoom { flex-wrap: wrap; }
+}
+@media (max-width: 720px) {
+  /* A container is the containing block of fixed children (layout containment): on a phone the editor is a plain
+     block, so the bar sticks to the screen; the one-column layout comes from here instead of the container query. */
+  .ce-full { container-type: normal; }
+  .ce-cols, .ce-cols.wide { grid-template-columns: minmax(0, 1fr); grid-template-areas: "centre" "form" "side"; }
+  .ce-cols > .ce-side, .ce-cols > .ce-centre { position: static; max-height: none; }
+  .ce-top-actions { flex-wrap: nowrap; gap: 6px; }
+  .ce-top-actions > button { font-size: 14px; padding: 9px 10px; flex: none; }
+  .ce-review > button { min-width: 34px; padding: 9px 8px; }
+  .ce-review .ce-good { padding: 9px 10px; }
+  .ce-good-next { display: none; }
+  .ce-top-actions:has(.ce-lockchip) { flex-wrap: wrap; }
+}
+/* Izbornik na mobitelu (2026-11-05): glavne kartice u jednom redu, podstranice otvorene grupe u redu ispod. */
+@media (max-width: 760px) {
+  .tabs { flex-wrap: wrap; gap: 0 2px; }
+  .tabs > button { font-size: 17px; padding: 9px 9px 11px; }
+  .tabs-sep { display: none; }
+  .tabs-sub { order: 99; flex-basis: 100%; display: flex; gap: 4px; margin: 0; padding: 6px 0 8px; border-left: 0; border-top: 1px solid var(--line); overflow-x: auto; }
+  .tabs .tabs-sub button { font-size: 15px; padding: 7px 12px; white-space: nowrap; }
+  .tabs .tabs-sub button.active { box-shadow: inset 0 -3px 0 var(--red); }
+}
+/* Publish na mobitelu: kvačica i sličice u prvom redu, opis promjena i "Open in editor" ispod, preko cijele širine. */
+@media (max-width: 720px) {
+  .ce-pub-row, .ce-pub-row.locked { grid-template-columns: 30px minmax(0, 1fr); gap: 12px 14px; padding: 14px; }
+  .ce-pub-row > .ce-pub-body, .ce-pub-row > .link { grid-column: 1 / -1; justify-self: start; }
+  .ce-page-actions { flex-wrap: wrap; margin-left: 0; }
+  .ce-page-head h1, .ce-publish h1 { font-size: 36px; }
+  .ce-change { flex-wrap: wrap; }
+  .ce-page-tabs { width: auto; max-width: 100%; overflow-x: auto; }
+}
+/* Art na dodir: povlačenje prstom pomiče art, ne stranicu. Pogledi karte nikad širi od ekrana. */
+.ce-artcanvas { touch-action: none; }
+@media (max-width: 720px) {
+  .ce-stage canvas, .ce-ctx canvas, .ce-oldnew canvas { max-width: 100%; height: auto; }
+  .setup-detail .who-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .setup-detail .who-tile { width: auto; min-width: 0; padding: 14px 10px; }
+}

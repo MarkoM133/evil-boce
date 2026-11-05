@@ -317,7 +317,7 @@ export function createEditor(env) {
       h('span', { class: 'small muted' }, `${i + 1} / ${ids.length}`),
       h('button', { class: 'ghost', type: 'button', disabled: i >= ids.length - 1, title: 'Next card (→)', onclick: () => step(1) }, '›'),
       w.type === 'Core' ? null : h('button', { class: 'ghost ce-good', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other',
-        title: 'Mark it done, save it and open the next card', onclick: () => env.guard(looksGood) }, 'Looks good, next'));
+        title: 'Mark it done, save it and open the next card', onclick: () => env.guard(looksGood) }, 'Looks good', h('span', { class: 'ce-good-next' }, ', next')));
   }
 
   // Podaci preko servera su samo za gledanje: spremanje, upload i Objava trebaju otvoren zajednički folder.
