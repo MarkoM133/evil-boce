@@ -376,6 +376,7 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
 .ce-review { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
 .ce-review > button { min-width: 36px; font-size: 18px; padding: 6px 10px; }
 .ce-review .ce-good { color: var(--straw); font-size: 15px; }
+.ce-review .ce-good.is-done { color: var(--c-Green); }
 
 /* Crta u lijevoj navigaciji između gledanja (Cards, Decks, Balance) i izrade (Card editor, Tools). */
 .tabs .tabs-sep { display: block; height: 1px; background: var(--line); margin: 10px 14px; }

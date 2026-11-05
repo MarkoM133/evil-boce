@@ -245,11 +245,19 @@ export function createEditor(env) {
     return !!to;
   }
 
+  // Status karte kako je spremljen (nacrt ili baza); otvorena karta po radnoj kopiji.
+  const statusOf = id => (id === ed.id && ed.work ? ed.work.status : merged(db().cards.find(c => c.id === id) ?? { id }).status) ?? 'draft';
+
+  // Looks good (Marko 2026-11-05): karta na Done, spremi, pa sljedeća karta koja još nije Done (strelica › ide redom).
   async function looksGood() {
     const w = ed.work;
     if (w.type !== 'Core' && (w.status ?? 'draft') !== 'done') { snap(true); w.status = 'done'; changed(); }
     if (ed.dirty) await saveDraft();
-    if (!step(1)) { env.toast('That was the last card here.'); go(ed.from); }
+    const ids = reviewOrder(ed.id);
+    const i = ids.indexOf(ed.id);
+    const next = [...ids.slice(i + 1), ...ids.slice(0, i)].find(id => statusOf(id) !== 'done');
+    if (next) go(next);
+    else { env.toast('Every card here is done.'); go(ed.from); }
   }
 
   // ← i → listaju karte dok se ne tipka (polja, popisi, tekst).
@@ -316,8 +324,11 @@ export function createEditor(env) {
       h('button', { class: 'ghost', type: 'button', disabled: i <= 0, title: 'Previous card (←)', onclick: () => step(-1) }, '‹'),
       h('span', { class: 'small muted' }, `${i + 1} / ${ids.length}`),
       h('button', { class: 'ghost', type: 'button', disabled: i >= ids.length - 1, title: 'Next card (→)', onclick: () => step(1) }, '›'),
-      w.type === 'Core' ? null : h('button', { class: 'ghost ce-good', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other',
-        title: 'Mark it done, save it and open the next card', onclick: () => env.guard(looksGood) }, 'Looks good', h('span', { class: 'ce-good-next' }, ', next')));
+      w.type === 'Core' ? null : (w.status ?? 'draft') === 'done'
+        ? h('button', { class: 'ghost ce-good is-done', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other',
+          title: 'This card is done. Open the next card that is not done yet', onclick: () => env.guard(looksGood) }, '✓ Done', h('span', { class: 'ce-good-next' }, ', next'))
+        : h('button', { class: 'ghost ce-good', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other',
+          title: 'Mark it done, save it and open the next card that is not done yet', onclick: () => env.guard(looksGood) }, 'Looks good', h('span', { class: 'ce-good-next' }, ', next')));
   }
 
   // Podaci preko servera su samo za gledanje: spremanje, upload i Objava trebaju otvoren zajednički folder.
