@@ -852,9 +852,12 @@ const NAV = [
 ];
 const navOf = tab => (tab === 'coverage' ? 'balance' : tab === 'import' || tab === 'history' ? 'browse' : tab);
 
-function renderNav() {
-  const cur = navOf(state.tab);
-  const sub = (key, items) => h('div', { class: 'tabs-sub' }, items.map(([k, label]) => {
+// Podstranice otvorene grupe (Card editor: Sets, Publish, Words, Frames; Balance: Balance, Coverage). Na računalu
+// stoje ispod svoje stavke u izborniku, na mobitelu kao red na vrhu stranice (renderMain).
+function navSub(key) {
+  const items = NAV.find(([k]) => k === key)?.[2];
+  if (!items) return null;
+  return h('div', { class: 'tabs-sub' }, items.map(([k, label]) => {
     const id = state.editId ?? 'sets';
     const active = key === 'editor' ? (EDITOR_GROUP[id] ?? id) === k : state.tab === k;
     const n = key === 'editor' && k === 'publish' ? cardEditor.waiting() : 0;
@@ -867,6 +870,10 @@ function renderNav() {
     } }, label, n ? h('span', { class: 'tab-badge', title: 'Drafts waiting for Publish' }, n) : null,
       wish ? h('span', { class: 'tab-badge alt', title: 'Words waiting for the game (fx wishlist)' }, wish) : null);
   }));
+}
+
+function renderNav() {
+  const cur = navOf(state.tab);
   return h('nav', { class: 'tabs', role: 'tablist' }, NAV.map(([key, label, items]) => key === '-' ? h('span', { class: 'tabs-sep', 'aria-hidden': 'true' }) : [
     h('button', { id: `tab-${key}`, role: 'tab', 'aria-selected': String(cur === key), class: cur === key ? 'active' : '', onclick: () => {
       state.tab = key;
@@ -874,7 +881,7 @@ function renderNav() {
       replaceNext = false;
       render();
     } }, label),
-    items && cur === key ? sub(key, items) : null,
+    items && cur === key ? navSub(key) : null,
   ]).flat());
 }
 
@@ -893,7 +900,7 @@ function renderMain() {
       renderNav(),
       state.tab === 'decks' ? renderDeckList() : null),
     sideData(),
-    h('main', {}, view));
+    h('main', {}, h('nav', { class: 'phone-sub', 'aria-label': 'Pages' }, navSub(navOf(state.tab))), view));
 }
 
 // Card editor (js/editor.js): adresa #/editor/<id>, a odabir karte je korak u povijesti preglednika.

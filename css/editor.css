@@ -469,3 +469,41 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
   .setup-detail .who-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .setup-detail .who-tile { width: auto; min-width: 0; padding: 14px 10px; }
 }
+
+/* Mobitel, navigacija (Marko 2026-11-05): glavne stavke u traci na dnu (pet jednakih stupaca, ne lome se ni s većim
+   fontom), podstranice kao red na vrhu stranice, zaglavlje u jednom tankom redu. Otvorena karta ima svoju traku. */
+.phone-sub { display: none; }
+@media (max-width: 760px) {
+  #app { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .side .tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; margin: 0;
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; align-items: stretch;
+    background: var(--black); border-top: 1px solid var(--line); border-bottom: 0; box-shadow: 0 -10px 24px rgba(0, 0, 0, .6);
+    padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+  .side .tabs > button { font-size: 15px; line-height: 1.05; padding: 12px 2px 13px; text-align: center; white-space: normal; overflow-wrap: anywhere; display: grid; place-items: center; min-height: 56px; }
+  .side .tabs > button.active::before { top: 0; bottom: auto; left: 18%; right: 18%; width: auto; height: 3px; transform: skewX(-24deg); }
+  .tabs .tabs-sep, .side .tabs .tabs-sub { display: none; }
+  .phone-sub:has(.tabs-sub) { display: block; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
+  .phone-sub .tabs-sub { display: flex; gap: 2px; margin: 0; padding: 0; border: 0; overflow-x: auto; scrollbar-width: none; }
+  .phone-sub .tabs-sub button { clip-path: none; background: none; font: 600 16px var(--text); color: var(--muted); padding: 10px 12px 12px; white-space: nowrap; display: flex; align-items: center; gap: 6px; position: relative; }
+  .phone-sub .tabs-sub button.active { color: var(--bone); }
+  .phone-sub .tabs-sub button.active::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px; background: var(--red); transform: skewX(-24deg); }
+  /* Otvorena karta: njena traka (Undo, Close, Save) je na dnu umjesto izbornika; izlaz je Close. */
+  body:has(.ce-full) .side .tabs, body:has(.ce-full) .phone-sub { display: none; }
+  #toasts { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  /* Zaglavlje: tanja traka heroja, logo, broj karata i ime u jednom redu. */
+  .hero-strip { height: 56px; }
+  .top-bar { padding-top: 8px; gap: 10px; }
+  .brand .logo { width: 40px; height: 40px; }
+  .folder { flex-wrap: nowrap; gap: 10px; font-size: 13px; }
+  .folder-name { display: none; }
+  .signed-in { font-size: 0; gap: 0; }
+  .signed-in select { font-size: 14px; padding: 6px 28px 6px 10px; }
+}
+@media (max-width: 760px) {
+  .top-bar { margin-bottom: 14px; }
+  .folder-db { white-space: nowrap; gap: 6px; }
+  .folder-db .sep { width: 4px; height: 4px; }
+}
+@media (max-width: 760px) { .top-bar .folder-actions { display: none; } }
