@@ -111,7 +111,7 @@ static func _parse_bonus(colors: String, rest: String, card: CardDef, prev: FxEf
 	var instead: bool = low.ends_with(" instead")
 	if instead:
 		low = low.trim_suffix(" instead").strip_edges()
-	var m: RegExMatch = _rx("^this card costs (\\d+) (less|more)(?: to play)?$").search(low)
+	var m: RegExMatch = _rx("^this card costs (\\d+) (?:energy )?(less|more)(?: to play)?$").search(low)
 	if m != null:
 		e = FxEffect.new()
 		e.when = "PLAY"
@@ -202,9 +202,9 @@ static func _normalise(text: String, self_name: String) -> String:
 		if first != self_name:
 			t = t.replace(first + "'s", "SELF's").replace(first, "SELF")
 		# The first name alone ("Giorno may …", cards name the hero only on Hero and Evolution cards, 2026-11-05).
-		var word: String = first.split(" ")[0]
-		if word != first and word.length() >= 3:
-			t = _rx("\\b" + word + "\\b").sub(t, "SELF", true)
+		for word: String in first.split(" "):
+			if word != first and word.length() >= 4:
+				t = _rx("\\b" + word + "\\b").sub(t, "SELF", true)
 	t = t.replace("\n- ", " | ").replace("\n", " ")
 	t = _rx("\\s+").sub(t, " ", true).strip_edges()
 	return t
@@ -288,6 +288,8 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 	if m != null:
 		e.cond = "ACTIVATED"
 		low = m.get_string(1)
+	# ", friendly or not" only spells out what ALL_OTHER_IN_RANGE already means (Fugo).
+	low = _rx(",? friendly or not$").sub(low, "")
 	if low.begins_with("self may ") or low.begins_with("you may ") or low.begins_with("may "):
 		e.optional = true
 		low = _rx("^(?:self |you )?may (?:choose to )?").sub(low, "")
@@ -458,7 +460,8 @@ static func _match(low: String) -> Array[Dictionary]:
 		return [_act("ACTIVATE_CORE", "", [])]
 	m = _rx("^deactivate (?:a core|up to (\\d+) cores)$").search(low)
 	if m != null:
-		return [_act("DEACTIVATE_CORE", "SELF", [m.get_string(1) if not m.get_string(1).is_empty() else "1"])]
+		# "up to N": the player picks how many (UPTO); PER COUNT after it counts the ones taken.
+		return [_act("DEACTIVATE_CORE", "SELF", [m.get_string(1), "UPTO"] if not m.get_string(1).is_empty() else ["1"])]
 
 	# Energy: "gain 2 Energy" / "lose 2 Energy" (2026-11-05; charge / discharge still read), "they lose …" is the opponent.
 	m = _rx("^(?:you |they |your opponent )?(?:must )?(gain|lose|charge|discharge) (\\d+) energy$").search(low)
@@ -467,12 +470,12 @@ static func _match(low: String) -> Array[Dictionary]:
 		var verb: String = "CHARGE" if m.get_string(1) in ["gain", "charge"] else "DISCHARGE"
 		return [_act(verb, who, [m.get_string(2)])]
 
-	m = _rx("^your \\{(\\w+)\\} cards cost (\\d+) less(?: to play)?$").search(low)
+	m = _rx("^your \\{(\\w+)\\} cards cost (\\d+) (?:energy )?(less|more)(?: to play)?$").search(low)
 	if m != null:
-		return [_act("COST", "ME", ["-" + m.get_string(2), "{%s}" % m.get_string(1)])]
-	m = _rx("^your opponent's cards have \\+(\\d+) cost$").search(low)
+		return [_act("COST", "ME", [("-" if m.get_string(3) == "less" else "") + m.get_string(2), "{%s}" % m.get_string(1)])]
+	m = _rx("^your opponent's cards (?:have \\+(\\d+) cost|cost (\\d+) (?:energy )?more)$").search(low)
 	if m != null:
-		return [_act("COST", "OPP", [m.get_string(1)])]
+		return [_act("COST", "OPP", [m.get_string(1) if not m.get_string(1).is_empty() else m.get_string(2)])]
 	# "All of your Opponent's Battle Phase cards cost 2 more Energy this turn" / "… cost 2 Energy more this turn"
 	m = _rx("^(?:all of )?your opponent's (\\w+) phase cards cost (\\d+) (?:more energy|energy more)( this turn)?$").search(low)
 	if m != null:
@@ -549,6 +552,9 @@ static func _counter(raw: String) -> PackedStringArray:
 		return PackedStringArray(["TRAIT_EQUIPPED", "{%s}" % m.get_string(1)])
 	if _rx("^activated core(?: they have)?$").search(s) != null:
 		return PackedStringArray(["CORES"])
+	# "for each deactivated Core" after "deactivate up to N Cores": how many were taken.
+	if _rx("^deactivated core$").search(s) != null:
+		return PackedStringArray(["COUNT"])
 	m = _rx("^(\\d+) missing hp$").search(s)
 	if m != null:
 		return PackedStringArray(["MISSING_HP", m.get_string(1)])

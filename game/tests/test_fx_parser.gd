@@ -115,6 +115,19 @@ func test_wording_2026_11_05() -> void:
 	_assert_fx(_fx("Equipment", "Enma", "Preroll Phase: If the equipped Hero is activated, lose 1 Energy.\nYellow Bonus: +1000 Power.", {"color": "None", "bonusColors": ["Yellow"]}),
 		"PREROLL IF ACTIVATED: DISCHARGE ME 1\nPASSIVE BONUS: BUFF EQUIPPED PWR 1000")
 	_assert_fx(_fx("Hero", "Kaido", "Kaido takes 1 less DMG from each source."), "PASSIVE: DAMAGE_MOD SELF -1")
+	_assert_fx(_fx("Hero", "Pannacotta Fugo", "Postroll Phase: If Fugo is activated, all other Heroes in Range take 2 DMG, friendly or not."),
+		"POSTROLL IF ACTIVATED: DAMAGE ALL_OTHER_IN_RANGE 2")
+	_assert_fx(_fx("Hero", "Guido Mista", "Battle Phase: Mista may deactivate up to 2 Cores. If he does, he gets +1 DMG and +2000 Power for each deactivated Core until the end of the turn."),
+		"BATTLE OPTIONAL: DEACTIVATE_CORE SELF 2 UPTO; BUFF SELF DMG 1 TURN PER COUNT; BUFF SELF PWR 2000 TURN PER COUNT")
+	# Text standard (2026-11-05 evening): gets, for each, cost N Energy less / more, short names.
+	_assert_fx(_fx("Assist", "Rayleigh", "Your {Haki} cards cost 1 Energy less.\nCyan Bonus: This card costs 1 Energy less.", {"color": "None", "bonusColors": ["Cyan"]}),
+		"PASSIVE: COST ME -1 {Haki}\nPLAY BONUS: OWN_COST -1")
+	_assert_fx(_fx("Evolution", "Giorno Giovanna, Requiem", "While Giorno is activated, your Opponent's cards cost 2 Energy more.", {"hero": "Giorno Giovanna"}),
+		"PASSIVE IF ACTIVATED: COST OPP 2")
+	_assert_fx(_fx("Hero", "Shanks", "Shanks gets +1000 Power for each other friendly Hero who has 5 or less HP."),
+		"PASSIVE: BUFF SELF PWR 1000 PER LOW_HP_OTHER_FRIENDLY 5")
+	_assert_fx(_fx("Stage", "Whole Cake", "When this Stage is revealed, each Hero gets +1000 Power for each activated Core they have.\nTerrain: Mud"),
+		"REVEAL: BUFF EACH_HERO PWR 1000 PER CORES")
 	_assert_fx(_fx("Equipment", "Wado Ichimonji", "The equipped Hero gets +1000 Power for each {Sword} equipped to them."),
 		"PASSIVE: BUFF EQUIPPED PWR 1000 PER TRAIT_EQUIPPED {Sword}")
 	_assert_fx(_fx("Equipment", "Gryphon", "While the equipped Hero is activated, your {Haki} cards cost 1 less.\nRed Bonus: +1000 Power.", none),

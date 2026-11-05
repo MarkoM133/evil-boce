@@ -22,7 +22,8 @@ export function avoidWarnings(guide, text) {
   const out = [];
   for (const rule of guide?.avoid ?? []) {
     let re;
-    try { re = new RegExp(rule.find, 'i'); } catch { continue; }
+    // flags: "" makes a rule case-sensitive ("Once per turn" vs "Once Per Turn"); the default ignores case.
+    try { re = new RegExp(rule.find, rule.flags ?? 'i'); } catch { continue; }
     if (re.test(text ?? '')) out.push(rule.say);
   }
   return out;

@@ -30,3 +30,9 @@ test('text guide: markdown export lists phrases and rules', () => {
   assert.match(md, /\| Heal \| `heals 3 HP` \|/);
   assert.match(md, /- Use Knockback\./);
 });
+
+test('a rule with flags "" is case-sensitive', () => {
+  const guide = { avoid: [{ find: '\\bOnce per turn\\b', flags: '', say: 'Write "Once Per Turn".' }] };
+  assert.deepEqual(avoidWarnings(guide, 'Postroll Phase Once Per Turn: x'), []);
+  assert.deepEqual(avoidWarnings(guide, 'Postroll Phase Once per turn: x'), ['Write "Once Per Turn".']);
+});

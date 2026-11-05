@@ -164,7 +164,9 @@ an Opponent's Hero's Range` (`SWAP FRIENDLY ENGAGED`); `immune to Knockback`; `P
 `Reveal / activate / deactivate a Core`; `Move a Core up to N spaces` and after it `If an Opponent's Hero activates
 that Core this turn, they take N DMG` (`TRAP_CORE`); `If he does, …` / `If you do, …` adds to the sentence before;
 `gain / lose N Energy` (`they lose …` is the opponent; charge / discharge still read); `for each Energy their
-player has`; cost changes (`… Battle Phase cards cost 2 Energy more this turn`); `play a {Sword} Equipment with a
+player has`; cost changes (`{Haki} cards cost 1 Energy less`, `This card costs 1 Energy less`, `your Opponent's cards cost 2
+Energy more`, `… Battle Phase cards cost 2 Energy more this turn`); stat bonuses with `gets` (the text standard: gets
+for stats, gain / lose for Energy, for each, Knockback; Marko and Tarik 2026-11-05 evening); `play a {Sword} Equipment with a
 cost of 3 or less without paying its cost` (`FREE_PLAY`); `roll … again`;
 `discard a card`; `remove an Evolution`; `cannot take a Stage`; `the Opponent's Hero in this Battle takes all
 of the damage` (`FULL_HIT`; a sentence `Your Opponent can't discard cards to reduce it` after it is skipped); `As an additional cost, take
