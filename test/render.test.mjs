@@ -28,8 +28,9 @@ test('a list becomes bullets; a phase alone has no lines', () => {
   assert.equal(parseEffect('The equipped Hero takes +1 DMG.').phase, null);
 });
 
-test('"in Range" is the range icon with a space; other Range words stay text', () => {
+test('"Range" with a capital is the range icon with a space; "range" stays text', () => {
   assert.deepEqual(richRuns('all other Heroes in Range take 2 DMG'), [{ text: 'all other Heroes in ' }, { icon: 'rng' }, { text: ' take 2' }, { icon: 'dmg' }]);
+  assert.deepEqual(richRuns("that is in an Opponent's Hero's Range."), [{ text: "that is in an Opponent's Hero's " }, { icon: 'rng' }, { text: '.' }]);
   assert.deepEqual(richRuns('in Combat range of an enemy'), [{ text: 'in Combat range of an enemy' }]);
 });
 

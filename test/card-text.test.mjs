@@ -11,6 +11,10 @@ test('card text: words in cards.json, tokens in the editor, and back', () => {
   assert.equal(toWords('the Hero with more [HP] gains +3000[PWR].'), 'the Hero with more HP gains +3000 Power.');
   assert.equal(toTokens("[Range] Postroll Phase: an Opponent's Hero in Range takes 3 DMG."), "[RNG]Postroll Phase: an Opponent's Hero in [RNG] takes 3[DMG].");
   assert.equal(toWords("[RNG]Postroll Phase: an Opponent's Hero in [RNG] takes 3[DMG]."), "[Range] Postroll Phase: an Opponent's Hero in Range takes 3 DMG.");
+  const intercept = "[Range] Postroll Phase: Swap your Hero with another friendly Hero that is in an Opponent's Hero's Range.";
+  assert.equal(toTokens(intercept), "[RNG]Postroll Phase: Swap your Hero with another friendly Hero that is in an Opponent's Hero's [RNG].");
+  assert.equal(toWords(toTokens(intercept)), intercept);
+  assert.equal(toTokens('in Combat range of an enemy'), 'in Combat range of an enemy');
   for (const [words, tokens] of [['You must discharge 1 Energy if', 'You must discharge 1[EN] if'],
     ['cost 2 more Energy this turn', 'cost 2 more [EN] this turn'], ['for every charged Energy their', 'for every charged [EN] their']]) {
     assert.equal(toTokens(words), tokens);

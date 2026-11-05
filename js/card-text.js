@@ -14,8 +14,9 @@ export function toTokens(text) {
     .replace(/^\[Range\]\s*/gim, '[RNG]')
     .replace(/(\d)\s?(HP|DMG|Power|Range|Knockback|Energy)\b/g, (_, d, w) => `${d}[${TOKEN[w]}]`)
     .replace(/\b(more|less)\s(HP|DMG|Power|Range|Knockback|Energy)\b/g, (_, m, w) => `${m} [${TOKEN[w]}]`)
-    // "in Range" usred rečenice je [RNG] s razmakom ("Heroes in Range" → "Heroes in [RNG]"); "[Range] " na početku ostaje glava.
-    .replace(/\bin Range\b/g, 'in [RNG]')
+    // "Range" velikim slovom usred rečenice je [RNG] ("Heroes in Range" → "Heroes in [RNG]", "Hero's Range");
+    // "[Range] " na početku je glava (gore), "range" malim slovom ostaje riječ.
+    .replace(/\bRange\b/g, '[RNG]')
     // Energy je token i bez broja ("charged Energy" → "charged [EN]"), kao što je na karti dijamant.
     .replace(/\bEnergy\b/g, '[EN]');
 }
