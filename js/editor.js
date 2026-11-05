@@ -309,8 +309,8 @@ export function createEditor(env) {
         h('strong', {}, `${w.id} ${w.name || 'New card'}`),
         h('span', { class: `ce-badge ${TYPE_BADGE[w.type]}${w.type === 'Action' || w.type === 'Equipment' || w.type === 'Assist' ? ` c-bg-${w.color}` : ''}` }, w.type.toUpperCase())),
       h('div', { class: 'ce-top-actions' }, lockChip, reviewNav(w),
-        w.type === 'Core' ? null : h('button', { class: 'ghost', type: 'button', disabled: !ed.undo.length, onclick: undo }, 'Undo'),
-        h('button', { class: 'ghost', type: 'button', onclick: () => go(ed.from) }, 'Close'),
+        w.type === 'Core' ? null : h('button', { class: 'ghost ce-act', type: 'button', title: 'Undo', 'aria-label': 'Undo', disabled: !ed.undo.length, onclick: undo }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '↶'), h('span', { class: 'ce-act-lbl' }, 'Undo')),
+        h('button', { class: 'ghost ce-act', type: 'button', title: 'Close', 'aria-label': 'Close', onclick: () => go(ed.from) }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'ce-act-lbl' }, 'Close')),
         h('button', { class: 'primary', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(saveDraft) }, 'Save')));
     return h('div', { class: 'ce-full' }, top, readOnlyNote(),
       h('div', { class: `ce-cols${HEROISH.includes(w.type) ? ' wide' : ''}` }, renderSide(), renderCentre(), renderForm()));
@@ -1183,21 +1183,50 @@ export function createEditor(env) {
   }
 
   // Tagovi kao čipovi (× makne), polje "Add trait…" s prijedlozima iz popisa traitova. from: 1 = bez prvog taga.
+  // Popis prijedloga je naš (Marko 2026-11-05): Brave na Androidu ne pokazuje datalist. Otvori se na dodir,
+  // filtrira dok se tipka, dodir ili Enter doda tag.
   function chips(w, from, traits, accent) {
-    const addTag = () => {
-      const t = add.value.trim();
+    const addTag = value => {
+      const t = String(value ?? add.value).trim();
       if (!t) return;
       snap(true);
       if (!w.traits.includes(t)) w.traits = [...(from && !w.traits.length ? [''] : []), ...w.traits, t];
       changed();
       env.render();
     };
-    const add = h('input', { list: 'ce-traits', placeholder: from ? 'Add tag…' : 'Add trait…', onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } } });
+    const pop = h('ul', { class: 'ce-ac ce-tag-ac', hidden: true, role: 'listbox' });
+    let items = [];
+    let pick = -1;
+    const paint = () => {
+      pop.replaceChildren(...items.map((t, i) => h('li', { class: i === pick ? 'on' : '', role: 'option',
+        onpointerdown: e => { e.preventDefault(); addTag(t); } }, t)));
+      pop.hidden = !items.length;
+      pop.children[pick]?.scrollIntoView({ block: 'nearest' });
+    };
+    const show = () => {
+      const q = add.value.trim().toLowerCase();
+      const have = new Set(w.traits);
+      items = traits.filter(t => !have.has(t) && (!q || t.toLowerCase().includes(q)))
+        .sort((a, b) => (b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q)) || a.localeCompare(b));
+      pick = q && items.length ? 0 : -1;
+      paint();
+    };
+    const add = h('input', { placeholder: from ? 'Add tag…' : 'Add trait…', autocomplete: 'off', 'aria-autocomplete': 'list',
+      onfocus: show, oninput: show, onblur: () => setTimeout(() => { pop.hidden = true; }, 150),
+      onkeydown: e => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!items.length) return;
+          pick = (pick + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+          paint();
+        } else if (e.key === 'Enter') { e.preventDefault(); addTag(pick >= 0 ? items[pick] : undefined); }
+        else if (e.key === 'Escape') { pop.hidden = true; }
+      } });
     return h('div', { class: 'ce-chips' },
       w.traits.slice(from).map((t, i) => h('span', { class: `ce-chip${accent.includes(t) ? ' accent' : ''}` }, t,
         h('button', { type: 'button', 'aria-label': `Remove ${t}`, onclick: () => { snap(true); w.traits = w.traits.filter((_, j) => j !== i + from); changed(); env.render(); } }, '×'))),
-      add, h('button', { class: 'ghost ce-chip-add', type: 'button', onclick: addTag }, '+ Add'),
-      h('datalist', { id: 'ce-traits' }, traits.map(t => h('option', { value: t }))));
+      h('span', { class: 'ce-tag-add' }, add, pop),
+      h('button', { class: 'ghost ce-chip-add', type: 'button', onclick: () => addTag() }, '+ Add'));
   }
 
   // Tekst s prekidačima faze, Once per turn i Range, tokenima statova i prijedlozima iz vodiča.

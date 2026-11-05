@@ -508,3 +508,20 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
   .folder-db .sep { width: 4px; height: 4px; }
 }
 @media (max-width: 760px) { .top-bar .folder-actions { display: none; } }
+
+/* Popis tagova (naš, ne datalist), i ikone Undo / Close: na računalu riječ, na mobitelu znak. */
+.ce-tag-add { position: relative; display: inline-block; }
+.ce-tag-ac { min-width: 220px; font-family: var(--text); }
+.ce-tag-ac li { font: 500 15px var(--text); }
+.ce-act-ico { display: none; }
+@media (max-width: 720px) {
+  .ce-act-ico { display: inline; font-size: 18px; font-style: normal; }
+  .ce-act-lbl { display: none; }
+  .ce-top-actions > .ce-act { min-width: 40px; padding: 8px 10px; }
+  .ce-review > .small { display: none; }
+  .ce-top-actions:has(.ce-lockchip) { flex-wrap: wrap; }
+  .ce-top-actions > :not(.ce-lockchip) { flex: none; }
+  .ce-tag-add { flex: 1 1 140px; }
+  .ce-tag-add input { width: 100%; }
+  .ce-tag-ac { left: 0; right: auto; min-width: 100%; max-height: 50vh; }
+}
