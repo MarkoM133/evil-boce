@@ -2001,6 +2001,9 @@ export function createEditor(env) {
     if (!list.length) throw new Error('Nothing to publish.');
     if (!confirm(`Publish ${list.length} ${list.length === 1 ? 'card' : 'cards'} into the game?`)) return;
     const before = db();
+    // Nova Objava zamjenjuje zadnju: Undo prethodne više nije moguć, pa njene stare slike mogu van. To ide PRIJE
+    // crtanja novih PNG-ova: poslije bi obrisalo baš njih (isti kod karte, drugi hash od objavljenog; 5. 11. 2026).
+    await env.dropOldImages();
     const images = {};
     const kept = [];
     for (const id of list) {
@@ -2026,8 +2029,6 @@ export function createEditor(env) {
     }
     const { db: next, changed, bumped } = applyDrafts(db(), drafts, images);
     if (changed) {
-      // Nova Objava zamjenjuje zadnju: Undo prethodne više nije moguć, pa njene stare slike mogu van.
-      await env.dropOldImages();
       await env.commitDb(next, { keepOld: true });
       await writeJson(LAST_PUBLISH_PATH, { at: new Date().toISOString(), who: who(), bumped, after: { version: next.version, updated: next.updated }, drafts, before });
       ed.last = undefined;
