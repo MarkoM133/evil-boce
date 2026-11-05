@@ -146,7 +146,7 @@ spaces …`; `move N spaces towards you`; `immune to Knockback`; `Place a Wall`;
 activate / deactivate a Core`; `charge / discharge N Energy`; cost changes; `roll … again`;
 `discard a card`; `remove an Evolution`; `cannot take a Stage`; `the Opponent's Hero in this Battle takes all
 of the damage` (`FULL_HIT`; a sentence `Your Opponent can't discard cards to reduce it` after it is skipped); `As an additional cost, take
-N DMG`; `Your Opponent chooses:` with two dashed lines. Clauses joined by "and" are read one by
+N DMG` (or `…, your Hero takes N DMG`: `COST_DAMAGE`); `Your Opponent chooses:` with two dashed lines. Clauses joined by "and" are read one by
 one. Colour bonus lines of colorless cards (`Red Bonus: …`, `Cyan / Purple Bonus: …`): `This
 card costs N less to play` (`OWN_COST`), `+N STAT` (a buff on the card's hero), `It also …` /
 `You also …` and `… gets / gains / heals / takes an additional …` (an extra effect with the WHEN

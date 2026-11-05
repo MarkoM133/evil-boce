@@ -244,7 +244,8 @@ static func _match(low: String) -> Array[Dictionary]:
 		out.append({"verb": "CHOOSE", "target": "OPP", "args": PackedStringArray(), "branches": [a, b]})
 		return out
 
-	m = _rx("^as an additional cost, take (\\d+) dmg$").search(low)
+	# "As an additional cost, take 3 DMG." or "…, your Hero takes 3 DMG." (Marko 2026-11-05).
+	m = _rx("^as an additional cost, (?:take|your hero takes) (\\d+) dmg$").search(low)
 	if m != null:
 		return [_act("COST_DAMAGE", "", [m.get_string(1)])]
 

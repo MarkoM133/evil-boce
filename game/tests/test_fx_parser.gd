@@ -58,6 +58,7 @@ func test_actions_and_equipment() -> void:
 	_assert_fx(_fx("Action", "Finisher", "Battle Phase: If you win this Battle, your Opponent's Hero takes DMG."),
 		"BATTLE IF WIN: DAMAGE ENEMY DMG")
 	_assert_fx(_fx("Action", "Rage", "Battle Phase: As an additional cost, take 3 DMG."), "BATTLE: COST_DAMAGE 3")
+	_assert_fx(_fx("Action", "Raitei", "Battle Phase: As an additional cost, your Hero takes 3 DMG."), "BATTLE: COST_DAMAGE 3")
 	_assert_fx(_fx("Action", "Divine Departure", "Battle Phase: If you win this Battle, the Opponent's Hero in this Battle takes all of the damage. Your Opponent can't discard cards to reduce it."),
 		"BATTLE IF WIN: FULL_HIT OPP")
 	_assert_fx(_fx("Action", "Encore", "Roll Phase: You may roll the activated Hero again."), "ROLL OPTIONAL: ROLL_AGAIN")
