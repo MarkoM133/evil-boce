@@ -74,7 +74,9 @@ until the web app's Effect tab writes `fx` into `cards.json`.
 
 Heroes: `SELF` (the hero the card belongs to: the activated hero for an Action, your hero
 in the battle, the hero with the ability, the equipped hero), `EQUIPPED` (same, for
-equipment), `ENEMY` / `FRIENDLY` (the player picks one; one candidate is picked for them),
+equipment), `ENEMY` / `FRIENDLY` (the player picks one; one candidate is picked for them; `FRIENDLY` is
+always another friendly hero, never SELF: "a friendly Hero" on Bon Apetit or Giorno is not the hero the card is
+played for, Marko 2026-11-05; with `RANGE` it must be in SELF's range),
 `ALL_FRIENDLY`, `ALL_ENEMY`, `ALL_OTHER_IN_RANGE`, `ALL_FRIENDLY_IN_RANGE`, `ALL_HEROES`,
 `EACH_HERO` (on a stage: those standing on it), `MOST_HP`, `MOST_PWR` (on a stage; nobody on a tie).
 Players: `ME`, `OPP`.
