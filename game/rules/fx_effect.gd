@@ -55,7 +55,7 @@ const VERBS: Dictionary[String, Array] = {
 	"NOOP": [false, 0],         # NOOP  (nothing; a "no" branch for CHOOSE)
 	"FREE_PLAY": [false, 1],    # FREE_PLAY <max cost> [{Trait}] [Type]  (play a card from hand on SELF for free)
 	"SWAP": [true, 0],          # SWAP FRIENDLY [ENGAGED]  (SELF and that hero trade hexes)
-	"DUEL_TOP": [false, 2],     # DUEL_TOP <STAT> <n>  (players on the stage show their top card; higher cost wins)
+	"DUEL_TOP": [false, 2],     # DUEL_TOP <STAT> <n> [PICK]  (players show their top card; higher cost gets +n: PICK = one hero the winner picks)
 	"MOVE_ID": [false, 2],      # MOVE_ID <hero id> <n>  (one hero of a group move; written by the runtime)
 }
 const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "ALL_FRIENDLY", "ALL_ENEMY",

@@ -1,0 +1,145 @@
+{
+  "name": "fx stage BATTLE + DUEL_TOP PICK: in a battle on the stage the players show their top card, the higher cost's owner gives +2000 Power to the one hero they have in it; a tie gives nothing",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1,
+        "decks": [
+          {
+            "name": "A",
+            "heroes": [
+              "TA-001",
+              "TA-002",
+              "TA-003"
+            ],
+            "cards": {
+              "TX-010": 40
+            },
+            "stages": [
+              "TS-008"
+            ],
+            "cores": []
+          },
+          {
+            "name": "B",
+            "heroes": [
+              "TB-001",
+              "TB-002",
+              "TB-003"
+            ],
+            "cards": {
+              "TX-010": 40
+            },
+            "stages": [
+              "TS-006"
+            ],
+            "cores": []
+          }
+        ]
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "stages.stage:p0:1.center": [
+          5,
+          8
+        ],
+        "stages.stage:p0:1.placed": true,
+        "stages.stage:p0:1.revealed": true,
+        "stages.stage:p1:1.placed": false,
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          4,
+          8
+        ],
+        "heroes.p1:TB-001.zone": "map",
+        "heroes.p1:TB-001.hex": [
+          6,
+          8
+        ],
+        "players.p0.deck": [
+          "TA-049",
+          "TX-010",
+          "TX-010"
+        ],
+        "players.p1.deck": [
+          "TX-010",
+          "TX-010",
+          "TX-010"
+        ],
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-001",
+        "roll": false
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "phase": "battle",
+        "heroes.p0:TA-001.phase_bonus.pwr": 2000,
+        "players.p0.deck": {
+          "$size": 3
+        },
+        "pending": {
+          "$size": 0
+        }
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "battles.0.winner_team": 0,
+        "pending.0.type": "damage",
+        "pending.0.player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "damage_to",
+        "player": 1,
+        "target": "p1:TB-001"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p1:TB-001.hp": 7,
+        "turn": 2
+      }
+    }
+  ]
+}

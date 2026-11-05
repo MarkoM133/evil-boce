@@ -109,6 +109,8 @@ func test_wording_2026_11_05() -> void:
 	_assert_fx(_fx("Action", "Observation Killing", "Postroll Phase: If an Opponent's Hero is in Range, your Opponent's Battle Phase cards cost 2 Energy more this turn."),
 		"POSTROLL RANGE: COST OPP 2 BATTLE TURN")
 	_assert_fx(_fx("Stage", "Egghead", "Each Hero gets +1000 Power for each Energy their player has.\nTerrain: None"), "PASSIVE: BUFF EACH_HERO PWR 1000 PER ENERGY")
+	_assert_fx(_fx("Stage", "Elbaph", "Battle Phase: In a Battle on this Stage, each player reveals the top card of their deck. The player who revealed the higher-cost card chooses one of their Heroes in this Battle. That Hero gets +2000 Power.\nTerrain: Ramp"),
+		"BATTLE: DUEL_TOP PWR 2000 PICK")
 	_assert_fx(_fx("Hero", "Sanji", "Other friendly Heroes in Sanji's Range get +2000 Power."), "PASSIVE: BUFF ALL_FRIENDLY_IN_RANGE PWR 2000")
 	_assert_fx(_fx("Action", "Life Giver", "Preroll Phase: Move a Core in Range up to 2 spaces. If an Opponent's Hero activates that Core this turn, they take 3 DMG."),
 		"PREROLL RANGE: PICK_CORE; MOVE_CORE 2; TRAP_CORE 3")
@@ -151,6 +153,8 @@ func test_stages() -> void:
 	_assert_fx(st, "REVEAL: BUFF EACH_HERO PWR 1000 PER CORES")
 	assert_eq(st.terrain, Terrain.Type.MUD)
 	_assert_fx(_fx("Stage", "Drum", "When this Stage is revealed, the Hero with more HP gains +3000 Power."), "REVEAL: BUFF MOST_HP PWR 3000")
+	_assert_fx(_fx("Stage", "Drum", "The Hero on this Stage with the most HP gets +3000 Power.
+Terrain: Ice"), "PASSIVE: BUFF MOST_HP PWR 3000")
 	_assert_fx(_fx("Stage", "Shimotsuki", "Each Hero gains +1 DMG for every equipped {Sword} they have."),
 		"PASSIVE: BUFF EACH_HERO DMG 1 PER TRAIT_EQUIPPED {Sword}")
 	_assert_fx(_fx("Stage", "Egghead", "Each Hero gains +1000 Power for every charged Energy their player has."),

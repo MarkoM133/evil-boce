@@ -802,6 +802,13 @@
       "fx": "REVEAL: DUEL_TOP PWR 2000"
     },
     {
+      "id": "TS-008",
+      "name": "Arena of Battles",
+      "type": "Stage",
+      "text": "x",
+      "fx": "BATTLE: DUEL_TOP PWR 2000 PICK"
+    },
+    {
       "id": "TS-001",
       "name": "Frozen Lake",
       "type": "Stage",

@@ -114,6 +114,67 @@ func fire_battle(s: GameState) -> void:
 			var ctx: Dictionary = {"player": slot, "hero": mine.id, "card": card.id, "stage": ""}
 			if cond_ok(s, ctx, e):
 				run(s, ctx, e)
+	# A stage's BATTLE effect fires at the start of every battle fought on it (a hero of the battle stands on
+	# it; Elbaph, Marko 2026-11-05). The context carries the battle, so DUEL_TOP duels the players in it.
+	for src: Dictionary in sources(s):
+		var st: StageState = src["stage"]
+		if st == null:
+			continue
+		var fought_on_it: bool = false
+		for id: String in ids:
+			var h: HeroState = s.hero(id)
+			if h != null and h.is_on_map() and st.covers(h.hex):
+				fought_on_it = true
+		if not fought_on_it:
+			continue
+		var stage_card: CardDef = src["card"]
+		for e: FxEffect in stage_card.effects_when("BATTLE"):
+			var ctx: Dictionary = _ctx_of(src)
+			ctx["battle"] = s.battle_index
+			if cond_ok(s, ctx, e):
+				run(s, ctx, e)
+
+
+## DUEL_TOP: who duels (the players in the battle the context names, else those with heroes on the
+## stage), their top cards, and the winner (-1 on a tie or when nobody can show a card).
+func _duel(s: GameState, ctx: Dictionary) -> Dictionary:
+	var st: StageState = s.stage(str(ctx.get("stage", "")))
+	var heroes: Array[HeroState] = []
+	if ctx.has("battle"):
+		var index: int = JsonUtil.as_int(ctx.get("battle", -1), -1)
+		if index >= 0 and index < s.battles.size():
+			for id: String in JsonUtil.as_strings(s.battles[index].get("heroes", [])):
+				var h: HeroState = s.hero(id)
+				if h != null and h.is_on_map():
+					heroes.append(h)
+	elif st != null:
+		heroes = s.heroes_on_stage(st)
+	var slots: Array[int] = []
+	for h: HeroState in heroes:
+		if not slots.has(h.owner):
+			slots.append(h.owner)
+	var tops: Array = []
+	var best: int = -1
+	var best_cost: int = -1
+	var tie: bool = false
+	for sl: int in slots:
+		var p: PlayerState = s.player(sl)
+		if p.deck.is_empty():
+			continue
+		var top: CardDef = engine.catalog.get_card(p.deck[0])
+		var cost: int = top.cost if top != null else 0
+		tops.append({"player": sl, "card": p.deck[0], "cost": cost})
+		if cost > best_cost:
+			best_cost = cost
+			best = sl
+			tie = false
+		elif cost == best_cost:
+			tie = true
+	var mine: Array = []
+	for h: HeroState in heroes:
+		if best >= 0 and not tie and h.owner == best:
+			mine.append(h.id)
+	return {"winner": best if not tie else -1, "tie": tie and best >= 0, "tops": tops, "heroes": mine}
 
 
 ## The winner's "after winning, may deal no DMG" ability (HOLD_HIT), if it has one.
@@ -658,6 +719,13 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			if hand.size() == 1:
 				return {}
 			return {"player": who, "kind": "card", "options": Array(hand), "prompt": "Discard a card"}
+		"DUEL_TOP":
+			# PICK: the winner chooses one of their heroes (in the battle, else on the stage); one needs no pick.
+			if args.has("PICK"):
+				var d: Dictionary = _duel(s, ctx)
+				var mine: Array = JsonUtil.as_array(d.get("heroes", []))
+				if mine.size() > 1:
+					return {"player": JsonUtil.as_int(d.get("winner", -1)), "kind": "hero", "options": mine, "prompt": "Who gets +%s %s?" % [args[1], args[0]]}
 		"CHOOSE":
 			if e.range and target == "OPP" and not _enemy_in_range(s, me, player):
 				return {"error": "no enemy hero in range"}
@@ -800,30 +868,27 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			var st: StageState = s.stage(str(ctx.get("stage", "")))
 			if st == null:
 				return ""
-			var best: int = -1
-			var best_cost: int = -1
-			var tie: bool = false
-			var slots: Array[int] = []
-			for h: HeroState in s.heroes_on_stage(st):
-				if not slots.has(h.owner):
-					slots.append(h.owner)
-			for sl: int in slots:
-				var p: PlayerState = s.player(sl)
-				if p.deck.is_empty():
+			var d: Dictionary = _duel(s, ctx)
+			for t: Variant in JsonUtil.as_array(d.get("tops", [])):
+				var top: Dictionary = JsonUtil.as_dict(t)
+				s.event("top_card", {"player": top["player"], "card": top["card"], "cost": top["cost"]})
+			var winner: int = JsonUtil.as_int(d.get("winner", -1), -1)
+			s.event("duel", {"stage": st.id, "winner": winner, "tie": JsonUtil.as_bool(d.get("tie", false))})
+			if winner < 0:
+				return ""
+			var ids: Array = JsonUtil.as_array(d.get("heroes", []))
+			if args.has("PICK"):
+				# The winner's pick (or their only hero); the bonus lasts the phase, as the battle does.
+				ids = [answer] if answer != null else ids.slice(0, 1)
+			for id: Variant in ids:
+				var h: HeroState = s.hero(str(id))
+				if h == null:
 					continue
-				var top: CardDef = engine.catalog.get_card(p.deck[0])
-				var cost: int = top.cost if top != null else 0
-				s.event("top_card", {"player": sl, "card": p.deck[0], "cost": cost})
-				if cost > best_cost:
-					best_cost = cost
-					best = sl
-					tie = false
-				elif cost == best_cost:
-					tie = true
-			if best >= 0 and not tie:
-				for h: HeroState in s.heroes_on_stage(st):
-					if h.owner == best:
-						_stage_buff(s, st.id, h, args[0], args[1].to_int())
+				if ctx.has("battle"):
+					h.add_bonus(h.phase_bonus, args[0].to_lower(), args[1].to_int())
+					s.event("duel_buff", {"stage": st.id, "hero": h.id, "stat": args[0].to_lower(), "amount": args[1].to_int()})
+				else:
+					_stage_buff(s, st.id, h, args[0], args[1].to_int())
 		"KNOCKBACK":
 			if me == null:
 				return "knockback needs a hero"

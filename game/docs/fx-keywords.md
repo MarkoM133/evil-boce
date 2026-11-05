@@ -26,7 +26,7 @@ Examples: `POSTROLL ONCE OPTIONAL IF ACTIVATED: MOVE SELF 2` (Bucciarati, "If Br
 | Word | Action card | Hero, equipment, evolution, assist | Stage |
 |---|---|---|---|
 | `PLAY` | runs as the card is played, in any card round | runs when the card enters play | – |
-| `START` `PREROLL` `ROLL` `POSTROLL` `BATTLE` `END` | may only be played in that phase; runs as played | fires at the start of that phase (or, with `OPTIONAL`, may be used then) | – |
+| `START` `PREROLL` `ROLL` `POSTROLL` `BATTLE` `END` | may only be played in that phase; runs as played | fires at the start of that phase (or, with `OPTIONAL`, may be used then) | `BATTLE` only: fires at the start of every battle fought on the stage (a hero of the battle stands on it), for the players in that battle (Elbaph, 2026-11-05) |
 | `PASSIVE` | – | counts while the card is in play (`BUFF`, `DAMAGE_MOD`, `COST`) | counts for heroes standing on the stage |
 | `REVEAL` | – | – | runs when the stage is turned face up |
 
@@ -128,7 +128,7 @@ moves into or out of range gains or loses the effect at once.
 | `NOOP` | | nothing (a "no" branch) |
 | `FREE_PLAY <max cost> [{Trait}] [Type]` | | play a card from the hand on SELF without paying (colour rules do not apply); `Type` limits it to Action, Equipment or Assist |
 | `SWAP FRIENDLY [ENGAGED]` | | SELF and a friendly hero trade hexes (`ENGAGED`: one that an enemy hero has in its range, "that is in an Opponent's Hero's Range"; with `RANGE` it must also be in SELF's range; Marko and Tarik 2026-11-05) |
-| `DUEL_TOP <STAT> <n>` | | stage: players with heroes on it show their top card; the higher cost gets +n for its heroes there |
+| `DUEL_TOP <STAT> <n> [PICK]` | | stage: the players show their top card (the cards stay on top); the higher cost gets +n for its heroes (on the stage under `REVEAL`, for the rest of the phase under `BATTLE`); `PICK`: the winner picks one of their heroes in the battle instead; a tie gives nothing |
 
 Extra arguments: `DAMAGE … TRUE` ignores damage modifiers ("cannot be blocked");
 `DEACTIVATE_CORE SELF <n> UPTO` lets the player pick how many (0 … n), and `PER COUNT` in a

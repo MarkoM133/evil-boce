@@ -39,6 +39,10 @@ static func parse(card: CardDef) -> Dictionary:
 		return {"fx": "", "unparsed": unparsed}
 	var self_name: String = card.hero if card.type == "Evolution" and not card.hero.is_empty() else card.name
 	var t: String = _normalise(text, self_name)
+	# Elbaph (2026-11-05): a duel in every battle on the stage; the winner picks one hero in it for the bonus.
+	var duel: RegExMatch = _rx("(?i)in a battle on this stage, each player reveals the top card of their deck\\. the player who revealed the higher[- ]cost card chooses one of their heroes in this battle\\. that hero gets \\+(\\d+) (\\w+)\\.?").search(t)
+	if duel != null:
+		t = t.substr(0, duel.get_start()) + "Duel for +%s %s." % [duel.get_string(1), duel.get_string(2)] + t.substr(duel.get_end())
 	# A colour bonus sentence ("Red Bonus: …", 2026-11-01) leans on the sentence before it.
 	var prev: FxEffect = null
 	var prev_sentence: String = ""
@@ -424,6 +428,9 @@ static func _match(low: String) -> Array[Dictionary]:
 	m = _rx("^move a core up to (\\d+) spaces?$").search(low)
 	if m != null:
 		return [_act("PICK_CORE", "", []), _act("MOVE_CORE", "", [m.get_string(1)])]
+	m = _rx("^duel for \\+(\\d+) (\\w+)$").search(low)
+	if m != null and STAT_WORDS.has(m.get_string(2)):
+		return [_act("DUEL_TOP", "", [STAT_WORDS[m.get_string(2)], m.get_string(1), "PICK"])]
 	# "Opponent's Heroes in Range can't claim a Stage this turn" (Conqueror's Haki, 2026-11-05)
 	if _rx("^(?:your )?opponent's heroes in range (?:can't|cannot) claim a stage this turn$").search(low) != null:
 		return [_act("NO_CLAIM", "ALL_ENEMY_IN_RANGE", [])]
@@ -532,9 +539,9 @@ static func _subject(raw: String) -> String:
 			return "ALL_FRIENDLY_IN_RANGE"
 		"each hero", "all heroes":
 			return "EACH_HERO"
-		"the hero with more hp":
+		"the hero with more hp", "the hero on this stage with the most hp", "the hero with the most hp on this stage":
 			return "MOST_HP"
-		"the hero with more power":
+		"the hero with more power", "the hero on this stage with the most power", "the hero with the most power on this stage":
 			return "MOST_PWR"
 	return ""
 
