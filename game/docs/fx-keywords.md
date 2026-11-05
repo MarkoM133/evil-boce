@@ -47,10 +47,19 @@ beside it is never written.
 - `ONCE`: once per turn. `OPTIONAL`: "may"; the player uses it with the `use_ability` move,
   which counts as a turn in the card round. An Action needs no `OPTIONAL` and it changes nothing
   there: playing the card is the "may" (a "Roll Phase:" Action is played from the roll offer, or
-  the offer is passed). `RANGE`: `[Range]`, chosen targets, walls and
-  cores must be within the hero's range. On an effect that names a player, not a hero (`NO_CLAIM OPP`,
-  `COST OPP …`, `DISCHARGE OPP …`), `RANGE` means an enemy hero must be in range for the card to be played; the
-  effect then still covers the whole opponent (playtest 2026-10-30). Which hero a card may be played for is
+  the offer is passed). `RANGE`: a condition on the targets, not on the whole effect (range rule B, Marko
+  and Tarik 2026-11-05: the card text says it next to the target, "a friendly Hero in Range", "an Opponent's
+  Hero in Range", "a Core in Range", "Place a Wall … in Range"; there is no RANGE chip and no "[Range]" at
+  the start any more). With `RANGE` the chosen targets, walls and cores must be within SELF's range. On an
+  effect that names a player, not a hero (`COST OPP …`, `DISCHARGE OPP …`, `CHOOSE OPP …`), the text says
+  "If an Opponent's Hero is in Range, …" and `RANGE` means an enemy hero must be in range for the card to be
+  played; the effect then covers the whole opponent (Observation Killing; Soul Pocus is not played without
+  an enemy in range). "an Opponent's Hero's Range" is the enemy's range, not SELF's (Intercept: a friendly
+  hero an enemy reaches). `deactivate a Core` is a core on that hero (`DEACTIVATE_CORE SELF`); `activate a
+  Core in Range` is a core on the field (`ACTIVATE_CORE` with `RANGE`). Targets are chosen by the player who
+  plays the card unless the text says otherwise; a colour bonus looks at the hero the card is played for; a
+  discount never takes a card's cost below 1. Card text wording (gain / lose Energy, names only on Hero and
+  Evolution cards) is in the private text guide. Which hero a card may be played for is
   the card's first tag and colour, read by the game itself: no condition names the hero (`IF HERO` does not exist).
 - `IF ACTIVATED`: the hero is this turn's activated hero. `IF WIN`: the effect waits and runs
   only if the hero's side wins the current battle (after damage, before knockback).
