@@ -81,7 +81,8 @@ async function systemPrompt(root, drive) {
 // Wishlist (Marko 2026-11-03): riječi koje fx jeziku fale skupljaju se u data/fx-wishlist.json; ista riječ s više
 // karata je jedna stavka. Glagoli, uvjeti i mete su zadaci za Claude Code (ugradnja u igru), "rule" je pitanje za Marka.
 export const WISHLIST = path.join('data', 'fx-wishlist.json');
-const wishKey = (kind, word) => `${kind}:${String(word).trim().split(/\s+/)[0].toUpperCase()}`;
+// Ključ stavke je prva riječ, ali za uvjete bez "IF" ("IF HERO {X}" i "IF MORE_ENERGY" su dvije stavke, ne jedna).
+const wishKey = (kind, word) => `${kind}:${String(word).trim().replace(/^IF\s+/i, '').split(/\s+/)[0].toUpperCase()}`;
 
 export async function addWishes(drive, card, extensions) {
   const file = path.join(drive, WISHLIST);
