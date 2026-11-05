@@ -12,7 +12,9 @@ const DEFAULT_PACK = 10;
 const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist'];
 const NEW_TYPES = TYPES;
 const COLORS = ['Cyan', 'Yellow', 'Purple', 'Red', 'Blue', 'Green'];
-const STATUS_FILTERS = [['', 'All statuses'], ['draft', 'Draft'], ['review', 'Review'], ['done', 'Done'], ['fx', 'Needs fx'], ['edited', 'Unpublished changes'], ['noart', 'No art']];
+const STATUS_FILTERS = [['', 'All statuses'], ['draft', 'Draft'], ['review', 'Review'], ['done', 'Done'], ['fx', 'Needs fx'], ['claude', 'Changed by Claude'], ['edited', 'Unpublished changes'], ['noart', 'No art']];
+// Nacrt koji je zadnji spremio Claude Code: Marko ga treba pogledati (oznaka nestane kad netko spremi kartu).
+const byClaude = d => d?.who === 'Claude Code';
 
 // Setovi: iz sets.json i iz kodova karata (OP1-001 → OP1), redom po broju seta.
 export function setList(saved, cards) {
@@ -145,6 +147,7 @@ export function createSetsView(ctx) {
       if (['draft', 'review', 'done'].includes(v.status) && (c.status ?? 'draft') !== v.status) return false;
       if (v.status === 'fx' && !needsFx(c)) return false;
       if (v.status === 'edited' && !drafts[c.id]) return false;
+      if (v.status === 'claude' && !byClaude(drafts[c.id])) return false;
       if (v.status === 'noart' && c.art) return false;
       return !q || `${c.id} ${c.name} ${c.text ?? ''} ${(c.traits ?? []).join(' ')}`.toLowerCase().includes(q);
     });
@@ -206,9 +209,10 @@ export function createSetsView(ctx) {
     const badge = lock ? h('span', { class: 'ce-st lock' }, `🔒 ${lock.who.toUpperCase()}`)
       : needsFx(c) ? h('span', { class: 'ce-st fx' }, 'NEEDS FX')
         : h('span', { class: `ce-st ${c.status ?? 'draft'}` }, (c.status ?? 'draft').toUpperCase());
+    const claude = byClaude(draft) ? h('span', { class: 'ce-st claude', title: 'Changed by Claude Code: have a look, then Save' }, 'CLAUDE') : null;
     return h('button', { class: `ce-tile${c.type === 'Hero' || c.type === 'Evolution' ? ' wide' : ''}`, type: 'button', onclick: () => ctx.go(c.id) },
       canvas,
-      h('span', { class: 'ce-tile-name' }, h('strong', {}, c.name || 'New card'), badge),
+      h('span', { class: 'ce-tile-name' }, h('strong', {}, c.name || 'New card'), h('span', { class: 'ce-tile-badges' }, claude, badge)),
       h('span', { class: 'muted small' }, `${c.id} · ${c.type}${draft ? (draft.new ? ' · new' : ' · edited') : ''}`));
   }
 

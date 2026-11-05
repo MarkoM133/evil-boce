@@ -253,6 +253,8 @@ export function createEditor(env) {
   async function looksGood() {
     const w = ed.work;
     if (w.type !== 'Core' && (w.status ?? 'draft') !== 'done') { snap(true); w.status = 'done'; changed(); }
+    // Pregledana kartu koju je mijenjao Claude Code: spremi je pod svojim imenom, pa oznaka CLAUDE nestane.
+    if (ed.drafts?.cards?.[w.id]?.who === 'Claude Code') changed();
     if (ed.dirty) await saveDraft();
     const ids = reviewOrder(ed.id);
     const i = ids.indexOf(ed.id);
@@ -1415,6 +1417,7 @@ export function createEditor(env) {
       if (w.fx && fxProblems(w.fx).length) out.push([false, 'The fx box holds something the game can\'t read']);
       else if (w.fx) out.push([w.fxStatus !== 'check', w.fxStatus === 'check' ? 'The fx is not confirmed yet' : 'fx confirmed for the game']);
       else out.push([false, 'No fx yet']);
+      if (ed.drafts?.cards?.[w.id]?.who === 'Claude Code') out.push([false, 'Changed by Claude Code: have a look, then Looks good or Save']);
       // Pravilo B (2026-11-05): range uz metu u tekstu, ne na početku retka.
       if (/^\[RNG\]/m.test(w.text ?? '')) out.push([false, 'Range at the start of a line: write it next to its target ("in [RNG]")']);
     };

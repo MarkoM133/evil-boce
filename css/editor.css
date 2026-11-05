@@ -213,6 +213,8 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-st.draft { color: var(--muted); background: var(--surface-2); }
 .ce-st.fx { color: #ff5a4f; background: #2a0d0b; }
 .ce-st.lock { color: var(--bone); background: var(--surface-2); }
+.ce-st.claude { color: #f1e6ff; background: #6b3fc4; }
+.ce-tile-badges { display: inline-flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .ce-tile-new { border: 2px dashed var(--line); min-height: 290px; place-items: center; align-content: center; justify-items: center; font: italic 800 20px var(--display); color: var(--muted); }
 .ce-tile-new .plus { font: 300 44px var(--text); }
 .ce-tile-new:hover { border-color: var(--muted); color: var(--bone); }
