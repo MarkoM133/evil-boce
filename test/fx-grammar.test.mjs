@@ -14,6 +14,8 @@ test('lines from fx-keywords.md read as the game reads them', () => {
     'PLAY BONUS CYAN: OWN_COST -1',
     'PREROLL RANGE INSTEAD BONUS: HEAL FRIENDLY 4',
     'BATTLE IF WIN: FULL_HIT OPP',
+    'POSTROLL: NO_CLAIM ALL_ENEMY_IN_RANGE',
+    'POSTROLL RANGE: SWAP FRIENDLY ENGAGED',
   ]) assert.equal(lineProblem(line), '', line);
 });
 

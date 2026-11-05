@@ -86,7 +86,7 @@ in the battle, the hero with the ability, the equipped hero), `EQUIPPED` (same, 
 equipment), `ENEMY` / `FRIENDLY` (the player picks one; one candidate is picked for them; `FRIENDLY` is
 always another friendly hero, never SELF: "a friendly Hero" on Bon Apetit or Giorno is not the hero the card is
 played for, Marko 2026-11-05; with `RANGE` it must be in SELF's range),
-`ALL_FRIENDLY`, `ALL_ENEMY`, `ALL_OTHER_IN_RANGE`, `ALL_FRIENDLY_IN_RANGE`, `ALL_HEROES`,
+`ALL_FRIENDLY`, `ALL_ENEMY`, `ALL_OTHER_IN_RANGE`, `ALL_FRIENDLY_IN_RANGE`, `ALL_ENEMY_IN_RANGE` (every enemy in SELF's range, "Opponent's Heroes in Range"), `ALL_HEROES`,
 `EACH_HERO` (on a stage: those standing on it), `MOST_HP`, `MOST_PWR` (on a stage; nobody on a tie).
 Players: `ME`, `OPP`.
 
@@ -113,7 +113,7 @@ moves into or out of range gains or loses the effect at once.
 | `CHARGE <p> <n>` / `DISCHARGE <p> <n>` | | energy ±n (0 … max) |
 | `DRAW <p> <n>` / `DISCARD <p> <n>` | | draw; the discarding player picks the card |
 | `COST <p> <n> [{Trait}] [PHASE] [TURN]` | | cards of that player cost ±n (filter by trait or by the card's phase); passive, or this turn |
-| `NO_CLAIM <p>` | | that player claims no stage this turn |
+| `NO_CLAIM <p or hero group>` | | that player claims no stage this turn; on heroes (`NO_CLAIM ALL_ENEMY_IN_RANGE`, Conqueror's Haki): the heroes in range as the card is played get a "no_claim" status for the turn, and a stage claims for a player only if a hero of theirs on it is free (energy still goes in; the claim waits). `NO_CLAIM OPP` stays for the whole opponent |
 | `ROLL_AGAIN` | | the activated hero rolls once more, right away (Roll phase, after the roll); the ball stopping again brings new offers |
 | `REVERSE_ROLL` | | the activated hero goes back to where it stood as the Roll phase began; heroes it pushed, cores it picked up and stages it revealed stay ("reverse the roll", "return this hero to where it was before the roll") |
 | `COST_DAMAGE <n>` | | additional cost: SELF takes n as the card is played (needs more than n HP) |
@@ -127,7 +127,7 @@ moves into or out of range gains or loses the effect at once.
 | `FULL_HIT OPP` | | with `BATTLE IF WIN`, on a line of its own: if the card's hero wins this battle, its hit lands whole on the loser's hero, none of it on cards from the hand (the hit already only goes to a hero of this battle). The line arms as the card is played and counts only on a win |
 | `NOOP` | | nothing (a "no" branch) |
 | `FREE_PLAY <max cost> [{Trait}] [Type]` | | play a card from the hand on SELF without paying (colour rules do not apply); `Type` limits it to Action, Equipment or Assist |
-| `SWAP FRIENDLY [ENGAGED]` | | SELF and a friendly hero trade hexes (`ENGAGED`: one an enemy reaches or that reaches an enemy) |
+| `SWAP FRIENDLY [ENGAGED]` | | SELF and a friendly hero trade hexes (`ENGAGED`: one that an enemy hero has in its range, "that is in an Opponent's Hero's Range"; with `RANGE` it must also be in SELF's range; Marko and Tarik 2026-11-05) |
 | `DUEL_TOP <STAT> <n>` | | stage: players with heroes on it show their top card; the higher cost gets +n for its heroes there |
 
 Extra arguments: `DAMAGE … TRUE` ignores damage modifiers ("cannot be blocked");

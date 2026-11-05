@@ -991,6 +991,18 @@
       },
       "text": "Battle Phase: If you win this Battle, the Opponent's Hero in this Battle takes all of the damage.",
       "fx": "BATTLE IF WIN: FULL_HIT OPP"
+    },
+    {
+      "id": "TA-059",
+      "name": "Red Silence",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "Postroll Phase: Opponent's Heroes in Range can't claim a Stage this turn.",
+      "fx": "POSTROLL: NO_CLAIM ALL_ENEMY_IN_RANGE"
     }
   ]
 }

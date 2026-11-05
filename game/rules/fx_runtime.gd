@@ -410,6 +410,8 @@ func _passive_applies(s: GameState, src: Dictionary, target: String, h: HeroStat
 			return owner != null and owner != h and s.same_team(owner, h) and _in_range_flat(s, owner, h)
 		"ALL_OTHER_IN_RANGE":
 			return owner != null and owner != h and _in_range_flat(s, owner, h)
+		"ALL_ENEMY_IN_RANGE":
+			return owner != null and not s.same_team(owner, h) and _in_range_flat(s, owner, h)
 		"EACH_HERO", "ALL_HEROES":
 			if st != null:
 				return h.is_on_map() and st.covers(h.hex)
@@ -897,8 +899,18 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			var who: int = player if target == "ME" else engine.other_slot(s, player)
 			s.turn_mods.append({"kind": "cost", "player": who, "amount": args[0].to_int(), "args": Array(args)})
 		"NO_CLAIM":
-			var who: int = player if target == "ME" else engine.other_slot(s, player)
-			s.turn_mods.append({"kind": "no_claim", "player": who})
+			if FxEffect.PLAYER_TARGETS.has(target):
+				var who: int = player if target == "ME" else engine.other_slot(s, player)
+				s.turn_mods.append({"kind": "no_claim", "player": who})
+			else:
+				# On heroes (Conqueror's Haki, Marko 2026-11-05): the ones in range as the card is played
+				# carry a "no_claim" status this turn, wherever they end up; a stage claims only for a player
+				# whose hero on it is free (rules_engine._claim_blocked).
+				var ids: Array = []
+				for h: HeroState in _targets(s, ctx, e, target, answer):
+					h.statuses["no_claim"] = 1
+					ids.append(h.id)
+				s.event("no_claim", {"heroes": ids})
 		"ROLL_AGAIN":
 			return engine.roll_again(s, player)
 		"REVERSE_ROLL":
@@ -981,11 +993,13 @@ func _free_play_options(s: GameState, slot: int, args: PackedStringArray, on: He
 
 
 ## The hero is in a fight: an enemy reaches it or it reaches an enemy.
+## ENGAGED (Intercept, Marko and Tarik 2026-11-05): an enemy hero has `h` in its range ("a friendly Hero
+## that is in an Opponent's Hero's Range"); whether `h` reaches the enemy does not matter.
 func _engaged(s: GameState, h: HeroState) -> bool:
 	if h == null or not h.is_on_map():
 		return false
 	for o: HeroState in s.heroes:
-		if not s.same_team(o, h) and (engine.in_range(s, o, h) or engine.in_range(s, h, o)):
+		if not o.is_ko() and not s.same_team(o, h) and engine.in_range(s, o, h):
 			return true
 	return false
 
@@ -1031,6 +1045,12 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 			if me != null:
 				for h: HeroState in s.heroes:
 					if h != me and s.same_team(h, me) and engine.in_range(s, me, h):
+						out.append(h)
+		"ALL_ENEMY_IN_RANGE":
+			# Every enemy in SELF's range now (Conqueror's Haki, 2026-11-05).
+			if me != null:
+				for h: HeroState in s.heroes:
+					if not h.is_ko() and not s.same_team(h, me) and engine.in_range(s, me, h):
 						out.append(h)
 		"EACH_HERO", "ALL_HEROES":
 			for h: HeroState in s.heroes:

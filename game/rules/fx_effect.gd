@@ -40,7 +40,7 @@ const VERBS: Dictionary[String, Array] = {
 	"DRAW": [true, 1],          # DRAW <ME|OPP> <n>
 	"DISCARD": [true, 1],       # DISCARD <ME|OPP> <n>  (that player picks)
 	"COST": [true, 1],          # COST <ME|OPP> <n> [{Trait}|PHASE]  (passive cost change)
-	"NO_CLAIM": [true, 0],      # NO_CLAIM <ME|OPP>  (no stage claim this turn)
+	"NO_CLAIM": [true, 0],      # NO_CLAIM <ME|OPP|hero group>  (no stage claim this turn: the player, or those heroes)
 	"ROLL_AGAIN": [false, 0],   # ROLL_AGAIN  (the activated hero rolls once more)
 	"REVERSE_ROLL": [false, 0], # REVERSE_ROLL  (the activated hero goes back to where the Roll phase found it)
 	"COST_DAMAGE": [false, 1],  # COST_DAMAGE <n>  (paid by SELF before the rest)
@@ -59,7 +59,7 @@ const VERBS: Dictionary[String, Array] = {
 	"MOVE_ID": [false, 2],      # MOVE_ID <hero id> <n>  (one hero of a group move; written by the runtime)
 }
 const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "ALL_FRIENDLY", "ALL_ENEMY",
-	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR"]
+	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_ENEMY_IN_RANGE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR"]
 const PLAYER_TARGETS: Array[String] = ["ME", "OPP"]
 const STATS: Array[String] = ["PWR", "DMG", "KB", "RNG", "HP"]
 const COUNTERS: Array[String] = ["TRAIT_EQUIPPED", "CORES", "MISSING_HP", "ENERGY", "LOW_HP_FRIENDLY", "LOW_HP_OTHER_FRIENDLY", "COUNT"]

@@ -1594,7 +1594,7 @@ func _check_claims(s: GameState) -> void:
 				for slot: int in by_owner:
 					if by_owner[slot] >= 2 and not _battled_on(s, on):
 						claimer = slot
-		if claimer >= 0 and _claim_blocked(s, claimer):
+		if claimer >= 0 and _claim_blocked(s, claimer, st):
 			s.event("claim_blocked", {"stage": st.id, "player": claimer})
 			claimer = -1
 		if claimer >= 0:
@@ -1687,7 +1687,7 @@ func _claim_by_energy(s: GameState) -> void:
 		for slot: int in slots:
 			if st.progress[slot] < s.settings.stage_goal:
 				continue
-			if _claim_blocked(s, slot):
+			if _claim_blocked(s, slot, st):
 				s.event("claim_blocked", {"stage": st.id, "player": slot})
 				continue
 			st.claimed_by = slot
@@ -1734,11 +1734,20 @@ func end_move(s: GameState, h: HeroState, was: StageState, by_team: int) -> void
 		"progress": have - lost, "goal": s.settings.stage_goal, "by_team": by_team})
 
 
-func _claim_blocked(s: GameState, slot: int) -> bool:
+## "Cannot claim" this turn: the player (NO_CLAIM OPP), or every hero of the player standing on
+## that stage carries the "no_claim" status (NO_CLAIM on heroes, Conqueror's Haki 2026-11-05).
+func _claim_blocked(s: GameState, slot: int, st: StageState) -> bool:
 	for m: Dictionary in s.turn_mods:
 		if str(m.get("kind", "")) == "no_claim" and JsonUtil.as_int(m.get("player", -1)) == slot:
 			return true
-	return false
+	var mine: int = 0
+	var blocked: int = 0
+	for h: HeroState in s.heroes_on_stage(st):
+		if h.owner == slot:
+			mine += 1
+			if h.has_status("no_claim"):
+				blocked += 1
+	return mine > 0 and blocked == mine
 
 
 func _battled_on(s: GameState, on: Array[HeroState]) -> bool:

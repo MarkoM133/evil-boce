@@ -1230,7 +1230,7 @@ func _effect_chips(h: HeroState, right: bool) -> Control:
 			var v: int = JsonUtil.as_int(bonus[k])
 			if v != 0:
 				items.append(["%+d %s · %s" % [v, str(k).to_upper(), pair[1]], Palette.HP if v > 0 else Palette.ACCENT])
-	var names: Dictionary = {"immune_kb": "IMMUNE TO KB", "stun": "STUNNED", "hold_hit": "NO HIT, DOUBLE KB"}
+	var names: Dictionary = {"immune_kb": "IMMUNE TO KB", "stun": "STUNNED", "hold_hit": "NO HIT, DOUBLE KB", "no_claim": "CAN'T CLAIM"}
 	for k: String in h.statuses:
 		var turns: int = h.statuses[k]
 		var label: String = str(names.get(k, k.to_upper()))
@@ -1681,7 +1681,7 @@ func _setup_tip(id: String) -> String:
 
 ## Status line for a hero: "Immune to KB (1 turn) · Hold hit".
 func _status_text(h: HeroState) -> String:
-	var names: Dictionary = {"immune_kb": "Immune to KB", "stun": "Stunned", "hold_hit": "No hit, double KB"}
+	var names: Dictionary = {"immune_kb": "Immune to KB", "stun": "Stunned", "hold_hit": "No hit, double KB", "no_claim": "Can't claim"}
 	var parts := PackedStringArray()
 	for k: String in h.statuses:
 		var label: String = str(names.get(k, k.capitalize()))
