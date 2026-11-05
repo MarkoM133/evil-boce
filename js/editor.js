@@ -437,7 +437,7 @@ export function createEditor(env) {
   }
 
   // Claudeov prijedlog ispod fx kutije. Ako je već u kutiji, jedan redak; napomene se otvaraju na klik.
-  function claudeBlock(w, box) {
+  function claudeBlock(w, box, gameShown = false) {
     loadClaude(w.id);
     const st = ed.claude[w.id] ?? {};
     const r = st.res;
@@ -452,7 +452,8 @@ export function createEditor(env) {
       const src = h('span', { class: 'ce-prop-src' }, 'Claude', r.who ? ` · ${r.who}` : '');
       const staleLine = stale ? h('p', { class: 'small warn' }, 'For an older text: ask again.') : null;
       const gameRead = env.state.fxProposals?.cards?.[w.id]?.read;
-      const sameAsGame = !!r.fx && !!gameRead && normFx(r.fx) === normFx(gameRead) && !stale;
+      // Sklopi se samo kad je prijedlog igre na ekranu (njegov Use this ostaje); inače bi karta ostala bez Use this.
+      const sameAsGame = gameShown && !!r.fx && !!gameRead && normFx(r.fx) === normFx(gameRead) && !stale;
       const notes = [
         r.unsure?.length ? h('ul', { class: 'small ce-claude-unsure' }, r.unsure.map(u => h('li', {}, u))) : null,
         r.notes ? h('p', { class: 'small' }, r.notes) : null,
@@ -626,7 +627,7 @@ export function createEditor(env) {
         askClaudeButton(w)),
       hint ? h('p', { class: 'small muted' }, hint) : null,
       gameProposal(w, p, textChanged),
-      claudeBlock(w, box),
+      claudeBlock(w, box, !!gameProposal(w, p, textChanged)),
       !w.new && env.openEffect ? h('button', { class: 'link ce-fx-more', type: 'button', onclick: () => env.openEffect(w.id) }, 'What the game reads →') : null);
   }
 
