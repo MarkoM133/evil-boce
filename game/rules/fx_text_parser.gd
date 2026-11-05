@@ -43,6 +43,10 @@ static func parse(card: CardDef) -> Dictionary:
 	var duel: RegExMatch = _rx("(?i)in a battle on this stage, each player reveals the top card of their deck\\. the player who revealed the higher[- ]cost card chooses one of their heroes in this battle\\. that hero gets \\+(\\d+) (\\w+)\\.?").search(t)
 	if duel != null:
 		t = t.substr(0, duel.get_start()) + "Duel for +%s %s." % [duel.get_string(1), duel.get_string(2)] + t.substr(duel.get_end())
+	# Egghead (2026-11-05): the player with more Energy picks one of their heroes in the battle for the bonus.
+	var rich: RegExMatch = _rx("(?i)the player with (?:more|the most) energy chooses one of their heroes in this battle\\. that hero gets \\+(\\d+) (\\w+)\\.?").search(t)
+	if rich != null:
+		t = t.substr(0, rich.get_start()) + "Most energy pick for +%s %s." % [rich.get_string(1), rich.get_string(2)] + t.substr(rich.get_end())
 	# A colour bonus sentence ("Red Bonus: …", 2026-11-01) leans on the sentence before it.
 	var prev: FxEffect = null
 	var prev_sentence: String = ""
@@ -433,6 +437,9 @@ static func _match(low: String) -> Array[Dictionary]:
 	m = _rx("^move a core up to (\\d+) spaces?$").search(low)
 	if m != null:
 		return [_act("PICK_CORE", "", []), _act("MOVE_CORE", "", [m.get_string(1)])]
+	m = _rx("^most energy pick for \\+(\\d+) (\\w+)$").search(low)
+	if m != null and STAT_WORDS.has(m.get_string(2)):
+		return [_act("BUFF", "MOST_ENERGY", [STAT_WORDS[m.get_string(2)], m.get_string(1), "PICK"])]
 	m = _rx("^duel for \\+(\\d+) (\\w+)$").search(low)
 	if m != null and STAT_WORDS.has(m.get_string(2)):
 		return [_act("DUEL_TOP", "", [STAT_WORDS[m.get_string(2)], m.get_string(1), "PICK"])]

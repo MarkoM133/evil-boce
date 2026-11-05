@@ -157,6 +157,8 @@ func test_stages() -> void:
 	_assert_fx(_fx("Stage", "Whole Cake", "Each Hero on this Stage gets +1000 Power for each activated Core they have.\nTerrain: Mud"), "PASSIVE: BUFF EACH_HERO PWR 1000 PER CORES")
 	_assert_fx(_fx("Stage", "Egghead", "Battle Phase: In a Battle on this Stage, the Hero whose player has more Energy gets +3000 Power.\nTerrain: None"), "BATTLE: BUFF MOST_ENERGY PWR 3000")
 	_assert_fx(_fx("Stage", "Egghead", "In a Battle on this Stage, the Hero whose player has more Energy gets +3000 Power.\nTerrain: None"), "BATTLE: BUFF MOST_ENERGY PWR 3000")
+	_assert_fx(_fx("Stage", "Egghead", "Battle Phase: In a Battle on this Stage, the player with more Energy chooses one of their Heroes in this Battle. That Hero gets +3000 Power.\nTerrain: None"),
+		"BATTLE: BUFF MOST_ENERGY PWR 3000 PICK")
 	_assert_fx(_fx("Stage", "Shimotsuki", "Each Hero gains +1 DMG for every equipped {Sword} they have."),
 		"PASSIVE: BUFF EACH_HERO DMG 1 PER TRAIT_EQUIPPED {Sword}")
 	_assert_fx(_fx("Stage", "Egghead", "Each Hero gains +1000 Power for every charged Energy their player has."),

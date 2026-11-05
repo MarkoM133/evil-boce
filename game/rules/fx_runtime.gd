@@ -625,6 +625,20 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 	var args: PackedStringArray = a["args"]
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
+	# PICK on a hero group (2026-11-05): one of the group, picked by the owner of its heroes (the card's player
+	# when the group spans players). "the player with more Energy chooses one of their Heroes in this Battle".
+	if args.has("PICK") and verb != "DUEL_TOP" and FxEffect.HERO_TARGETS.has(target) and not ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY"].has(target):
+		var group: Array[HeroState] = _targets(s, ctx, e, target, null, verb)
+		if group.size() <= 1:
+			return {}
+		var ids: Array = []
+		var owners: Array[int] = []
+		for h: HeroState in group:
+			ids.append(h.id)
+			if not owners.has(h.owner):
+				owners.append(h.owner)
+		var who: int = owners[0] if owners.size() == 1 else player
+		return {"player": who, "kind": "hero", "options": ids, "prompt": "Pick a hero"}
 	match verb:
 		"DAMAGE", "HEAL", "KNOCKBACK", "STATUS", "REMOVE_EVO", "BUFF", "DAMAGE_MOD":
 			if target == "ENEMY" or target == "FRIENDLY":
@@ -1089,6 +1103,12 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
 	var st: StageState = s.stage(str(ctx.get("stage", "")))
+	# A group with PICK: the answer is the one hero picked out of it.
+	if answer is String and FxEffect.HERO_TARGETS.has(target) and not ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY"].has(target):
+		var picked: HeroState = s.hero(str(answer))
+		if picked != null:
+			out.append(picked)
+			return out
 	match target:
 		"SELF", "EQUIPPED":
 			if me != null:
