@@ -140,7 +140,8 @@ export function folderStore(root) {
     },
     async dataUrl(path) {
       const full = `data/${path}`;
-      if (!urls.has(full)) {
+      // Samo nađene datoteke se pamte: ona koju Syncthing donese kasnije se vidi pri idućem pozivu.
+      if (!urls.get(full)) {
         const f = await fs.getFile(root, full);
         urls.set(full, f ? URL.createObjectURL(f) : null);
       }

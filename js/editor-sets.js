@@ -33,7 +33,7 @@ export function setList(saved, cards) {
 // ctx: { h, state, store, canWrite, who, render, guard, toast, cards(), drafts(), locks(), thumbInto(canvas, card, px), go(id), newCard(set, type), nextId(set) }
 export function createSetsView(ctx) {
   const { h } = ctx;
-  const v = { saved: null, loading: false, code: null, urls: {}, q: '', type: '', color: '', status: '', settings: false };
+  const v = { saved: null, loading: false, code: null, q: '', type: '', color: '', status: '', settings: false };
 
   async function load() {
     if (v.loading) return;
@@ -51,11 +51,11 @@ export function createSetsView(ctx) {
     ctx.render();
   }
 
+  // Adresa slike dolazi od storea svaki put: u Folder načinu su to object URL-ovi koje Objava opozove
+  // (dropImageUrls), pa bi zapamćena adresa ostala mrtva (slike paketa su nestale nakon Objave, 5. 11. 2026).
+  // Store sam pamti nađene; pack.png koji Syncthing donese kasnije se vidi pri idućem crtanju.
   async function imageUrl(code, name) {
-    const key = `${code}/${name}`;
-    // Samo nađene slike se pamte: pack.png koji Syncthing donese kasnije se vidi pri idućem crtanju.
-    if (!v.urls[key]) v.urls[key] = (await ctx.store().dataUrl(`sets/${key}`).catch(() => null)) ?? null;
-    return v.urls[key];
+    return (await ctx.store().dataUrl(`sets/${code}/${name}`).catch(() => null)) ?? null;
   }
 
   // def: { packSize } of the default pack (a Draft that mixes sets); left as it is when not given.
@@ -84,7 +84,6 @@ export function createSetsView(ctx) {
     // Uvijek isto ime: igra traži stalno ime (preglednik ga ionako dekodira po sadržaju).
     await fs.writeFile(ctx.store().root, `data/sets/${code}/${name}`, new Uint8Array(await file.arrayBuffer()));
     ctx.store().dropImageUrls?.();
-    delete v.urls[`${code}/${name}`];
     ctx.toast(`Saved data/sets/${code}/${name}.`);
     ctx.render();
   }
@@ -286,6 +285,6 @@ export function createSetsView(ctx) {
     current: () => (v.code && !NOT_SETS.includes(v.code) && v.code !== 'default' ? v.code : null),
     // Karte kako ih mreža seta zadnji put pokazala (s filterima): redoslijed za Prev / Next na stranici karte.
     order: () => v.order ?? [],
-    reload: () => { v.saved = null; v.urls = {}; },
+    reload: () => { v.saved = null; },
   };
 }
