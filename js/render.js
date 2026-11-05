@@ -482,7 +482,8 @@ function drawEffect(ctx, text, color, box, icons, heading = '', passive = false)
     if (e.bonus) chips.push({ kind: 'bonus', text: `${e.bonus.join(' / ').toUpperCase()} BONUS`, colors: e.bonus });
     if (e.phase) chips.push({ kind: 'phase', text: e.phase, once: e.once });
     else if (passive && !e.bonus && e.lines.some(l => !/^Terrain:/i.test(l.text))) chips.push({ kind: 'phase', text: 'PASSIVE', once: e.once });
-    if (e.range) chips.push({ kind: 'range', text: 'RANGE' });
+    // Nema oznake RANGE (pravilo B, Marko i Tarik 2026-11-05): range se piše u tekstu uz metu ("in [RNG]"),
+    // oznake na vrhu su samo za vrijeme. Stari "[Range] " na početku retka se i dalje čita, ali se ne crta.
     return { chips, paras: toParas(e) };
   });
   // Naziv sposobnosti heroja: podebljan i podvučen, iznad svih efekata.

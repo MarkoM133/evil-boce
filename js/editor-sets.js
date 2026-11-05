@@ -3,6 +3,7 @@
 // Stageovi i Coreovi imaju svoje kartice. Postavke seta su u data/sets/sets.json, slike u data/sets/<kod>/
 // (Syncthing, ne git); "default" je paket za Draft iz više setova. Igra će ih čitati u Draftu.
 import * as fs from './fsdir.js';
+import { fxProblems } from './fx-grammar.js';
 
 export const SETS_PATH = 'data/sets/sets.json';
 const NOT_SETS = ['Stage', 'Core'];
@@ -131,7 +132,7 @@ export function createSetsView(ctx) {
   }
 
   // Every card plays a written fx (2026-11-05): without a confirmed one it needs fx.
-  const needsFx = c => !!(c.text ?? '').trim() && c.type !== 'Core' && (!c.fx || c.fxStatus === 'check');
+  const needsFx = c => !!(c.text ?? '').trim() && c.type !== 'Core' && (!c.fx || c.fxStatus === 'check' || fxProblems(c.fx).length > 0);
 
   function renderSet(s, list) {
     const special = NOT_SETS.includes(s.code);

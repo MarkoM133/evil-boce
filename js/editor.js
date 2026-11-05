@@ -4,6 +4,7 @@
 // u sredini karta, desno forma. Izmjene se spremaju kao nacrti (data/editor/drafts.json); igra ih vidi tek nakon Objave.
 // Tekst je u editoru s tokenima ([HP], [PWR]…), u bazi riječima (js/card-text.js).
 import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, coreMode, TINTS, PHASE_COLORS } from './render.js';
+import { fxProblems } from './fx-grammar.js';
 import { firstTag, traitNames, norm, GENERAL, HEROES, TRAIT, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
 import { applyDrafts, imageHashOf } from './importer.js';
@@ -605,10 +606,12 @@ export function createEditor(env) {
     const box = h('textarea', { class: 'ce-fx-code ce-fx-box', rows: 2, spellcheck: false, placeholder: 'No fx yet: use a proposal below, or write it.', value: w.fx ?? '',
       oninput: e => { snap(); fit(e.target); w.fx = e.target.value.trim() ? e.target.value : undefined; w.fxStatus = w.fx ? 'ok' : undefined; changed(); } });
     requestAnimationFrame(() => fit(box));
-    const state = !w.fx ? 'none' : w.fxStatus === 'check' ? 'check' : 'ok';
-    const pill = h('span', { class: `ce-fx-state ${state}` }, { none: 'No fx', check: 'To confirm', ok: '✓ Confirmed' }[state]);
+    const bad = w.fx ? fxProblems(w.fx) : [];
+    const state = !w.fx ? 'none' : bad.length ? 'bad' : w.fxStatus === 'check' ? 'check' : 'ok';
+    const pill = h('span', { class: `ce-fx-state ${state}` }, { none: 'No fx', bad: 'Not fx', check: 'To confirm', ok: '✓ Confirmed' }[state]);
     // Objašnjenje samo kad treba nešto napraviti; potvrđen fx ima samo pločicu.
-    const hint = state === 'ok' ? null : state === 'check' ? 'Check it against the text, then Confirm fx (or edit it) and Save.'
+    const hint = state === 'ok' ? null : state === 'bad' ? `The game can't read this: ${bad.map(p => p.problem).join(' · ')}. Is it card text pasted here? Use a proposal below or write the fx.`
+      : state === 'check' ? 'Check it against the text, then Confirm fx (or edit it) and Save.'
       : textChanged || w.new ? 'The game\'s proposal comes after Publish; Ask Claude works now.'
         : !p ? 'No report from the game for this card yet.' : p.unparsed?.length ? `The game does not understand: ${p.unparsed.join(' · ')}` : null;
     return h('section', { class: 'ce-panel ce-fx-panel' },
@@ -1326,7 +1329,6 @@ export function createEditor(env) {
     const check = (attr, label, title, onchange) => h('label', { class: 'ce-check', title },
       h('input', { type: 'checkbox', [attr]: '1', onchange }), label);
     const once = stage ? null : check('data-once', 'Once per turn', 'Once per turn, for the effect the cursor is in', () => { const hd = here(); setHead({ once: !hd.once, phase: hd.phase ?? 'Battle' }); });
-    const range = stage ? null : check('data-range', '◎ Range', '[Range]: targets must be in the hero\'s range', () => setHead({ range: !here().range }));
     // Novi efekt: novi redak na kraju, kursor u njemu (pa se bira njegova faza).
     const addEffect = stage ? null : h('button', { type: 'button', class: 'ce-add-effect', onmousedown: e => e.preventDefault(), onclick: () => {
       snap(true);
@@ -1354,7 +1356,8 @@ export function createEditor(env) {
       sync();
     } }, '+ Bonus') : null;
     const seg = h('div', { class: 'ce-phase-seg', role: 'group', 'aria-label': 'Phase of the effect the cursor is in' }, passiveBtn, phaseBtns);
-    const mods = once || range || revealed ? h('div', { class: 'ce-mods' }, revealed, once, range) : null;
+    // Range nije prekidač (pravilo B, 2026-11-05): piše se u tekstu uz metu, "a friendly Hero in [RNG]".
+    const mods = once || revealed ? h('div', { class: 'ce-mods' }, revealed, once) : null;
     const bar = h('div', { class: 'ce-tokbar' }, toks, trait ? h('span', { class: 'ce-tokbar-sep' }) : null, trait, phrase);
     const adds = addEffect || bonusBtn ? h('div', { class: 'ce-adds' }, addEffect, bonusBtn) : null;
     const tools = h('div', { class: 'ce-effect-tools' }, seg, mods);
@@ -1364,14 +1367,12 @@ export function createEditor(env) {
       seg.querySelector('[data-passive]')?.classList.toggle('on', !hd.phase && !!hd.rest?.trim());
       const o = mods?.querySelector('[data-once]');
       if (o) o.checked = !!hd.once;
-      const r = mods?.querySelector('[data-range]');
-      if (r) r.checked = !!hd.range;
     }
     refreshToggles();
     area.setAttribute('aria-label', 'Effect text');
     return [tools, h('div', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-text-box' }, bar, h('div', { class: 'ce-ac-wrap' }, area, pop))), adds,
       h('p', { class: 'muted small ce-ac-hint' }, stage ? 'Type [ for a stat icon, or the start of a phrase from the Text guide: a list opens under the text.'
-        : 'Each effect is its own line; the phase and the checkboxes set the effect the cursor is in (+ Effect starts a new one). Type [ for a stat icon or the start of a phrase for suggestions.')];
+        : 'Each effect is its own line; the phase and Once per turn set the effect the cursor is in (+ Effect starts a new one). Range goes in the text next to its target: "a friendly Hero in [RNG]". Type [ for a stat icon or the start of a phrase for suggestions.')];
   }
 
   // ---------- izmjene, Undo ----------
@@ -1411,8 +1412,11 @@ export function createEditor(env) {
     const textChanged = !w.new && toWords(w.text ?? '') !== (ed.base.type === 'Stage' ? stripTerrain(ed.base.text) : ed.base.text ?? '');
     const gameReads = () => {
       if (!(card.text ?? '').trim()) return;
-      if (w.fx) out.push([w.fxStatus !== 'check', w.fxStatus === 'check' ? 'The fx is not confirmed yet' : 'fx confirmed for the game']);
+      if (w.fx && fxProblems(w.fx).length) out.push([false, 'The fx box holds something the game can\'t read']);
+      else if (w.fx) out.push([w.fxStatus !== 'check', w.fxStatus === 'check' ? 'The fx is not confirmed yet' : 'fx confirmed for the game']);
       else out.push([false, 'No fx yet']);
+      // Pravilo B (2026-11-05): range uz metu u tekstu, ne na početku retka.
+      if (/^\[RNG\]/m.test(w.text ?? '')) out.push([false, 'Range at the start of a line: write it next to its target ("in [RNG]")']);
     };
     if (!(w.name ?? '').trim()) out.push([false, 'No name yet']);
     if (PORTRAIT.includes(w.type)) {
