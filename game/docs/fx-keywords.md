@@ -16,7 +16,7 @@ stays Knockback, there is no Launch keyword.
 ACTION = VERB [TARGET] [ARGS...]
 ```
 
-Examples: `POSTROLL ONCE OPTIONAL: MOVE SELF 2` (Bucciarati),
+Examples: `POSTROLL ONCE OPTIONAL IF ACTIVATED: MOVE SELF 2` (Bucciarati, "If Bruno Bucciarati is activated, he may move up to 2 spaces"; an OPTIONAL ability is usable by the activated hero only, so IF ACTIVATED just says what the text says),
 `POSTROLL IF ACTIVATED: DAMAGE ALL_OTHER_IN_RANGE 2` (Fugo),
 `PASSIVE: BUFF EQUIPPED PWR 1000 PER TRAIT_EQUIPPED {Sword}` (Wado Ichimonji),
 `BATTLE IF WIN: DISCARD OPP 1`, `POSTROLL RANGE: CHOOSE OPP [CHARGE ME 2; DISCHARGE OPP 2] [HEAL SELF 3; DAMAGE ENEMY 3]`.
