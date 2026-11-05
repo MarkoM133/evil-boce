@@ -44,7 +44,7 @@ test('stat words after a number or more/less are icons, the rest stays text', ()
   assert.deepEqual(richRuns('heals 3 HP and takes 3 DMG'), [{ text: 'heals 3' }, { icon: 'hp' }, { text: ' and takes 3' }, { icon: 'dmg' }]);
   assert.deepEqual(richRuns('the Hero with more HP gains +3000 Power.'), [{ text: 'the Hero with more ' }, { icon: 'hp' }, { text: ' gains +3000' }, { icon: 'pwr' }, { text: '.' }]);
   assert.deepEqual(richRuns("Knockback an Opponent's Hero 3 spaces"), [{ text: "Knockback an Opponent's Hero 3 spaces" }]);
-  assert.deepEqual(richRuns('for every {Sword}'), [{ text: 'for every ' }, { text: 'Sword', bold: true }]);
+  assert.deepEqual(richRuns('for every {Sword}'), [{ text: 'for every ' }, { text: 'Sword', bold: true, tag: true }]);
   assert.deepEqual(richRuns('hits for DMG 5'), [{ text: 'hits for ' }, { icon: 'dmg' }, { text: ' 5' }], 'HP and DMG are icons without a number too');
 });
 

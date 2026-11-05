@@ -526,7 +526,7 @@ function drawEffect(ctx, text, color, box, icons, heading = '', passive = false)
   return { atMin };
 }
 
-// "{Sword}" je podebljano ime taga, "3 HP" i [PWR]… ikone statova; ostalo običan tekst.
+// "{Sword}" je tag (crta se kao pločica), "3 HP" i [PWR]… ikone statova; ostalo običan tekst.
 export function richRuns(s) {
   const runs = [];
   let last = 0;
@@ -534,7 +534,7 @@ export function richRuns(s) {
     if (m.index > last) runs.push({ text: s.slice(last, m.index) });
     if (m[1]) runs.push({ icon: m[1].toLowerCase() });
     else if (m[3] || m[4]) runs.push({ icon: WORD_ICON[m[3] || m[4]] });
-    else runs.push({ text: m[2], bold: true });
+    else runs.push({ text: m[2], bold: true, tag: true });
     last = m.index + m[0].length;
   }
   if (last < s.length) runs.push({ text: s.slice(last) });
@@ -553,6 +553,15 @@ function layoutParas(ctx, paras, maxW, size, icons) {
         const iw = size * (r.icon === 'energy' ? 0.7 : 0.95);
         if (prev && !prev.space) prev.parts.push({ icon: r.icon, w: iw });
         else words.push({ parts: [{ icon: r.icon, w: iw }] });
+        continue;
+      }
+      if (r.tag) {
+        const st = tagLook(size);
+        ctx.font = st.font;
+        const prev = words.at(-1);
+        const part = { text: r.text, tag: true, w: ctx.measureText(r.text).width + st.pad * 2 };
+        if (prev && !prev.space) prev.parts.push(part);
+        else words.push({ parts: [part] });
         continue;
       }
       const bits = r.text.split(/(\s+)/);
@@ -607,6 +616,11 @@ function drawEnergyGlyph(ctx, x, y, size) {
   ctx.restore();
 }
 
+// Tag u tekstu ({Sword}) je pločica kao tagovi na dnu karte (Marko 2026-11-05): tamni okvir, font pločice tagova.
+function tagLook(size) {
+  return { font: `bold ${Math.round(size * 0.9)}px ${TITLE_FONT}`, pad: size * 0.26, plate: true };
+}
+
 function drawRich(ctx, line, cx, cy, size, icons, ink = '#ffffff') {
   let x = cx - line.w / 2;
   ctx.textAlign = 'left';
@@ -620,6 +634,21 @@ function drawRich(ctx, line, cx, cy, size, icons, ink = '#ffffff') {
         const s = (size * 0.9) / Math.max(img.width, img.height);
         ctx.drawImage(tinted(img, STAT_TINTS[p.icon]), x + (p.w - img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
       }
+    } else if (p.tag) {
+      const st = tagLook(size);
+      const hh = size * 0.98;
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x + size * 0.04, cy - hh / 2, p.w - size * 0.08, hh, size * 0.16);
+      ctx.fillStyle = 'rgba(0,0,0,0.62)';
+      ctx.fill();
+      ctx.lineWidth = Math.max(1.5, size * 0.035);
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.stroke();
+      ctx.restore();
+      ctx.font = st.font;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(p.text, x + st.pad, cy + size * 0.04);
     } else {
       ctx.font = `${p.bold ? 'bold' : '500'} ${size}px ${TEXT_FONT}`;
       ctx.fillStyle = ink;
