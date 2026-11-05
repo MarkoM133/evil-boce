@@ -32,7 +32,8 @@ const RANGE_RE = /^\[Range\]\s*/i;
 const COND_RE = /^(If [^,]+,)\s*/;
 // Ikone u tekstu: riječ stata iza broja ili iza more/less (kako je Card Engine crtao sprite: "heals 3 HP",
 // "+2000 Power", "more HP", "1 Energy"; broj i ikona su spojeni, iza more/less ostaje razmak; HP i DMG su ikona i bez broja), stari tokeni [PWR]…, i {Trait} podebljano. Tekst karte ostaje u riječima (igra ih čita).
-const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}|(?:(?<=\d)\s?|(?<=\b(?:more|less)\s))(HP|DMG|Power|Range|Knockback|Energy)\b|\b(HP|DMG|Energy)\b/g;
+// "in Range" je ikona rangea s razmakom (Soul Pocus, Marko 2026-11-05).
+const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}|(?:(?<=\d)\s?|(?<=\b(?:more|less)\s)|(?<=\bin\s)(?=Range\b))(HP|DMG|Power|Range|Knockback|Energy)\b|\b(HP|DMG|Energy)\b/g;
 const WORD_ICON = { HP: 'hp', DMG: 'dmg', Power: 'pwr', Range: 'rng', Knockback: 'kb', Energy: 'energy' };
 
 // ---------- predložak ----------
