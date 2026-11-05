@@ -473,7 +473,8 @@ function drawEffect(ctx, text, color, box, icons, heading = '', passive = false)
   const chipFull = box.chip ?? 64;
   const toParas = e => {
     const paras = [];
-    if (e.cond) paras.push({ bullet: false, runs: [{ text: e.cond, bold: true }] });
+    // Uvjet ("If …,") je podebljan, ali kroz ista pravila kao ostatak: tag je pločica, stat ikona (Mihawk, 2026-11-05).
+    if (e.cond) paras.push({ bullet: false, runs: richRuns(e.cond).map(r => (r.icon || r.tag ? r : { ...r, bold: true })) });
     for (const l of e.lines) paras.push({ bullet: l.bullet, runs: /^Terrain:/i.test(l.text) ? [{ text: l.text, bold: true }] : richRuns(l.text) });
     return paras;
   };
