@@ -249,6 +249,11 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 	if m != null:
 		e.when = "REVEAL"
 		low = m.get_string(1)
+	# A stage's battle effect: "In a Battle on this Stage, …" (fires at the start of every battle fought on it).
+	m = _rx("^in a battle on this stage, (.*)$").search(low)
+	if m != null:
+		e.when = "BATTLE"
+		low = m.get_string(1)
 	m = _rx("^while (?:self|the equipped hero) is activated, (.*)$").search(low)
 	if m != null:
 		e.when = "PASSIVE"
@@ -543,6 +548,8 @@ static func _subject(raw: String) -> String:
 			return "MOST_HP"
 		"the hero with more power", "the hero on this stage with the most power", "the hero with the most power on this stage":
 			return "MOST_PWR"
+		"the hero whose player has more energy", "the hero whose player has the most energy":
+			return "MOST_ENERGY"
 	return ""
 
 

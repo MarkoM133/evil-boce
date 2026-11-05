@@ -477,6 +477,12 @@ func _passive_applies(s: GameState, src: Dictionary, target: String, h: HeroStat
 			if st != null:
 				return h.is_on_map() and st.covers(h.hex)
 			return true
+		"MOST_ENERGY":
+			var pool: Array[HeroState] = []
+			for o: HeroState in s.heroes:
+				if o.is_on_map() and (st == null or st.covers(o.hex)):
+					pool.append(o)
+			return pool.has(h) and _richest_owner(s, pool) == h.owner
 	return false
 
 
@@ -1137,7 +1143,46 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 					tie = true
 			if best != null and not tie:
 				out.append(best)
+		"MOST_ENERGY":
+			# The heroes of the player with the most Energy among the players in the battle the context names
+			# (else those with heroes on the stage, else everyone on the map); a tie picks nobody (Egghead, 2026-11-05).
+			var pool: Array[HeroState] = []
+			if ctx.has("battle"):
+				var index: int = JsonUtil.as_int(ctx.get("battle", -1), -1)
+				if index >= 0 and index < s.battles.size():
+					for id: String in JsonUtil.as_strings(s.battles[index].get("heroes", [])):
+						var bh: HeroState = s.hero(id)
+						if bh != null and bh.is_on_map():
+							pool.append(bh)
+			else:
+				for h: HeroState in s.heroes:
+					if h.is_on_map() and (st == null or st.covers(h.hex)):
+						pool.append(h)
+			var richest: int = _richest_owner(s, pool)
+			for h: HeroState in pool:
+				if richest >= 0 and h.owner == richest:
+					out.append(h)
 	return out
+
+
+## The owner with strictly the most Energy among the owners of these heroes; -1 on a tie or when empty.
+func _richest_owner(s: GameState, pool: Array[HeroState]) -> int:
+	var best: int = -1
+	var best_energy: int = -1
+	var tie: bool = false
+	var seen: Array[int] = []
+	for h: HeroState in pool:
+		if seen.has(h.owner):
+			continue
+		seen.append(h.owner)
+		var energy: int = s.player(h.owner).energy
+		if energy > best_energy:
+			best_energy = energy
+			best = h.owner
+			tie = false
+		elif energy == best_energy:
+			tie = true
+	return best if not tie else -1
 
 
 ## Ids of heroes a chooser may pick for ENEMY / FRIENDLY (in range when the effect says so).

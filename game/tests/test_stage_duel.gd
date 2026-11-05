@@ -60,3 +60,23 @@ func test_a_tie_gives_nothing() -> void:
 	assert_eq(s.pending.size(), 0)
 	for id: String in ["p0:TA-001", "p0:TA-002", "p1:TB-001"]:
 		assert_eq(JsonUtil.as_int(s.hero(id).phase_bonus.get("pwr", 0)), 0, id)
+
+
+func test_most_energy_buffs_the_richer_players_heroes_in_the_battle() -> void:
+	s.player(0).energy = 3
+	s.player(1).energy = 1
+	var e: FxEffect = FxEffect.parse_line("BATTLE: BUFF MOST_ENERGY PWR 3000")
+	assert_eq(engine.fx.run(s, _ctx(), e), "")
+	assert_eq(JsonUtil.as_int(s.hero("p0:TA-001").phase_bonus.get("pwr", 0)), 3000)
+	assert_eq(JsonUtil.as_int(s.hero("p0:TA-002").phase_bonus.get("pwr", 0)), 3000, "both heroes of the richer player in the battle")
+	assert_eq(JsonUtil.as_int(s.hero("p1:TB-001").phase_bonus.get("pwr", 0)), 0)
+	assert_eq(JsonUtil.as_int(s.hero("p0:TA-003").phase_bonus.get("pwr", 0)), 0, "not a hero outside the battle")
+
+
+func test_most_energy_tie_gives_nothing() -> void:
+	s.player(0).energy = 2
+	s.player(1).energy = 2
+	var e: FxEffect = FxEffect.parse_line("BATTLE: BUFF MOST_ENERGY PWR 3000")
+	assert_eq(engine.fx.run(s, _ctx(), e), "")
+	for id: String in ["p0:TA-001", "p0:TA-002", "p1:TB-001"]:
+		assert_eq(JsonUtil.as_int(s.hero(id).phase_bonus.get("pwr", 0)), 0, id)

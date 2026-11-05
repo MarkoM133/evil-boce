@@ -16,6 +16,7 @@ test('lines from fx-keywords.md read as the game reads them', () => {
     'BATTLE IF WIN: FULL_HIT OPP',
     'POSTROLL: NO_CLAIM ALL_ENEMY_IN_RANGE',
     'POSTROLL RANGE: SWAP FRIENDLY ENGAGED',
+    'BATTLE: BUFF MOST_ENERGY PWR 3000',
   ]) assert.equal(lineProblem(line), '', line);
 });
 

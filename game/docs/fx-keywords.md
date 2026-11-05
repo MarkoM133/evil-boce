@@ -87,7 +87,9 @@ equipment), `ENEMY` / `FRIENDLY` (the player picks one; one candidate is picked 
 always another friendly hero, never SELF: "a friendly Hero" on Bon Apetit or Giorno is not the hero the card is
 played for, Marko 2026-11-05; with `RANGE` it must be in SELF's range),
 `ALL_FRIENDLY`, `ALL_ENEMY`, `ALL_OTHER_IN_RANGE`, `ALL_FRIENDLY_IN_RANGE`, `ALL_ENEMY_IN_RANGE` (every enemy in SELF's range, "Opponent's Heroes in Range"), `ALL_HEROES`,
-`EACH_HERO` (on a stage: those standing on it), `MOST_HP`, `MOST_PWR` (on a stage; nobody on a tie).
+`EACH_HERO` (on a stage: those standing on it), `MOST_HP`, `MOST_PWR` (on a stage; nobody on a tie), `MOST_ENERGY`
+(the heroes of the player with the most Energy among the players in the battle, or with heroes on the stage; nobody
+on a tie; Egghead "the Hero whose player has more Energy", 2026-11-05).
 Players: `ME`, `OPP`.
 
 Who a group holds: `ALL_FRIENDLY` and `ALL_ENEMY` are every hero of that side that is not KO, SELF
