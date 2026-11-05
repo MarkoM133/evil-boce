@@ -605,22 +605,24 @@ export function createEditor(env) {
     const p = env.state.fxProposals?.cards?.[w.id];
     const textChanged = !w.new && toWords(w.text ?? '') !== (ed.base.type === 'Stage' ? stripTerrain(ed.base.text) : ed.base.text ?? '');
     const fit = el => { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px`; };
-    const box = h('textarea', { class: 'ce-fx-code ce-fx-box', rows: 2, spellcheck: false, placeholder: 'No fx yet: use a proposal below, or write it.', value: w.fx ?? '',
+    const box = h('textarea', { class: 'ce-fx-code ce-fx-box', rows: 2, spellcheck: false, placeholder: 'Empty until you pick a proposal (Use this). Ask Claude reads the effect text by itself: no need to copy it here.', value: w.fx ?? '',
       oninput: e => { snap(); fit(e.target); w.fx = e.target.value.trim() ? e.target.value : undefined; w.fxStatus = w.fx ? 'ok' : undefined; changed(); } });
     requestAnimationFrame(() => fit(box));
     const bad = w.fx ? fxProblems(w.fx) : [];
     const state = !w.fx ? 'none' : bad.length ? 'bad' : w.fxStatus === 'check' ? 'check' : 'ok';
     const pill = h('span', { class: `ce-fx-state ${state}` }, { none: 'No fx', bad: 'Not fx', check: 'To confirm', ok: '✓ Confirmed' }[state]);
     // Objašnjenje samo kad treba nešto napraviti; potvrđen fx ima samo pločicu.
-    const hint = state === 'ok' ? null : state === 'bad' ? `The game can't read this: ${bad.map(p => p.problem).join(' · ')}. Is it card text pasted here? Use a proposal below or write the fx.`
+    const hint = state === 'ok' ? null : state === 'bad' ? `This box is for fx, not card text (${bad.map(p => p.problem).join(' · ')}). Clear it, then Ask Claude: it reads the effect text by itself.`
       : state === 'check' ? 'Check it against the text, then Confirm fx (or edit it) and Save.'
-      : textChanged || w.new ? 'The game\'s proposal comes after Publish; Ask Claude works now.'
+      : textChanged || w.new ? 'Tap Ask Claude: it reads the effect text by itself. The game\'s proposal comes after Publish.'
         : !p ? 'No report from the game for this card yet.' : p.unparsed?.length ? `The game does not understand: ${p.unparsed.join(' · ')}` : null;
     return h('section', { class: 'ce-panel ce-fx-panel' },
       h('div', { class: 'ce-panel-head' }, h('h3', {}, 'fx for the game'), pill),
       box,
       h('div', { class: 'ce-fx-actions' },
-        state === 'check' ? h('button', { class: 'publish', type: 'button', onclick: () => { snap(true); w.fxStatus = 'ok'; changed(); env.render(); } }, 'Confirm fx') : h('span'),
+        state === 'check' ? h('button', { class: 'publish', type: 'button', onclick: () => { snap(true); w.fxStatus = 'ok'; changed(); env.render(); } }, 'Confirm fx')
+          : state === 'bad' ? h('button', { class: 'ghost', type: 'button', title: 'Empty the fx box', onclick: () => { snap(true); w.fx = undefined; w.fxStatus = undefined; changed(); env.render(); } }, 'Clear')
+            : h('span'),
         askClaudeButton(w)),
       hint ? h('p', { class: 'small muted' }, hint) : null,
       gameProposal(w, p, textChanged),
