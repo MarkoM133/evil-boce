@@ -1065,7 +1065,9 @@ export function createEditor(env) {
 
   function renderForm() {
     const w = ed.work;
-    const traits = traitNames(env.state.traits?.traits);
+    // Prijedlozi tagova: popis tagova i sve što karte već nose (posade, heroji, Yonko…; Marko 2026-11-05), bez Core oznaka.
+    const traits = [...new Set([...traitNames(env.state.traits?.traits),
+      ...allCards().filter(c => c.type !== 'Core').flatMap(c => c.traits ?? [])])].filter(Boolean);
     const set = (k, v) => { snap(true); w[k] = v; changed(); };
     const field = (label, input, extra) => h('label', { class: 'ce-field' }, h('span', {}, label), input, extra ?? null);
     const num = (value, oninput, opts = {}) => h('input', { type: 'number', value: value ?? '', placeholder: '–', oninput, ...opts });
