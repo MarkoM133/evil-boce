@@ -537,7 +537,7 @@ static func _subject(raw: String) -> String:
 		"all friendly heroes in range", "all friendly characters in self's range", "all friendly heroes in self's range", "all friendly characters in range", \
 				"other friendly heroes in range", "other friendly heroes in self's range", "all other friendly heroes in range", "all other friendly heroes in self's range":
 			return "ALL_FRIENDLY_IN_RANGE"
-		"each hero", "all heroes":
+		"each hero", "all heroes", "each hero on this stage", "all heroes on this stage", "every hero on this stage":
 			return "EACH_HERO"
 		"the hero with more hp", "the hero on this stage with the most hp", "the hero with the most hp on this stage":
 			return "MOST_HP"

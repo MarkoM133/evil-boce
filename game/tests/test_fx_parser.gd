@@ -155,6 +155,8 @@ func test_stages() -> void:
 	_assert_fx(_fx("Stage", "Drum", "When this Stage is revealed, the Hero with more HP gains +3000 Power."), "REVEAL: BUFF MOST_HP PWR 3000")
 	_assert_fx(_fx("Stage", "Drum", "The Hero on this Stage with the most HP gets +3000 Power.
 Terrain: Ice"), "PASSIVE: BUFF MOST_HP PWR 3000")
+	_assert_fx(_fx("Stage", "Whole Cake", "Each Hero on this Stage gets +1000 Power for each activated Core they have.
+Terrain: Mud"), "PASSIVE: BUFF EACH_HERO PWR 1000 PER CORES")
 	_assert_fx(_fx("Stage", "Shimotsuki", "Each Hero gains +1 DMG for every equipped {Sword} they have."),
 		"PASSIVE: BUFF EACH_HERO DMG 1 PER TRAIT_EQUIPPED {Sword}")
 	_assert_fx(_fx("Stage", "Egghead", "Each Hero gains +1000 Power for every charged Energy their player has."),
