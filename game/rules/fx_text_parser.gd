@@ -42,10 +42,44 @@ static func parse(card: CardDef) -> Dictionary:
 	# A colour bonus sentence ("Red Bonus: …", 2026-11-01) leans on the sentence before it.
 	var prev: FxEffect = null
 	var prev_sentence: String = ""
-	for sentence: String in _sentences(t):
+	var prev_line: int = -1
+	# "Choose an Opponent's Hero in Range." names the target of the next sentence ("Knock them back 3 spaces.").
+	var chosen: String = ""
+	var chosen_head: String = ""
+	for raw_sentence: String in _sentences(t):
+		var sentence: String = raw_sentence
+		var low: String = sentence.to_lower()
 		# A sentence that only spells out a rule the fx word already holds (FULL_HIT: no cards from the hand).
-		if _rx("^your opponent (?:can't|cannot|can not) discard cards to (?:reduce|lower|pay) (?:it|this|that|the damage)$").search(sentence.to_lower()) != null:
+		if _rx("^your opponent (?:can't|cannot|can not) discard cards to (?:reduce|lower|pay) (?:it|this|that|the damage)$").search(low) != null:
 			continue
+		var cm: RegExMatch = _rx("^((?:\\[range\\] )?(?:start|preroll|roll|postroll|battle|end)(?: phase)?(?: once per turn)?: )?choose (an opponent's hero|a friendly hero)( in range)?$").search(low)
+		if cm != null:
+			chosen = cm.get_string(2) + cm.get_string(3)
+			chosen_head = sentence.substr(0, cm.get_string(1).length())
+			continue
+		if not chosen.is_empty():
+			sentence = chosen_head + _rx("\\b(them|they|it)\\b").sub(sentence, chosen)
+			low = sentence.to_lower()
+			chosen = ""
+			chosen_head = ""
+		# A follow-on sentence adds to the effect before it (Marko 2026-11-05): "If he does, a friendly Hero in Range
+		# heals 2 HP." (Giorno), "If an Opponent's Hero activates that Core this turn, they take 3 DMG." (Life Giver).
+		var fm: RegExMatch = _rx("^if (?:he|she|it) does, (.*)$|^if (?:you|they) do, (.*)$").search(low)
+		var trap: RegExMatch = _rx("^if an opponent's hero activates that core this turn,? (?:they take|it takes) (\\d+) dmg$").search(low)
+		if prev != null and prev_line >= 0 and (fm != null or trap != null):
+			var tail: FxEffect = null
+			if trap != null:
+				tail = FxEffect.new()
+				tail.actions = [_act("TRAP_CORE", "", [trap.get_string(1)])]
+			else:
+				var rest: String = fm.get_string(1) if not fm.get_string(1).is_empty() else fm.get_string(2)
+				tail = _parse_sentence(rest[0].to_upper() + rest.substr(1), card)
+			if tail != null and not tail.actions.is_empty():
+				prev.actions.append_array(tail.actions)
+				prev.range = prev.range or tail.range
+				lines[prev_line] = prev.to_fx()
+				prev_sentence = sentence
+				continue
 		var e: FxEffect = _parse_sentence(sentence, card, prev, prev_sentence)
 		if e == null:
 			unparsed.append(sentence)
@@ -53,6 +87,7 @@ static func parse(card: CardDef) -> Dictionary:
 			lines.append(e.to_fx())
 		if not _is_bonus(sentence):
 			prev = e
+			prev_line = lines.size() - 1 if e != null else -1
 			prev_sentence = sentence
 	return {"fx": "\n".join(lines), "unparsed": unparsed}
 
@@ -101,10 +136,35 @@ static func _parse_bonus(colors: String, rest: String, card: CardDef, prev: FxEf
 		text = _rx("^(It|You|They|SELF) also ").sub(text, "$1 ")
 		# "… gets an additional +1000 Power" (Marko 2026-11-05): more on top of the sentence before, with its
 		# condition; the same as "It also gains +1000 Power".
+		var additional: bool = _rx("\\b(gets?|gains?|takes?|heals?) an additional ").search(rest) != null
 		text = _rx("\\b(gets?|gains?|takes?|heals?) an additional ").sub(text, "$1 ")
+		# "They move 1 additional space" (Taunt): the same pull or push as the sentence before, N more.
+		var mv: RegExMatch = _rx("^they move (\\d+) additional spaces?$").search(text.to_lower())
+		if mv != null and prev != null and not prev.actions.is_empty() and str(prev.actions[prev.actions.size() - 1]["verb"]) == "KNOCKBACK":
+			var pargs: PackedStringArray = prev.actions[prev.actions.size() - 1]["args"]
+			var away: bool = pargs.size() < 2 or pargs[1] != "TOWARDS"
+			text = ("Knockback an opponent's hero %s spaces away from you" if away else "Make an opponent's hero move %s spaces towards you") % mv.get_string(1)
+			additional = true
 		if text.to_lower().begins_with("it "):
 			text = "SELF " + text.substr(3)
+		# "They …" in a bonus line is the hero the sentence before picked.
+		var they: bool = text.to_lower().begins_with("they ")
 		e = _parse_sentence(text, card)
+		if e != null and they and prev != null and not prev.actions.is_empty():
+			var last: Dictionary = prev.actions[prev.actions.size() - 1]
+			for a: Dictionary in e.actions:
+				if FxEffect.HERO_TARGETS.has(str(a["target"])) and FxEffect.HERO_TARGETS.has(str(last["target"])):
+					a["target"] = last["target"]
+		if e != null and additional and prev != null and e.actions.size() == 1 and not prev.actions.is_empty():
+			var last: Dictionary = prev.actions[prev.actions.size() - 1]
+			var a: Dictionary = e.actions[0]
+			var pa: PackedStringArray = last["args"]
+			var aa: PackedStringArray = a["args"]
+			if a["verb"] == last["verb"] and a["target"] == last["target"] and ["ENEMY", "FRIENDLY"].has(str(a["target"])) \
+					and pa.size() == aa.size() and pa.size() >= 1 and pa[0].is_valid_int() and aa[0].is_valid_int():
+				aa[0] = str(pa[0].to_int() + aa[0].to_int())
+				a["args"] = aa
+				instead = true
 		if e != null and prev != null and _rx("^(?:\\[Range\\] ?)?(Start|Preroll|Roll|Postroll|Battle|End)").search(text) == null:
 			e.when = prev.when
 			e.range = prev.range
@@ -116,7 +176,18 @@ static func _parse_bonus(colors: String, rest: String, card: CardDef, prev: FxEf
 		return null
 	e.bonus = true
 	if names.size() == 1:
-		e.bonus_color = names[0].strip_edges().to_upper()
+		var colour: String = names[0].strip_edges().to_upper()
+		if not (card.bonus_colors.size() == 1 and card.bonus_colors[0].to_upper() == colour):
+			e.bonus_color = colour
+	# A bonus that lasts as long as the sentence before ("… this turn" / "They take 1 less DMG from each source").
+	if prev != null and not prev.actions.is_empty():
+		var prev_args: PackedStringArray = prev.actions[prev.actions.size() - 1]["args"]
+		if prev_args.has("TURN"):
+			for a: Dictionary in e.actions:
+				var args: PackedStringArray = a["args"]
+				if ["DAMAGE_MOD", "BUFF", "STATUS"].has(str(a["verb"])) and not args.has("TURN"):
+					args.append("TURN")
+					a["args"] = args
 	e.instead = instead
 	if instead and prev != null:
 		e.when = prev.when
@@ -130,6 +201,10 @@ static func _normalise(text: String, self_name: String) -> String:
 		t = t.replace(self_name + "'s", "SELF's").replace(self_name, "SELF")
 		if first != self_name:
 			t = t.replace(first + "'s", "SELF's").replace(first, "SELF")
+		# The first name alone ("Giorno may …", cards name the hero only on Hero and Evolution cards, 2026-11-05).
+		var word: String = first.split(" ")[0]
+		if word != first and word.length() >= 3:
+			t = _rx("\\b" + word + "\\b").sub(t, "SELF", true)
 	t = t.replace("\n- ", " | ").replace("\n", " ")
 	t = _rx("\\s+").sub(t, " ", true).strip_edges()
 	return t
@@ -170,11 +245,37 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 	if m != null:
 		e.when = "REVEAL"
 		low = m.get_string(1)
-	m = _rx("^while self is activated, (.*)$").search(low)
+	m = _rx("^while (?:self|the equipped hero) is activated, (.*)$").search(low)
 	if m != null:
 		e.when = "PASSIVE"
 		e.cond = "ACTIVATED"
 		low = m.get_string(1)
+	# "If the equipped Hero is activated, lose 1 Energy." (Enma, 2026-11-05)
+	m = _rx("^if the equipped hero is activated, (.*)$").search(low)
+	if m != null:
+		e.cond = "ACTIVATED"
+		low = m.get_string(1)
+	# "If the Opponent's Hero in this Battle has a {Sword} equipped, …" (Mihawk)
+	m = _rx("^if (?:the|an) opponent's hero(?: in this battle)? (?:has|is equipped with) an? \\{(\\w+)\\}(?: equipped)?, (.*)$").search(low)
+	if m != null:
+		e.cond = "OPP_EQUIPPED"
+		e.cond_arg = _trait_case("{%s}" % m.get_string(1))
+		low = m.get_string(2)
+	# Range rule B (Marko and Tarik 2026-11-05): range is written next to its target. "If an Opponent's Hero is
+	# in Range, …" makes the whole card need an enemy in range; "a Core in Range", "an Opponent's Hero in Range" …
+	# set RANGE and read on without it. Group phrases ("all other Heroes in Range") keep their own target word.
+	m = _rx("^if an opponent's hero is in range, (.*)$").search(low)
+	if m != null:
+		e.range = true
+		low = m.get_string(1)
+	# "Your Opponent in Range chooses one:" (Soul Pocus): an enemy hero must be in range to play the card.
+	if low.begins_with("your opponent in range chooses"):
+		e.range = true
+		low = low.replace("your opponent in range chooses", "your opponent chooses")
+	var rr: RegEx = _rx("\\b(an opponent's hero|another friendly hero|a friendly hero|a core|that core|a wall on an empty space|a wall) in (?:range|your hero's range)\\b")
+	if rr.search(low) != null:
+		e.range = true
+		low = rr.sub(low, "$1", true)
 	m = _rx("^if you win this battle, (.*)$").search(low)
 	if m != null:
 		e.cond = "WIN"
@@ -193,6 +294,9 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 	elif low.contains(" may "):
 		e.optional = true
 		low = low.replace(" may ", " ")
+	# An Action needs no OPTIONAL: playing the card is the "may" (fx-keywords).
+	if card.type == "Action":
+		e.optional = false
 	if low.is_empty():
 		return e
 	var actions: Array[Dictionary] = _clause(low)
@@ -235,10 +339,10 @@ static func _match(low: String) -> Array[Dictionary]:
 	var m: RegExMatch
 
 	# Opponent chooses between two lists.
-	m = _rx("^your opponent chooses: \\| (.*) \\| (.*)$").search(low)
+	m = _rx("^your opponent chooses(?: one)?: \\| (.*) \\| (.*)$").search(low)
 	if m != null:
-		var a: Array[Dictionary] = _clause(m.get_string(1).strip_edges())
-		var b: Array[Dictionary] = _clause(m.get_string(2).strip_edges())
+		var a: Array[Dictionary] = _clause(m.get_string(1).strip_edges().trim_suffix("."))
+		var b: Array[Dictionary] = _clause(m.get_string(2).strip_edges().trim_suffix("."))
 		if a.is_empty() or b.is_empty():
 			return out
 		out.append({"verb": "CHOOSE", "target": "OPP", "args": PackedStringArray(), "branches": [a, b]})
@@ -267,21 +371,26 @@ static func _match(low: String) -> Array[Dictionary]:
 					out.append(_act("BUFF", target, args))
 				return out
 
-	m = _rx("^(.*?)\\s*takes? ([+-]\\d+) dmg from all sources( this turn)?$").search(low)
+	# "takes -1 DMG from all sources", "takes 1 less DMG from each source" (Kaido, 2026-11-05)
+	m = _rx("^(.*?)\\s*takes? (?:([+-]\\d+) dmg|(\\d+) (less|more) dmg) from (?:all|each|every) sources?( this turn)?$").search(low)
 	if m != null:
 		var target: String = _subject(m.get_string(1))
 		if not target.is_empty():
-			var args: Array = [m.get_string(2).trim_prefix("+")]
-			if not m.get_string(3).is_empty():
+			var n: String = m.get_string(2).trim_prefix("+") if not m.get_string(2).is_empty() else ("-" if m.get_string(4) == "less" else "") + m.get_string(3)
+			var args: Array = [n]
+			if not m.get_string(5).is_empty():
 				args.append("TURN")
 			return [_act("DAMAGE_MOD", target, args)]
 
-	m = _rx("^(.*?)\\s*takes? (\\d+ dmg|dmg)$").search(low)
+	m = _rx("^(.*?)\\s*takes? (\\d+ dmg|dmg)( that (?:can't|cannot) be (?:reduced|blocked))?$").search(low)
 	if m != null:
 		var target: String = _subject(m.get_string(1))
 		if not target.is_empty():
 			var n: String = m.get_string(2).trim_suffix(" dmg")
-			return [_act("DAMAGE", target, [n.to_upper()])]
+			var args: Array = [n.to_upper()]
+			if not m.get_string(3).is_empty():
+				args.append("TRUE")
+			return [_act("DAMAGE", target, args)]
 
 	m = _rx("^(?:deactivate a core to )?(.*?)\\s*heals? (\\d+) hp$").search(low)
 	if m == null:
@@ -301,10 +410,36 @@ static func _match(low: String) -> Array[Dictionary]:
 		if _subject(m.get_string(1)) == "SELF":
 			return [_act("MOVE", "SELF", [m.get_string(2)])]
 
-	m = _rx("^knockback an opponent's hero (\\d+) spaces?(?: in the opposite direction of your hero| away from (?:your hero|you))?$").search(low)
+	# "Knockback an Opponent's Hero 3 spaces, away from your Hero" / "Knock an Opponent's Hero back 3 spaces"
+	m = _rx("^knock(?:back)? an opponent's hero (?:back )?(\\d+) spaces?(?:,? (?:in the opposite direction of your hero|away from (?:your hero|you)))?$").search(low)
 	if m != null:
 		return [_act("KNOCKBACK", "ENEMY", [m.get_string(1), "AWAY"])]
-	m = _rx("^make an opponent's hero move (\\d+) spaces? towards you$").search(low)
+	# "Swap your Hero with another friendly Hero that is in an Opponent's Hero's Range" (Intercept)
+	m = _rx("^swap your hero with (?:another|a) friendly hero( that is in an opponent's hero's range)?$").search(low)
+	if m != null:
+		return [_act("SWAP", "FRIENDLY", ["ENGAGED"] if not m.get_string(1).is_empty() else [])]
+	# "Move a Core up to 2 spaces" (Life Giver); the trap sentence after it adds TRAP_CORE.
+	m = _rx("^move a core up to (\\d+) spaces?$").search(low)
+	if m != null:
+		return [_act("PICK_CORE", "", []), _act("MOVE_CORE", "", [m.get_string(1)])]
+	# "Opponent's Heroes in Range can't claim a Stage this turn" (Conqueror's Haki, 2026-11-05)
+	if _rx("^(?:your )?opponent's heroes in range (?:can't|cannot) claim a stage this turn$").search(low) != null:
+		return [_act("NO_CLAIM", "ALL_ENEMY_IN_RANGE", [])]
+	if _rx("^(?:your )?opponent's heroes (?:can't|cannot) claim a stage this turn$").search(low) != null:
+		return [_act("NO_CLAIM", "OPP", [])]
+	# "deactivate a Core to play a {Sword} Equipment with a cost of 3 or less without paying its cost" (Zoro)
+	m = _rx("^(?:deactivate a core to )?play an? (?:\\{(\\w+)\\} )?(action|equipment|assist)?(?: card)? ?with a cost of (\\d+) or less (?:without paying its cost|for free)$").search(low)
+	if m != null:
+		var args: Array = [m.get_string(3)]
+		if not m.get_string(1).is_empty():
+			args.append("{%s}" % m.get_string(1))
+		if not m.get_string(2).is_empty():
+			args.append(m.get_string(2).capitalize())
+		if low.begins_with("deactivate a core to "):
+			out.append(_act("DEACTIVATE_CORE", "SELF", ["1"]))
+		out.append(_act("FREE_PLAY", "", args))
+		return out
+	m = _rx("^make an opponent's hero move (\\d+) spaces? towards (?:you|your hero)$").search(low)
 	if m != null:
 		return [_act("KNOCKBACK", "ENEMY", [m.get_string(1), "TOWARDS"])]
 
@@ -314,7 +449,7 @@ static func _match(low: String) -> Array[Dictionary]:
 		if not target.is_empty():
 			return [_act("STATUS", target, ["IMMUNE_KB", "TURN"])]
 
-	m = _rx("^place a wall(?: \\(line of (\\d+)\\))?$").search(low)
+	m = _rx("^place a wall(?: on an empty space)?(?: \\(line of (\\d+)\\))?$").search(low)
 	if m != null:
 		return [_act("WALL", "", [m.get_string(1)] if not m.get_string(1).is_empty() else [])]
 	if low == "reveal a core":
@@ -325,10 +460,12 @@ static func _match(low: String) -> Array[Dictionary]:
 	if m != null:
 		return [_act("DEACTIVATE_CORE", "SELF", [m.get_string(1) if not m.get_string(1).is_empty() else "1"])]
 
-	m = _rx("^(?:you |they )?(?:must )?(charge|discharge) (\\d+) energy$").search(low)
+	# Energy: "gain 2 Energy" / "lose 2 Energy" (2026-11-05; charge / discharge still read), "they lose …" is the opponent.
+	m = _rx("^(?:you |they |your opponent )?(?:must )?(gain|lose|charge|discharge) (\\d+) energy$").search(low)
 	if m != null:
-		var who: String = "OPP" if low.begins_with("they ") else "ME"
-		return [_act(m.get_string(1).to_upper(), who, [m.get_string(2)])]
+		var who: String = "OPP" if low.begins_with("they ") or low.begins_with("your opponent ") else "ME"
+		var verb: String = "CHARGE" if m.get_string(1) in ["gain", "charge"] else "DISCHARGE"
+		return [_act(verb, who, [m.get_string(2)])]
 
 	m = _rx("^your \\{(\\w+)\\} cards cost (\\d+) less(?: to play)?$").search(low)
 	if m != null:
@@ -336,9 +473,13 @@ static func _match(low: String) -> Array[Dictionary]:
 	m = _rx("^your opponent's cards have \\+(\\d+) cost$").search(low)
 	if m != null:
 		return [_act("COST", "OPP", [m.get_string(1)])]
-	m = _rx("^all of your opponent's (\\w+) phase cards cost (\\d+) more energy this turn$").search(low)
+	# "All of your Opponent's Battle Phase cards cost 2 more Energy this turn" / "… cost 2 Energy more this turn"
+	m = _rx("^(?:all of )?your opponent's (\\w+) phase cards cost (\\d+) (?:more energy|energy more)( this turn)?$").search(low)
 	if m != null:
-		return [_act("COST", "OPP", [m.get_string(2), m.get_string(1).to_upper(), "TURN"])]
+		var args: Array = [m.get_string(2), m.get_string(1).to_upper()]
+		if not m.get_string(3).is_empty():
+			args.append("TURN")
+		return [_act("COST", "OPP", args)]
 
 	m = _rx("^(?:you )?roll (?:the activated hero|self|him|her|this hero) (?:again|one additional time)(?: when activated)?$").search(low)
 	if m != null:
@@ -352,8 +493,11 @@ static func _match(low: String) -> Array[Dictionary]:
 	m = _rx("^(?:you )?draw (\\d+) cards?$").search(low)
 	if m != null:
 		return [_act("DRAW", "ME", [m.get_string(1)])]
-	if low == "remove an evolution from your opponent's hero":
+	if _rx("^remove (?:an|the top) evolution from (?:your|the) opponent's hero(?: in this battle)?$").search(low) != null:
 		return [_act("REMOVE_EVO", "ENEMY", [])]
+	# "After your Hero's roll, you may roll them again" (Gomu Gomu no Rocket; "may" was read above)
+	if _rx("^after (?:your hero's|self's|the activated hero's|their) roll,? (?:you )?roll (?:them|him|her|it|again|self|the activated hero) ?(?:again)?$").search(low) != null:
+		return [_act("ROLL_AGAIN", "", [])]
 	m = _rx("^your opponent cannot (?:take|claim) a stage this turn$").search(low)
 	if m != null:
 		return [_act("NO_CLAIM", "OPP", [])]
@@ -374,13 +518,14 @@ static func _subject(raw: String) -> String:
 			return "EQUIPPED"
 		"an opponent's hero", "your opponent's hero", "their hero", "the opponent's hero", "they":
 			return "ENEMY"
-		"a friendly hero", "friendly hero":
+		"a friendly hero", "friendly hero", "another friendly hero":
 			return "FRIENDLY"
 		"all friendly heroes", "all friendly characters", "friendly heroes":
 			return "ALL_FRIENDLY"
 		"all other heroes in range", "all other heroes in self's range":
 			return "ALL_OTHER_IN_RANGE"
-		"all friendly heroes in range", "all friendly characters in self's range", "all friendly heroes in self's range", "all friendly characters in range":
+		"all friendly heroes in range", "all friendly characters in self's range", "all friendly heroes in self's range", "all friendly characters in range", \
+				"other friendly heroes in range", "other friendly heroes in self's range", "all other friendly heroes in range", "all other friendly heroes in self's range":
 			return "ALL_FRIENDLY_IN_RANGE"
 		"each hero", "all heroes":
 			return "EACH_HERO"
@@ -396,7 +541,7 @@ static func _counter(raw: String) -> PackedStringArray:
 	var s: String = raw.strip_edges()
 	if s.is_empty():
 		return PackedStringArray()
-	var m: RegExMatch = _rx("^\\{(\\w+)\\} (?:equipped|they have equipped)$").search(s)
+	var m: RegExMatch = _rx("^\\{(\\w+)\\} (?:equipped|they have equipped|equipped to them)$").search(s)
 	if m != null:
 		return PackedStringArray(["TRAIT_EQUIPPED", "{%s}" % m.get_string(1)])
 	m = _rx("^equipped \\{(\\w+)\\}(?: they have)?$").search(s)
@@ -407,7 +552,7 @@ static func _counter(raw: String) -> PackedStringArray:
 	m = _rx("^(\\d+) missing hp$").search(s)
 	if m != null:
 		return PackedStringArray(["MISSING_HP", m.get_string(1)])
-	if _rx("^charged energy(?: their player has)?$").search(s) != null:
+	if _rx("^(?:charged )?energy(?: their player has)?$").search(s) != null:
 		return PackedStringArray(["ENERGY"])
 	# "friendly Hero who has 5 or less HP" / "with 5 HP or less"; "other" leaves the hero itself out.
 	m = _rx("^(other )?friendly (?:character|hero) (?:who has (\\d+) or less hp|with (\\d+) hp or less)$").search(s)

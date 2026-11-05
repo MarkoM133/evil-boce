@@ -149,12 +149,23 @@ The effect continues from where it stopped; the state can be saved in between.
 
 ## What the parser reads today
 
-Phase prefixes, `Once Per Turn`, `may`, `[Range]`, `If <hero> is activated`, `While <hero> is
-activated`, `If you win this Battle`, `When this Stage is revealed`, `Terrain:` lines (data,
-not an effect); stat bonuses with `for every …` and `until the end of the turn`; `takes N DMG`,
-`takes ±N DMG from all sources`; heals; `move up to N spaces`; `Knockback an Opponent's Hero N
-spaces …`; `move N spaces towards you`; `immune to Knockback`; `Place a Wall`; `Reveal /
-activate / deactivate a Core`; `charge / discharge N Energy`; cost changes; `roll … again`;
+Phase prefixes, `Once Per Turn`, `may`, `If <hero> is activated`, `While <hero> / the equipped Hero is
+activated`, `If the equipped Hero is activated, …`, `If you win this Battle`, `If the Opponent's Hero in this
+Battle has a {Sword} equipped, …` (`IF OPP_EQUIPPED`), `When this Stage is revealed`, `Terrain:` lines (data,
+not an effect). Range (rule B, 2026-11-05) next to its target: `an Opponent's Hero in Range`, `a friendly Hero in
+Range`, `a Core in Range`, `a Wall … in Range` set `RANGE` and read on; `If an Opponent's Hero is in Range, …`
+too; `Opponent's Heroes in Range can't claim a Stage this turn` is `NO_CLAIM ALL_ENEMY_IN_RANGE`; the old
+`[Range]` head still reads. The hero's first name alone is SELF (`Giorno may …`). Stat bonuses with `for every /
+each …` and `until the end of the turn`; `takes N DMG`, `takes ±N DMG from all sources`, `takes 1 less DMG from
+each source`; heals; `move up to N spaces`; `Knockback an Opponent's Hero N spaces, away from your Hero` /
+`Knock … back N spaces`; `Choose an Opponent's Hero in Range.` names the target of the next sentence (`Knock them
+back 3 spaces.`); `move N spaces towards you / your Hero`; `Swap your Hero with another friendly Hero that is in
+an Opponent's Hero's Range` (`SWAP FRIENDLY ENGAGED`); `immune to Knockback`; `Place a Wall (on an empty space)`;
+`Reveal / activate / deactivate a Core`; `Move a Core up to N spaces` and after it `If an Opponent's Hero activates
+that Core this turn, they take N DMG` (`TRAP_CORE`); `If he does, …` / `If you do, …` adds to the sentence before;
+`gain / lose N Energy` (`they lose …` is the opponent; charge / discharge still read); `for each Energy their
+player has`; cost changes (`… Battle Phase cards cost 2 Energy more this turn`); `play a {Sword} Equipment with a
+cost of 3 or less without paying its cost` (`FREE_PLAY`); `roll … again`;
 `discard a card`; `remove an Evolution`; `cannot take a Stage`; `the Opponent's Hero in this Battle takes all
 of the damage` (`FULL_HIT`; a sentence `Your Opponent can't discard cards to reduce it` after it is skipped); `As an additional cost, take
 N DMG` (or `…, your Hero takes N DMG`: `COST_DAMAGE`); `Your Opponent chooses:` with two dashed lines. Clauses joined by "and" are read one by

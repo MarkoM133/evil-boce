@@ -24,10 +24,11 @@ func test_fx_grammar_round_trip() -> void:
 
 
 func test_text_of_the_fixture_cards() -> void:
-	assert_eq(catalog.get_card("TF-020").fx, "PREROLL: HEAL SELF 5\nPLAY BONUS RED: OWN_COST -1")
-	assert_eq(catalog.get_card("TF-021").fx, "PASSIVE BONUS RED: BUFF EQUIPPED DMG 1")
+	# The card's one bonus colour is not named (BONUS alone means the same; 2026-11-05).
+	assert_eq(catalog.get_card("TF-020").fx, "PREROLL: HEAL SELF 5\nPLAY BONUS: OWN_COST -1")
+	assert_eq(catalog.get_card("TF-021").fx, "PASSIVE BONUS: BUFF EQUIPPED DMG 1")
 	assert_eq(catalog.get_card("TF-022").fx, "PREROLL: HEAL SELF 2\nPREROLL INSTEAD BONUS: HEAL SELF 4")
-	assert_eq(catalog.get_card("TF-023").fx, "PREROLL: HEAL SELF 1\nPREROLL BONUS YELLOW: CHARGE ME 1")
+	assert_eq(catalog.get_card("TF-023").fx, "PREROLL: HEAL SELF 1\nPREROLL BONUS: CHARGE ME 1")
 	for id: String in ["TF-020", "TF-021", "TF-022", "TF-023"]:
 		assert_true(catalog.get_card(id).is_ready(), id + " ready")
 

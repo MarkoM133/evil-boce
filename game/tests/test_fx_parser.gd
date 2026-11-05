@@ -61,7 +61,7 @@ func test_actions_and_equipment() -> void:
 	_assert_fx(_fx("Action", "Raitei", "Battle Phase: As an additional cost, your Hero takes 3 DMG."), "BATTLE: COST_DAMAGE 3")
 	_assert_fx(_fx("Action", "Divine Departure", "Battle Phase: If you win this Battle, the Opponent's Hero in this Battle takes all of the damage. Your Opponent can't discard cards to reduce it."),
 		"BATTLE IF WIN: FULL_HIT OPP")
-	_assert_fx(_fx("Action", "Encore", "Roll Phase: You may roll the activated Hero again."), "ROLL OPTIONAL: ROLL_AGAIN")
+	_assert_fx(_fx("Action", "Encore", "Roll Phase: You may roll the activated Hero again."), "ROLL: ROLL_AGAIN")
 	_assert_fx(_fx("Action", "Mend", "Preroll Phase: Heal 5 HP."), "PREROLL: HEAL SELF 5")
 	_assert_fx(_fx("Action", "Bricks", "[Range] Preroll Phase: Place a Wall."), "PREROLL RANGE: WALL")
 	_assert_fx(_fx("Action", "Peek", "[Range] Preroll Phase: Reveal a Core."), "PREROLL RANGE: REVEAL_CORE")
@@ -79,6 +79,58 @@ func test_actions_and_equipment() -> void:
 		"PASSIVE IF ACTIVATED: COST OPP 2")
 	_assert_fx(_fx("Evolution", "Kaido Dragon", "Kaido gains +1000 Power for every 3 missing HP.", {"hero": "Kaido"}),
 		"PASSIVE: BUFF SELF PWR 1000 PER MISSING_HP 3")
+
+
+## The card wording agreed on 2026-11-05 (range next to the target, gain / lose Energy, your Hero, additional).
+func test_wording_2026_11_05() -> void:
+	var none: Dictionary = {"color": "None", "bonusColors": ["Red"]}
+	_assert_fx(_fx("Action", "Observation Haki", "Preroll Phase: Reveal a Core in Range.\nCyan Bonus: This card costs 1 less.", none),
+		"PREROLL RANGE: REVEAL_CORE\nPLAY BONUS CYAN: OWN_COST -1")
+	_assert_fx(_fx("Action", "Conqueror's Haki", "Postroll Phase: Opponent's Heroes in Range can't claim a Stage this turn.\nRed Bonus: This card costs 1 less.", none),
+		"POSTROLL: NO_CLAIM ALL_ENEMY_IN_RANGE\nPLAY BONUS: OWN_COST -1")
+	_assert_fx(_fx("Action", "Jenga Cannon", "Preroll Phase: Place a Wall on an empty space in Range."), "PREROLL RANGE: WALL")
+	_assert_fx(_fx("Action", "Anti-Manner Kick Course", "Postroll Phase: Knockback an Opponent's Hero in Range 3 spaces, away from your Hero."),
+		"POSTROLL RANGE: KNOCKBACK ENEMY 3 AWAY")
+	_assert_fx(_fx("Action", "Anti-Manner Kick Course", "Postroll Phase: Choose an Opponent's Hero in Range. Knock them back 3 spaces."),
+		"POSTROLL RANGE: KNOCKBACK ENEMY 3 AWAY")
+	_assert_fx(_fx("Action", "Bon Apetit", "Preroll Phase: A friendly Hero in Range heals 3 HP.\nPurple Bonus: They heal an additional 1 HP.", none),
+		"PREROLL RANGE: HEAL FRIENDLY 3\nPREROLL RANGE INSTEAD BONUS PURPLE: HEAL FRIENDLY 4")
+	_assert_fx(_fx("Action", "Intercept", "Postroll Phase: Swap your Hero with another friendly Hero in Range that is in an Opponent's Hero's Range.\nPurple Bonus: This card costs 1 less.", none),
+		"POSTROLL RANGE: SWAP FRIENDLY ENGAGED\nPLAY BONUS PURPLE: OWN_COST -1")
+	_assert_fx(_fx("Action", "Soul Pocus", "Postroll Phase: Your Opponent chooses one:\n- You gain 2 Energy and they lose 2 Energy.\n- Your Hero heals 3 HP and an Opponent's Hero in Range takes 3 DMG."),
+		"POSTROLL RANGE: CHOOSE OPP [CHARGE ME 2; DISCHARGE OPP 2] [HEAL SELF 3; DAMAGE ENEMY 3]")
+	_assert_fx(_fx("Hero", "Luffy", "Postroll Phase Once Per Turn: Luffy may activate a Core in Range."), "POSTROLL ONCE OPTIONAL RANGE: ACTIVATE_CORE")
+	_assert_fx(_fx("Action", "Soul Pocus", "Postroll Phase: Your Opponent in Range chooses one:
+- You gain 2 Energy and they lose 2 Energy.
+- Your Hero heals 3 HP and an Opponent's Hero takes 3 DMG."),
+		"POSTROLL RANGE: CHOOSE OPP [CHARGE ME 2; DISCHARGE OPP 2] [HEAL SELF 3; DAMAGE ENEMY 3]")
+	_assert_fx(_fx("Hero", "Giorno Giovanna", "Postroll Phase Once Per Turn: Giorno may deactivate a Core. If he does, a friendly Hero in Range heals 2 HP."),
+		"POSTROLL ONCE OPTIONAL RANGE: DEACTIVATE_CORE SELF 1; HEAL FRIENDLY 2")
+	_assert_fx(_fx("Action", "Observation Killing", "Postroll Phase: If an Opponent's Hero is in Range, your Opponent's Battle Phase cards cost 2 Energy more this turn."),
+		"POSTROLL RANGE: COST OPP 2 BATTLE TURN")
+	_assert_fx(_fx("Stage", "Egghead", "Each Hero gets +1000 Power for each Energy their player has.\nTerrain: None"), "PASSIVE: BUFF EACH_HERO PWR 1000 PER ENERGY")
+	_assert_fx(_fx("Hero", "Sanji", "Other friendly Heroes in Sanji's Range get +2000 Power."), "PASSIVE: BUFF ALL_FRIENDLY_IN_RANGE PWR 2000")
+	_assert_fx(_fx("Action", "Life Giver", "Preroll Phase: Move a Core in Range up to 2 spaces. If an Opponent's Hero activates that Core this turn, they take 3 DMG."),
+		"PREROLL RANGE: PICK_CORE; MOVE_CORE 2; TRAP_CORE 3")
+	_assert_fx(_fx("Equipment", "Enma", "Preroll Phase: If the equipped Hero is activated, lose 1 Energy.\nYellow Bonus: +1000 Power.", {"color": "None", "bonusColors": ["Yellow"]}),
+		"PREROLL IF ACTIVATED: DISCHARGE ME 1\nPASSIVE BONUS: BUFF EQUIPPED PWR 1000")
+	_assert_fx(_fx("Hero", "Kaido", "Kaido takes 1 less DMG from each source."), "PASSIVE: DAMAGE_MOD SELF -1")
+	_assert_fx(_fx("Equipment", "Wado Ichimonji", "The equipped Hero gets +1000 Power for each {Sword} equipped to them."),
+		"PASSIVE: BUFF EQUIPPED PWR 1000 PER TRAIT_EQUIPPED {Sword}")
+	_assert_fx(_fx("Equipment", "Gryphon", "While the equipped Hero is activated, your {Haki} cards cost 1 less.\nRed Bonus: +1000 Power.", none),
+		"PASSIVE IF ACTIVATED: COST ME -1 {Haki}\nPASSIVE BONUS: BUFF EQUIPPED PWR 1000")
+	_assert_fx(_fx("Assist", "Mihawk", "Battle Phase: If the Opponent's Hero in this Battle has a {Sword} equipped, your Hero gets +1000 Power.\nYellow Bonus: Your Hero gets an additional +1000 Power.", {"color": "None", "bonusColors": ["Yellow"]}),
+		"BATTLE IF OPP_EQUIPPED {Sword}: BUFF SELF PWR 1000\nBATTLE BONUS IF OPP_EQUIPPED {Sword}: BUFF SELF PWR 1000")
+	_assert_fx(_fx("Hero", "Zoro", "Postroll Phase Once Per Turn: Zoro may deactivate a Core to play a {Sword} Equipment with a cost of 3 or less without paying its cost."),
+		"POSTROLL ONCE OPTIONAL: DEACTIVATE_CORE SELF 1; FREE_PLAY 3 {Sword} Equipment")
+	_assert_fx(_fx("Action", "Full Body Armament Haki", "Preroll Phase: Your Hero is immune to Knockback this turn.\nBlue Bonus: They take 1 less DMG from each source.", {"color": "None", "bonusColors": ["Blue"]}),
+		"PREROLL: STATUS SELF IMMUNE_KB TURN\nPREROLL BONUS: DAMAGE_MOD SELF -1 TURN")
+	_assert_fx(_fx("Action", "Parage Shot", "Battle Phase: If you win this Battle, remove the top Evolution from the Opponent's Hero in this Battle."), "BATTLE IF WIN: REMOVE_EVO ENEMY")
+	_assert_fx(_fx("Action", "Gomu Gomu no Rocket", "Roll Phase: After your Hero's roll, you may roll them again."), "ROLL: ROLL_AGAIN")
+	_assert_fx(_fx("Evolution", "Luffy, Gear Second", "Roll Phase: After Luffy's roll, you may roll him again. If you do, Luffy takes 2 DMG that can't be reduced.", {"hero": "Luffy"}),
+		"ROLL OPTIONAL: ROLL_AGAIN; DAMAGE SELF 2 TRUE")
+	_assert_fx(_fx("Action", "Taunt", "Postroll Phase: Make an Opponent's Hero move 2 spaces towards your Hero.\nRed Bonus: They move 1 additional space.", none),
+		"POSTROLL: KNOCKBACK ENEMY 2 TOWARDS\nPOSTROLL INSTEAD BONUS: KNOCKBACK ENEMY 3 TOWARDS")
 
 
 func test_stages() -> void:
@@ -129,7 +181,7 @@ func test_colour_bonus_lines() -> void:
 	# Colorless cards (2026-11-01): "<Colour> Bonus:" lines, as the drafts of the twelve cards say them.
 	var none: Dictionary = {"color": "None", "bonusColors": ["Red"]}
 	_assert_fx(_fx("Action", "Taunt", "Postroll Phase: Make an Opponent's Hero move 2 spaces towards you.\nRed Bonus: It moves 3 spaces instead.", none),
-		"POSTROLL: KNOCKBACK ENEMY 2 TOWARDS\nPOSTROLL INSTEAD BONUS RED: KNOCKBACK ENEMY 3 TOWARDS")
+		"POSTROLL: KNOCKBACK ENEMY 2 TOWARDS\nPOSTROLL INSTEAD BONUS: KNOCKBACK ENEMY 3 TOWARDS")
 	_assert_fx(_fx("Action", "Bon Apetit", "[Range] Preroll Phase: A friendly Hero heals 3 HP.\nPurple Bonus: It heals 4 HP instead.", none),
 		"PREROLL RANGE: HEAL FRIENDLY 3\nPREROLL RANGE INSTEAD BONUS PURPLE: HEAL FRIENDLY 4")
 	_assert_fx(_fx("Action", "Observation Haki", "[Range] Preroll Phase: Reveal a Core.\nCyan Bonus: This card costs 1 less to play.", none),
