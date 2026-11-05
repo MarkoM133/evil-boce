@@ -7,6 +7,7 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFxWorker } from './fx-claude.mjs';
+import { handleFs } from './fs-api.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = path.join(ROOT, 'server', 'config.local.json');
@@ -25,6 +26,8 @@ async function loadConfig() {
     port: Number(process.env.PORT || cfg.port || 5100),
     // Ključ za Claude prijedloge fx-a (server/fx-claude.mjs); samo ovdje, nikad u gitu ni u pregledniku.
     anthropicApiKey: cfg.anthropicApiKey || '',
+    // Spremanje preko servera (mobitel, Marko 2026-11-05): nacrti, fx, wishlist, art. "serverWrites": false ga gasi.
+    serverWrites: cfg.serverWrites !== false,
     hosts: (process.env.HOST ? process.env.HOST.split(',') : cfg.hosts || ['127.0.0.1']).map(s => s.trim()).filter(Boolean),
   };
 }
@@ -133,7 +136,7 @@ async function api(req, res, parts) {
   const [, what, slug] = parts;
   if (what === 'info' && req.method === 'GET') {
     const db = await readJson(path.join(cfg.drive, 'data', 'cards.json'));
-    return send(res, 200, { folder: path.basename(cfg.drive), version: db?.version ?? 0, cards: db?.cards.length ?? 0, logo: (await findLogo()) ? 'logo' : null });
+    return send(res, 200, { folder: path.basename(cfg.drive), version: db?.version ?? 0, cards: db?.cards.length ?? 0, logo: (await findLogo()) ? 'logo' : null, writable: cfg.serverWrites });
   }
   // Sažeci partija koje igra piše u stats/ (kartica Balance); samo čitanje.
   if (what === 'stats' && req.method === 'GET') {
@@ -154,6 +157,7 @@ async function api(req, res, parts) {
     }
     return send(res, 200, list);
   }
+  if (what === 'fs') return handleFs(req, res, { drive: cfg.drive, enabled: cfg.serverWrites, send, fail });
   if (what !== 'decks') return fail(res, 404, 'unknown API');
 
   if (!slug) {

@@ -254,7 +254,7 @@ export function createSetsView(ctx) {
           ctx.toast(`Set ${s.code} saved.`);
           ctx.render();
         }) }, 'Save set'),
-        ctx.canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer).')));
+        ctx.canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer), or Card Studio opened through Marko\'s computer.')));
   }
 
   function renderDefaultPanel() {

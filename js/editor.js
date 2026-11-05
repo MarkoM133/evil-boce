@@ -60,7 +60,9 @@ export function createEditor(env) {
     claude: {}, // Claude prijedlozi fx-a po karti: { waiting, at, res } (vidi askClaude)
   };
   const store = () => env.state.store;
-  const canWrite = () => store()?.kind === 'folder';
+  // Spremanje: zajednički folder na računalu, ili server koji smije spremati (mobitel). Publish samo iz foldera.
+  const canWrite = () => store()?.kind === 'folder' || !!store()?.root?.remote;
+  const canPublish = () => store()?.kind === 'folder';
   const who = () => { try { return localStorage.getItem(WHO_KEY) || ''; } catch { return ''; } };
   const setWho = name => { try { localStorage.setItem(WHO_KEY, name); } catch {} };
   const db = () => env.state.db;
@@ -1166,7 +1168,7 @@ export function createEditor(env) {
       ];
     }
     return h('section', { class: `ce-form c-tint-${w.color ?? 'none'}` }, ...body, statusRow,
-      canWrite() ? null : h('p', { class: 'small muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer).'));
+      canWrite() ? null : h('p', { class: 'small muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer), or Card Studio opened through Marko\'s computer.'));
   }
 
   // Tagovi kao čipovi (× makne), polje "Add trait…" s prijedlozima iz popisa traitova. from: 1 = bez prvog taga.
@@ -1813,7 +1815,7 @@ export function createEditor(env) {
     const marko = who() === 'Marko';
     const locked = id => ed.locks[id] && lockState(ed.locks[id], who()) === 'other';
     const selected = list.filter(x => !locked(x.id) && !ed.pubOff.has(x.id));
-    const why = !canWrite() ? 'Publishing needs the shared folder (Chrome or Edge on a computer).'
+    const why = !canPublish() ? 'Publish runs on a computer with the shared folder open (Chrome or Edge).'
       : !marko ? 'Only Marko publishes (Signed in as Marko).'
         : !ed.agency ? 'Agency FB is not on this computer: the card PNGs must be made on a computer that has it.'
           : !selected.length ? 'Nothing selected.' : null;
@@ -1904,7 +1906,7 @@ export function createEditor(env) {
     const ok = db().updated === l.after.updated;
     return h('div', { class: 'ce-last' },
       h('span', { class: 'small' }, `Last Publish: ${new Date(l.at).toLocaleString()}${l.who ? ` by ${l.who}` : ''}, ${Object.keys(l.drafts).length} cards${l.bumped ? `, version ${l.after.version}` : ''}.`),
-      ok ? h('button', { class: 'ghost', type: 'button', disabled: !marko, onclick: () => env.guard(undoPublish) }, 'Undo last Publish')
+      ok ? h('button', { class: 'ghost', type: 'button', disabled: !marko || !canPublish(), onclick: () => env.guard(undoPublish) }, 'Undo last Publish')
         : h('small', { class: 'muted' }, 'Cards changed since then, so it can no longer be undone.'));
   }
 

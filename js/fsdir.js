@@ -18,6 +18,15 @@ function idb(mode, fn) {
 }
 
 export const saveRoot = handle => idb('readwrite', s => s.put(handle, 'root'));
+
+// Folder preko servera (mobitel, Marko 2026-11-05): isti pozivi, ali čitanje ide kao GET, a pisanje kao PUT na
+// server na Markovom računalu (server/fs-api.mjs). Server sam pazi što smije: nacrti, fx, wishlist, art, setovi.
+export const remoteRoot = name => ({ remote: true, name });
+const isRemote = root => root?.remote === true;
+async function remoteFail(r, what) {
+  const body = await r.json().catch(() => ({}));
+  return new Error(body.error || `${what} failed (${r.status}).`);
+}
 // Preglednik koji ne odgovori na IndexedDB (headless, blokirani podaci) ne smije zaustaviti start: nakon 2 s bez foldera.
 export const loadRoot = () => Promise.race([idb('readonly', s => s.get('root')).catch(() => undefined), new Promise(r => setTimeout(() => r(undefined), 2000))]);
 
@@ -58,6 +67,12 @@ export async function getDir(root, path, create = false) {
 }
 
 export async function getFile(root, path) {
+  if (isRemote(root)) {
+    const r = await fetch(path, { cache: 'no-store' });
+    if (r.status === 404) return null;
+    if (!r.ok) throw await remoteFail(r, `Reading ${path}`);
+    return new File([await r.blob()], path.split('/').pop());
+  }
   const { dirs, name } = split(path);
   const d = await dirAt(root, dirs, false);
   if (!d) return null;
@@ -70,11 +85,22 @@ export async function getFile(root, path) {
 }
 
 export async function readText(root, path) {
+  if (isRemote(root)) {
+    const r = await fetch(path, { cache: 'no-store' });
+    if (r.status === 404) return null;
+    if (!r.ok) throw await remoteFail(r, `Reading ${path}`);
+    return r.text();
+  }
   const f = await getFile(root, path);
   return f ? f.text() : null;
 }
 
 export async function writeFile(root, path, data) {
+  if (isRemote(root)) {
+    const r = await fetch(`api/fs?path=${encodeURIComponent(path)}`, { method: 'PUT', body: data });
+    if (!r.ok) throw await remoteFail(r, `Saving ${path}`);
+    return;
+  }
   const { dirs, name } = split(path);
   const d = await dirAt(root, dirs, true);
   const w = await (await d.getFileHandle(name, { create: true })).createWritable();
@@ -83,12 +109,22 @@ export async function writeFile(root, path, data) {
 }
 
 export async function removeFile(root, path) {
+  if (isRemote(root)) {
+    const r = await fetch(`api/fs?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+    if (!r.ok) throw await remoteFail(r, `Removing ${path}`);
+    return;
+  }
   const { dirs, name } = split(path);
   const d = await dirAt(root, dirs, false);
   if (d) await d.removeEntry(name);
 }
 
 export async function listFileNames(root, path) {
+  if (isRemote(root)) {
+    const r = await fetch(`api/fs?list=${encodeURIComponent(path)}`, { cache: 'no-store' });
+    if (!r.ok) throw await remoteFail(r, `Listing ${path}`);
+    return r.json();
+  }
   const d = await getDir(root, path);
   if (!d) return [];
   const out = [];

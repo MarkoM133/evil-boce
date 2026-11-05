@@ -535,7 +535,7 @@ function render() {
     if (state.tab !== 'editor' && !cardEditor.leave()) state.tab = 'editor';
     // Stranice Card editora (i otvorena karta) su u istom okviru s izbornikom, bez trake heroja.
     // Tko radi na ovom računalu: pita se jednom, kad je folder otvoren (samo tada se sprema), i pamti se na računalu.
-    if (state.store.kind === 'folder' && !cardEditor.who() && !state.whoLater) app.replaceChildren(renderSetup());
+    if ((state.store.kind === 'folder' || state.store.root?.remote) && !cardEditor.who() && !state.whoLater) app.replaceChildren(renderSetup());
     // Traka heroja samo na stranicama za gledanje (Cards, Decks, Balance); izrada (Card editor, Tools) je bez nje,
     // kao dio izbornika ispod crte, pa traka ne skače unutar iste grupe (Marko 2026-11-03).
     else if (state.tab === 'editor' || state.tab === 'tools') app.replaceChildren(renderMain());
@@ -744,7 +744,7 @@ function folderInfo() {
   const n = state.db.cards.length;
   const server = state.store.kind === 'server';
   return [
-    h('span', { class: 'folder-name', title: server ? 'Data from the computer, via server' : 'Chosen Drive folder' }, server ? `${state.store.name} via server` : state.store.name),
+    h('span', { class: 'folder-name', title: server ? (state.store.root?.remote ? 'Saved through the server on Marko\'s computer; Publish stays on the computer' : 'Data from the computer, via server') : 'Chosen Drive folder' }, server ? `${state.store.name} via server` : state.store.name),
     h('span', { class: 'folder-db' },
       h('button', { class: `version-link${state.tab === 'history' ? ' active' : ''}`, title: 'Change history', onclick: () => openHistory() }, `Version ${state.db.version}`),
       h('span', { class: 'sep', 'aria-hidden': 'true' }), `${n} ${plural(n, 'card', 'cards')}`),
@@ -772,7 +772,7 @@ const PEOPLE = [['Marko', 'Publishes cards into the game, edits the frames'], ['
 function noFolderNote() {
   const ua = navigator.userAgent;
   const phone = /Android|iPhone|iPad|Mobile/i.test(ua);
-  if (phone) return 'A phone browser can\'t open a folder. Open the page on a computer in Chrome or Edge.';
+  if (phone) return 'A phone browser can\'t open a folder. On a phone, open Card Studio through Marko\'s computer (the Tailscale link); a computer uses Chrome or Edge.';
   const name = /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) && !/Chrome\//.test(ua) ? 'Safari' : 'This browser';
   return `${name} can't open a folder from a web page, so Card Studio can't read or save the cards here. Open the page in Chrome or Edge.`;
 }
@@ -822,7 +822,7 @@ function renderSetup() {
       h('li', {}, h('strong', {}, 'Balance'), ' cost curves and colour coverage')),
     h('div', { class: 'setup-steps' },
       step(1, 'Shared folder', open, folderBody),
-      can ? step(2, 'Who works on this computer?', false, whoBody) : null));
+      can || open ? step(2, state.store?.root?.remote ? 'Who is this?' : 'Who works on this computer?', false, whoBody) : null));
 }
 
 // Import je uz podatke gore (samo s odabranim folderom); kad u sanduču export/ nešto čeka, gumb je crven s brojem.

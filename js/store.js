@@ -54,6 +54,8 @@ export function serverStore(info) {
     kind: 'server',
     name: info.folder,
     canImport: false,
+    // Server koji smije spremati (mobitel, 2026-11-05): editor piše kroz njega; Publish i Import ostaju na računalu.
+    root: info.writable ? fs.remoteRoot(info.folder) : undefined,
     async readDb() {
       const r = await fetch('data/cards.json', { cache: 'no-store' });
       if (r.status === 404) return emptyDb();

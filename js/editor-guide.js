@@ -145,7 +145,7 @@ export function createGuideView(ctx) {
       h('div', { class: 'ce-actions' },
         h('button', { class: 'primary', type: 'button', disabled: !ctx.canWrite(), onclick: () => ctx.guard(save) }, 'Save guide'),
         h('button', { class: 'ghost', type: 'button', onclick: exportMd }, 'Export .md'),
-        ctx.canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer).')));
+        ctx.canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer), or Card Studio opened through Marko\'s computer.')));
   }
 
   return { render, isDirty: () => v.dirty };
