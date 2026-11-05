@@ -48,7 +48,7 @@ beside it is never written.
   which counts as a turn in the card round. An Action needs no `OPTIONAL` and it changes nothing
   there: playing the card is the "may" (a "Roll Phase:" Action is played from the roll offer, or
   the offer is passed). `RANGE`: a condition on the targets, not on the whole effect (range rule B, Marko
-  and Tarik 2026-11-05: the card text says it next to the target, "a friendly Hero in Range", "an Opponent's
+  2026-11-05: the card text says it next to the target, "a friendly Hero in Range", "an Opponent's
   Hero in Range", "a Core in Range", "Place a Wall … in Range"; there is no RANGE chip and no "[Range]" at
   the start any more). With `RANGE` the chosen targets, walls and cores must be within SELF's range. On an
   effect that names a player, not a hero (`COST OPP …`, `DISCHARGE OPP …`, `CHOOSE OPP …`), the text says
@@ -132,7 +132,7 @@ moves into or out of range gains or loses the effect at once.
 | `FULL_HIT OPP` | | with `BATTLE IF WIN`, on a line of its own: if the card's hero wins this battle, its hit lands whole on the loser's hero, none of it on cards from the hand (the hit already only goes to a hero of this battle). The line arms as the card is played and counts only on a win |
 | `NOOP` | | nothing (a "no" branch) |
 | `FREE_PLAY <max cost> [{Trait}] [Type]` | | play a card from the hand on SELF without paying (colour rules do not apply); `Type` limits it to Action, Equipment or Assist |
-| `SWAP FRIENDLY [ENGAGED]` | | SELF and a friendly hero trade hexes (`ENGAGED`: one that an enemy hero has in its range, "that is in an Opponent's Hero's Range"; with `RANGE` it must also be in SELF's range; Marko and Tarik 2026-11-05) |
+| `SWAP FRIENDLY [ENGAGED]` | | SELF and a friendly hero trade hexes (`ENGAGED`: one that an enemy hero has in its range, "that is in an Opponent's Hero's Range"; with `RANGE` it must also be in SELF's range; Marko 2026-11-05) |
 | `DUEL_TOP <STAT> <n> [PICK]` | | stage: the players show their top card (the cards stay on top); the higher cost gets +n for its heroes (on the stage under `REVEAL`, for the rest of the phase under `BATTLE`); `PICK`: the winner picks one of their heroes in the battle instead; a tie gives nothing |
 
 Extra arguments: `DAMAGE … TRUE` ignores damage modifiers ("cannot be blocked");
@@ -171,7 +171,7 @@ that Core this turn, they take N DMG` (`TRAP_CORE`); `If he does, …` / `If you
 `gain / lose N Energy` (`they lose …` is the opponent; charge / discharge still read); `for each Energy their
 player has`; cost changes (`{Haki} cards cost 1 Energy less`, `This card costs 1 Energy less`, `your Opponent's cards cost 2
 Energy more`, `… Battle Phase cards cost 2 Energy more this turn`); stat bonuses with `gets` (the text standard: gets
-for stats, gain / lose for Energy, for each, Knockback; Marko and Tarik 2026-11-05 evening); `play a {Sword} Equipment with a
+for stats, gain / lose for Energy, for each, Knockback; Marko 2026-11-05 evening); `play a {Sword} Equipment with a
 cost of 3 or less without paying its cost` (`FREE_PLAY`); `roll … again`;
 `discard a card`; `remove an Evolution`; `cannot take a Stage`; `the Opponent's Hero in this Battle takes all
 of the damage` (`FULL_HIT`; a sentence `Your Opponent can't discard cards to reduce it` after it is skipped); `As an additional cost, take

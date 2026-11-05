@@ -274,7 +274,7 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 		e.cond = "OPP_EQUIPPED"
 		e.cond_arg = _trait_case("{%s}" % m.get_string(1))
 		low = m.get_string(2)
-	# Range rule B (Marko and Tarik 2026-11-05): range is written next to its target. "If an Opponent's Hero is
+	# Range rule B (Marko 2026-11-05): range is written next to its target. "If an Opponent's Hero is
 	# in Range, …" makes the whole card need an enemy in range; "a Core in Range", "an Opponent's Hero in Range" …
 	# set RANGE and read on without it. Group phrases ("all other Heroes in Range") keep their own target word.
 	m = _rx("^if an opponent's hero is in range, (.*)$").search(low)

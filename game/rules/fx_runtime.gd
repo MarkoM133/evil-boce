@@ -1078,7 +1078,7 @@ func _free_play_options(s: GameState, slot: int, args: PackedStringArray, on: He
 
 
 ## The hero is in a fight: an enemy reaches it or it reaches an enemy.
-## ENGAGED (Intercept, Marko and Tarik 2026-11-05): an enemy hero has `h` in its range ("a friendly Hero
+## ENGAGED (Intercept, Marko 2026-11-05): an enemy hero has `h` in its range ("a friendly Hero
 ## that is in an Opponent's Hero's Range"); whether `h` reaches the enemy does not matter.
 func _engaged(s: GameState, h: HeroState) -> bool:
 	if h == null or not h.is_on_map():
