@@ -82,6 +82,10 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-checks .mark { font-weight: 800; }
 .ce-checks .ok .mark { color: var(--c-Green); }
 .ce-checks .bad .mark { color: var(--straw); }
+.ce-checks li.ce-checks-ok { display: block; }
+.ce-checks-ok summary { cursor: pointer; list-style: none; display: grid; grid-template-columns: 20px 1fr; gap: 6px; color: var(--muted); }
+.ce-checks-ok summary::-webkit-details-marker { display: none; }
+.ce-checks-ok ul { margin-top: 6px; }
 .ce-minis { display: flex; gap: 12px; }
 .ce-mini-fig { background: none; clip-path: none; padding: 0; display: grid; gap: 4px; justify-items: center; font: 500 13px var(--text); color: var(--muted); }
 .ce-mini-fig:hover { background: none; color: var(--bone); }
@@ -117,6 +121,10 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-zoom input { flex: 1; accent-color: var(--red); padding: 0; border: 0; background: none; }
 .ce-hint { text-align: center; max-width: 440px; margin: 0; }
 .ce-art-buttons { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.ce-more { position: relative; }
+.ce-more-menu { position: absolute; z-index: 20; right: 0; top: calc(100% + 6px); display: grid; gap: 6px; padding: 8px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgba(0,0,0,.5); min-width: 200px; }
+.ce-more-menu[hidden] { display: none; }
+.ce-more-menu > button { text-align: left; white-space: nowrap; }
 
 /* desno: forma */
 .ce-form { display: grid; gap: 14px; align-content: start; }
@@ -170,6 +178,13 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-adds .ce-add-effect { background: transparent; box-shadow: inset 0 0 0 1px var(--line); font-size: 15px; padding: 8px 14px; }
 .ce-adds .ce-add-effect:hover { box-shadow: inset 0 0 0 1px var(--muted); }
 .ce-adds .ce-text-ask { margin-left: auto; }
+.ce-hint-i { align-self: center; }
+.ce-hint-i summary { list-style: none; cursor: help; color: var(--muted); font-size: 18px; padding: 4px 6px; }
+.ce-hint-i summary::-webkit-details-marker { display: none; }
+.ce-hint-i[open] { flex-basis: 100%; order: 9; }
+.ce-hint-i[open] summary { display: inline-block; }
+.ce-hint-i p { margin: 4px 0 0; }
+.ce-evos { display: block; margin-top: 4px; }
 .ce-text-proposal { white-space: pre-wrap; font-family: inherit; }
 .ce-text-issues { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
 .ce-text-issues q { font-weight: 600; }

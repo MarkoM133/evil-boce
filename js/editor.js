@@ -27,7 +27,8 @@ export const PAGES = ['sets', 'publish', 'traits', 'guide', 'frames', 'wishlist'
 const PORTRAIT = ['Action', 'Equipment', 'Assist'];
 const HEROISH = ['Hero', 'Evolution'];
 const COLORS = Object.keys(TINTS);
-const STATUSES = ['draft', 'review', 'done'];
+// Review je maknut 2026-11-06 (nije korišten): karta je Draft ili Done, a Looks good je stavlja na Done.
+const STATUSES = ['draft', 'done'];
 const CORE_KINDS = ['Buff', 'Major', 'Debuff'];
 const ROMAN = ['I', 'II', 'III'];
 const WHO_KEY = 'evil-boce-who';
@@ -353,33 +354,19 @@ export function createEditor(env) {
     const w = ed.work;
     ed.checkBox = h('ul', { class: 'ce-checks' });
     const parts = [panel('Checks', ed.checkBox)];
-    if (w.type === 'Hero') parts.push(heroPanel(w));
-    if (PORTRAIT.includes(w.type)) parts.push(sameFramePanel(w));
-    if (w.type === 'Stage') parts.push(panel('Terrain', h('p', { class: 'small' }, 'The terrain line is added to the card by the editor, under the text. It is not typed in the text.')));
-    if (w.type === 'Core') parts.push(panel('Cores', h('p', { class: 'small' }, 'Cores are not in a set. They have their own list in Card editor › Sets.')));
+    // Same frame, Hero cards, Terrain i Cores su maknuti 2026-11-06: tip je u obrascu, evolucije ispod Aliasa.
     if (w.type !== 'Core') parts.push(fxPanel(w));
     if (PORTRAIT.includes(w.type)) { ed.balBox = h('div', {}); parts.push(ed.balBox); } else ed.balBox = null;
     parts.push(notesPanel(w));
     return h('aside', { class: 'ce-side' }, ...parts);
   }
 
-  function heroPanel(w) {
+  // Evolucije heroja i nova evolucija (bila je ploča Hero cards lijevo; Marko 2026-11-06).
+  function heroEvos(w) {
     const evos = db().cards.filter(c => c.type === 'Evolution' && !c.deleted && c.hero === w.name);
-    return panel('Hero cards',
-      h('p', { class: 'small' }, 'Aliases: ', h('strong', {}, (w.aliases ?? []).join(', ') || '–')),
-      h('p', { class: 'small' }, 'Evolutions: ', evos.length ? evos.map((e, i) => [i ? ', ' : null, h('button', { class: 'link', type: 'button', onclick: () => go(e.id) }, e.name.split(/,\s*/).pop())]).flat().filter(Boolean) : 'none yet',
-        ' · ', h('button', { class: 'link accent', type: 'button', onclick: () => newCard(setOf(w.id), 'Evolution', { hero: w.name, color: w.color }) }, 'New evolution')));
-  }
-
-  // Action, Equipment i Assist dijele okvir; sličice iste karte s drugim tipom (klik promijeni tip).
-  function sameFramePanel(w) {
-    const others = PORTRAIT.filter(t => t !== w.type);
-    const figs = others.map(t => {
-      const c = h('canvas', { class: 'ce-mini' });
-      thumbInto(c, { ...cardOf(w), type: t }, 96);
-      return h('button', { class: 'ce-mini-fig', type: 'button', title: `Make it ${t}`, onclick: () => { snap(true); w.type = t; changed(); env.render(); } }, c, h('span', {}, t));
-    });
-    return panel('Same frame', h('p', { class: 'small' }, `${PORTRAIT.join(', ').replace(/, (?=[^,]*$)/, ' and ')} share this frame. Only the small type label changes.`), h('div', { class: 'ce-minis' }, figs));
+    return h('small', { class: 'muted ce-evos' }, 'Evolutions: ',
+      evos.length ? evos.map((e, i) => [i ? ', ' : null, h('button', { class: 'link', type: 'button', onclick: () => go(e.id) }, e.name.split(/,\s*/).pop())]).flat().filter(Boolean) : 'none yet',
+      ' · ', h('button', { class: 'link accent', type: 'button', onclick: () => newCard(setOf(w.id), 'Evolution', { hero: w.name, color: w.color }) }, 'New evolution'));
   }
 
   // Claude prijedlog fx-a (Marko 2026-11-03): zahtjev ide u data/fx-requests/ u zajedničkom folderu, server na
@@ -748,7 +735,11 @@ export function createEditor(env) {
     const hist = [...(ed.history?.cards?.[w.id] ?? [])].reverse();
     // Objave prije povijesti editora: iz changelog.json (bez imena).
     const published = (env.state.changelog?.entries ?? []).filter(e => e.cards?.some(c => c.id === w.id)).map(e => ({ at: e.date, what: `published v${e.version}` })).reverse();
-    const lines = [...hist, ...published.filter(p => !hist.some(x => x.what === p.what))].slice(0, 8);
+    // Samo zadnja objava (Marko 2026-11-06): svaka karta je u svakoj Objavi, pa su te stavke gušile prave promjene.
+    const PUB = /^(published v\d+|Publish undone)/;
+    const merged = [...hist, ...published.filter(p => !hist.some(x => x.what === p.what))];
+    const lastPub = merged.find(x => /^published v\d+/.test(x.what));
+    const lines = merged.filter(x => !PUB.test(x.what) || x === lastPub).slice(0, 8);
     const input = h('input', { placeholder: 'Add a note…', onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); env.guard(() => addNote(e.target.value)); } } });
     return panel('Notes & history',
       ...notes.map(n => h('div', { class: 'ce-note' }, h('p', { class: 'small' }, h('strong', { class: n.who === 'Marko' ? 'red' : '' }, n.who || 'Note'), n.at ? ` · ${when(n.at)}` : ''), h('p', {}, n.text))),
@@ -794,9 +785,18 @@ export function createEditor(env) {
       h('button', { class: 'ghost', type: 'button', disabled: !ed.artFor && !w.art, onclick: startArt }, 'Edit art'),
       h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => fileIn.click() }, w.art ? 'Replace art' : 'Add art'),
       w.type === 'Stage' ? null : h('button', { class: 'ghost', type: 'button', onclick: () => { if (!leaveOk()) return; ed.work = null; ed.id = null; env.toast('Remove background works on a plain background colour: save the PNG there, then Replace art.'); env.openTab('tools'); } }, 'Remove background'),
-      h('button', { class: 'ghost', type: 'button', title: 'A new card with the next code in this set', onclick: duplicate }, 'Duplicate'),
-      h('button', { class: 'ghost', type: 'button', onclick: downloadPng }, 'Download PNG'),
     ];
+    // Rijetki gumbi u izborniku ⋯ (Marko 2026-11-06): Remove background, Duplicate, Download PNG.
+    if (buttons.length) {
+      const rare = buttons.splice(2).filter(Boolean);
+      rare.push(h('button', { class: 'ghost', type: 'button', title: 'A new card with the next code in this set', onclick: duplicate }, 'Duplicate'),
+        h('button', { class: 'ghost', type: 'button', onclick: downloadPng }, 'Download PNG'));
+      const menu = h('div', { class: 'ce-more-menu', hidden: true }, rare);
+      const close = () => { menu.hidden = true; };
+      for (const b of rare) b.addEventListener('click', close);
+      buttons.push(h('div', { class: 'ce-more' }, h('button', { class: 'ghost', type: 'button', title: 'More: Remove background, Duplicate, Download PNG', 'aria-haspopup': 'menu',
+        onclick: e => { e.stopPropagation(); menu.hidden = !menu.hidden; if (!menu.hidden) setTimeout(() => document.addEventListener('click', close, { once: true })); } }, 'More ▾'), menu));
+    }
     return h('section', { class: 'ce-centre' },
       views.length > 1 && !ed.artMode ? h('div', { class: 'ce-views' }, views.map(([k, label]) => h('button', { type: 'button', class: ed.view === k ? 'active' : '', onclick: e => {
         ed.view = k;
@@ -849,7 +849,15 @@ export function createEditor(env) {
     if (w !== ed.work) return;
     ed.warn = renderCard(ed.canvas, card, tpl, ed.art, ed.emblem);
     paintStage(card);
-    if (ed.checkBox) ed.checkBox.replaceChildren(...checks(w, card).map(([ok, text]) => h('li', { class: ok ? 'ok' : 'bad' }, h('span', { class: 'mark' }, ok ? '✓' : '!'), text)));
+    if (ed.checkBox) {
+      const all = checks(w, card);
+      const li = ([ok, text]) => h('li', { class: ok ? 'ok' : 'bad' }, h('span', { class: 'mark' }, ok ? '✓' : '!'), h('span', {}, text));
+      const oks = all.filter(([ok]) => ok);
+      // Zelene kvačice su jedan redak (Marko 2026-11-06); otvoren ostaje otvoren i kad se karta ponovo nacrta.
+      const more = oks.length ? h('li', { class: 'ok ce-checks-ok' }, h('details', { open: ed.oksOpen, ontoggle: e => { ed.oksOpen = e.currentTarget.open; } },
+        h('summary', {}, h('span', { class: 'mark' }, '✓'), h('span', {}, `${oks.length} ok`)), h('ul', { class: 'ce-checks' }, oks.map(li)))) : null;
+      ed.checkBox.replaceChildren(...all.filter(([ok]) => !ok).map(li), more);
+    }
     if (ed.balBox) ed.balBox.replaceChildren(...renderBalance(card));
   }
 
@@ -1163,7 +1171,7 @@ export function createEditor(env) {
     const seg = (items, value, onpick) => h('div', { class: 'ce-seg' }, items.map(([v, label]) => h('button', { type: 'button', class: v === value ? 'active' : '', onclick: () => onpick(v) }, label)));
     const text = textEditor(w);
     const statusRow = w.type === 'Core' ? null : h('div', { class: 'ce-status' }, h('span', { class: 'small muted' }, 'STATUS'),
-      seg(STATUSES.map(s => [s, s]), w.status ?? 'draft', v => { set('status', v); env.render(); }));
+      seg(STATUSES.map(s => [s, s]), w.status === 'done' ? 'done' : 'draft', v => { set('status', v); env.render(); }));
     let body;
     if (w.type === 'Hero' || w.type === 'Evolution') {
       const evo = w.type === 'Evolution';
@@ -1196,6 +1204,7 @@ export function createEditor(env) {
         h('h2', {}, 'Stats'),
         h('div', { class: 'ce-row ce-stats' }, STAT_KEYS.map(([k, label]) => field(h('span', { class: `stat-${k}` }, label), num(w.stats[k], e => set('stats', { ...w.stats, [k]: e.target.value === '' ? undefined : Number(e.target.value) }), { step: k === 'pwr' ? 1000 : 1 })))),
         w.type === 'Hero' ? field('ALIASES', h('input', { value: (w.aliases ?? []).join(', '), placeholder: 'Trish', oninput: e => set('aliases', e.target.value.split(',').map(x => x.trim()).filter(Boolean)) }), h('small', { class: 'muted' }, 'Other names a card\'s first tag may use for this hero.')) : null,
+        w.type === 'Hero' ? heroEvos(w) : null,
         h('h2', {}, 'Ability'),
         field('ABILITY NAME', h('input', { value: w.abilityNames?.[0] ?? '', oninput: e => set('abilityNames', [e.target.value, ...(w.abilityNames ?? []).slice(1)]) })),
         ...text,
@@ -1445,7 +1454,11 @@ export function createEditor(env) {
     const mods = once || revealed ? h('div', { class: 'ce-mods' }, revealed, once) : null;
     const bar = h('div', { class: 'ce-tokbar' }, toks, trait ? h('span', { class: 'ce-tokbar-sep' }) : null, trait, phrase);
     // Check text (Marko 2026-11-06): desno u istom redu; odgovor ide ispod.
-    const adds = h('div', { class: 'ce-adds' }, addEffect, bonusBtn, checkTextButton(w));
+    // Savjet za pisanje kao ⓘ (Marko 2026-11-06): hover pokaže, dodir otvori ispod reda.
+    const hintText = stage ? 'Type [ for a stat icon, or the start of a phrase from the Text guide: a list opens under the text.'
+        : 'Each effect is its own line; the phase and Once per turn set the effect the cursor is in (+ Effect starts a new one). Range goes in the text next to its target: "a friendly Hero in [RNG]". Type [ for a stat icon or the start of a phrase for suggestions.';
+    const hint = h('details', { class: 'ce-hint-i' }, h('summary', { title: hintText, 'aria-label': 'How to write the effect text' }, 'ⓘ'), h('p', { class: 'muted small' }, hintText));
+    const adds = h('div', { class: 'ce-adds' }, addEffect, bonusBtn, hint, checkTextButton(w));
     const tools = h('div', { class: 'ce-effect-tools' }, seg, mods);
     function refreshToggles() {
       const hd = here();
@@ -1456,9 +1469,7 @@ export function createEditor(env) {
     }
     refreshToggles();
     area.setAttribute('aria-label', 'Effect text');
-    return [tools, h('div', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-text-box' }, bar, h('div', { class: 'ce-ac-wrap' }, area, pop))), adds, textCheckBlock(w),
-      h('p', { class: 'muted small ce-ac-hint' }, stage ? 'Type [ for a stat icon, or the start of a phrase from the Text guide: a list opens under the text.'
-        : 'Each effect is its own line; the phase and Once per turn set the effect the cursor is in (+ Effect starts a new one). Range goes in the text next to its target: "a friendly Hero in [RNG]". Type [ for a stat icon or the start of a phrase for suggestions.')];
+    return [tools, h('div', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-text-box' }, bar, h('div', { class: 'ce-ac-wrap' }, area, pop))), adds, textCheckBlock(w)];
   }
 
   // ---------- izmjene, Undo ----------

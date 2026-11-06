@@ -12,7 +12,7 @@ const DEFAULT_PACK = 10;
 const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist'];
 const NEW_TYPES = TYPES;
 const COLORS = ['Cyan', 'Yellow', 'Purple', 'Red', 'Blue', 'Green'];
-const STATUS_FILTERS = [['', 'All statuses'], ['draft', 'Draft'], ['review', 'Review'], ['done', 'Done'], ['fx', 'Needs fx'], ['claude', 'Changed by Claude'], ['edited', 'Unpublished changes'], ['noart', 'No art']];
+const STATUS_FILTERS = [['', 'All statuses'], ['draft', 'Draft'], ['done', 'Done'], ['fx', 'Needs fx'], ['claude', 'Changed by Claude'], ['edited', 'Unpublished changes'], ['noart', 'No art']];
 // Nacrt koji je zadnji spremio Claude Code: Marko ga treba pogledati (oznaka nestane kad netko spremi kartu).
 const byClaude = d => d?.who === 'Claude Code';
 
@@ -143,7 +143,7 @@ export function createSetsView(ctx) {
     const shown = all.filter(c => {
       if (v.type && c.type !== v.type) return false;
       if (v.color && c.color !== v.color) return false;
-      if (['draft', 'review', 'done'].includes(v.status) && (c.status ?? 'draft') !== v.status) return false;
+      if (['draft', 'done'].includes(v.status) && (c.status === 'done' ? 'done' : 'draft') !== v.status) return false;
       if (v.status === 'fx' && !needsFx(c)) return false;
       if (v.status === 'edited' && !drafts[c.id]) return false;
       if (v.status === 'claude' && !byClaude(drafts[c.id])) return false;
