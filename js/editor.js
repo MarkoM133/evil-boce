@@ -354,8 +354,12 @@ export function createEditor(env) {
     const w = ed.work;
     ed.checkBox = h('ul', { class: 'ce-checks' });
     // Stanje u naslovu kao kod fx (Marko 2026-11-06): Ready ili Not ready; klik pokaže i zelene kvačice.
-    ed.checkPill = h('button', { type: 'button', class: 'ce-fx-state ce-check-pill', 'aria-expanded': String(!!ed.oksOpen), onclick: () => { ed.oksOpen = !ed.oksOpen; queueDraw(); } });
-    const parts = [h('section', { class: 'ce-panel' }, h('div', { class: 'ce-panel-head' }, h('h3', {}, 'Checks'), ed.checkPill), ed.checkBox)];
+    // Cijeli red naslova je gumb (mobitel: dodir bilo gdje u redu), pilula je samo oznaka.
+    const toggleOks = () => { ed.oksOpen = !ed.oksOpen; queueDraw(); };
+    ed.checkPill = h('span', { class: 'ce-fx-state ce-check-pill' });
+    ed.checkHead = h('div', { class: 'ce-panel-head ce-check-head', role: 'button', tabindex: 0, 'aria-expanded': String(!!ed.oksOpen), onclick: toggleOks,
+      onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleOks(); } } }, h('h3', {}, 'Checks'), ed.checkPill);
+    const parts = [h('section', { class: 'ce-panel' }, ed.checkHead, ed.checkBox)];
     // Same frame, Hero cards, Terrain i Cores su maknuti 2026-11-06: tip je u obrascu, evolucije ispod Aliasa.
     if (w.type !== 'Core') parts.push(fxPanel(w));
     if (PORTRAIT.includes(w.type)) { ed.balBox = h('div', {}); parts.push(ed.balBox); } else ed.balBox = null;
@@ -865,8 +869,8 @@ export function createEditor(env) {
       const oks = all.filter(([ok]) => ok);
       ed.checkPill.className = `ce-fx-state ce-check-pill ${bad.length ? 'check' : 'ok'}`;
       ed.checkPill.textContent = bad.length ? '! Not ready' : '✓ Ready';
-      ed.checkPill.title = ed.oksOpen ? 'Hide the checks that pass' : `Show the ${oks.length} checks that pass`;
-      ed.checkPill.setAttribute('aria-expanded', String(!!ed.oksOpen));
+      ed.checkHead.title = ed.oksOpen ? 'Hide the checks that pass' : `Show the ${oks.length} checks that pass`;
+      ed.checkHead.setAttribute('aria-expanded', String(!!ed.oksOpen));
       // Problemi uvijek, prolazne provjere samo kad je pilula otvorena (ostaje otvorena dok se karta crta).
       ed.checkBox.replaceChildren(...bad.map(li), ...(ed.oksOpen ? oks.map(li) : []));
       ed.checkBox.hidden = !bad.length && !ed.oksOpen;

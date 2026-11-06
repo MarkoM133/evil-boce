@@ -82,9 +82,10 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-checks .mark { font-weight: 800; }
 .ce-checks .ok .mark { color: var(--c-Green); }
 .ce-checks .bad .mark { color: var(--straw); }
-.ce-check-pill { font: 700 12px var(--text); clip-path: none; cursor: pointer; background: transparent; }
+.ce-check-head { cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; border-radius: 6px; }
+.ce-check-head:focus-visible { outline: 2px solid var(--straw); outline-offset: 4px; }
+.ce-check-head:hover .ce-check-pill, .ce-check-head:active .ce-check-pill { filter: brightness(1.2); }
 .ce-check-pill.check { background: var(--straw); }
-.ce-check-pill:hover { filter: brightness(1.15); }
 .ce-checks[hidden] { display: none; }
 .ce-minis { display: flex; gap: 12px; }
 .ce-mini-fig { background: none; clip-path: none; padding: 0; display: grid; gap: 4px; justify-items: center; font: 500 13px var(--text); color: var(--muted); }
