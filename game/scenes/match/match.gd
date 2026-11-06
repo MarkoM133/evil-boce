@@ -294,7 +294,13 @@ func _show_initiative() -> void:
 			people.append(slot)
 	dice.setup(state.rng_seed, state.initiative, names, colors, people)
 	_bot_wait = 3600.0
-	dice.finished.connect(func() -> void: _bot_wait = BOT_DELAY)
+	# The setup tray waits for the dice (playtest 2026-11-06).
+	hud.intro_dice = true
+	hud.refresh()
+	dice.finished.connect(func() -> void:
+		_bot_wait = BOT_DELAY
+		hud.intro_dice = false
+		hud.refresh())
 
 
 # --- scene ------------------------------------------------------------------

@@ -98,6 +98,8 @@ var rematch_text: String = "Rematch"
 var new_match: bool = true
 ## Setup: the stage or core the local player places next (set by the match scene).
 var setup_pick: String = ""
+## True while the who-starts dice are on screen: the setup tray and prompt wait (playtest 2026-11-06).
+var intro_dice: bool = false
 ## The match summary (MatchRecord.summary) shown on the end screen; set by the match scene.
 var end_summary: Dictionary = {}
 ## The series line on the end screen ("SERIES 1–0 · GAME 2 NEXT"), set by the match scene.
@@ -1385,7 +1387,9 @@ func _refresh_prompt() -> void:
 		_prompt.text = "Rolling…"
 		return
 	if state.phase == GameState.PHASE_SETUP_STAGES or state.phase == GameState.PHASE_SETUP_CORES:
-		_setup_prompt()
+		# The who-starts dice come first: no tray under them (its picked tile drew over their dim).
+		if not intro_dice:
+			_setup_prompt()
 		return
 	if not state.pending.is_empty():
 		var d: Dictionary = state.pending[0]
@@ -1640,11 +1644,13 @@ func _setup_tile(id: String, card_id: String, content: Control) -> Control:
 		tile.create_tween().tween_property(tile, "scale", Vector2.ONE * rest, 0.1))
 	tile.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
+			# Accept first (playtest 2026-11-06): the pick redraws the tray and takes this tile out of
+			# the tree, so a later accept_event() did nothing and the click placed the stage under it.
+			tile.accept_event()
 			if (e as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT:
 				_toggle_big(card_id)
 			else:
-				setup_item_pressed.emit(id)
-			tile.accept_event())
+				setup_item_pressed.emit(id))
 	return holder
 
 
@@ -2110,8 +2116,8 @@ func _show_big(cid: String) -> void:
 		_big.material = round_corners()
 		_big.gui_input.connect(func(e: InputEvent) -> void:
 			if e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
-				_show_big("")
-				accept_event())
+				accept_event()
+				_show_big(""))
 		add_child(_big)
 	_big.visible = tex != null
 	if tex == null:
@@ -2204,8 +2210,8 @@ func _hovered(cid: String) -> void:
 func _card_click(e: InputEvent, cid: String) -> bool:
 	if e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
 		if (e as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT:
-			_toggle_big(cid)
 			accept_event()
+			_toggle_big(cid)
 			return true
 		if not _big_cid.is_empty():
 			_show_big("")
@@ -3855,8 +3861,8 @@ func _side_board(slot: int, right: bool) -> Control:
 	head.tooltip_text = "Fold or open the stages and cores (key G)"
 	head.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-			toggle_stage_strip(local_slots.has(slot))
-			head.accept_event())
+			head.accept_event()
+			toggle_stage_strip(local_slots.has(slot)))
 	var title: String = ("STAGES" if own else "%s STAGES" % player_name(slot).to_upper()) if open \
 			else ("STAGES %d/%d · CORES %s" % [claimed, state.settings.stages_to_win, ("%d/%d" % [placed, cores.size()]) if own else ("%d KNOWN" % known)])
 	head.add_child(UiTheme.label(title, 12, Palette.GOLD if own else Color(Palette.team(state.team_of(slot)), 0.9).lightened(0.3)))
