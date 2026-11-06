@@ -59,6 +59,7 @@ export function createEditor(env) {
     undo: [], snapAt: 0, view: 'card', artMode: false, lock: null, last: undefined, balOpen: true, pubOff: new Set(),
     canvas: null, frame: 0, from: 'sets', thumbs: new Map(),
     claude: {}, // Claude prijedlozi fx-a po karti: { waiting, at, res } (vidi askClaude)
+    textCheck: {}, // Check text po karti, isti oblik (vidi checkText)
   };
   const store = () => env.state.store;
   // Spremanje: zajednički folder na računalu, ili server koji smije spremati (mobitel). Publish samo iz foldera.
@@ -424,6 +425,85 @@ export function createEditor(env) {
     ed.claude[id] = { waiting: false, at: null, res: null };
     const res = await readJson(CLAUDE_RES(id), null).catch(() => null);
     if (res) { ed.claude[id] = { waiting: false, at: res.askedAt, res }; if (ed.id === id) env.render(); }
+  }
+
+  // Check text (Marko 2026-11-06): Claude čita tekst karte po vodiču za tekst i predloži prijepis.
+  // Isti put kao Ask Claude: zahtjev u data/text-requests/, odgovor iz data/text-claude/ (server/fx-claude.mjs).
+  const TEXT_REQ = id => `data/text-requests/${id}.json`;
+  const TEXT_RES = id => `data/text-claude/${id}.json`;
+
+  async function checkText(w) {
+    const at = new Date().toISOString();
+    const req = { id: w.id, name: w.name, type: w.type, color: w.color, bonusColors: w.bonusColors, hero: w.hero, cost: w.cost,
+      bonus: w.bonus && Object.keys(w.bonus).length ? w.bonus : undefined, traits: w.traits, abilityNames: w.abilityNames, text: claudeText(w), who: who(), at };
+    await fs.writeFile(store().root, TEXT_REQ(w.id), JSON.stringify(req, null, 2) + '\n');
+    ed.textCheck[w.id] = { waiting: true, at, res: ed.textCheck[w.id]?.res ?? null };
+    env.render();
+    pollText(w.id, at);
+  }
+
+  async function pollText(id, at, tries = 0) {
+    const res = await readJson(TEXT_RES(id), null).catch(() => null);
+    const st = ed.textCheck[id];
+    if (!st || st.at !== at) return;
+    if (res && res.askedAt === at) {
+      ed.textCheck[id] = { waiting: false, at, res };
+      if (ed.id === id) env.render();
+      return;
+    }
+    if (tries > 200) { ed.textCheck[id] = { ...st, waiting: false, late: true }; if (ed.id === id) env.render(); return; }
+    setTimeout(() => pollText(id, at, tries + 1), 3000);
+  }
+
+  async function loadTextCheck(id) {
+    if (ed.textCheck[id] || !store()) return;
+    ed.textCheck[id] = { waiting: false, at: null, res: null };
+    const res = await readJson(TEXT_RES(id), null).catch(() => null);
+    if (res) { ed.textCheck[id] = { waiting: false, at: res.askedAt, res }; if (ed.id === id) env.render(); }
+  }
+
+  function checkTextButton(w) {
+    const st = ed.textCheck[w.id] ?? {};
+    return h('button', { class: 'ce-add-effect ce-text-ask', type: 'button', disabled: !canWrite() || st.waiting || !claudeText(w).trim(),
+      title: !canWrite() ? 'Open the shared folder to ask Claude' : 'Claude reads the text against the text guide on Marko\'s computer and proposes a rewrite',
+      onmousedown: e => e.preventDefault(), onclick: () => env.guard(() => checkText(w)) }, st.waiting ? '✦ Checking…' : '✦ Check text');
+  }
+
+  // Odgovor ispod teksta: prijepis s Use this, što se mijenja i zašto, i pitanja za autora (ona se ne prepisuju).
+  function textCheckBlock(w) {
+    loadTextCheck(w.id);
+    const st = ed.textCheck[w.id] ?? {};
+    const r = st.res;
+    const parts = [];
+    if (st.waiting) parts.push(h('p', { class: 'small muted' }, 'Waiting for Claude. Marko\'s computer answers while its Card Studio server runs; the request waits in the folder otherwise.'));
+    if (st.late) parts.push(h('p', { class: 'small warn' }, 'No answer yet. Is the server on Marko\'s computer running? The request is still in the folder.'));
+    if (r?.error) parts.push(h('p', { class: 'small warn' }, `Claude could not check the text: ${r.error}`));
+    else if (r) {
+      const now = claudeText(w);
+      const inUse = r.verdict === 'changes' && now.trim() === String(r.text).trim();
+      const stale = !inUse && r.askedText !== now;
+      const src = h('span', { class: 'ce-prop-src' }, 'Claude · text', r.who ? ` · ${r.who}` : '');
+      const questions = r.questions?.length ? h('div', { class: 'small' }, h('p', { class: 'small' }, 'For the author (not changed in the text):'),
+        h('ul', { class: 'small ce-claude-unsure' }, r.questions.map(q => h('li', {}, q)))) : null;
+      const staleLine = stale ? h('p', { class: 'small warn' }, 'For an older text: check again.') : null;
+      if (r.verdict === 'ok' || inUse) {
+        parts.push(h('div', { class: 'ce-claude ce-prop-same' },
+          h('p', { class: 'ce-prop-head' }, src, h('span', { class: 'small ok' }, inUse ? '✓ in the text' : '✓ follows the text guide')),
+          staleLine, r.notes ? h('p', { class: 'small' }, r.notes) : null, questions));
+      } else {
+        const use = () => { snap(true); w.text = toTokens(r.text); if (w.fx && w.fxStatus !== 'check') w.fxStatus = 'check'; changed(); env.render(); };
+        const still = avoidWarnings(ed.guide, r.text);
+        parts.push(h('div', { class: 'ce-claude' },
+          h('p', { class: 'ce-prop-head' }, src, h('button', { class: 'ce-prop-use', type: 'button', disabled: stale,
+            title: stale ? 'Check again: the text changed' : 'Put this text on the card; the fx then waits for a new confirm', onclick: use }, 'Use this')),
+          staleLine,
+          h('pre', { class: 'ce-fx-code ce-claude-fx ce-text-proposal' }, toTokens(r.text)),
+          r.issues?.length ? h('ul', { class: 'small ce-text-issues' }, r.issues.map(i => h('li', {}, h('q', {}, i.quote), ` ${i.problem}`, i.rule ? h('span', { class: 'muted' }, ` (${i.rule})`) : null))) : null,
+          still.length ? h('p', { class: 'small warn' }, 'Still against the guide: ', still.join(' · ')) : null,
+          r.notes ? h('p', { class: 'small' }, r.notes) : null, questions));
+      }
+    }
+    return parts.length ? h('div', { class: 'ce-claude-box' }, parts) : null;
   }
 
   const normFx = x => String(x ?? '').split('\n').map(l => l.trim().replace(/\s+/g, ' ').toUpperCase()).filter(Boolean).join('\n');
@@ -1364,7 +1444,8 @@ export function createEditor(env) {
     // Range nije prekidač (pravilo B, 2026-11-05): piše se u tekstu uz metu, "a friendly Hero in [RNG]".
     const mods = once || revealed ? h('div', { class: 'ce-mods' }, revealed, once) : null;
     const bar = h('div', { class: 'ce-tokbar' }, toks, trait ? h('span', { class: 'ce-tokbar-sep' }) : null, trait, phrase);
-    const adds = addEffect || bonusBtn ? h('div', { class: 'ce-adds' }, addEffect, bonusBtn) : null;
+    // Check text (Marko 2026-11-06): desno u istom redu; odgovor ide ispod.
+    const adds = h('div', { class: 'ce-adds' }, addEffect, bonusBtn, checkTextButton(w));
     const tools = h('div', { class: 'ce-effect-tools' }, seg, mods);
     function refreshToggles() {
       const hd = here();
@@ -1375,7 +1456,7 @@ export function createEditor(env) {
     }
     refreshToggles();
     area.setAttribute('aria-label', 'Effect text');
-    return [tools, h('div', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-text-box' }, bar, h('div', { class: 'ce-ac-wrap' }, area, pop))), adds,
+    return [tools, h('div', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-text-box' }, bar, h('div', { class: 'ce-ac-wrap' }, area, pop))), adds, textCheckBlock(w),
       h('p', { class: 'muted small ce-ac-hint' }, stage ? 'Type [ for a stat icon, or the start of a phrase from the Text guide: a list opens under the text.'
         : 'Each effect is its own line; the phase and Once per turn set the effect the cursor is in (+ Effect starts a new one). Range goes in the text next to its target: "a friendly Hero in [RNG]". Type [ for a stat icon or the start of a phrase for suggestions.')];
   }

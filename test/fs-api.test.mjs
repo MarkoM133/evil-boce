@@ -13,7 +13,7 @@ test('paths that climb out, are absolute or odd are refused', () => {
 
 test('the phone may save drafts, locks, Claude requests, the wishlist, art and sets', () => {
   for (const p of ['data/editor/drafts.json', 'data/editor/notes.json', 'data/editor/history.json', 'data/editor/text-guide.json',
-    'data/locks/OP1-014.json', 'data/fx-requests/OP1-014.json', 'data/fx-wishlist.json',
+    'data/locks/OP1-014.json', 'data/fx-requests/OP1-014.json', 'data/text-requests/OP1-014.json', 'data/fx-wishlist.json',
     'data/art/OP1-014.1a2b3c4d.png', 'data/art/emblems/OP1-005.1a2b3c4d.webp', 'data/sets/sets.json', 'data/sets/OP1/icon.png', 'data/card-frames/hero/layout.json']) {
     assert.ok(canWrite(cleanPath(p)), p);
   }
@@ -21,7 +21,7 @@ test('the phone may save drafts, locks, Claude requests, the wishlist, art and s
 
 test('Publish stays on the computer: the database, card images and the rest are refused', () => {
   for (const p of ['data/cards.json', 'data/changelog.json', 'data/images/OP1-014.1a2b3c4d.png', 'data/thumbs/OP1-014.1a2b3c4d.jpg',
-    'data/editor/last-publish.json', 'data/traits.json', 'data/art/OP1-014.exe', 'data/fx-claude/OP1-014.json',
+    'data/editor/last-publish.json', 'data/traits.json', 'data/art/OP1-014.exe', 'data/fx-claude/OP1-014.json', 'data/text-claude/OP1-014.json',
     'decks/my-deck.json', 'server/config.local.json', 'data/locks/x.txt']) {
     assert.equal(canWrite(cleanPath(p)), false, p);
   }

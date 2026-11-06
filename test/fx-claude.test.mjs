@@ -90,3 +90,43 @@ test("Claude's own reading is compared with the game's, and Claude never sees th
   assert.equal(res.agree, true);
   assert.doesNotMatch(client.calls[0].messages[0].content, /ACTIVATE_CORE/);
 });
+
+test('Check text: a request in text-requests gets the rewrite next to it, with the text guide in the prompt', async () => {
+  const dir = await drive();
+  await fs.mkdir(path.join(dir, 'data', 'text-requests'), { recursive: true });
+  await fs.mkdir(path.join(dir, 'data', 'editor'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'data', 'editor', 'text-guide.json'), JSON.stringify({ phrases: [], avoid: [{ find: '\\bfor every\\b', say: 'Count with "for each".' }] }));
+  const asked = 'Battle Phase: Your Hero gains +1000 Power for every {Sword}.';
+  await fs.writeFile(path.join(dir, 'data', 'text-requests', 'OP1-120.json'), JSON.stringify(request('OP1-120', asked)));
+  const client = fakeClient({ verdict: 'changes', text: 'Battle Phase: Your Hero gets +1000 Power for each {Sword}.\n',
+    issues: [{ quote: 'gains', problem: 'A stat bonus is "gets".', rule: 'gets for stats' }, { quote: 'for every', problem: 'Count with "for each".', rule: 'for each' }],
+    questions: ['Until the end of the turn?'], notes: '' });
+  const w = createFxWorker({ root: ROOT, drive: dir, client, log: () => {} });
+  await w.tick();
+  const res = JSON.parse(await fs.readFile(path.join(dir, 'data', 'text-claude', 'OP1-120.json'), 'utf8'));
+  assert.equal(res.verdict, 'changes');
+  assert.equal(res.text, 'Battle Phase: Your Hero gets +1000 Power for each {Sword}.');
+  assert.equal(res.askedText, asked);
+  assert.equal(res.issues.length, 2);
+  assert.deepEqual(res.questions, ['Until the end of the turn?']);
+  await assert.rejects(fs.access(path.join(dir, 'data', 'text-requests', 'OP1-120.json')));
+  // Nothing went to the fx side.
+  await assert.rejects(fs.access(path.join(dir, 'data', 'fx-claude', 'OP1-120.json')));
+  const params = client.calls[0];
+  assert.match(params.system[0].text, /house text guide/);
+  assert.match(params.system[0].text, /Count with "for each"/);
+  assert.match(params.messages[0].content, /Check the text of this card/);
+});
+
+test('Check text: "changes" with the same text is an ok, and its issues go', async () => {
+  const dir = await drive();
+  await fs.mkdir(path.join(dir, 'data', 'text-requests'), { recursive: true });
+  const asked = 'Battle Phase: Your Hero gets +1000 Power.';
+  await fs.writeFile(path.join(dir, 'data', 'text-requests', 'OP1-121.json'), JSON.stringify(request('OP1-121', asked)));
+  const client = fakeClient({ verdict: 'changes', text: asked, issues: [{ quote: 'x', problem: 'y', rule: 'z' }], questions: [], notes: '' });
+  const w = createFxWorker({ root: ROOT, drive: dir, client, log: () => {} });
+  await w.tick();
+  const res = JSON.parse(await fs.readFile(path.join(dir, 'data', 'text-claude', 'OP1-121.json'), 'utf8'));
+  assert.equal(res.verdict, 'ok');
+  assert.deepEqual(res.issues, []);
+});

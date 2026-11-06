@@ -7,12 +7,13 @@ import path from 'node:path';
 const NAME = '[A-Za-z0-9][A-Za-z0-9._-]{0,120}';
 const IMG = '\\.(?:png|jpe?g|webp)';
 
-// Što smije pisati (PUT): nacrti i bilješke editora, lockovi, Claude zahtjevi, wishlist, art i amblemi,
+// Što smije pisati (PUT): nacrti i bilješke editora, lockovi, Claude zahtjevi (fx i Check text), wishlist, art i amblemi,
 // setovi (sets.json i slike setova), vodič za tekst.
 const WRITE = [
   /^data\/editor\/(?:drafts|notes|history|text-guide)\.json$/,
   new RegExp(`^data/locks/${NAME}\\.json$`),
   new RegExp(`^data/fx-requests/${NAME}\\.json$`),
+  new RegExp(`^data/text-requests/${NAME}\\.json$`),
   /^data\/fx-wishlist\.json$/,
   new RegExp(`^data/art/(?:emblems/)?${NAME}${IMG}$`),
   /^data\/sets\/sets\.json$/,

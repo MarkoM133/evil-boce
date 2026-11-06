@@ -1,4 +1,5 @@
-// Claude predlaže fx (GDD 14: Claude predlaže, Marko potvrđuje), a ključ ostaje samo na ovom računalu.
+// Claude predlaže fx (GDD 14: Claude predlaže, Marko potvrđuje) i provjerava tekst karte po vodiču (Check text);
+// ključ ostaje samo na ovom računalu. Provjera teksta ide isto: data/text-requests/ → data/text-claude/.
 // Card Studio (na bilo kojem računalu sa zajedničkim folderom) zapiše zahtjev u data/fx-requests/<kod>.json u zajedničkom folderu;
 // ovaj radnik ga vidi, pita Claude API, provjeri retke gramatikom igre i zapiše odgovor u
 // data/fx-claude/<kod>.json; Syncthing ga vrati onome tko je pitao. Bez ključa radnik ne radi ništa.
@@ -36,6 +37,33 @@ const SCHEMA = {
         },
       },
     },
+  },
+};
+
+// Check text (Marko 2026-11-06): Claude čita tekst karte po vodiču za tekst i predloži prijepis; autor ga potvrđuje.
+const TEXT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['verdict', 'text', 'issues', 'questions', 'notes'],
+  properties: {
+    verdict: { type: 'string', enum: ['ok', 'changes'], description: 'ok: the text already follows the guide; changes: "text" rewrites it.' },
+    text: { type: 'string', description: 'The whole card text following the guide, in the same form as given (words, not icon tokens; {Trait} braces and line breaks kept). The given text unchanged when the verdict is ok.' },
+    issues: {
+      type: 'array',
+      description: 'Each wording change made in "text"; empty when ok.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['quote', 'problem', 'rule'],
+        properties: {
+          quote: { type: 'string', description: 'The words of the given text that change, exactly as written.' },
+          problem: { type: 'string', description: 'What is wrong with them and what they become, in one sentence.' },
+          rule: { type: 'string', description: 'The rule of the guide it follows, short (e.g. "gets for stats", "for each", "target named directly").' },
+        },
+      },
+    },
+    questions: { type: 'array', items: { type: 'string' }, description: 'Things only the author can decide (unclear meaning, a missing duration, who picks), each one sentence; never changed in "text".' },
+    notes: { type: 'string', description: 'One sentence for the author, or empty.' },
   },
 };
 
@@ -78,6 +106,35 @@ async function systemPrompt(root, drive) {
   ].join('\n');
 }
 
+// Vodič za tekst (privatni md, samo na Markovom računalu), pravila Card Studija i tekstovi objavljenih karata kao primjeri.
+async function textSystemPrompt(root, drive) {
+  const guide = await fs.readFile(path.join(root, 'docs', 'private', 'Evil Boce - vodic za tekst karata.md'), 'utf8').catch(() => '');
+  const studio = await readJson(path.join(drive, 'data', 'editor', 'text-guide.json'), { phrases: [], avoid: [] });
+  const db = await readJson(path.join(drive, 'data', 'cards.json'), { cards: [] });
+  const examples = db.cards.filter(c => String(c.text ?? '').trim() && c.type !== 'Core')
+    .map(c => `${c.id} "${c.name}" (${c.type}${c.hero ? ', hero ' + c.hero : ''}): ${String(c.text).replace(/\n/g, ' ')}`);
+  return [
+    'You check the wording of Evil Boće card texts against the house text guide below and rewrite what does not follow it.',
+    'Change the wording only, never what the card does: same targets, numbers, phases, durations and conditions.',
+    'When the meaning is unclear, a duration seems missing, or the effect may clash with how the game plays, do not guess:',
+    "leave that part as it is and ask under \"questions\". Keep the author's line breaks (they lay out the card; the game",
+    'ignores them) unless the sentence around one changes. Keep {Trait} braces. The guide shows stats as icon tokens',
+    '([PWR] [DMG] [HP] [RNG] [KB] [EN]); the card text you get and return uses the words instead: Power, DMG, HP, Range,',
+    "Knockback, Energy (\"+2000 Power\", \"takes 3 DMG\", \"an Opponent's Hero in Range\", \"cost 1 Energy less\").",
+    'The guide is written in Croatian; the card text is English. A text that already follows the guide gets verdict "ok".',
+    '',
+    '# The text guide (docs/private, the rules agreed with the card author)',
+    guide || '(the guide document is not on this computer; use the Card Studio rules below)',
+    '',
+    '# Card Studio rules (data/editor/text-guide.json): phrases to use and wording to avoid',
+    ...(studio.phrases ?? []).map(x => `Phrase ${x.label}: ${String(x.text).trim()}${x.note ? ' (' + x.note + ')' : ''}`),
+    ...(studio.avoid ?? []).map(x => `Avoid /${x.find}/: ${x.say}`),
+    '',
+    '# Published card texts (they follow the guide)',
+    examples.join('\n'),
+  ].join('\n');
+}
+
 // Wishlist (Marko 2026-11-03): riječi koje fx jeziku fale skupljaju se u data/fx-wishlist.json; ista riječ s više
 // karata je jedna stavka. Glagoli, uvjeti i mete su zadaci za Claude Code (ugradnja u igru), "rule" je pitanje za Marka.
 export const WISHLIST = path.join('data', 'fx-wishlist.json');
@@ -110,7 +167,46 @@ export async function addWishes(drive, card, extensions) {
 export function createFxWorker({ root, drive, client, log = console.log }) {
   const reqDir = path.join(drive, 'data', 'fx-requests');
   const outDir = path.join(drive, 'data', 'fx-claude');
+  const textReqDir = path.join(drive, 'data', 'text-requests');
+  const textOutDir = path.join(drive, 'data', 'text-claude');
   let busy = false;
+
+  // Check text: isti tok kao fx (zahtjev u folderu, odgovor pored njega), drugi folderi i drugi prompt.
+  async function answerText(file) {
+    const req = await readJson(file);
+    const id = String(req?.id ?? '');
+    if (!CODE_RE.test(id) || !req?.text) { await fs.rm(file, { force: true }); return; }
+    const out = path.join(textOutDir, `${id}.json`);
+    const before = await readJson(out);
+    if (before && before.askedAt === req.at && before.askedText === req.text && !before.error) { await fs.rm(file, { force: true }); return; }
+    log(`text: asking Claude to check ${id} (${req.who || '?'})`);
+    let result;
+    try {
+      const card = { id, name: req.name, type: req.type, color: req.color, bonusColors: req.bonusColors, hero: req.hero, cost: req.cost, bonus: req.bonus, traits: req.traits, abilityNames: req.abilityNames, text: req.text };
+      const msg = await client.beta.messages.create({
+        model: MODEL,
+        max_tokens: 16000,
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        output_config: { effort: 'high', format: { type: 'json_schema', schema: TEXT_SCHEMA } },
+        system: [{ type: 'text', text: await textSystemPrompt(root, drive), cache_control: { type: 'ephemeral' } }],
+        messages: [{ role: 'user', content: `Check the text of this card:\n${JSON.stringify(card, null, 2)}` }],
+      });
+      if (msg.stop_reason === 'refusal') throw new Error('Claude declined this card');
+      const parsed = JSON.parse(msg.content.find(b => b.type === 'text')?.text ?? '');
+      const text = String(parsed.text ?? '').replace(/\s+$/, '');
+      // "ok" s drukčijim tekstom ili "changes" bez promjene: vjeruje se tekstu, ne oznaci.
+      const same = !text || text.trim() === req.text.trim();
+      result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, askedText: req.text, model: msg.model,
+        verdict: same ? 'ok' : 'changes', text: same ? req.text : text, issues: same ? [] : parsed.issues ?? [], questions: parsed.questions ?? [], notes: parsed.notes ?? '' };
+    } catch (e) {
+      result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, askedText: req.text, error: e?.message ?? String(e) };
+    }
+    await fs.mkdir(textOutDir, { recursive: true });
+    await fs.writeFile(out, JSON.stringify(result, null, 2) + '\n');
+    await fs.rm(file, { force: true });
+    log(`text: ${id} ${result.error ? 'failed: ' + result.error : result.verdict}`);
+  }
 
   async function answer(file) {
     const req = await readJson(file);
@@ -157,12 +253,14 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
     try {
       const names = (await fs.readdir(reqDir).catch(() => [])).filter(n => n.endsWith('.json'));
       for (const n of names) await answer(path.join(reqDir, n)).catch(e => log(`fx: ${n}: ${e.message}`));
+      const texts = (await fs.readdir(textReqDir).catch(() => [])).filter(n => n.endsWith('.json'));
+      for (const n of texts) await answerText(path.join(textReqDir, n)).catch(e => log(`text: ${n}: ${e.message}`));
     } finally {
       busy = false;
     }
   }
 
-  return { tick, reqDir, outDir };
+  return { tick, reqDir, outDir, textReqDir, textOutDir };
 }
 
 export function startFxWorker({ root, drive, apiKey, log = console.log }) {
@@ -174,5 +272,5 @@ export function startFxWorker({ root, drive, apiKey, log = console.log }) {
   const w = createFxWorker({ root, drive, client, log });
   setInterval(w.tick, POLL_MS);
   w.tick();
-  log(`fx: Claude proposals on (${MODEL}), watching ${w.reqDir}`);
+  log(`fx: Claude proposals and text checks on (${MODEL}), watching ${w.reqDir} and ${w.textReqDir}`);
 }
