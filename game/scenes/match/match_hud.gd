@@ -873,6 +873,9 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 	# are for the other side (and for two players at one screen).
 	if local_slots.size() == 1 and local_slots[0] == slot:
 		return
+	# Not during setup (Marko 2026-11-06), as the piles by the hand.
+	if intro_dice or state.phase == GameState.PHASE_SETUP_STAGES or state.phase == GameState.PHASE_SETUP_CORES:
+		return
 	# Under the heroes: what the player holds; the graveyard's cards on hover.
 	var info := Label.new()
 	info.add_theme_color_override("font_color", Palette.MUTED)
@@ -3714,7 +3717,7 @@ func _equip_mini(cid: String) -> Control:
 
 
 ## The piles by the hand: the graveyard left (its top card, faded; hover lists it, right click
-## shows it big), the deck right (a stack), each with its count.
+## shows it big), the deck right (a stack), each with its count. Hidden during setup.
 func _refresh_piles() -> void:
 	if _piles == null or state == null:
 		return
@@ -3724,8 +3727,10 @@ func _refresh_piles() -> void:
 	if slot < 0 and not local_slots.is_empty():
 		slot = local_slots[0]
 	var p: PlayerState = state.player(slot) if slot >= 0 else null
-	_piles.visible = p != null
-	_grave_spot.visible = p != null
+	# Not while who starts is rolled or stages and cores are placed (Marko 2026-11-06): no cards yet.
+	var setup: bool = intro_dice or state.phase == GameState.PHASE_SETUP_STAGES or state.phase == GameState.PHASE_SETUP_CORES
+	_piles.visible = p != null and not setup
+	_grave_spot.visible = p != null and not setup
 	if not _piles.visible:
 		return
 	var top: String = p.graveyard[p.graveyard.size() - 1] if not p.graveyard.is_empty() else ""
