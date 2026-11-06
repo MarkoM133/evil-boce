@@ -207,6 +207,8 @@ var battle_cam: bool = false
 var _letterbox: Array[ColorRect] = []
 ## The big card above the hand (GDD 11): the card under the mouse ("" = none) and the one shown.
 var _hover_cid: String = ""
+## The hero panel now drawn for each hero id (a hover that leaves checks it, see _hero_slice).
+var _slice_of: Dictionary[String, Control] = {}
 var _big: TextureRect
 var _big_cid: String = ""
 ## Big card: the height it shows at.
@@ -897,6 +899,7 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	var in_battle: bool = _in_battle(h)
 
 	var s := HeroSlice.new()
+	_slice_of[h.id] = s
 	s.set_mirrored(right)
 	s.art = db.thumb(card.id) if db != null and card != null else null
 	s.art_region = HeroSlice.region_for(s.art)
@@ -934,7 +937,14 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	s.mouse_exited.connect(func() -> void:
 		if _hover_cid == shown_id:
 			_hover_cid = ""
-		hero_hovered.emit(""))
+		# Hovering a panel opens it (Marko 2026-11-06), which redraws the panels: the old one leaves
+		# under the mouse. Only a mouse that is really off this hero's new panel ends the hover.
+		var hid: String = h.id
+		(func() -> void:
+			var now: Control = _slice_of.get(hid)
+			if now != null and is_instance_valid(now) and now.is_inside_tree() 					and now.get_global_rect().has_point(now.get_global_mouse_position()):
+				return
+			hero_hovered.emit("")).call_deferred())
 	if card != null:
 		s.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
 

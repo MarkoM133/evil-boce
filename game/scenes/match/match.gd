@@ -410,7 +410,8 @@ func _build_hud() -> void:
 	hud.ability_pressed.connect(func(slot: int, hero_id: String, card_id: String, index: int) -> void:
 		_apply(Move.make(Move.USE_ABILITY, slot, {"hero": hero_id, "card": card_id, "index": index})))
 	hud.hero_clicked.connect(_on_hero_clicked)
-	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
+	# A hero panel under the mouse opens with its stats, as the ball does (Marko 2026-11-06).
+	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, true))
 	hud.card_played.connect(_ghost_card)
 	hud.ability_fired.connect(_ability_fx)
 	hud.board_hovered.connect(func(hexes: Array[Vector2i]) -> void:
