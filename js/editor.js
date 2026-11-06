@@ -353,7 +353,9 @@ export function createEditor(env) {
   function renderSide() {
     const w = ed.work;
     ed.checkBox = h('ul', { class: 'ce-checks' });
-    const parts = [panel('Checks', ed.checkBox)];
+    // Stanje u naslovu kao kod fx (Marko 2026-11-06): ALL GOOD ili N TO CHECK; klik pokaže i zelene kvačice.
+    ed.checkPill = h('button', { type: 'button', class: 'ce-fx-state ce-check-pill', 'aria-expanded': String(!!ed.oksOpen), onclick: () => { ed.oksOpen = !ed.oksOpen; queueDraw(); } });
+    const parts = [h('section', { class: 'ce-panel' }, h('div', { class: 'ce-panel-head' }, h('h3', {}, 'Checks'), ed.checkPill), ed.checkBox)];
     // Same frame, Hero cards, Terrain i Cores su maknuti 2026-11-06: tip je u obrascu, evolucije ispod Aliasa.
     if (w.type !== 'Core') parts.push(fxPanel(w));
     if (PORTRAIT.includes(w.type)) { ed.balBox = h('div', {}); parts.push(ed.balBox); } else ed.balBox = null;
@@ -859,11 +861,15 @@ export function createEditor(env) {
     if (ed.checkBox) {
       const all = checks(w, card);
       const li = ([ok, text]) => h('li', { class: ok ? 'ok' : 'bad' }, h('span', { class: 'mark' }, ok ? '✓' : '!'), h('span', {}, text));
+      const bad = all.filter(([ok]) => !ok);
       const oks = all.filter(([ok]) => ok);
-      // Zelene kvačice su jedan redak (Marko 2026-11-06); otvoren ostaje otvoren i kad se karta ponovo nacrta.
-      const more = oks.length ? h('li', { class: 'ok ce-checks-ok' }, h('details', { open: ed.oksOpen, ontoggle: e => { ed.oksOpen = e.currentTarget.open; } },
-        h('summary', {}, h('span', { class: 'mark' }, '✓'), h('span', {}, `${oks.length} ok`)), h('ul', { class: 'ce-checks' }, oks.map(li)))) : null;
-      ed.checkBox.replaceChildren(...all.filter(([ok]) => !ok).map(li), more);
+      ed.checkPill.className = `ce-fx-state ce-check-pill ${bad.length ? 'check' : 'ok'}`;
+      ed.checkPill.textContent = bad.length ? `! ${bad.length} to check` : '✓ All good';
+      ed.checkPill.title = ed.oksOpen ? 'Hide the checks that pass' : `Show the ${oks.length} checks that pass`;
+      ed.checkPill.setAttribute('aria-expanded', String(!!ed.oksOpen));
+      // Problemi uvijek, prolazne provjere samo kad je pilula otvorena (ostaje otvorena dok se karta crta).
+      ed.checkBox.replaceChildren(...bad.map(li), ...(ed.oksOpen ? oks.map(li) : []));
+      ed.checkBox.hidden = !bad.length && !ed.oksOpen;
     }
     if (ed.balBox) ed.balBox.replaceChildren(...renderBalance(card));
   }

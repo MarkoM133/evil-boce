@@ -82,10 +82,10 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-checks .mark { font-weight: 800; }
 .ce-checks .ok .mark { color: var(--c-Green); }
 .ce-checks .bad .mark { color: var(--straw); }
-.ce-checks li.ce-checks-ok { display: block; }
-.ce-checks-ok summary { cursor: pointer; list-style: none; display: grid; grid-template-columns: 20px 1fr; gap: 6px; color: var(--muted); }
-.ce-checks-ok summary::-webkit-details-marker { display: none; }
-.ce-checks-ok ul { margin-top: 6px; }
+.ce-check-pill { font: 700 12px var(--text); clip-path: none; cursor: pointer; background: transparent; }
+.ce-check-pill.check { background: var(--straw); }
+.ce-check-pill:hover { filter: brightness(1.15); }
+.ce-checks[hidden] { display: none; }
 .ce-minis { display: flex; gap: 12px; }
 .ce-mini-fig { background: none; clip-path: none; padding: 0; display: grid; gap: 4px; justify-items: center; font: 500 13px var(--text); color: var(--muted); }
 .ce-mini-fig:hover { background: none; color: var(--bone); }
