@@ -410,9 +410,9 @@ func _build_hud() -> void:
 	hud.ability_pressed.connect(func(slot: int, hero_id: String, card_id: String, index: int) -> void:
 		_apply(Move.make(Move.USE_ABILITY, slot, {"hero": hero_id, "card": card_id, "index": index})))
 	hud.hero_clicked.connect(_on_hero_clicked)
-	# A hero panel under the mouse lights its ball; the HUD shows its stats in a strip (it does not
-	# grow the panel: that pushed the panels under it away from the mouse, Marko 2026-11-06).
-	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
+	# A hero panel under the mouse opens with its stats and lights its ball, as hovering the ball
+	# does (Marko 2026-11-06).
+	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, true))
 	hud.card_played.connect(_ghost_card)
 	hud.ability_fired.connect(_ability_fx)
 	hud.board_hovered.connect(func(hexes: Array[Vector2i]) -> void:
@@ -1937,8 +1937,7 @@ func _on_hero_clicked(id: String) -> void:
 		cam.focus(arena.hex_center(h.hex), 14.0)
 
 
-## Hover from the table also expands the hero's panel; hover from a panel only lights the
-## ball and its range (rebuilding the panel under the mouse would flicker).
+## Hover from the table or from a hero panel expands the panel and lights the ball and its range.
 func _set_hover(id: String, refresh_hud: bool) -> void:
 	if id == _hovered:
 		return
