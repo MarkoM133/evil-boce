@@ -2532,7 +2532,13 @@ func demo_targeting_dupe() -> void:
 
 ## A red ring that breathes under each hero of the battle being fought.
 func _refresh_battle_fx() -> void:
-	var ids: PackedStringArray = _current_battle()
+	# Only heroes still on the map: a KO or a ring-out mid-battle takes its ring away at once
+	# (playtest 2026-11-06: the ring kept breathing where the ball had burst).
+	var ids := PackedStringArray()
+	for hid: String in _current_battle():
+		var on: HeroState = state.hero(hid)
+		if on != null and on.is_on_map():
+			ids.append(hid)
 	var key: String = "%d:%s" % [state.battle_index, ",".join(ids)]
 	if key == _battle_fx_key:
 		return
@@ -2588,6 +2594,16 @@ func demo_battle() -> void:
 	_range_key = "-"
 	_sync()
 
+
+
+## Screenshot helper (playtest 2026-11-06): demo_battle, then the opponent's hero in the first battle
+## is knocked out; its battle ring must go with its ball.
+func demo_battle_ko() -> void:
+	demo_battle()
+	var h: HeroState = state.hero(JsonUtil.as_strings(state.battles[0].get("heroes", []))[1])
+	h.hp = 0
+	h.zone = HeroState.ZONE_KO
+	_sync()
 
 # --- battle camera (mockup HUD 5) ---------------------------------------------------------
 
