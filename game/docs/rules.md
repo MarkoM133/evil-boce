@@ -232,11 +232,10 @@ g. (2026-10-26) A grid knockback stopped by a wall or a hero costs `wall_damage`
    only cards that could really go on the hero (`free_play_error`).
 16. (2026-10-30, playtest) Battle members: the seed (or the locked group) and the enemies in
    range with it are the starters; then every hero in range with a starter of the other team
-   joins, the seed's allies too (`_joiners`). Nobody joins through a joiner (no chaining).
-   **To change (Marko 2026-11-06, for Fable):** one more step: after the starters and their joiners,
-   every free hero in range (either way) with an enemy already in the battle joins once; those do
-   not pull anyone further. Playtest: the opponent's activated Zoro stood next to Luffy (a joiner)
-   and was left out. Needs a scenario test.
+   joins, the seed's allies too (`_joiners`). (Marko 2026-11-06, playtest: the opponent's
+   activated Zoro stood next to Luffy, a joiner, and was left out.) Then **one chain step**: every
+   free hero in range (either way) with an enemy already in the battle joins, once; those pull
+   nobody further. Scenario 41.
 - JO1-011 "3 copies at once": the third copy of the card played by the same player in the
   same phase also gives +5 DMG (`IF COPIES 3`).
 - Stage reveal bonuses last while the hero stays on that stage and it is unclaimed.

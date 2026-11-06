@@ -1,0 +1,90 @@
+{
+  "name": "battle: an ally that reaches the enemy of the battle joins it, then one chain step: whoever reaches an enemy already in joins once (Marko 2026-11-06: the activated Zoro next to Luffy, a joiner, was left out), and nobody joins through that step",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "heroes.p0:TA-002.zone": "map",
+        "heroes.p0:TA-002.hex": [
+          4,
+          8
+        ],
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          8,
+          8
+        ],
+        "heroes.p0:TA-003.zone": "map",
+        "heroes.p0:TA-003.hex": [
+          14,
+          8
+        ],
+        "heroes.p1:TB-002.zone": "map",
+        "heroes.p1:TB-002.hex": [
+          6,
+          8
+        ],
+        "heroes.p1:TB-003.zone": "map",
+        "heroes.p1:TB-003.hex": [
+          11,
+          8
+        ],
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-002",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-002",
+        "roll": false
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "phase": "battle",
+        "battles": {
+          "$size": 1
+        },
+        "battles.0.heroes": {
+          "$size": 4
+        },
+        "battles.0.heroes.1": "p1:TB-002",
+        "battles.0.heroes.2": "p0:TA-001",
+        "battles.0.heroes.3": "p1:TB-003"
+      }
+    }
+  ]
+}

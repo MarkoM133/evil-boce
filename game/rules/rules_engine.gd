@@ -1143,13 +1143,16 @@ func _find_battles(s: GameState) -> void:
 					members.append(l)
 		# The starters: the seed (or the locked group) and the enemies in range with it. Then
 		# whoever is in range with a starter of the other team joins, allies of the seed too
-		# (playtest 2026-10-30: Zoro reaching the enemy was left out); nothing spreads further
-		# (GDD 10: the heroes who started it and who is in their range, no chaining).
+		# (playtest 2026-10-30: Zoro reaching the enemy was left out). Then one chain step
+		# (Marko 2026-11-06: the activated Zoro next to Luffy, a joiner, was left out): whoever is
+		# in range with an enemy already in, once; those pull nobody further (GDD 10).
 		var starters: Array[HeroState] = members.duplicate()
 		for other: HeroState in _joiners(s, [seed], taken, members):
 			members.append(other)
 			starters.append(other)
 		for other: HeroState in _joiners(s, starters, taken, members):
+			members.append(other)
+		for other: HeroState in _joiners(s, members.duplicate(), taken, members):
 			members.append(other)
 		var has_enemy: bool = false
 		for m: HeroState in members:
