@@ -2183,6 +2183,10 @@ func roll_again(s: GameState, slot: int) -> String:
 	if h == null or h.is_ko():
 		return "no activated hero to roll"
 	s.rolled = false
+	# Only this hero is thrown again (playtest 2026-11-06: the others' aims stayed and their balls were
+	# thrown a second time with the same aim); the others stay where they stopped, as with roll_retry.
+	for other: int in s.aims.keys():
+		s.aims[other] = {"skip": true}
 	s.aims.erase(slot)
 	s.choices[slot] = true
 	s.pending_rolls = PackedStringArray([h.id])

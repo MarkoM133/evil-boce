@@ -64,3 +64,13 @@ func test_passing_the_offer_is_the_no() -> void:
 	assert_eq(engine.apply(state, Move.make(Move.PASS, 0)), "")
 	assert_true(state.rolled, "no new roll")
 	assert_eq(state.player(0).hand, PackedStringArray(["TR-001"]), "the card stays in hand")
+
+
+func test_only_the_hero_rolling_again_is_thrown_again() -> void:
+	# Both aims of the first roll are still there (playtest 2026-11-06: Luffy rolled again and the
+	# opponent's Zoro was thrown a second and third time with its old aim, once out of the arena).
+	state.aims[0] = {"dir": [0.0, 1.0], "power": 0.6}
+	state.aims[1] = {"dir": [0.0, -1.0], "power": 0.5}
+	_play_from_offer("TR-001")
+	assert_false(state.aims.has(0), "the roller aims again")
+	assert_true(JsonUtil.as_bool(state.aims[1].get("skip", false)), "the opponent's ball stays where it stopped")
