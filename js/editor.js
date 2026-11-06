@@ -353,7 +353,7 @@ export function createEditor(env) {
   function renderSide() {
     const w = ed.work;
     ed.checkBox = h('ul', { class: 'ce-checks' });
-    // Stanje u naslovu kao kod fx (Marko 2026-11-06): ALL GOOD ili N TO CHECK; klik pokaže i zelene kvačice.
+    // Stanje u naslovu kao kod fx (Marko 2026-11-06): Ready ili Not ready; klik pokaže i zelene kvačice.
     ed.checkPill = h('button', { type: 'button', class: 'ce-fx-state ce-check-pill', 'aria-expanded': String(!!ed.oksOpen), onclick: () => { ed.oksOpen = !ed.oksOpen; queueDraw(); } });
     const parts = [h('section', { class: 'ce-panel' }, h('div', { class: 'ce-panel-head' }, h('h3', {}, 'Checks'), ed.checkPill), ed.checkBox)];
     // Same frame, Hero cards, Terrain i Cores su maknuti 2026-11-06: tip je u obrascu, evolucije ispod Aliasa.
@@ -864,7 +864,7 @@ export function createEditor(env) {
       const bad = all.filter(([ok]) => !ok);
       const oks = all.filter(([ok]) => ok);
       ed.checkPill.className = `ce-fx-state ce-check-pill ${bad.length ? 'check' : 'ok'}`;
-      ed.checkPill.textContent = bad.length ? `! ${bad.length} to check` : '✓ All good';
+      ed.checkPill.textContent = bad.length ? '! Not ready' : '✓ Ready';
       ed.checkPill.title = ed.oksOpen ? 'Hide the checks that pass' : `Show the ${oks.length} checks that pass`;
       ed.checkPill.setAttribute('aria-expanded', String(!!ed.oksOpen));
       // Problemi uvijek, prolazne provjere samo kad je pilula otvorena (ostaje otvorena dok se karta crta).
