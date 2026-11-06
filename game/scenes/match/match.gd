@@ -410,8 +410,9 @@ func _build_hud() -> void:
 	hud.ability_pressed.connect(func(slot: int, hero_id: String, card_id: String, index: int) -> void:
 		_apply(Move.make(Move.USE_ABILITY, slot, {"hero": hero_id, "card": card_id, "index": index})))
 	hud.hero_clicked.connect(_on_hero_clicked)
-	# A hero panel under the mouse opens with its stats, as the ball does (Marko 2026-11-06).
-	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, true))
+	# A hero panel under the mouse lights its ball; the HUD shows its stats in a strip (it does not
+	# grow the panel: that pushed the panels under it away from the mouse, Marko 2026-11-06).
+	hud.hero_hovered.connect(func(id: String) -> void: _set_hover(id, false))
 	hud.card_played.connect(_ghost_card)
 	hud.ability_fired.connect(_ability_fx)
 	hud.board_hovered.connect(func(hexes: Array[Vector2i]) -> void:
@@ -1818,6 +1819,8 @@ func _on_key(k: InputEventKey) -> void:
 
 func _on_left(pressed: bool) -> void:
 	if pressed:
+		# A click on the table puts a PASS offer away (a click on the ball offers it again).
+		hud.hide_ball_pass()
 		_press_on_empty = false
 		var item: String = _setup_item()
 		if not item.is_empty() and _hero_under_mouse().is_empty():
@@ -1925,6 +1928,10 @@ func _on_hero_clicked(id: String) -> void:
 			_refresh_target_fx()
 		elif h.tie_turns > 0:
 			hud.toast("%s is locked in a tied battle: it cannot be picked, and it fights that battle again this turn." % hud.hero_name(h))
+		return
+	# Preroll, your move: a click on your activated ball offers PASS under it (Marko 2026-11-06).
+	if state.phase == GameState.PHASE_PREROLL and str(state.active.get(h.owner, "")) == id and hud.can_pass(h.owner) and _bodies.has(id):
+		hud.offer_ball_pass(h.owner, cam.camera.unproject_position(_bodies[id].global_position) + Vector2(0, 34))
 		return
 	if h.is_on_map():
 		cam.focus(arena.hex_center(h.hex), 14.0)

@@ -207,8 +207,13 @@ var battle_cam: bool = false
 var _letterbox: Array[ColorRect] = []
 ## The big card above the hand (GDD 11): the card under the mouse ("" = none) and the one shown.
 var _hover_cid: String = ""
-## The hero panel now drawn for each hero id (a hover that leaves checks it, see _hero_slice).
+## The hero panel now drawn for each hero id (the hover stats strip sits under it).
 var _slice_of: Dictionary[String, Control] = {}
+var _hover_stats: PanelContainer
+var _hover_stats_hero: String = ""
+## Preroll: PASS offered under the clicked ball (offer_ball_pass).
+var _ball_pass: Button
+var _ball_pass_slot: int = -1
 var _big: TextureRect
 var _big_cid: String = ""
 ## Big card: the height it shows at.
@@ -933,18 +938,13 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 				hero_clicked.emit(h.id))
 	s.mouse_entered.connect(func() -> void:
 		_hovered(shown_id)
+		_show_hover_stats(h.id)
 		hero_hovered.emit(h.id))
 	s.mouse_exited.connect(func() -> void:
 		if _hover_cid == shown_id:
 			_hover_cid = ""
-		# Hovering a panel opens it (Marko 2026-11-06), which redraws the panels: the old one leaves
-		# under the mouse. Only a mouse that is really off this hero's new panel ends the hover.
-		var hid: String = h.id
-		(func() -> void:
-			var now: Control = _slice_of.get(hid)
-			if now != null and is_instance_valid(now) and now.is_inside_tree() 					and now.get_global_rect().has_point(now.get_global_mouse_position()):
-				return
-			hero_hovered.emit("")).call_deferred())
+		_hide_hover_stats(h.id)
+		hero_hovered.emit(""))
 	if card != null:
 		s.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
 
@@ -1047,17 +1047,7 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		stats.add_theme_font_override("normal_font", UiTheme.display_italic())
 		stats.add_theme_font_size_override("normal_font_size", 15)
 		stats.add_theme_color_override("default_color", Palette.FG)
-		var parts := PackedStringArray()
-		for key: String in ["pwr", "dmg", "rng", "kb"]:
-			var value: int = engine.stat(state, h, key)
-			var text: String = "%s %d" % [key.to_upper(), value]
-			# Green up, red down against the card, whatever moved it: cores, equipment, effects
-			# (playtest 2026-10-30: Sandai Kitetsu's +3 DMG stayed white).
-			var by: int = value - engine.base_stat(state, h, key)
-			if by != 0:
-				text = "[color=#%s]%s[/color]" % [(Palette.HP if by > 0 else Palette.ACCENT).to_html(false), text]
-			parts.append(text)
-		stats.text = ("[right]%s[/right]" if right else "%s") % "   ".join(parts)
+		stats.text = _stats_bbcode(h, right)
 		col.add_child(stats)
 	var wrap := MarginContainer.new()
 	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1084,6 +1074,97 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	if chips != null:
 		out.add_child(chips)
 	return out
+
+
+## PWR DMG RNG KB as they stand now. Green up, red down against the card, whatever moved it:
+## cores, equipment, effects (playtest 2026-10-30: Sandai Kitetsu's +3 DMG stayed white).
+func _stats_bbcode(h: HeroState, right: bool) -> String:
+	var parts := PackedStringArray()
+	for key: String in ["pwr", "dmg", "rng", "kb"]:
+		var value: int = engine.stat(state, h, key)
+		var text: String = "%s %d" % [key.to_upper(), value]
+		var by: int = value - engine.base_stat(state, h, key)
+		if by != 0:
+			text = "[color=#%s]%s[/color]" % [(Palette.HP if by > 0 else Palette.ACCENT).to_html(false), text]
+		parts.append(text)
+	return ("[right]%s[/right]" if right else "%s") % "   ".join(parts)
+
+
+## Hovering a hero panel shows its stats in a strip beside it (Marko 2026-11-06). The panel does
+## not grow: a growing panel pushed the ones under it away from the mouse and the hover jumped.
+func _show_hover_stats(hero_id: String) -> void:
+	var h: HeroState = state.hero(hero_id) if state != null else null
+	var slice: Control = _slice_of.get(hero_id)
+	if h == null or h.is_ko() or _is_expanded(h) or slice == null or not is_instance_valid(slice) or not slice.is_inside_tree():
+		_hide_hover_stats()
+		return
+	if _hover_stats == null:
+		_hover_stats = PanelContainer.new()
+		_hover_stats.add_theme_stylebox_override("panel", UiTheme.box(Palette.PANEL_SOLID, 0, Palette.LINE, 12, 4))
+		_hover_stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hover_stats.z_index = 20
+		var label := RichTextLabel.new()
+		label.bbcode_enabled = true
+		label.fit_content = true
+		label.scroll_active = false
+		label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.add_theme_font_override("normal_font", UiTheme.display_italic())
+		label.add_theme_font_size_override("normal_font_size", 15)
+		label.add_theme_color_override("default_color", Palette.FG)
+		_hover_stats.add_child(label)
+		add_child(_hover_stats)
+	var r: Rect2 = slice.get_global_rect()
+	var right: bool = r.get_center().x > get_viewport_rect().size.x * 0.5
+	(_hover_stats.get_child(0) as RichTextLabel).text = _stats_bbcode(h, right)
+	# Beside the panel, on the table side and past its ⚡ tab, level with it: under it the strip
+	# covered the next panel's name.
+	_hover_stats.reset_size()
+	var gap: float = 46.0
+	var x: float = r.position.x - gap - _hover_stats.size.x if right else r.end.x + gap
+	_hover_stats.global_position = Vector2(x, r.get_center().y - _hover_stats.size.y * 0.5)
+	_hover_stats.visible = true
+	_hover_stats_hero = hero_id
+
+
+func _hide_hover_stats(hero_id: String = "") -> void:
+	if _hover_stats != null and (hero_id.is_empty() or hero_id == _hover_stats_hero):
+		_hover_stats.visible = false
+		_hover_stats_hero = ""
+
+
+## Preroll: a click on your activated ball offers PASS under it (Marko 2026-11-06), the same as
+## the PASS button; it goes on the next click, or when the move is no longer yours.
+func can_pass(slot: int) -> bool:
+	return state != null and _in_card_round() and state.to_act == slot and state.pending.is_empty() and local_slots.has(slot)
+
+
+func offer_ball_pass(slot: int, at: Vector2) -> void:
+	if not can_pass(slot):
+		return
+	if _ball_pass == null:
+		_ball_pass = Button.new()
+		_ball_pass.text = "PASS  ·  ON TO ROLL"
+		_ball_pass.theme_type_variation = &"Primary"
+		_ball_pass.focus_mode = Control.FOCUS_NONE
+		_ball_pass.add_theme_font_size_override("font_size", 17)
+		_ball_pass.pressed.connect(func() -> void:
+			var who: int = _ball_pass_slot
+			hide_ball_pass()
+			if can_pass(who):
+				pass_pressed.emit(who))
+		add_child(_ball_pass)
+	_ball_pass_slot = slot
+	_ball_pass.text = "PASS  ·  ON TO ROLL" if state.phase == GameState.PHASE_PREROLL else "PASS"
+	_ball_pass.reset_size()
+	_ball_pass.position = at - Vector2(_ball_pass.size.x * 0.5, 0.0)
+	_ball_pass.visible = true
+
+
+func hide_ball_pass() -> void:
+	if _ball_pass != null:
+		_ball_pass.visible = false
+	_ball_pass_slot = -1
 
 
 ## The abilities on a hero's own card and its evolutions: [{card, index, effect, n}] (n: which
@@ -1384,6 +1465,10 @@ func _needs_input(slot: int) -> bool:
 
 
 func _refresh_prompt() -> void:
+	if _ball_pass_slot >= 0 and not can_pass(_ball_pass_slot):
+		hide_ball_pass()
+	if not _hover_stats_hero.is_empty():
+		_show_hover_stats.call_deferred(_hover_stats_hero)
 	_clear(_actions)
 	_clear(_mulligan_row)
 	_mulligan_row.visible = false
