@@ -244,17 +244,18 @@ func refresh() -> void:
 		target_slot = -1
 		target_heroes = PackedStringArray()
 		targeting_changed.emit()
-	# A new phase is called out in the middle (not on the first look, e.g. a loaded match).
+	# A new phase is called out in the middle (not on the first look, e.g. a loaded match), after
+	# the banners of what led to it (playtest 2026-11-06: "START PHASE" came before the fight's winner).
+	var phase_call: bool = false
 	if _ribbon_phase(state.phase) != _ribbon_phase(_called_phase) or _called_phase.is_empty():
 		# Not while a replay rewinds (its log gets shorter).
 		# End is quiet (GDD 11): what it did shows through the log's own banners.
-		if not _called_phase.is_empty() and PHASES.has(state.phase) and state.phase != GameState.PHASE_END and state.log.size() >= _log_seen \
-				and GameSettings.banners() == "all":
-			banner("%s PHASE" % _ribbon_phase(state.phase).to_upper(), Palette.PANEL_SOLID, "TURN %d" % state.turn, "", START_BANNER_TIME if state.phase == GameState.PHASE_START else PHASE_BANNER_TIME)
-		_called_phase = state.phase
-	else:
-		_called_phase = state.phase
+		phase_call = not _called_phase.is_empty() and PHASES.has(state.phase) and state.phase != GameState.PHASE_END and state.log.size() >= _log_seen \
+				and GameSettings.banners() == "all"
+	_called_phase = state.phase
 	_scan_log()
+	if phase_call:
+		banner("%s PHASE" % _ribbon_phase(state.phase).to_upper(), Palette.PANEL_SOLID, "TURN %d" % state.turn, "", START_BANNER_TIME if state.phase == GameState.PHASE_START else PHASE_BANNER_TIME)
 	_refresh_choice()
 	_refresh_ribbon()
 	_refresh_battle_bar()
@@ -761,13 +762,13 @@ func _refresh_ribbon() -> void:
 		_ribbon.add_child(first)
 		var now: int = RIBBON_PHASES.find(_ribbon_phase(state.phase))
 		for i: int in RIBBON_PHASES.size():
-			# Every phase in its colour, as the phase chips on the cards (Marko 2026-11-05): the current one full,
-			# the ones still to come dimmed, the ones gone darker still.
+			# Only the current phase in its colour, as the phase chips on the cards (Marko 2026-11-06: the
+			# others in colour drew the eye away from it); the ones to come plain grey, the ones gone darker.
 			var label: String = RIBBON_PHASES[i].to_upper()
 			var pc: Color = Palette.PHASE_COLORS.get(RIBBON_PHASES[i], Palette.FG)
 			var ink: Color = Color.BLACK if pc.get_luminance() > 0.45 else Palette.FG
-			var fill: Color = pc if i == now else pc.darkened(0.62 if i > now else 0.78)
-			var fg: Color = ink if i == now else pc.lightened(0.15) if i > now else Palette.DIM
+			var fill: Color = pc if i == now else Palette.SURFACE_2 if i > now else Palette.SURFACE_2.darkened(0.35)
+			var fg: Color = ink if i == now else Palette.MUTED if i > now else Palette.DIM
 			var w: float = UiTheme.display_heavy().get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 34.0
 			var chev: UiShape = UiShape.make(UiShape.Kind.CHEVRON, fill, Vector2(w, 30), label, 15, fg)
 			chev.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1050,10 +1051,14 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		col.add_child(stats)
 	var wrap := MarginContainer.new()
 	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The panel keeps its own height (playtest 2026-11-06: an evolved hero's two ability tabs stretched
+	# it and left a gap under the stats).
+	wrap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	wrap.add_child(s)
-	# The hero's ability as a tab on the panel's outer end, lasting effects as chips under it.
+	# The hero's ability as a tab beside the panel's outer end (not over its colour edge), lasting
+	# effects as chips under it.
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", -6)
+	row.add_theme_constant_override("separation", 4)
 	row.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(wrap)
@@ -1116,6 +1121,8 @@ func _ability_tabs(h: HeroState, active: bool, right: bool) -> Control:
 	col.add_theme_constant_override("separation", 4)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Two or more (a hero with an evolution): each tab two lines, so the column is no taller than the panel.
+	var compact: bool = list.size() > 1
 	for a: Dictionary in list:
 		var card: CardDef = a["card"]
 		var e: FxEffect = a["effect"]
@@ -1154,8 +1161,11 @@ func _ability_tabs(h: HeroState, active: bool, right: bool) -> Control:
 		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		tab.add_child(v)
 		var head: String = "ABILITY" + ("  ·  ONCE PER TURN" if e.once else "")
-		v.add_child(UiTheme.label(head, 11, fg if can else Palette.MUTED, false))
-		var name_l: Label = UiTheme.label(_ability_title(a).to_upper(), 18, fg)
+		if not compact:
+			v.add_child(UiTheme.label(head, 11, fg if can else Palette.MUTED, false))
+		elif e.once and not used:
+			status += "  ·  ONCE PER TURN"
+		var name_l: Label = UiTheme.label(_ability_title(a).to_upper(), 16 if compact else 18, fg)
 		name_l.clip_text = true
 		name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		v.add_child(name_l)
@@ -2670,7 +2680,11 @@ func _banner_for(e: Dictionary) -> void:
 			# Power is per team: each side's heroes in that battle and their total.
 			var power: Dictionary = JsonUtil.as_dict(e.get("power", {}))
 			var index: int = JsonUtil.as_int(e.get("index", state.battle_index))
-			var ids: PackedStringArray = JsonUtil.as_strings(state.battles[index].get("heroes", [])) if index >= 0 and index < state.battles.size() else PackedStringArray()
+			# The heroes come with the event (playtest 2026-11-06: a battle with no hit ends the turn at
+			# once, the battle list is already empty and the banner said " WINS THE FIGHT!").
+			var ids: PackedStringArray = JsonUtil.as_strings(e.get("heroes", []))
+			if ids.is_empty() and index >= 0 and index < state.battles.size():
+				ids = JsonUtil.as_strings(state.battles[index].get("heroes", []))
 			var sides: Array[String] = ["", ""]
 			var best: int = -1
 			var best_pow: int = -1
@@ -3111,6 +3125,11 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			return dot + "Tie: %s stay locked and fight again next turn." % _esc(_heroes_line(e))
 		"battle_tie_break":
 			return dot + "Second tie: %s are both knocked back." % _esc(_heroes_line(e))
+		"out_of_reach":
+			var far := PackedStringArray()
+			for id: String in JsonUtil.as_strings(e.get("losers", [])):
+				far.append(_hero_b(id))
+			return dot + "%s can't reach %s: no hit." % [_hero_b(hero), " or ".join(far)]
 		"hit_held", "hold_hit":
 			return dot + "%s holds the hit back for double knockback." % _hero_b(hero) if t == "hit_held" else ""
 		"damage":

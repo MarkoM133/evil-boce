@@ -1254,6 +1254,11 @@ func _resolve_battle(s: GameState, index: int) -> void:
 			if in_range(s, w, l):
 				targets.append(l.id)
 		if targets.is_empty():
+			# Said in the log (playtest 2026-11-06): a win with nothing after it looked like a bug.
+			var far: Array = []
+			for l: HeroState in losers:
+				far.append(l.id)
+			s.event("out_of_reach", {"hero": w.id, "losers": far})
 			continue
 		# "After winning, may deal no DMG": the owner decides before the loser does.
 		if fx.hold_hit_effect(s, w) != null:

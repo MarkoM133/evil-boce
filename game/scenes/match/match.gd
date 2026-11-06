@@ -2136,6 +2136,25 @@ func demo_ribbon_shot() -> void:
 	state.phase = phase
 	hud.refresh()
 
+## Screenshot helper (playtest 2026-11-06): player 1's first hero is active with an evolution that has
+## an ability of its own, so its panel shows two ability tabs.
+func demo_evolved_tabs() -> void:
+	demo_ribbon_shot()
+	var h: HeroState = null
+	for x: HeroState in state.heroes:
+		if x.owner == 0:
+			h = x
+			break
+	if h == null:
+		return
+	state.active[0] = h.id
+	for c: CardDef in db.catalog.of_type("Evolution"):
+		if c.effects.any(func(e: FxEffect) -> bool: return e.optional and e.cond != "WIN"):
+			h.evolutions.append(c.id)
+			break
+	hud.refresh()
+
+
 ## Hits hero 0, knocks hero 1 three hexes away and knocks out hero 2.
 func demo_fx_hit() -> void:
 	_demo = true

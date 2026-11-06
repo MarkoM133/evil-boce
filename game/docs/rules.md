@@ -134,7 +134,8 @@ Paths use the JSON form of the state: `players.p0.hand`, `heroes.<id>.hp`, `core
 Things the GDD does not spell out; each is one line to confirm or veto.
 
 1. **Hits:** (confirmed 2026-10-26) every winner that reaches a loser hits once with its own DMG; the owner of the
-   first reachable loser chooses which reachable hero takes it. (Marko, 2026-11-02:)
+   first reachable loser chooses which reachable hero takes it. A winner that reaches no loser deals nothing; the engine logs
+   `out_of_reach {hero, losers}` so the win does not look like a skipped step (playtest 2026-11-06). (Marko, 2026-11-02:)
    at least half of the hit, rounded up, lands on that hero; for the rest the loser may discard
    cards from the hand, 1 card per DMG (the player picks which), or take it on the hero too. With
    no cards in the hand it all lands on the hero. The deck never takes damage and there is no
