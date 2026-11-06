@@ -837,7 +837,7 @@ function importButton() {
 
 // Izbornik kao u mockupu Card editora: Cards, Card editor (Sets, Publish, Traits & aliases, Text guide, Frames),
 // Decks, Balance (i Coverage), Tools. Podstavke se vide dok je njihova stavka otvorena.
-// Četiri podstranice (Marko 2026-11-03): Publish drži i fx wishlist (kartica Waiting for the game), Words drži
+// Četiri podstranice (Marko 2026-11-03): Publish drži i fx wishlist (ispod Objave od 2026-11-06), Words drži
 // Traits & aliases (kartica Tags) i Text guide (kartica Phrases). Stare adrese (traits, guide, wishlist) i dalje rade.
 const EDITOR_PAGES = [['sets', 'Sets'], ['publish', 'Publish'], ['traits', 'Words'], ['frames', 'Frames']];
 const EDITOR_GROUP = { wishlist: 'publish', guide: 'traits', words: 'traits' };
@@ -1279,7 +1279,8 @@ function filtered() {
     (!extras.length || extras.some(fn => fn(c))) &&
     (!changed || changed.has(c.id)) &&
     matches(c))
-    .sort((a, b) => SORTS[sort][1](a, b) || byCode(a, b));
+    // Coreovi na kraj (Marko 2026-11-06): pregled počinje herojima, ne s devet pločica coreova.
+    .sort((a, b) => (a.type === 'Core') - (b.type === 'Core') || SORTS[sort][1](a, b) || byCode(a, b));
 }
 
 const plural = (n, one, other) => (n === 1 ? one : other);

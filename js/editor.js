@@ -189,7 +189,7 @@ export function createEditor(env) {
       if (Date.now() - ed.locksAt > HEARTBEAT_MS) {
         Promise.all([readLocks(), refreshDb()]).then(([a, b]) => { if (a || b) env.render(); }).catch(() => {});
       }
-      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), pageTabs(want), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, words: renderTraitsPage, frames: frames.render, publish: renderPublish, wishlist: renderWishlist }[want]());
+      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), pageTabs(want), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, words: renderTraitsPage, frames: frames.render, publish: renderPublishPage, wishlist: renderPublishPage }[want]());
     }
     if (want !== ed.id) {
       if (!leaveOk()) return renderCardPage();
@@ -550,17 +550,14 @@ export function createEditor(env) {
 
   // Kartice na vrhu spojenih stranica: Publish | Waiting for the game, Tags | Phrases (Marko 2026-11-03).
   function pageTabs(want) {
+    // Publish i Waiting for the game su jedna stranica od 2026-11-06; kartice ostaju samo za Words.
     const groups = [
-      [['publish', 'Publish'], ['wishlist', 'Waiting for the game']],
       [['traits', 'Tags'], ['guide', 'Phrases']],
     ];
     const cur = want === 'words' ? 'traits' : want;
     const group = groups.find(g => g.some(([k]) => k === cur));
     if (!group) return null;
-    const wishes = (ed.wishlist?.items ?? []).filter(i => i.status === 'open').length;
-    const drafts = Object.keys(ed.drafts?.cards ?? {}).length;
-    return h('div', { class: 'ce-views ce-page-tabs' }, group.map(([k, label]) => h('button', { type: 'button', class: k === cur ? 'active' : '', onclick: () => go(k) },
-      label, k === 'wishlist' && wishes ? h('span', { class: 'tab-badge' }, wishes) : k === 'publish' && drafts ? h('span', { class: 'tab-badge' }, drafts) : null)));
+    return h('div', { class: 'ce-views ce-page-tabs' }, group.map(([k, label]) => h('button', { type: 'button', class: k === cur ? 'active' : '', onclick: () => go(k) }, label)));
   }
 
   // fx wishlist (Marko 2026-11-03): riječi koje fx jeziku fale, iz Claude prijedloga (server/fx-claude.mjs).
@@ -617,8 +614,7 @@ export function createEditor(env) {
     const unchecked = cards.filter(c => !st(c).res && !st(c).waiting).length;
     return h('section', { class: 'ce-claude-check' },
       h('h3', {}, 'Claude reads every card'),
-      h('p', { class: 'muted small' }, 'Claude writes the fx of each card from its text on its own, and the server compares it with what the game reads. Where they agree the reading is checked twice; where they differ, one of them misread the text.'),
-      h('p', { class: 'small' }, `${agree} agree · ${differ.length} differ · ${waiting} waiting · ${unchecked} not checked`),
+      h('p', { class: 'small' }, h('span', { title: 'Claude writes the fx of each card from its text on its own, and the server compares it with what the game reads.' }, `${agree} agree · ${differ.length} differ · ${waiting} waiting · ${unchecked} not checked`)),
       h('div', { class: 'ce-actions' },
         h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), title: 'Cards without fx get the game\'s reading, to confirm while you review them', onclick: () => env.guard(fillAllFx) }, 'Write fx on every card'),
         h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(checkAll) }, 'Check every card with Claude')),
@@ -647,14 +643,25 @@ export function createEditor(env) {
     const words = open.filter(i => i.kind !== 'rule');
     const rules = open.filter(i => i.kind === 'rule');
     const closed = items.filter(i => i.status !== 'open');
-    return h('section', { class: 'ce-wishlist' },
+    // Prazni dijelovi se ne pokazuju (Marko 2026-11-06).
+    return h('section', { class: 'ce-wishlist', id: 'ce-wish' },
+      h('h2', {}, 'Waiting for the game'),
       claudeCheckSection(),
-      h('p', { class: 'muted' }, 'Words the fx language does not have yet, proposed by Claude while it wrote fx (Ask Claude on a card). New verbs, conditions and targets wait for Claude Code to build them into the game: tell it "napravi wishlist". Rules are questions for Marko.'),
-      h('h3', {}, `For the game (${words.length})`),
-      words.length ? h('div', { class: 'ce-wish-list' }, words.map(i => card(i, i.kind))) : h('p', { class: 'muted small' }, 'Nothing waiting.'),
-      h('h3', {}, `Rule questions for Marko (${rules.length})`),
-      rules.length ? h('div', { class: 'ce-wish-list' }, rules.map(i => card(i, 'rule'))) : h('p', { class: 'muted small' }, 'None.'),
+      words.length || rules.length ? h('p', { class: 'muted small' }, 'Words the fx language does not have yet, from Ask Claude. Verbs, conditions and targets wait for Claude Code ("napravi wishlist"); rules are questions for Marko.')
+        : h('p', { class: 'muted small' }, 'No words wait for the game.'),
+      words.length ? [h('h3', {}, `For the game (${words.length})`), h('div', { class: 'ce-wish-list' }, words.map(i => card(i, i.kind)))] : null,
+      rules.length ? [h('h3', {}, `Rule questions for Marko (${rules.length})`), h('div', { class: 'ce-wish-list' }, rules.map(i => card(i, 'rule')))] : null,
       closed.length ? h('details', {}, h('summary', {}, `Done or not needed (${closed.length})`), h('div', { class: 'ce-wish-list' }, closed.map(i => card(i, i.kind)))) : null);
+  }
+
+  // Publish i ono što čeka igru na jednoj stranici; s adrese wishlist stranica skoči na taj dio.
+  function renderPublishPage() {
+    const page = h('div', { class: 'ce-publish-page' }, renderPublish(), renderWishlist());
+    // Skok samo jednom po dolasku na adresu wishlist (stranica se ponovo crta dok se lista osvježava).
+    const atWish = location.hash.endsWith('/wishlist');
+    if (atWish && !ed.wishJumped) requestAnimationFrame(() => page.querySelector('#ce-wish')?.scrollIntoView({ block: 'start' }));
+    ed.wishJumped = atWish;
+    return page;
   }
 
   // fx za igru (Marko 2026-11-05): svaka karta ima zapisan fx i igra radi po njemu. Parser igre (data/fx-proposals.json,
@@ -1872,23 +1879,26 @@ export function createEditor(env) {
       });
     }
     const rows = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    const heroes = allCards().filter(c => c.type === 'Hero');
     return h('div', { class: 'ce-page' },
       env.renderTraits(),
       h('section', { class: 'panel' },
-        h('h2', {}, 'Hero aliases'),
-        h('p', { class: 'muted' }, 'Other names a card\'s first tag may use for a hero. Change them on the hero card.'),
-        h('table', { class: 'ce-pub-table' }, h('tbody', {}, heroes.map(c => h('tr', {},
-          h('td', {}, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, c.name)), h('td', {}, (c.aliases ?? []).join(', ') || h('span', { class: 'muted' }, '–'))))))),
-      h('section', { class: 'panel' },
         h('h2', {}, 'Tags on the cards'),
-        h('p', { class: 'muted' }, 'Every tag on the cards. Renaming changes it on every card as drafts (Publish puts them into the game).'),
-        h('table', { class: 'ce-pub-table' },
-          h('thead', {}, h('tr', {}, ['Tag', 'First tag on', 'Other tag on', 'Rename to', ''].map(t => h('th', {}, t)))),
+        h('p', { class: 'muted' }, 'Every tag on the cards. Click a tag to rename it on every card (as drafts; Publish puts it into the game).'),
+        h('table', { class: 'ce-pub-table ce-tag-table' },
+          h('thead', {}, h('tr', {}, ['Tag', 'First tag on', 'Other tag on'].map(t => h('th', {}, t)))),
           h('tbody', {}, rows.map(([tag, n]) => {
-            const to = h('input', { placeholder: tag });
-            return h('tr', {}, h('td', {}, h('strong', {}, tag)), h('td', { class: 'num' }, n.first || '–'), h('td', { class: 'num' }, n.other || '–'), h('td', {}, to),
-              h('td', {}, h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(() => renameTag(tag, to.value.trim())) }, 'Rename')));
+            // Preimenovanje na klik (Marko 2026-11-06): ćelija postane polje s Rename i Cancel; Enter spremi, Esc odustane.
+            const cell = h('td', {});
+            const show = () => cell.replaceChildren(h('button', { class: 'link ce-tag-name', type: 'button', disabled: !canWrite(), title: canWrite() ? 'Rename this tag on every card' : '', onclick: edit }, tag));
+            function edit() {
+              const to = h('input', { value: tag, 'aria-label': `New name for ${tag}`, onkeydown: ev => { if (ev.key === 'Enter') { ev.preventDefault(); go2(); } else if (ev.key === 'Escape') show(); } });
+              const go2 = () => env.guard(() => renameTag(tag, to.value.trim()));
+              cell.replaceChildren(h('div', { class: 'ce-tag-rename' }, to, h('button', { class: 'ghost', type: 'button', onclick: go2 }, 'Rename'), h('button', { class: 'link', type: 'button', onclick: show }, 'Cancel')));
+              to.focus();
+              to.select();
+            }
+            show();
+            return h('tr', {}, cell, h('td', { class: 'num' }, n.first || '–'), h('td', { class: 'num' }, n.other || '–'));
           })))));
   }
 

@@ -260,6 +260,25 @@ button.link.accent, .accent { color: var(--straw); }
 
 /* Text guide, Frames */
 .ce-guide input { width: 100%; }
+.ce-guide-intro { font: inherit; }
+.ce-guide-list { list-style: none; margin: 0; padding: 0; display: grid; border-top: 1px solid var(--line); }
+.ce-guide-row { display: grid; grid-template-columns: minmax(140px, 200px) minmax(0, 1fr) minmax(0, 1.2fr); gap: 4px 16px; align-items: baseline; padding: 10px 8px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.ce-guide-row:hover, .ce-guide-row:focus-visible { background: var(--surface-2); }
+.ce-guide-row > code { grid-column: span 2; word-break: break-all; }
+.ce-guide-row.editing { display: block; cursor: default; background: var(--surface-2); }
+.ce-guide-edit { display: grid; grid-template-columns: 1fr 1.4fr 1.4fr; gap: 10px; }
+.ce-guide-row-actions { display: flex; gap: 16px; justify-content: flex-end; margin-top: 8px; }
+.ce-tag-table .ce-tag-name { font-weight: 700; color: var(--bone); text-decoration: none; }
+.ce-tag-table .ce-tag-name:hover { text-decoration: underline; }
+.ce-tag-rename { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ce-tag-rename input { max-width: 240px; }
+.ce-publish-page { display: grid; gap: 28px; }
+.ce-publish-page > .ce-wishlist { border-top: 1px solid var(--line); padding-top: 18px; }
+@media (max-width: 700px) {
+  .ce-guide-row { grid-template-columns: 1fr; }
+  .ce-guide-row > code { grid-column: auto; }
+  .ce-guide-edit { grid-template-columns: 1fr; }
+}
 .card-editor { display: grid; grid-template-columns: 200px minmax(340px, 1fr) minmax(320px, 520px); gap: 22px; align-items: start; }
 .ce-frames { grid-template-columns: 160px minmax(340px, 1fr) minmax(320px, 560px); }
 .ce-frames-json { font: 12px/1.4 ui-monospace, Consolas, monospace; width: 100%; }

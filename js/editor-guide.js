@@ -122,27 +122,37 @@ export function createGuideView(ctx) {
     }
     const g = v.guide;
     const edit = (obj, k) => e => { obj[k] = e.target.value; v.dirty = true; };
+    // Popis za čitanje; klik na redak otvori uređivanje tog retka (Marko 2026-11-06).
+    const open = (kind, i) => { v.editing = { kind, i }; ctx.render(); };
+    const isOpen = (kind, i) => v.editing?.kind === kind && v.editing?.i === i;
+    const doneBtn = () => h('button', { class: 'link', type: 'button', onclick: () => { v.editing = null; ctx.render(); } }, 'Done');
+    const phraseRow = (p, i) => isOpen('phrase', i)
+      ? h('li', { class: 'ce-guide-row editing' },
+        h('div', { class: 'ce-guide-edit' },
+          h('label', { class: 'ce-field' }, h('span', {}, 'What'), h('input', { value: p.label ?? '', oninput: edit(p, 'label') })),
+          h('label', { class: 'ce-field' }, h('span', {}, 'Phrase'), h('input', { value: p.text ?? '', oninput: edit(p, 'text') })),
+          h('label', { class: 'ce-field' }, h('span', {}, 'Note'), h('input', { value: p.note ?? '', oninput: edit(p, 'note') }))),
+        h('div', { class: 'ce-guide-row-actions' }, doneBtn(), h('button', { class: 'link warn', type: 'button', onclick: () => { g.phrases.splice(i, 1); v.editing = null; v.dirty = true; ctx.render(); } }, 'Delete')))
+      : h('li', { class: 'ce-guide-row', tabindex: 0, role: 'button', title: 'Click to edit', onclick: () => open('phrase', i), onkeydown: ev => { if (ev.key === 'Enter') open('phrase', i); } },
+        h('strong', {}, p.label || '(no name)'), h('span', { class: 'ce-guide-phrase' }, p.text), p.note ? h('span', { class: 'muted small' }, p.note) : null);
+    const avoidRow = (r, i) => isOpen('avoid', i)
+      ? h('li', { class: 'ce-guide-row editing' },
+        h('div', { class: 'ce-guide-edit' },
+          h('label', { class: 'ce-field' }, h('span', {}, 'Pattern (regular expression)'), h('input', { class: 'mono', value: r.find ?? '', oninput: edit(r, 'find') })),
+          h('label', { class: 'ce-field' }, h('span', {}, 'Warning'), h('input', { value: r.say ?? '', oninput: edit(r, 'say') }))),
+        h('div', { class: 'ce-guide-row-actions' }, doneBtn(), h('button', { class: 'link warn', type: 'button', onclick: () => { g.avoid.splice(i, 1); v.editing = null; v.dirty = true; ctx.render(); } }, 'Delete')))
+      : h('li', { class: 'ce-guide-row', tabindex: 0, role: 'button', title: 'Click to edit', onclick: () => open('avoid', i), onkeydown: ev => { if (ev.key === 'Enter') open('avoid', i); } },
+        h('span', {}, r.say || '(no warning)'), h('code', { class: 'muted small' }, r.find));
     return h('section', { class: 'panel ce-guide' },
       h('div', { class: 'ce-title' }, h('h2', {}, 'Card text guide')),
-      h('p', { class: 'muted' }, 'Phrases the game reads and the editor offers (buttons, suggestions while typing), and words to avoid (warnings). Saved in data/editor/text-guide.json.'),
-      h('label', { class: 'ce-field' }, h('span', {}, 'Intro'), h('textarea', { rows: 2, value: g.intro ?? '', oninput: edit(g, 'intro') })),
-      h('h3', {}, 'Phrases'),
-      h('table', { class: 'ce-pub-table' },
-        h('thead', {}, h('tr', {}, ['What', 'Phrase', 'Note', ''].map(t => h('th', {}, t)))),
-        h('tbody', {}, g.phrases.map((p, i) => h('tr', {},
-          h('td', {}, h('input', { value: p.label ?? '', oninput: edit(p, 'label') })),
-          h('td', {}, h('input', { value: p.text ?? '', oninput: edit(p, 'text') })),
-          h('td', {}, h('input', { value: p.note ?? '', oninput: edit(p, 'note') })),
-          h('td', {}, h('button', { class: 'ghost', type: 'button', onclick: () => { g.phrases.splice(i, 1); v.dirty = true; ctx.render(); } }, '✕')))))),
-      h('button', { class: 'ghost', type: 'button', onclick: () => { g.phrases.push({ label: '', text: '', note: '' }); ctx.render(); } }, '+ Phrase'),
-      h('h3', {}, 'Avoid'),
-      h('table', { class: 'ce-pub-table' },
-        h('thead', {}, h('tr', {}, ['Pattern (regular expression)', 'Warning', ''].map(t => h('th', {}, t)))),
-        h('tbody', {}, g.avoid.map((a, i) => h('tr', {},
-          h('td', {}, h('input', { value: a.find ?? '', oninput: edit(a, 'find') })),
-          h('td', {}, h('input', { value: a.say ?? '', oninput: edit(a, 'say') })),
-          h('td', {}, h('button', { class: 'ghost', type: 'button', onclick: () => { g.avoid.splice(i, 1); v.dirty = true; ctx.render(); } }, '✕')))))),
-      h('button', { class: 'ghost', type: 'button', onclick: () => { g.avoid.push({ find: '', say: '' }); ctx.render(); } }, '+ Rule'),
+      h('p', { class: 'muted' }, 'Phrases the game reads and the editor offers while you type, and wording to avoid (Checks warn about it). Click a line to edit it.'),
+      h('label', { class: 'ce-field' }, h('span', {}, 'Intro'), h('textarea', { class: 'ce-guide-intro', rows: 2, value: g.intro ?? '', oninput: edit(g, 'intro') })),
+      h('h3', {}, `Phrases (${g.phrases.length})`),
+      h('ul', { class: 'ce-guide-list' }, g.phrases.map(phraseRow)),
+      h('button', { class: 'ghost', type: 'button', onclick: () => { g.phrases.push({ label: '', text: '', note: '' }); v.editing = { kind: 'phrase', i: g.phrases.length - 1 }; ctx.render(); } }, '+ Phrase'),
+      h('h3', {}, `Avoid (${g.avoid.length})`),
+      h('ul', { class: 'ce-guide-list' }, g.avoid.map(avoidRow)),
+      h('button', { class: 'ghost', type: 'button', onclick: () => { g.avoid.push({ find: '', say: '' }); v.editing = { kind: 'avoid', i: g.avoid.length - 1 }; ctx.render(); } }, '+ Rule'),
       h('div', { class: 'ce-actions' },
         h('button', { class: 'primary', type: 'button', disabled: !ctx.canWrite(), onclick: () => ctx.guard(save) }, 'Save guide'),
         h('button', { class: 'ghost', type: 'button', onclick: exportMd }, 'Export .md'),
