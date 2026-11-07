@@ -587,7 +587,7 @@ func _build_combo_box() -> Control:
 	panel.add_child(scroll)
 	_combo_list = VBoxContainer.new()
 	_combo_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_combo_list.add_theme_constant_override("separation", 18)
+	_combo_list.add_theme_constant_override("separation", 12)
 	scroll.add_child(_combo_list)
 	return box
 
@@ -683,10 +683,21 @@ func _combo_row(c: CardDef, lit: bool, has_deck: bool, mine: PackedStringArray) 
 	text.add_theme_font_size_override("font_size", 17)
 	text.add_theme_color_override("font_color", Color("d8d3cb"))
 	col.add_child(text)
+	# Each combo on its own plate (Marko 2026-11-07: with several they ran together); one your deck
+	# makes has a gold edge on the left.
+	var plate := PanelContainer.new()
+	var sb: StyleBoxFlat = UiTheme.box(Palette.SURFACE_2, 0, Palette.LINE, 16, 14)
+	if lit and has_deck:
+		sb.border_color = Palette.GOLD
+		sb.set_border_width_all(0)
+		sb.border_width_left = 5
+		sb.content_margin_left = 20
+	plate.add_theme_stylebox_override("panel", sb)
+	plate.add_child(row)
 	if has_deck and not lit:
 		col.add_child(UiTheme.label("NOT IN YOUR DECK", 15, Palette.MUTED))
-		row.modulate.a = 0.6
-	return row
+		plate.modulate.a = 0.6
+	return plate
 
 
 ## One card of a combo: its picture, name and code under it; dim when your deck lacks it.
