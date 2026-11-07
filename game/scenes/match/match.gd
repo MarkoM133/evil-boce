@@ -2620,6 +2620,23 @@ func demo_victory() -> void:
 	hud.refresh()
 
 
+## Screenshot helper: the end screen as if player 1 lost with every hero KO.
+func demo_defeat() -> void:
+	_demo = true
+	state.phase = GameState.PHASE_OVER
+	state.winner = 1
+	state.result = "ko"
+	state.turn = 19
+	for h: HeroState in state.heroes_of(0):
+		h.hp = 0
+		h.zone = HeroState.ZONE_KO
+	hud.local_slots = PackedInt32Array([0])
+	hud.end_summary = {"battles": 11, "players": [
+		{"slot": 0, "name": state.player(0).name, "stages_claimed": 1, "kos_suffered": 3, "ring_outs_suffered": 1},
+		{"slot": 1, "name": state.player(1).name, "stages_claimed": 2, "kos_suffered": 1, "ring_outs_suffered": 0}]}
+	hud.refresh()
+
+
 ## Screenshot helper: one of each banner, queued.
 func demo_banners() -> void:
 	_demo = true

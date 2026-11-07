@@ -3549,23 +3549,23 @@ func _refresh_over() -> void:
 	elif state.winner >= 0:
 		title = "%s WINS" % player_name(state.winner).to_upper()
 	# The title on a band across the screen, as the phase banners (playtest 2026-10-30: the end
-	# screen wanted a redesign): straw for a win, dark with a red edge for a loss.
+	# screen wanted a redesign): straw for a win, dark red with white letters for a loss (Marko
+	# 2026-11-07, mockup A: the grey DEFEAT read oddly), dark for a draw.
 	var band := PanelContainer.new()
-	var band_col: Color = Palette.GOLD if won else (Color("141414") if lost else Palette.SURFACE_2)
+	var band_col: Color = Palette.GOLD if won else (Color("5a0c08") if lost else Palette.SURFACE_2)
 	var bsb: StyleBoxFlat = UiTheme.slant(band_col, 60, 6)
-	bsb.border_color = Palette.ACCENT if lost else Color.BLACK
+	bsb.border_color = Color.BLACK
 	bsb.border_width_bottom = 8
 	bsb.border_width_top = 2
 	band.add_theme_stylebox_override("panel", bsb)
 	band.custom_minimum_size = Vector2(900, 0)
 	band.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_over_box.add_child(band)
-	var main: Label = UiTheme.label(title, 120, Color.BLACK if won else (Palette.MUTED if lost else Palette.FG))
+	var main: Label = UiTheme.label(title, 120, Color.BLACK if won else Palette.FG)
 	main.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if not won:
-		main.add_theme_color_override("font_shadow_color", Palette.ACCENT)
-		main.add_theme_constant_override("shadow_offset_x", 6)
-		main.add_theme_constant_override("shadow_offset_y", 6)
+		main.add_theme_color_override("font_outline_color", Color.BLACK)
+		main.add_theme_constant_override("outline_size", 14)
 	band.add_child(main)
 	var why: Label = UiTheme.label("%s  ·  TURN %d" % [str(reasons.get(state.result, state.result.to_upper())), state.turn], 20, Palette.GOLD)
 	why.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
