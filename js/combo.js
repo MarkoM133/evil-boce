@@ -33,7 +33,8 @@ export function comboColors(cards, combo) {
 export function decorate(card, cards) {
   if (!card) return card;
   if (isCombo(card)) {
-    const names = (card.ingredients ?? []).map(id => cards.find(x => x.id === id)?.name ?? id);
+    // Ime s kodom (Marko 2026-11-07): dvije karte smiju imati isto ime, a kod ih razlikuje na karti.
+    const names = (card.ingredients ?? []).map(id => { const x = cards.find(k => k.id === id); return x ? x.name + " (" + id + ")" : id; });
     return { ...card, comboColors: comboColors(cards, card), ingredientNames: names };
   }
   return isIngredient(cards, card.id) ? { ...card, comboMark: true } : card;
