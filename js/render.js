@@ -905,15 +905,19 @@ function renderCombo(canvas, card, tpl, art) {
     ctx.stroke();
     fitLine(ctx, `+${card.extraCost ?? 0}`, L.cost, { font: TITLE_FONT, color: '#ffffff', bold: true });
   }
-  // Oznaka COMBO u bojama sastojaka.
+  // Oznaka COMBO kao u Card Studiju (Marko 2026-11-07): gladak prijelaz boja sastojaka, bijela podebljana slova.
   if (L.tag) {
     const [tx, ty, tw, th] = L.tag.box;
-    roundRect(ctx, tx, ty, tw, th, 12);
-    ctx.fillStyle = comboGradient(ctx, colors, tx, ty, tx + tw, ty);
+    roundRect(ctx, tx, ty, tw, th, Math.round(th * 0.18));
+    const [ca, cb] = [colors[0], colors[1] ?? colors[0]].map(c => COMBO_RIM[c] ?? COMBO_RIM.None);
+    const g = ctx.createLinearGradient(tx, ty, tx + tw, ty);
+    g.addColorStop(0, ca);
+    g.addColorStop(1, cb);
+    ctx.fillStyle = g;
     ctx.fill();
     ctx.save();
-    ctx.letterSpacing = `${Math.round(th * 0.16)}px`;
-    fitLine(ctx, 'COMBO', { box: [tx, ty, tw, th], size: L.tag.size ?? 48, min: 24 }, { font: TITLE_FONT, color: '#0d0b0e', bold: true });
+    ctx.letterSpacing = `${Math.round(th * 0.04)}px`;
+    fitLine(ctx, 'COMBO', { box: [tx, ty, tw, th], size: L.tag.size ?? 48, min: 24 }, { font: TEXT_FONT, color: '#ffffff', bold: true });
     ctx.restore();
   }
   const t = drawEffect(ctx, card.text ?? '', colors[0] === 'None' ? 'Purple' : colors[0], L.effect, tpl.icons, '', false);
