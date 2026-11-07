@@ -340,7 +340,7 @@ func _build_balls() -> void:
 		var color: Color = def.ball_color if def != null else Palette.hero(card.color if card != null else "")
 		var accent: Color = def.ball_accent if def != null else Palette.DEFAULT_ACCENT
 		v.configure(color, accent, Palette.team(state.team_of(h.owner)),
-			db.emblem(def.set_code if def != null else ""), db.sprite(def) if def != null else null,
+			db.hero_emblem(def), db.sprite(def) if def != null else null,
 			card.color if card != null else "")
 		v.set_radius(b.radius())
 		b.add_child(v)

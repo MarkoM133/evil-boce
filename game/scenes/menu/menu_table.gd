@@ -68,7 +68,7 @@ func setup(db: CardDb) -> void:
 		var h: HeroDef = heroes[i]
 		var team: int = 0 if SPOTS[i].x < 0.0 else 1
 		var view := BallView.new()
-		view.configure(h.ball_color, h.ball_accent, Palette.team(team), db.emblem(h.set_code), db.sprite(h), h.color_name)
+		view.configure(h.ball_color, h.ball_accent, Palette.team(team), db.hero_emblem(h), db.sprite(h), h.color_name)
 		var r: float = tuning.radius(h.wt)
 		view.set_radius(r)
 		root.add_child(view)

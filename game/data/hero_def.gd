@@ -13,6 +13,8 @@ var ball_color: Color = Color.WHITE
 var ball_accent: Color = Palette.DEFAULT_ACCENT
 ## Absolute path, empty when the card has no sprite.
 var sprite_path: String = ""
+## The hero's logo (Card Studio's emblem, data/art/emblems/…), shown on the ball's button; "" for none.
+var emblem_path: String = ""
 
 
 ## `data_dir` is the folder that holds cards.json.
@@ -31,6 +33,9 @@ static func from_card(card: Dictionary, data_dir: String) -> HeroDef:
 	var sprite: String = str(card.get("sprite", ""))
 	if not sprite.is_empty():
 		h.sprite_path = data_dir.path_join(sprite)
+	var emblem: String = str(card.get("emblem", ""))
+	if not emblem.is_empty():
+		h.emblem_path = data_dir.path_join(emblem)
 	return h
 
 

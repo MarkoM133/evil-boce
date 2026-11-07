@@ -95,6 +95,14 @@ func sprite_of(card_id: String) -> Texture2D:
 	return texture(sprite_paths[card_id]) if sprite_paths.has(card_id) else null
 
 
+## The logo on a hero's ball: its own (Marko 2026-11-07), else its set's, else null (a star then).
+func hero_emblem(hero: HeroDef) -> Texture2D:
+	if hero == null:
+		return null
+	var own: Texture2D = texture(hero.emblem_path) if not hero.emblem_path.is_empty() else null
+	return own if own != null else emblem(hero.set_code)
+
+
 func emblem(set_code: String) -> Texture2D:
 	return texture(data_dir().path_join("branding/emblem-%s.png" % set_code))
 

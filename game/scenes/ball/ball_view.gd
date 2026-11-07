@@ -100,7 +100,7 @@ func configure(hero_color: Color, accent: Color, team_color: Color,
 	_ring_mat.albedo_color = Color(team_color, 0.9)
 	_flash_mat.albedo_color = Color(hero_color, 0.0)
 	_burst_mat.albedo_color = hero_color
-	_emblem_mat.albedo_texture = emblem if emblem != null else _get_fallback_emblem()
+	_emblem_mat.albedo_texture = emblem_badge(emblem) if emblem != null else _get_fallback_emblem()
 	_figure.texture = figure if figure != null else _placeholder_figure(hero_color)
 	_fit_figure()
 
@@ -680,6 +680,44 @@ static func _get_flash_texture() -> Texture2D:
 
 
 ## Stand-in for a missing set emblem: a white star on a dark disc with a light rim.
+## A logo as the ball's button (Marko 2026-11-07: the hero's logo where the star was): the metal rim,
+## a light face (the logos are drawn for light ground, black lines and all) and the logo fitted in the
+## middle. Made once per logo.
+static var _badges: Dictionary = {}
+
+
+static func emblem_badge(logo: Texture2D) -> Texture2D:
+	if _badges.has(logo):
+		return _badges[logo]
+	var n: int = 256
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for y: int in n:
+		for x: int in n:
+			var d: float = Vector2((x + 0.5) / n * 2.0 - 1.0, (y + 0.5) / n * 2.0 - 1.0).length()
+			img.set_pixel(x, y, Color("d9d2c5") if d <= 1.0 and d > 0.84 else (Color("f4efe6") if d <= 0.84 else Color(0, 0, 0, 0)))
+	var src: Image = logo.get_image()
+	if src != null:
+		if src.is_compressed():
+			src.decompress()
+		src.convert(Image.FORMAT_RGBA8)
+		# As big as the face (a logo's corners are mostly empty); the rim is drawn again over it.
+		var box: int = int(n * 0.76)
+		var k: float = minf(float(box) / src.get_width(), float(box) / src.get_height())
+		src.resize(maxi(1, int(src.get_width() * k)), maxi(1, int(src.get_height() * k)), Image.INTERPOLATE_LANCZOS)
+		var at := Vector2i((n - src.get_width()) / 2, (n - src.get_height()) / 2)
+		img.blend_rect(src, Rect2i(Vector2i.ZERO, src.get_size()), at)
+		for y: int in n:
+			for x: int in n:
+				var d: float = Vector2((x + 0.5) / n * 2.0 - 1.0, (y + 0.5) / n * 2.0 - 1.0).length()
+				if d > 1.0:
+					img.set_pixel(x, y, Color(0, 0, 0, 0))
+				elif d > 0.84:
+					img.set_pixel(x, y, Color("d9d2c5"))
+	var tex := ImageTexture.create_from_image(img)
+	_badges[logo] = tex
+	return tex
+
+
 static func _get_fallback_emblem() -> Texture2D:
 	if _fallback_emblem != null:
 		return _fallback_emblem
