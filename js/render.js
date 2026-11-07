@@ -856,8 +856,11 @@ function renderCombo(canvas, card, tpl, art) {
   const colors = card.comboColors?.length ? card.comboColors : ['None'];
   const R = L.radius ?? 60;
   const rim = L.rim ?? 22;
+  // Art, prijelazi i sve ostalo režu se po VANJSKOM rubu ruba (uvučen 3 px, radijus R); rub se crta zadnji,
+  // pa art nigdje ne viri ispod njega (Marko 2026-11-07: u kutovima je virio).
+  const inset = 3;
   ctx.save();
-  roundRect(ctx, 0, 0, W, H, R);
+  roundRect(ctx, inset, inset, W - inset * 2, H - inset * 2, R);
   ctx.clip();
   ctx.fillStyle = '#101014';
   ctx.fillRect(0, 0, W, H);
@@ -881,7 +884,7 @@ function renderCombo(canvas, card, tpl, art) {
   ctx.fillRect(0, H * 0.75, W, H * 0.25);
   ctx.restore();
   // Rub u bojama sastojaka, lijevo → desno.
-  roundRect(ctx, rim / 2 + 3, rim / 2 + 3, W - rim - 6, H - rim - 6, R - rim / 2);
+  roundRect(ctx, inset + rim / 2, inset + rim / 2, W - inset * 2 - rim, H - inset * 2 - rim, R - rim / 2);
   ctx.lineWidth = rim;
   ctx.strokeStyle = comboGradient(ctx, colors, 0, 0, W, 0);
   ctx.stroke();

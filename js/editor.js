@@ -321,7 +321,7 @@ export function createEditor(env) {
         h('button', { class: 'ghost ce-act', type: 'button', title: 'Close', 'aria-label': 'Close', onclick: () => go(ed.from) }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'ce-act-lbl' }, 'Close')),
         h('button', { class: 'primary', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(saveDraft) }, 'Save')));
     return h('div', { class: 'ce-full' }, top, readOnlyNote(),
-      h('div', { class: `ce-cols${HEROISH.includes(w.type) ? ' wide' : ''}` }, renderSide(), renderCentre(), renderForm()));
+      h('div', { class: `ce-cols${WIDE.includes(w.type) ? ' wide' : ''}` }, renderSide(), renderCentre(), renderForm()));
   }
 
   function reviewNav(w) {
@@ -1136,7 +1136,7 @@ export function createEditor(env) {
   let thumbBusy = false;
   function thumbInto(canvas, card, px) {
     const key = JSON.stringify([card.id, card.type, card.updated ?? card.rev, card.art, card.artCrop, card.text, card.name, card.color, card.cost, card.traits, card.bonus, card.stats, card.emblem, card.coreImage]);
-    const wide = HEROISH.includes(card.type);
+    const wide = WIDE.includes(card.type);
     canvas.width = px * 2;
     canvas.height = Math.round(px * 2 * (wide ? 1500 / 2100 : 2100 / 1500));
     canvas.style.width = `${px}px`;
@@ -2023,7 +2023,7 @@ export function createEditor(env) {
     };
     const rows = list.map(({ id, d, base }) => {
       const card = { ...(base ?? {}), ...d, id };
-      const px = HEROISH.includes(card.type) ? 168 : 120;
+      const px = WIDE.includes(card.type) ? 168 : 120;
       if (locked(id)) {
         const l = ed.locks[id];
         return h('div', { class: 'ce-pub-row locked' },
