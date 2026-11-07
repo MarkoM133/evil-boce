@@ -1,0 +1,107 @@
+{
+  "name": "fx: a card on 'Opponent's Heroes in Range' is not played with no enemy hero in range; with one it is",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          5,
+          8
+        ],
+        "heroes.p1:TB-001.zone": "map",
+        "heroes.p1:TB-001.hex": [
+          12,
+          8
+        ],
+        "players.p0.hand": [
+          "TA-059"
+        ],
+        "players.p0.energy": 3,
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-001",
+        "roll": false
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "phase": "postroll",
+        "to_act": 0
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-059"
+      },
+      "error": "no enemy hero in range"
+    },
+    {
+      "expect": {
+        "players.p0.hand": [
+          "TA-059"
+        ],
+        "players.p0.energy": 3
+      }
+    },
+    {
+      "set": {
+        "heroes.p1:TB-001.hex": [
+          7,
+          8
+        ]
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-059"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p1:TB-001.statuses.no_claim": 1,
+        "players.p0.hand": {
+          "$size": 0
+        }
+      }
+    }
+  ]
+}

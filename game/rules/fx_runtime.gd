@@ -630,6 +630,11 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 	var args: PackedStringArray = a["args"]
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
+	# "Opponent's Heroes in Range" with nobody there: the card is not played (Marko 2026-11-07,
+	# Conqueror's Haki), as with an effect on the opponent that needs an enemy in range. Only as the
+	# effect's first step, so a later step of a card already let through is not refused.
+	if target == "ALL_ENEMY_IN_RANGE" and e.actions.find(a) == 0 and _targets(s, ctx, e, target, null, verb).is_empty():
+		return {"error": "no enemy hero in range"}
 	# PICK on a hero group (2026-11-05): one of the group, picked by the owner of its heroes (the card's player
 	# when the group spans players). "the player with more Energy chooses one of their Heroes in this Battle".
 	if args.has("PICK") and verb != "DUEL_TOP" and FxEffect.HERO_TARGETS.has(target) and not ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY"].has(target):

@@ -54,7 +54,8 @@ beside it is never written.
   effect that names a player, not a hero (`COST OPP …`, `DISCHARGE OPP …`, `CHOOSE OPP …`), the text says
   "If an Opponent's Hero is in Range, …" and `RANGE` means an enemy hero must be in range for the card to be
   played; the effect then covers the whole opponent (Observation Killing; Soul Pocus is not played without
-  an enemy in range). "an Opponent's Hero's Range" is the enemy's range, not SELF's (Intercept: a friendly
+  an enemy in range). A card whose first action targets `ALL_ENEMY_IN_RANGE` is not played either when no
+  enemy hero is in range (Conqueror's Haki, Marko 2026-11-07); `RANGE` on such a line adds nothing. "an Opponent's Hero's Range" is the enemy's range, not SELF's (Intercept: a friendly
   hero an enemy reaches). `deactivate a Core` is a core on that hero (`DEACTIVATE_CORE SELF`); `activate a
   Core in Range` is a core on the field (`ACTIVATE_CORE` with `RANGE`). Targets are chosen by the player who
   plays the card unless the text says otherwise; a colour bonus looks at the hero the card is played for; a
