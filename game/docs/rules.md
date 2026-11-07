@@ -166,7 +166,9 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    at least half of the hit, rounded up, lands on that hero; for the rest the loser may discard
    cards from the hand, 1 card per DMG (the player picks which), or take it on the hero too. With
    no cards in the hand it all lands on the hero. The deck never takes damage and there is no
-   deck-out win any more (an empty deck only means no draw). Damage from cards ("take 3 DMG")
+   deck-out win any more (an empty deck only means no draw). A hit that knocks the hero out takes
+   it out of the hits still waiting; a hit with nobody left to take it is wasted (`hit_wasted
+   {hero, targets}`; online playtest 2026-11-07). Scenario 60. Damage from cards ("take 3 DMG")
    is not a battle hit and goes where the card says. Event `hand_damage` {player, cards, amount,
    hand, by}; `deck_damage` / `deck_out` / result `deckout` live on only in old replays.
 2. **Battle order:** (confirmed 2026-10-26) locked (tied) groups first, then the battle with the initiative player's
@@ -214,7 +216,8 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    (hit along the hex direction, power = steps / full-power hexes of the WT) and brings the
    `RollOutcome` to `apply_knockback`. The outcome lands every moved ball as a roll does
    (cores, stages, ring-outs); a knocked hero takes `wall_damage` once per ball and once per wall
-   it hit (a wall is one body per hex sharing a "wall" meta: a seam or a scrape is one hit). The
+   it hit (a wall is one body per hex sharing a "wall" meta: a seam or a scrape is one hit); the
+   `damage` event carries `bumped` (the heroes) and `walls`, so the log says what it hit. The
 9d. (2026-10-26) `series_wins` > 1 is a series (`MatchSeries`, not a rule: the scene and the host
    keep it); `first_initiative` names who starts (the last loser), -1 draws lots as before.
    A seat may bring a sideboard (up to 10 cards its heroes may take, each under its limit;

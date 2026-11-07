@@ -3461,6 +3461,11 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			return dot + "Tie: %s stay locked and fight again next turn." % _esc(_heroes_line(e))
 		"battle_tie_break":
 			return dot + "Second tie: %s are both knocked back." % _esc(_heroes_line(e))
+		"hit_wasted":
+			var down := PackedStringArray()
+			for id: String in JsonUtil.as_strings(e.get("targets", [])):
+				down.append(_hero_b(id))
+			return dot + "%s's hit finds %s already down." % [_hero_b(hero), " and ".join(down)]
 		"out_of_reach":
 			var far := PackedStringArray()
 			for id: String in JsonUtil.as_strings(e.get("losers", [])):
@@ -3483,7 +3488,14 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 				return dot + "%s takes no damage." % _hero_b(hero)
 			var dmg: String = "[color=#%s]%d DMG[/color]" % [red, amount]
 			if src == "wall":
-				return dot + "%s hits a wall: %s (HP %d)." % [_hero_b(hero), dmg, hp]
+				# A knockback's damage: into a wall, into heroes, or both (playtest 2026-11-07).
+				var bumped := PackedStringArray()
+				for id: String in JsonUtil.as_strings(e.get("bumped", [])):
+					bumped.append(_hero_b(id))
+				var what: String = "hits a wall"
+				if not bumped.is_empty():
+					what = ("hits a wall and bumps into %s" if JsonUtil.as_int(e.get("walls", 0)) > 0 else "bumps into %s") % " and ".join(bumped)
+				return dot + "%s %s: %s (HP %d)." % [_hero_b(hero), what, dmg, hp]
 			if src == "trap":
 				return dot + "The trap deals %s to %s (HP %d)." % [dmg, _hero_b(hero), hp]
 			if not src.is_empty() and state.hero(src) != null:

@@ -39,7 +39,9 @@ var recorder: MatchRecorder
 var net_role: String = ""
 var net_host: NetHost
 var net_client: NetClient
-var _ball_tick: float = 0.0
+## When the balls' positions last went out to the guests (real time: the ring-out slow motion
+## scales the physics ticks, and the guests' balls crawled at a few updates a second).
+var _ball_sent_ms: int = 0
 ## Last HP drawn per hero, and the heroes shown as KO, so _sync can animate what changed.
 var _hp: Dictionary[String, int] = {}
 ## Balls hopping to a new hex by a rule move: they stay closed until they land.
@@ -1682,9 +1684,9 @@ func _physics_process(delta: float) -> void:
 	if not _runner.is_running():
 		return
 	if net_role == "host":
-		_ball_tick += delta
-		if _ball_tick >= 0.05:
-			_ball_tick = 0.0
+		var now: int = Time.get_ticks_msec()
+		if now - _ball_sent_ms >= 50:
+			_ball_sent_ms = now
 			var positions: Dictionary = {}
 			for id: String in _bodies:
 				var p: Vector3 = _bodies[id].global_position

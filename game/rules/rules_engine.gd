@@ -469,6 +469,7 @@ func _apply_decision(s: GameState, m: Move) -> String:
 			s.pending.pop_front()
 			hand_damage(s, p, cards, winner)
 			hero_damage(s, s.hero(target), amount - cards.size(), false, winner)
+			_drop_dead_targets(s)
 		DECISION_RETURN_CORE:
 			if m.type != Move.RETURN_CORE:
 				return "put a core back first"
@@ -716,7 +717,9 @@ func apply_knockback(s: GameState, o: RollOutcome) -> String:
 				"steps": asked[h.id], "physics": true, "hits": r.collisions.size() + r.walls_hit})
 			var hits: int = r.collisions.size() + r.walls_hit
 			if h.is_on_map() and hits > 0:
-				hero_damage(s, h, hits * s.settings.wall_damage, false, "wall")
+				# The log says what it hit (online playtest 2026-11-07: a ball pinned against another
+				# took "hits a wall" three times): the heroes it bumped into, and how many walls.
+				hero_damage(s, h, hits * s.settings.wall_damage, false, "wall", "", {"bumped": Array(r.collisions), "walls": r.walls_hit})
 		end_move(s, h, was, by_team)
 	s.event("knockback_done", {"heroes": asked.keys()})
 	_check_win(s)
@@ -1226,6 +1229,34 @@ func _next_battle(s: GameState) -> void:
 		fx.fire_battle(s)
 
 
+## After a hit: the hits still waiting drop the heroes that went down with it (online playtest
+## 2026-11-07: "3 DMG from Sanji" asked where to put a hit on a Shanks already at 0). A hit with
+## nobody left to take it is wasted, event `hit_wasted {hero, targets}`.
+func _drop_dead_targets(s: GameState) -> void:
+	var i: int = 0
+	while i < s.pending.size():
+		var d: Dictionary = s.pending[i]
+		if str(d.get("type", "")) != DECISION_DAMAGE:
+			i += 1
+			continue
+		var alive: Array = []
+		var gone: Array = []
+		for id: String in JsonUtil.as_strings(d.get("targets", [])):
+			var h: HeroState = s.hero(id)
+			if h != null and h.is_on_map():
+				alive.append(id)
+			else:
+				gone.append(id)
+		if alive.is_empty():
+			s.pending.remove_at(i)
+			s.event("hit_wasted", {"hero": str(d.get("winner", "")), "targets": gone})
+			continue
+		if not gone.is_empty():
+			d["targets"] = alive
+			d["player"] = s.hero(str(alive[0])).owner
+		i += 1
+
+
 ## A winner that chose HOLD_HIT deals no damage: its pending damage decisions go away.
 func _drop_held_hits(s: GameState) -> void:
 	var i: int = 0
@@ -1392,13 +1423,16 @@ func _battle_tie(s: GameState, members: Array[HeroState]) -> void:
 # =====================================================================================
 
 ## Damage to a hero, after "takes ±N DMG from all sources" modifiers (unless unblockable).
-## `by`: who or what dealt it (a hero id, "wall", "trap"), `card`: the card that did, for the log.
-func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = false, by: String = "", card: String = "") -> void:
+## `by`: who or what dealt it (a hero id, "wall", "trap"), `card`: the card that did, for the log;
+## `extra` goes into the event as it is (a knockback's `bumped` heroes and `walls`).
+func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = false, by: String = "", card: String = "", extra: Dictionary = {}) -> void:
 	if h == null or h.is_ko() or amount <= 0:
 		return
 	if not unblockable:
 		amount = maxi(amount + fx.damage_mod(s, h), 0)
 	var info: Dictionary = {"hero": h.id, "amount": maxi(amount, 0), "hp": h.hp}
+	for k: Variant in extra:
+		info[k] = extra[k]
 	if not by.is_empty():
 		info["by"] = by
 	if not card.is_empty():
@@ -1540,6 +1574,8 @@ func _grid_knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 	var start: Vector2i = h.hex
 	var pos: Vector2i = h.hex
 	var left: int = steps
+	var bumped: Array = []
+	var walls: int = 0
 	while left > 0:
 		var next: Vector2i = Hex.neighbor(pos, dir)
 		var off_map: bool = false
@@ -1547,8 +1583,14 @@ func _grid_knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 		for cell: Vector2i in Hex.spiral(next, 1 if h.big else 0):
 			if not s.map().contains(cell):
 				off_map = true
-			elif s.wall_at(cell) or s.hero_at(cell, h) != null:
+			elif s.wall_at(cell):
 				blocked = true
+				walls = 1
+			elif s.hero_at(cell, h) != null:
+				blocked = true
+				var other: HeroState = s.hero_at(cell, h)
+				if not bumped.has(other.id):
+					bumped.append(other.id)
 		if off_map:
 			h.hex = next
 			s.event("knockback", {"hero": h.id, "from": Hex.to_json(start), "to": Hex.to_json(next), "steps": steps - left + 1})
@@ -1563,7 +1605,7 @@ func _grid_knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 	arrive(s, h)
 	if left > 0:
 		# Blocked by a wall or a hero: wall_damage once (GDD 10, 2026-10-26), not per step short.
-		hero_damage(s, h, s.settings.wall_damage, false, "wall")
+		hero_damage(s, h, s.settings.wall_damage, false, "wall", "", {"bumped": bumped, "walls": walls})
 
 
 # =====================================================================================
