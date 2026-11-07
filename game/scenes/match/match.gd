@@ -684,14 +684,13 @@ func _combo_row(c: CardDef, lit: bool, has_deck: bool, mine: PackedStringArray) 
 	text.add_theme_color_override("font_color", Color("d8d3cb"))
 	col.add_child(text)
 	# Each combo on its own plate (Marko 2026-11-07: with several they ran together); one your deck
-	# makes has a gold edge on the left.
+	# makes has a gold edge on the left, the same size as the others (the edge is drawn inside).
 	var plate := PanelContainer.new()
 	var sb: StyleBoxFlat = UiTheme.box(Palette.SURFACE_2, 0, Palette.LINE, 16, 14)
 	if lit and has_deck:
 		sb.border_color = Palette.GOLD
 		sb.set_border_width_all(0)
 		sb.border_width_left = 5
-		sb.content_margin_left = 20
 	plate.add_theme_stylebox_override("panel", sb)
 	plate.add_child(row)
 	if has_deck and not lit:
