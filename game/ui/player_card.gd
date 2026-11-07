@@ -120,7 +120,13 @@ func show_only(picks_: Dictionary) -> void:
 ## This side's picks as the other players see them (see `show_only`).
 func picks() -> Dictionary:
 	var d: Dictionary = saved_deck()
-	return {"deck_name": str(d.get("name", "")), "heroes": JsonUtil.as_strings(d.get("heroes", [])),
+	var heroes: PackedStringArray = JsonUtil.as_strings(d.get("heroes", []))
+	# A random deck drawn after hero picks but not shown yet (no BUILD / REROLL): the other side sees
+	# only the picked heroes, the drawn ones stay "?" as they do here (online playtest 2026-11-07:
+	# the host saw the guest's drawn heroes the guest had not seen).
+	if deck_index == 0 and not _show_built and not d.is_empty():
+		heroes = chosen.duplicate()
+	return {"deck_name": str(d.get("name", "")), "heroes": heroes,
 		"stages": Array(loadout.stages), "cores": Array(loadout.cores)}
 
 
