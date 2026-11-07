@@ -1214,7 +1214,7 @@ export function createEditor(env) {
           cv, h('span', { class: 'small' }, c.name), h('span', { class: 'small muted' }, `${c.id} · ${colourName(c)}`));
       }) : [h('p', { class: 'small muted' }, 'No Action or Assist card matches.')]));
     };
-    // Zatvaranje (Marko 2026-11-07): strelica lijevo, klik bilo gdje izvan tražilice ili Esc. Bez ponovnog crtanja forme,
+    // Zatvaranje (Marko 2026-11-07): klik bilo gdje izvan tražilice ili Esc. Bez ponovnog crtanja forme,
     // da klik izvan stigne do polja na koje je kliknut.
     const off = () => { document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); };
     const close = () => {
@@ -1238,7 +1238,6 @@ export function createEditor(env) {
     fill();
     const box = h('div', { class: 'ce-combo-picker' },
       h('div', { class: 'ce-combo-picker-head' },
-        h('button', { type: 'button', class: 'ce-combo-back', title: 'Close the search', 'aria-label': 'Close the search', onclick: close }, '←'),
         input),
       grid);
     document.addEventListener('pointerdown', onDown, true);
