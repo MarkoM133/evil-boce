@@ -503,6 +503,9 @@ export function createEditor(env) {
   }
 
   const normFx = x => String(x ?? '').split('\n').map(l => l.trim().replace(/\s+/g, ' ').toUpperCase()).filter(Boolean).join('\n');
+  // Claude i igra čitaju tekst drukčije, ali je potvrđeni fx jednak jednom od njih: Marko je presudio, nema više
+  // što uspoređivati (Marko 2026-11-07: Conqueror's Haki i Elbaph stajali su na popisu bez izlaza).
+  const claudeSettled = (c, r) => !!c.fx && c.fxStatus !== 'check' && (normFx(c.fx) === normFx(r?.fx) || normFx(c.fx) === normFx(r?.read));
 
   // Gumb Ask Claude: uvijek isti natpis i isto mjesto (desno u redu ispod fx kutije).
   function askClaudeButton(w) {
@@ -537,7 +540,8 @@ export function createEditor(env) {
       ].filter(Boolean);
       const warns = [
         r.problems?.length ? h('p', { class: 'small warn' }, 'The game would not read: ', r.problems.map(p => `${p.line} (${p.problem})`).join(' · ')) : null,
-        r.agree === false ? h('p', { class: 'small warn' }, 'Claude reads it differently from the game: compare the two and fix the text, or use Claude\'s fx.') : null,
+        r.agree === false && !claudeSettled(w, r) ? h('p', { class: 'small warn' }, 'Claude reads it differently from the game: compare the two and fix the text, or use Claude\'s fx.') : null,
+        r.agree === false && claudeSettled(w, r) ? h('p', { class: 'small muted' }, 'Claude reads it differently from the game; the confirmed fx settles it.') : null,
         r.extensions?.length ? h('p', { class: 'small' }, 'Needs new words, on the ', h('button', { class: 'link', type: 'button', onclick: () => go('wishlist') }, 'fx wishlist'), ': ', r.extensions.map(x => x.word).join(' · ')) : null,
       ].filter(Boolean);
       const noteList = n => n.length ? h('details', { class: 'ce-prop-notes' }, h('summary', { class: 'small' }, `▸ ${n.length === 1 ? '1 note' : n.length + ' notes'}`), n) : null;
@@ -617,13 +621,14 @@ export function createEditor(env) {
     loadAllClaude();
     const cards = checkable();
     const st = c => ed.claude[c.id] ?? {};
-    const differ = cards.filter(c => st(c).res?.agree === false);
+    const differ = cards.filter(c => st(c).res?.agree === false && !claudeSettled(c, st(c).res));
+    const settled = cards.filter(c => st(c).res?.agree === false && claudeSettled(c, st(c).res)).length;
     const agree = cards.filter(c => st(c).res?.agree === true).length;
     const waiting = cards.filter(c => st(c).waiting).length;
     const unchecked = cards.filter(c => !st(c).res && !st(c).waiting).length;
     return h('section', { class: 'ce-claude-check' },
       h('h3', {}, 'Claude reads every card'),
-      h('p', { class: 'small' }, h('span', { title: 'Claude writes the fx of each card from its text on its own, and the server compares it with what the game reads.' }, `${agree} agree · ${differ.length} differ · ${waiting} waiting · ${unchecked} not checked`)),
+      h('p', { class: 'small' }, h('span', { title: 'Claude writes the fx of each card from its text on its own, and the server compares it with what the game reads.' }, `${agree} agree · ${differ.length} differ${settled ? ` · ${settled} settled by a confirmed fx` : ''} · ${waiting} waiting · ${unchecked} not checked`)),
       h('div', { class: 'ce-actions' },
         h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), title: 'Cards without fx get the game\'s reading, to confirm while you review them', onclick: () => env.guard(fillAllFx) }, 'Write fx on every card'),
         h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(checkAll) }, 'Check every card with Claude')),

@@ -40,7 +40,7 @@ static func parse(card: CardDef) -> Dictionary:
 	var self_name: String = card.hero if card.type == "Evolution" and not card.hero.is_empty() else card.name
 	var t: String = _normalise(text, self_name)
 	# Elbaph (2026-11-05): a duel in every battle on the stage; the winner picks one hero in it for the bonus.
-	var duel: RegExMatch = _rx("(?i)in a battle on this stage, each player reveals the top card of their deck\\. the player who revealed the higher[- ]cost card chooses one of their heroes in this battle\\. that hero gets \\+(\\d+) (\\w+)\\.?").search(t)
+	var duel: RegExMatch = _rx("(?i)each player reveals the top card of their deck\\. the player who revealed the higher[- ]cost card chooses one of their heroes in this battle\\. that hero gets \\+(\\d+) (\\w+)\\.?").search(t)
 	if duel != null:
 		t = t.substr(0, duel.get_start()) + "Duel for +%s %s." % [duel.get_string(1), duel.get_string(2)] + t.substr(duel.get_end())
 	# Egghead (2026-11-05): the player with more Energy picks one of their heroes in the battle for the bonus.
