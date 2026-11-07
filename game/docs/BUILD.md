@@ -69,7 +69,8 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
   `demo_choose_hero` (a heal asking for a hero: beams on the heroes it may take, the rest see-through),
   `demo_choose_core`, `demo_choose_card` (a core on the field, a card from the hand),
   `demo_banner_shot` with `--banner=` start, preroll, roll, postroll, battle_phase, battle, win, win_team,
-  damage, deck, ringout, ko, stage, triggered, tie, tie_again, merged, merged_many (one band per run),
+  damage, deck, ringout, ko, combo (the combo card over the screen), stage, triggered, tie, tie_again, merged,
+  merged_many (one band per run), `demo_combo_list` (the pause menu with the combo list),
   `demo_autoplay` (bots play both sides; give it `--wait=3600` for about a minute),
   `debug_dump` (turn, phase, heroes, last log lines).
 

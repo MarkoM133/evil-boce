@@ -64,6 +64,8 @@ const PHASE_BANNER_TIME: float = 2.2
 const START_BANNER_TIME: float = 2.2
 ## BATTLE! stays long enough to read both sides' Power.
 const BATTLE_BANNER_TIME: float = 1.6
+## The combo card stays over the screen this long (a click or Enter puts it away sooner).
+const COMBO_SHOW_TIME: float = 2.6
 ## A merged band stays this much longer per extra line, up to MERGED_MAX_TIME.
 const MERGED_LINE_TIME: float = 1.2
 const MERGED_MAX_TIME: float = 6.0
@@ -354,7 +356,8 @@ func toast(text: String, color: Color = Palette.GOLD, hold: float = 1.5) -> void
 
 
 ## A slanted band across the screen (BATTLE!, RING-OUT …): in, hold, out. Queued.
-func banner(title: String, color: Color, left: String = "", right: String = "", hold: float = BANNER_TIME) -> void:
+## `card` (a combo) shows that card big over the screen instead of the band (_combo_show).
+func banner(title: String, color: Color, left: String = "", right: String = "", hold: float = BANNER_TIME, card: String = "") -> void:
 	# Banners can be cut down to the big moments, or switched off (Settings → Interface).
 	if GameSettings.banners() == "off":
 		return
@@ -362,7 +365,7 @@ func banner(title: String, color: Color, left: String = "", right: String = "", 
 	# "TURN 3 · PREROLL" showing in turn 5).
 	if title.ends_with(" PHASE"):
 		_banners = _banners.filter(func(q: Dictionary) -> bool: return not str(q["title"]).ends_with(" PHASE"))
-	var b: Dictionary = {"title": title, "color": color, "left": left, "right": right, "hold": hold, "lines": PackedStringArray()}
+	var b: Dictionary = {"title": title, "color": color, "left": left, "right": right, "hold": hold, "lines": PackedStringArray(), "card": card}
 	if _grouping:
 		_group.append(b)
 		return
@@ -399,7 +402,7 @@ func _push_group() -> void:
 
 static func stands_alone(b: Dictionary) -> bool:
 	var title: String = str(b.get("title", ""))
-	return title == "BATTLE!" or title.begins_with("TIE") or title.ends_with(" PHASE")
+	return title == "BATTLE!" or title.begins_with("TIE") or title.ends_with(" PHASE") or not str(b.get("card", "")).is_empty()
 
 
 ## How loud a band is: the winner names the moment, a KO or a ring-out comes next, then the
@@ -462,7 +465,11 @@ func skip_banner() -> void:
 	var band: Panel = _band
 	_band = null
 	var t: Tween = band.create_tween()
-	t.tween_property(band, "position:x", size.x + 100.0, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	if band.has_meta("show"):
+		# The combo card fades out where it is.
+		t.tween_property(band, "modulate:a", 0.0, 0.12)
+	else:
+		t.tween_property(band, "position:x", size.x + 100.0, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	t.tween_callback(func() -> void:
 		band.queue_free()
 		_next_banner())
@@ -2670,7 +2677,7 @@ func _choose_dialog(d: Dictionary, who: int) -> void:
 
 
 ## Combo offer (2026-11-07): the second card of a pair was played; each combo on offer is a button with its
-## extra energy, and the last one plays the card as it is. The big card and the activation show come later.
+## extra energy, and the last one plays the card as it is; the (first) combo card shows above them.
 func _combo_dialog(d: Dictionary, who: int) -> void:
 	_dialog.visible = true
 	var cid: String = str(d.get("card", ""))
@@ -2683,7 +2690,22 @@ func _combo_dialog(d: Dictionary, who: int) -> void:
 		sub.add_theme_color_override("font_color", Palette.MUTED)
 		sub.text = player_name(who)
 		_dialog_box.add_child(sub)
-	for o: Variant in JsonUtil.as_array(d.get("combos", [])):
+	var offers: Array = JsonUtil.as_array(d.get("combos", []))
+	var first_id: String = str(JsonUtil.as_dict(offers[0]).get("id", "")) if not offers.is_empty() else ""
+	var pic_tex: Texture2D = null
+	if db != null and not first_id.is_empty():
+		pic_tex = db.thumb(first_id) if db.thumb(first_id) != null else db.large(first_id)
+	if pic_tex != null:
+		var a: float = float(pic_tex.get_width()) / pic_tex.get_height()
+		var pic := TextureRect.new()
+		pic.texture = pic_tex
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_SCALE
+		pic.custom_minimum_size = Vector2(420, 420 / a)
+		pic.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		pic.material = round_corners(a)
+		_dialog_box.add_child(pic)
+	for o: Variant in offers:
 		var c: Dictionary = JsonUtil.as_dict(o)
 		var id: String = str(c.get("id", ""))
 		var extra: int = JsonUtil.as_int(c.get("extra", 0))
@@ -2772,8 +2794,9 @@ func _scan_log() -> void:
 func _banner_for(e: Dictionary) -> void:
 	match str(e.get("type", "")):
 		"combo":
-			# A plain band for now; the combo card over the screen and its animation come with the activation show.
-			banner("COMBO!", Palette.GOLD, _card_name(str(e.get("combo", ""))).to_upper(), "", 2.0)
+			# The combo card over the screen (_combo_show); a plain band when it has no picture.
+			var combo_id: String = str(e.get("combo", ""))
+			banner("COMBO!", Palette.GOLD, player_name(JsonUtil.as_int(e.get("player", 0))).to_upper(), _card_name(combo_id).to_upper(), COMBO_SHOW_TIME, combo_id)
 		"battle":
 			# Power is per team: each side's heroes in that battle and their total.
 			var power: Dictionary = JsonUtil.as_dict(e.get("power", {}))
@@ -2867,6 +2890,8 @@ func _next_banner() -> void:
 		_banner_busy = true
 		announcing_changed.emit(true)
 	var b: Dictionary = _banners.pop_front()
+	if not str(b.get("card", "")).is_empty() and _combo_show(b):
+		return
 	var lines: PackedStringArray = b.get("lines", PackedStringArray())
 	var color: Color = b["color"]
 	var fg: Color = Color.BLACK if color.get_luminance() > 0.5 else Palette.FG
@@ -2925,6 +2950,111 @@ func _next_banner() -> void:
 	t.tween_callback(func() -> void:
 		band.queue_free()
 		_next_banner())
+
+
+## The combo card over the screen (2026-11-07, combo plan step 5): the table dims, the card turns in big
+## and flashes, its rim glows gold and pulses while "COMBO!" and who played it show, then it shrinks
+## away. A click or Enter skips it (skip_banner). False when the card has no picture: the band shows.
+func _combo_show(b: Dictionary) -> bool:
+	var cid: String = str(b.get("card", ""))
+	var tex: Texture2D = null
+	if db != null:
+		tex = db.large(cid) if db.large(cid) != null else db.thumb(cid)
+	if tex == null:
+		return false
+	var show := Panel.new()
+	show.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	show.set_meta("show", true)
+	# Over everything of the HUD, the raised hand cards and the hero panels too.
+	show.z_index = 90
+	show.size = size
+	show.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_banner_layer.add_child(show)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.72)
+	dim.size = size
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	show.add_child(dim)
+	var aspect: float = float(tex.get_width()) / tex.get_height()
+	var w: float = minf(size.x * 0.62, (size.y - 280.0) * aspect)
+	var card_size := Vector2(w, w / aspect)
+	var holder := Control.new()
+	holder.size = card_size
+	holder.pivot_offset = card_size * 0.5
+	holder.position = (size - card_size) * 0.5 + Vector2(0, 10)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	show.add_child(holder)
+	# The rim: a gold line and glow just outside the card's own rim.
+	var glow := Panel.new()
+	var gs := StyleBoxFlat.new()
+	gs.bg_color = Color(0, 0, 0, 0)
+	gs.set_corner_radius_all(int(w * 0.03))
+	gs.border_color = Palette.GOLD
+	gs.set_border_width_all(5)
+	gs.set_expand_margin_all(5)
+	gs.shadow_color = Color(Palette.GOLD, 0.75)
+	gs.shadow_size = 36
+	glow.add_theme_stylebox_override("panel", gs)
+	glow.size = card_size
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(glow)
+	var pic := TextureRect.new()
+	pic.texture = tex
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_SCALE
+	pic.size = card_size
+	pic.material = round_corners(aspect)
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(pic)
+	var title: Label = UiTheme.label(str(b.get("title", "COMBO!")), 76, Palette.GOLD)
+	title.add_theme_color_override("font_outline_color", Color.BLACK)
+	title.add_theme_constant_override("outline_size", 12)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.size = Vector2(size.x, 96)
+	title.position = Vector2(0, holder.position.y - 112.0)
+	title.pivot_offset = title.size * 0.5
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	show.add_child(title)
+	var bits := PackedStringArray()
+	for key: String in ["left", "right"]:
+		if not str(b.get(key, "")).is_empty():
+			bits.append(str(b[key]))
+	var sub: Label = UiTheme.label("  ·  ".join(bits), 28, Palette.FG)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.size = Vector2(size.x, 40)
+	sub.position = Vector2(0, holder.position.y + card_size.y + 22.0)
+	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	show.add_child(sub)
+
+	dim.modulate.a = 0.0
+	holder.modulate.a = 0.0
+	holder.scale = Vector2(0.25, 0.25)
+	holder.rotation_degrees = -12.0
+	glow.modulate.a = 0.0
+	title.modulate.a = 0.0
+	sub.modulate.a = 0.0
+	pic.self_modulate = Color(2.4, 2.4, 2.4)
+	var hold: float = maxf(0.6, JsonUtil.as_float(b.get("hold", COMBO_SHOW_TIME), COMBO_SHOW_TIME) * GameSettings.anim_scale() - 0.6)
+	var t: Tween = show.create_tween()
+	t.tween_property(dim, "modulate:a", 1.0, 0.15)
+	t.parallel().tween_property(holder, "modulate:a", 1.0, 0.12)
+	t.parallel().tween_property(holder, "scale", Vector2.ONE, 0.38).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(holder, "rotation_degrees", 0.0, 0.38).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(pic, "self_modulate", Color.WHITE, 0.3)
+	t.parallel().tween_property(glow, "modulate:a", 1.0, 0.12)
+	t.parallel().tween_property(title, "modulate:a", 1.0, 0.15)
+	t.parallel().tween_property(title, "scale", Vector2.ONE, 0.25).from(Vector2(1.6, 1.6)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(sub, "modulate:a", 1.0, 0.25)
+	t.tween_property(glow, "modulate:a", 0.35, hold * 0.5).set_trans(Tween.TRANS_SINE)
+	t.tween_property(glow, "modulate:a", 1.0, hold * 0.5).set_trans(Tween.TRANS_SINE)
+	t.tween_property(holder, "scale", Vector2(0.3, 0.3), 0.25).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(show, "modulate:a", 0.0, 0.25)
+	t.tween_callback(func() -> void:
+		show.queue_free()
+		_next_banner())
+	_band = show
+	_band_tween = t
+	return true
 
 
 func _banner_side(text: String, fg: Color, left: bool) -> Label:

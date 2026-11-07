@@ -122,6 +122,11 @@ describes energy claims as the rule since 2026-11-04 (final); Stay stays an opti
 - Same combo again: any time the condition holds. A card may be in several combos; all that fit are offered.
 - `ALL_FRIENDLY_IN_BATTLE`: every hero of the card's player in the battle the context names, else the one
   being fought. Scenarios 57 and 58; the bot takes the first combo on offer.
+- Match scene (no rules): the offer dialog shows the combo card above its buttons. Event `combo` shows the
+  combo card over the screen (`MatchHud._combo_show`, queued with the bands; a click or Enter skips it).
+  The pause menu's COMBO LIST shows the combos this screen's deck can make, or every combo (ALL); it reads
+  the deck from the match record, or the deck an online guest sent (`NetClient.my_deck`), never the
+  opponent's.
 
 ## Scenario tests
 

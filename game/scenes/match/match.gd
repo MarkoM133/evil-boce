@@ -115,6 +115,14 @@ var _menu: Control
 var _menu_log: PanelContainer
 var _menu_info: Label
 var _menu_first: Button
+## The pause menu's right side: the match log, or the combo list in its place (COMBO LIST).
+var _menu_log_box: Control
+var _combo_box: Control
+var _combo_list: VBoxContainer
+var _combo_toggle: HBoxContainer
+var _combo_entry: Button
+## The combo list shows every combo, not only the ones this screen's deck can make.
+var _combo_all: bool = false
 ## Setup: the stage or core the local player places next ("" = the first one left) and the
 ## hex under the mouse, for the preview.
 var _setup_pick: String = ""
@@ -454,6 +462,8 @@ func _build_menu_overlay() -> Control:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.theme = UiTheme.get_theme()
 	root.visible = false
+	# Over the HUD's raised pieces (a picked card, the hero panels showed through it).
+	root.z_index = 100
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.8)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -498,6 +508,8 @@ func _build_menu_overlay() -> Control:
 		_menu_entry(col, "SURRENDER" + who, func() -> void:
 			_toggle_menu()
 			_apply(Move.make(Move.SURRENDER, slot)))
+	if not engine.catalog.of_type("Combo").is_empty():
+		_combo_entry = _menu_entry(col, "COMBO LIST", func() -> void: _show_combos(not _combo_box.visible))
 	_menu_entry(col, "MAIN MENU", _leave)
 
 	# The match log, right: newest at the bottom.
@@ -508,6 +520,7 @@ func _build_menu_overlay() -> Control:
 	log_box.anchor_bottom = 0.88
 	log_box.add_theme_constant_override("separation", 10)
 	root.add_child(log_box)
+	_menu_log_box = log_box
 	log_box.add_child(UiTheme.label("MATCH LOG", 26, Palette.GOLD))
 	_menu_log = PanelContainer.new()
 	_menu_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -531,7 +544,140 @@ func _build_menu_overlay() -> Control:
 	log_text.add_theme_font_size_override("italics_font_size", 15)
 	log_text.add_theme_constant_override("line_separation", 5)
 	scroll.add_child(log_text)
+	_combo_box = _build_combo_box()
+	root.add_child(_combo_box)
 	return root
+
+
+## The combo list (combo plan step 6), like a fighting game's move list: the combos this screen's deck
+## can make, or every combo (ALL). The opponent's deck never shows here.
+func _build_combo_box() -> Control:
+	var box := VBoxContainer.new()
+	box.anchor_left = 0.42
+	box.anchor_right = 0.94
+	box.anchor_top = 0.12
+	box.anchor_bottom = 0.88
+	box.add_theme_constant_override("separation", 10)
+	box.visible = false
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	box.add_child(head)
+	var title: Label = UiTheme.label("COMBO LIST", 26, Palette.GOLD)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	_combo_toggle = HBoxContainer.new()
+	_combo_toggle.add_theme_constant_override("separation", 6)
+	head.add_child(_combo_toggle)
+	for all: bool in [false, true]:
+		var b := Button.new()
+		b.text = "ALL" if all else "YOUR DECK"
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 18)
+		b.pressed.connect(func() -> void:
+			_combo_all = all
+			_fill_combos())
+		_combo_toggle.add_child(b)
+	var panel := PanelContainer.new()
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", UiTheme.box(Color(Palette.PANEL_SOLID, 0.9), 0, Color(0, 0, 0, 0), 22, 16))
+	box.add_child(panel)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
+	_combo_list = VBoxContainer.new()
+	_combo_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_combo_list.add_theme_constant_override("separation", 18)
+	scroll.add_child(_combo_list)
+	return box
+
+
+## The right side shows the combo list (true) or the match log.
+func _show_combos(on: bool) -> void:
+	if _combo_box == null:
+		return
+	_combo_box.visible = on
+	_menu_log_box.visible = not on
+	if _combo_entry != null:
+		_combo_entry.text = "MATCH LOG" if on else "COMBO LIST"
+	if on:
+		_fill_combos()
+
+
+func _fill_combos() -> void:
+	MatchHud._clear(_combo_list)
+	var mine: PackedStringArray = _own_deck_cards()
+	var has_deck: bool = not mine.is_empty()
+	_combo_toggle.visible = has_deck
+	var show_all: bool = _combo_all or not has_deck
+	for i: int in _combo_toggle.get_child_count():
+		var b: Button = _combo_toggle.get_child(i) as Button
+		b.theme_type_variation = &"Gold" if (i == 1) == show_all else &""
+	var shown: int = 0
+	for c: CardDef in engine.catalog.of_type("Combo"):
+		var makes: bool = has_deck and c.ingredients.size() == 2 and mine.has(c.ingredients[0]) and mine.has(c.ingredients[1])
+		if has_deck and not makes and not show_all:
+			continue
+		_combo_list.add_child(_combo_row(c, makes or not has_deck, has_deck))
+		shown += 1
+	if shown == 0:
+		var none: Label = UiTheme.label("Your deck makes no combo. ALL shows every combo.", 20, Palette.MUTED, false)
+		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_combo_list.add_child(none)
+
+
+## One combo: its card, name and extra energy, its two cards with their codes, its text.
+func _combo_row(c: CardDef, lit: bool, has_deck: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	var tex: Texture2D = db.thumb(c.id) if db.thumb(c.id) != null else db.large(c.id)
+	if tex != null:
+		var a: float = float(tex.get_width()) / tex.get_height()
+		var pic := TextureRect.new()
+		pic.texture = tex
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_SCALE
+		pic.custom_minimum_size = Vector2(280, 280 / a)
+		pic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		pic.material = MatchHud.round_corners(a)
+		row.add_child(pic)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 4)
+	row.add_child(col)
+	col.add_child(UiTheme.label("%s   +%d ENERGY" % [c.name.to_upper(), c.extra_cost], 26, Palette.FG))
+	var names := PackedStringArray()
+	for i: String in c.ingredients:
+		var ing: CardDef = engine.catalog.get_card(i)
+		names.append("%s (%s)" % [ing.name if ing != null else "?", i])
+	var parts: Label = UiTheme.label(" + ".join(names), 20, Palette.GOLD, false)
+	parts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(parts)
+	var text := Label.new()
+	text.text = c.text
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.add_theme_font_size_override("font_size", 17)
+	text.add_theme_color_override("font_color", Color("d8d3cb"))
+	col.add_child(text)
+	if has_deck and not lit:
+		col.add_child(UiTheme.label("NOT IN YOUR DECK", 15, Palette.MUTED))
+		row.modulate.a = 0.6
+	return row
+
+
+## The cards of the deck this screen plays: from the match record (local, host), or the deck this
+## guest sent (online). Empty when nobody here plays (a replay, a spectator).
+func _own_deck_cards() -> PackedStringArray:
+	var slot: int = hud.hand_slot()
+	if slot < 0 and not hud.local_slots.is_empty():
+		slot = hud.local_slots[0]
+	if slot < 0 or _replay != null:
+		return PackedStringArray()
+	var deck: Dictionary = {}
+	if net_role == "client":
+		deck = net_client.my_deck if net_client != null else {}
+	elif recorder != null and slot < recorder.record.decks.size():
+		deck = JsonUtil.as_dict(recorder.record.decks[slot])
+	return PackedStringArray(JsonUtil.as_dict(deck.get("cards", {})).keys())
 
 
 ## One entry of the pause menu: big italic, left; the first one red.
@@ -558,6 +704,7 @@ func _toggle_menu() -> void:
 		var phase: String = MatchHud._ribbon_phase(state.phase).to_upper()
 		_menu_info.text = ("TURN %d  ·  %s PHASE" % [state.turn, phase]) if state.turn > 0 else "SETUP"
 		_fill_menu_log()
+		_show_combos(false)
 		_menu_first.grab_focus.call_deferred()
 
 
@@ -2307,6 +2454,14 @@ func demo_banners() -> void:
 	hud.banner("RING-OUT", Palette.GOLD, "", "SHANKS")
 
 
+## Screenshot helper: the pause menu with the combo list open.
+func demo_combo_list() -> void:
+	_demo = true
+	_combo_all = true
+	_toggle_menu()
+	_show_combos(true)
+
+
 ## Screenshot helper: one band, named by `--banner=<name>` on the command line (see BUILD.md).
 func demo_banner_shot() -> void:
 	_demo = true
@@ -2332,6 +2487,10 @@ func demo_banner_shot() -> void:
 			hud.banner("RING-OUT", Palette.GOLD, "", "SHANKS", 3.0)
 		"ko":
 			hud.banner("KO", Palette.ACCENT_DEEP, "", "SHANKS", 3.0)
+		"combo":
+			var combos: Array[CardDef] = engine.catalog.of_type("Combo")
+			var cid: String = combos[0].id if not combos.is_empty() else ""
+			hud.banner("COMBO!", Palette.GOLD, "MARKO", hud._card_name(cid).to_upper(), 3.0, cid)
 		"stage":
 			hud.banner("STAGE CLAIMED", Palette.GOLD, "MARKO", "DRESSROSA", 3.0)
 		"triggered":

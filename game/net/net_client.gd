@@ -41,6 +41,8 @@ var spectating: bool = false
 var replay_stream: bool = false
 var _spectate: bool = false
 var paused: bool = false
+## The deck this guest sent last (the combo list shows the combos it can make).
+var my_deck: Dictionary = {}
 
 
 func _init(my_name_: String, game_version_: String, cards_version_: int) -> void:
@@ -71,6 +73,7 @@ func send_move(m: Move) -> void:
 
 
 func send_deck(deck: Dictionary) -> void:
+	my_deck = deck
 	link.send(1, {"t": NetProtocol.DECK, "deck": deck})
 
 
