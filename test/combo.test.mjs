@@ -15,7 +15,7 @@ const cards = [
 test('a combo takes the colours and names of its two cards; its cards get the spark', () => {
   const c = decorate(cards[4], cards);
   assert.deepEqual(c.comboColors, ['Blue', 'Green']);
-  assert.deepEqual(c.ingredientNames, ['Thunder Bagua (OP1-024)', 'Ikoku (OP1-031)']);
+  assert.deepEqual(c.ingredientNames, ['Thunder Bagua', 'Ikoku']);
   assert.equal(decorate(cards[0], cards).comboMark, true);
   assert.equal(decorate(cards[2], cards).comboMark, undefined, 'not an ingredient: no spark');
   assert.ok(isIngredient(cards, 'OP1-031'));
