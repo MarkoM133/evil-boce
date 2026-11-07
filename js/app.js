@@ -9,6 +9,7 @@ import { renderTools } from './tools.js';
 import { aggregate, filterMatches, ranked, cardsVersions, RESULTS } from './stats.js';
 import * as fs from './fsdir.js';
 import { createEditor, EDIT_TYPES, PAGES as EDITOR_PAGE_IDS } from './editor.js';
+import { isCombo } from './combo.js';
 
 const DB_PATH = 'data/cards.json';
 
@@ -549,7 +550,7 @@ function render() {
 // ---------- adresa: svaki pogled ima svoj #/…, pa gesta ili tipka Natrag vraća korak unatrag ----------
 
 // history nije u izborniku: otvara se klikom na verziju u zaglavlju ili u detalju karte.
-const TAB_SLUG = { import: 'import', browse: 'browse', editor: 'editor', decks: 'decks', balance: 'balance', traits: 'traits', coverage: 'coverage', tools: 'tools', history: 'history' };
+const TAB_SLUG = { import: 'import', browse: 'browse', combos: 'combos', editor: 'editor', decks: 'decks', balance: 'balance', traits: 'traits', coverage: 'coverage', tools: 'tools', history: 'history' };
 const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]));
 // Stare hrvatske adrese (#/uvoz, #/pregled, #/deckovi/novi) i dalje rade.
 const OLD_SLUG_TAB = { uvoz: 'import', pregled: 'browse', deckovi: 'decks' };
@@ -843,14 +844,15 @@ const EDITOR_PAGES = [['sets', 'Sets'], ['publish', 'Publish'], ['traits', 'Word
 const EDITOR_GROUP = { wishlist: 'publish', guide: 'traits', words: 'traits' };
 // Gledanje gore, izrada dolje (Marko 2026-11-03): Cards, Decks, Balance, crta, Card editor, Tools.
 const NAV = [
-  ['browse', 'Cards'],
+  // Combos (2026-11-07): the combo list, for the phone beside a match too.
+  ['browse', 'Cards', [['browse', 'Cards'], ['combos', 'Combos']]],
   ['decks', 'Decks'],
   ['balance', 'Balance', [['balance', 'Balance'], ['coverage', 'Coverage']]],
   ['-'],
   ['editor', 'Card editor', EDITOR_PAGES],
   ['tools', 'Tools'],
 ];
-const navOf = tab => (tab === 'coverage' ? 'balance' : tab === 'import' || tab === 'history' ? 'browse' : tab);
+const navOf = tab => (tab === 'coverage' ? 'balance' : tab === 'import' || tab === 'history' || tab === 'combos' ? 'browse' : tab);
 
 // Podstranice otvorene grupe (Card editor: Sets, Publish, Words, Frames; Balance: Balance, Coverage). Na računalu
 // stoje ispod svoje stavke u izborniku, na mobitelu kao red na vrhu stranice (renderMain).
@@ -893,7 +895,7 @@ function signedIn() {
 }
 
 function renderMain() {
-  const view = { import: renderImport, browse: renderBrowse, editor: () => cardEditor.render(), decks: renderDecks, balance: renderBalance, traits: renderTraits, coverage: renderCoverage, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
+  const view = { import: renderImport, browse: renderBrowse, combos: renderCombos, editor: () => cardEditor.render(), decks: renderDecks, balance: renderBalance, traits: renderTraits, coverage: renderCoverage, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
@@ -1068,6 +1070,34 @@ async function saveTraits() {
 
 // Kartica Coverage: po heroju koliko karata svoje boje smije (i kopija), od toga signature /
 // trait / general, i s koliko parova suigrača ima pun deck od 40; ispod upozorenja o tagovima.
+// Combo list (Marko 2026-11-07): every published combo with its two cards and the extra energy, or only the combos a
+// saved deck can make (both cards in it). Phone friendly: one column of rows, the combo card on top on a narrow screen.
+function renderCombos() {
+  const live = state.db.cards.filter(c => !c.deleted);
+  const combos = live.filter(isCombo).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  const decks = (state.decks ?? []).filter(d => !d.broken);
+  const deck = decks.find(d => d.slug === state.comboDeck) ?? null;
+  const shown = deck ? combos.filter(c => (c.ingredients ?? []).every(id => (deck.cards?.[id] ?? 0) > 0)) : combos;
+  const pick = h('select', { 'aria-label': 'Show the combos of a deck', onchange: e => { state.comboDeck = e.target.value || null; render(); } },
+    h('option', { value: '' }, 'All combos'),
+    decks.map(d => h('option', { value: d.slug, selected: d.slug === state.comboDeck }, d.name)));
+  const row = c => {
+    const parts = (c.ingredients ?? []).map(id => live.find(x => x.id === id));
+    return h('article', { class: 'combo-row' },
+      h('button', { class: 'combo-card', type: 'button', onclick: () => showCard(c.id), 'aria-label': c.name }, cardImg(c, { alt: c.name })),
+      h('div', { class: 'combo-body' },
+        h('h3', {}, c.name, h('span', { class: 'combo-x' }, '+' + (c.extraCost ?? 0) + ' energy')),
+        h('p', { class: 'combo-parts' }, parts.map((p, i) => [i ? h('span', { class: 'muted' }, ' + ') : null, p ? cardLink(p.id) : h('span', {}, c.ingredients[i])])),
+        h('p', { class: 'combo-text' }, c.text ?? ''),
+        h('p', { class: 'muted small' }, c.id + (c.introducedIn ? ' · introduced in ' + c.introducedIn : '') + ' · both cards played for two of your heroes in the same battle')));
+  };
+  return h('section', { class: 'panel combos' },
+    h('div', { class: 'combos-head' }, h('h2', {}, 'Combos'), pick),
+    h('p', { class: 'muted' }, deck ? 'The combos ' + deck.name + ' can make: both cards are in the deck.' : 'Every combo. A combo turns two cards played for two of your heroes in the same battle into a stronger card, for extra energy.'),
+    shown.length ? h('div', { class: 'combo-list' }, shown.map(row))
+      : h('p', { class: 'muted' }, deck ? 'This deck has no combo: none has both its cards in it.' : 'No combos yet. They are made in Card editor › Sets › Combos and come here after Publish.'));
+}
+
 function renderCoverage() {
   const rows = coverage(state.db).sort((a, b) => a.cards - b.cards || a.name.localeCompare(b.name));
   const warns = tagWarnings(state.db);

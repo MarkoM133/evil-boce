@@ -960,3 +960,16 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .ratebar em { position: relative; padding-left: 8px; font: italic 700 15px/22px var(--display); }
 .ratebar.thin { opacity: 0.55; }
 
+
+/* Combo list (2026-11-07): one row per combo, the landscape combo card beside its text; stacked on a phone. */
+.combos-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.combos-head h2 { margin: 0; }
+.combo-list { display: grid; gap: 14px; margin-top: 12px; }
+.combo-row { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 16px; align-items: start; background: var(--surface); padding: 12px; }
+.combo-card { padding: 0; background: none; clip-path: none; }
+.combo-card img { display: block; width: 100%; height: auto; aspect-ratio: 1050 / 750; border-radius: 10px; background: var(--surface-2); }
+.combo-body { display: grid; gap: 6px; min-width: 0; }
+.combo-body h3 { margin: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.combo-x { font: 700 15px var(--text); color: var(--straw); }
+.combo-parts, .combo-text { margin: 0; }
+@media (max-width: 700px) { .combo-row { grid-template-columns: minmax(0, 1fr); } }
