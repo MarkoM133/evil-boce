@@ -4145,13 +4145,8 @@ func _side_board(slot: int, right: bool) -> Control:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(spacer)
+	# Right by the team's colour edge on both sides (playtest 2026-11-07: on the right it sat apart).
 	head.add_child(_fold_chevron(open))
-	if right:
-		# The lean puts the colour edge right by the content at the top: the same room as on the left.
-		var room := Control.new()
-		room.custom_minimum_size = Vector2(16, 0)
-		room.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		head.add_child(room)
 	col.add_child(head)
 	if not open:
 		return box
@@ -4324,6 +4319,8 @@ func _board_stage(st: StageState, slot: int) -> Control:
 			# with both (Marko 2026-11-02: "0 | 5" read like "0/14").
 			var nums := HBoxContainer.new()
 			nums.add_theme_constant_override("separation", 3)
+			# Read left to right in the mirrored box too (playtest 2026-11-07: it showed "/14 4").
+			nums.layout_direction = Control.LAYOUT_DIRECTION_LTR
 			nums.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			line.add_child(nums)
 			for who: int in ([slot, other] if other >= 0 else [slot]):
