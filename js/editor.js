@@ -1559,6 +1559,8 @@ export function createEditor(env) {
       if (/^\[RNG\]/m.test(w.text ?? '')) out.push([false, 'Range at the start of a line: write it next to its target ("in [RNG]")']);
     };
     if (!(w.name ?? '').trim()) out.push([false, 'No name yet']);
+    // Isto ime smije postojati (kod razlikuje; Marko 2026-11-07), ali neka se vidi.
+    else { const twin = allCards().find(c => c.id !== w.id && c.type !== 'Core' && norm(c.name) === norm(w.name)); if (twin) out.push([false, 'Another card is called ' + twin.name + ' (' + twin.id + '): the code tells them apart']); }
     if (PORTRAIT.includes(w.type)) {
       const k = firstTag(db(), card, traitList);
       if (k.kind === HEROES) out.push([true, `First tag "${k.tag}" is a hero${k.heroes.length > 1 ? 'es' : ''}${k.heroes.some(n => n !== k.tag) ? ' alias' : ''}`]);
