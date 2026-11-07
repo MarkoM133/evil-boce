@@ -1314,9 +1314,12 @@ function filtered() {
     (!extras.length || extras.some(fn => fn(c))) &&
     (!changed || changed.has(c.id)) &&
     matches(c))
-    // Coreovi na kraj (Marko 2026-11-06): pregled počinje herojima, ne s devet pločica coreova.
-    .sort((a, b) => (a.type === 'Core') - (b.type === 'Core') || SORTS[sort][1](a, b) || byCode(a, b));
+    // Heroji prvi, odmah iza njih comboi, coreovi na kraj (Marko 2026-11-06 i 2026-11-07): pregled
+    // počinje herojima, ne s devet pločica coreova; combo karte stoje ispod heroja.
+    .sort((a, b) => browseRank(a) - browseRank(b) || SORTS[sort][1](a, b) || byCode(a, b));
 }
+
+const browseRank = c => (c.type === 'Hero' ? 0 : c.type === 'Combo' ? 1 : c.type === 'Core' ? 3 : 2);
 
 const plural = (n, one, other) => (n === 1 ? one : other);
 
