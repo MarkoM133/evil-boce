@@ -102,6 +102,23 @@ describes energy claims as the rule since 2026-11-04 (final); Stay stays an opti
   `fx-keywords.md`. Moves: `use_ability {hero, card, index}` for "may" abilities,
   `choose {value}` for a pending `choose` decision.
 
+## Combo cards (to build, Fable; decided 2026-11-07)
+
+- Data: `type: "Combo"` in `cards.json` with `ingredients: [id, id]` (exactly two Action or Assist cards),
+  `extraCost` (X) and `introducedIn` (a set code). Combo cards are never in a deck, a pack or Draft
+  (`DeckCode.DECK_TYPES` already leaves them out). The web app helpers are in `js/combo.js`.
+- When: in a battle's card round, when a player plays the second card of a combo's pair for **another** of
+  their heroes in the **same battle** (the first one already played this battle for a different hero of
+  theirs), and before that card resolves, the player gets a decision `combo_offer {combo, cards, extra}`
+  if they can pay X on top of the card's own cost. Several combos possible: offered one after the other.
+- Yes: pay the card's cost + X; the second card does not resolve, what the first card gave this battle is
+  undone (the engine has to remember what each card played in the battle added), and the combo's fx
+  runs as a card of the player's (its `fx` line, `BATTLE:` effects). Both cards go to the graveyard.
+- No (or not enough energy): the second card resolves as usual.
+- Same combo again: any time the condition holds. A card may be in several combos.
+- The combo's fx needs `ALL_FRIENDLY_IN_BATTLE` (on the fx wishlist): every hero of the card's player in
+  the battle being fought.
+
 ## Scenario tests
 
 `tests/test_scenarios.gd` runs every `tests/scenarios/*.json` against the fixture catalog
