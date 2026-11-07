@@ -2627,6 +2627,12 @@ func demo_banner_shot() -> void:
 			hud.banner("RING-OUT", Palette.GOLD, "", "SHANKS", 3.0)
 		"ko":
 			hud.banner("KO", Palette.ACCENT_DEEP, "", "SHANKS", 3.0)
+		"equip":
+			var eq: Array[CardDef] = engine.catalog.of_type("Equipment")
+			hud._announce_card({"type": "equipped", "card": eq[0].id if not eq.is_empty() else "", "hero": state.heroes_of(1)[0].id})
+		"assist":
+			var asl: Array[CardDef] = engine.catalog.of_type("Assist")
+			hud._announce_card({"type": "assist", "card": asl[0].id if not asl.is_empty() else "", "player": 1})
 		"combo":
 			var combos: Array[CardDef] = engine.catalog.of_type("Combo")
 			var cid: String = combos[0].id if not combos.is_empty() else ""

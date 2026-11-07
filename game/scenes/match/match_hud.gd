@@ -66,6 +66,8 @@ const START_BANNER_TIME: float = 2.2
 const BATTLE_BANNER_TIME: float = 1.6
 ## The combo card stays over the screen this long (a click or Enter puts it away sooner).
 const COMBO_SHOW_TIME: float = 2.6
+## The other side's Equipment or Assist stays this long before it flies to its place.
+const POP_TIME: float = 1.3
 ## A merged band stays this much longer per extra line, up to MERGED_MAX_TIME.
 const MERGED_LINE_TIME: float = 1.2
 const MERGED_MAX_TIME: float = 6.0
@@ -2784,6 +2786,8 @@ func _scan_log() -> void:
 			banked.append(e)
 		if (t == "equipped" or t == "evolved" or t == "action") and not str(e.get("hero", "")).is_empty():
 			card_played.emit(str(e.get("card", "")), str(e.get("hero", "")))
+		if t == "equipped" or t == "assist":
+			_announce_card(e)
 		if (t == "triggered" or t == "ability") and not str(e.get("hero", "")).is_empty():
 			ability_fired.emit(str(e.get("hero", "")), str(e.get("card", "")))
 		if BANNER_EVENTS.has(t):
@@ -2909,7 +2913,9 @@ func _next_banner() -> void:
 		_banner_busy = true
 		announcing_changed.emit(true)
 	var b: Dictionary = _banners.pop_front()
-	if not str(b.get("card", "")).is_empty() and _combo_show(b):
+	if JsonUtil.as_bool(b.get("pop", false)) and _pop_show(b):
+		return
+	if not str(b.get("card", "")).is_empty() and not JsonUtil.as_bool(b.get("pop", false)) and _combo_show(b):
 		return
 	var lines: PackedStringArray = b.get("lines", PackedStringArray())
 	var color: Color = b["color"]
@@ -2969,6 +2975,95 @@ func _next_banner() -> void:
 	t.tween_callback(func() -> void:
 		band.queue_free()
 		_next_banner())
+
+
+## The other side put down an Equipment or an Assist (Marko 2026-11-07: it went by unseen): its card
+## shows for a moment on their side with what happened, then flies to the hero (or to their name).
+func _announce_card(e: Dictionary) -> void:
+	if GameSettings.banners() == "off":
+		return
+	var t: String = str(e.get("type", ""))
+	var cid: String = str(e.get("card", ""))
+	var h: HeroState = state.hero(str(e.get("hero", ""))) if t == "equipped" else null
+	var who: int = h.owner if h != null else JsonUtil.as_int(e.get("player", -1), -1)
+	if who < 0 or local_slots.has(who):
+		return
+	var text: String = ("%s EQUIPS %s ON %s" % [player_name(who), _card_name(cid), hero_name(h)]) if h != null \
+			else ("%s PLAYS %s AS AN ASSIST" % [player_name(who), _card_name(cid)])
+	var b: Dictionary = {"title": text.to_upper(), "color": Palette.team(state.team_of(who)), "left": "", "right": "", "hold": POP_TIME,
+		"lines": PackedStringArray(), "card": cid, "pop": true, "hero": h.id if h != null else "", "slot": who}
+	if _grouping:
+		_group.append(b)
+		return
+	_banners.append(b)
+	if not _banner_busy:
+		_next_banner()
+
+
+## The card of _announce_card: in from the side of the player who put it down, held with the line
+## under it, then small into the hero's panel (or the top of that player's column). Skips like a band.
+func _pop_show(b: Dictionary) -> bool:
+	var cid: String = str(b.get("card", ""))
+	var tex: Texture2D = null
+	if db != null:
+		tex = db.large(cid) if db.large(cid) != null else db.thumb(cid)
+	if tex == null:
+		return false
+	var slot: int = JsonUtil.as_int(b.get("slot", 0))
+	var right: bool = _rosters.size() > 1 and _rosters[1] != null and state.team_of(slot) == 1
+	var show := Panel.new()
+	show.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	show.set_meta("show", true)
+	show.z_index = 90
+	show.size = size
+	show.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_banner_layer.add_child(show)
+	var aspect: float = float(tex.get_width()) / tex.get_height()
+	var w: float = 250.0
+	var card_size := Vector2(w, w / aspect)
+	var holder := Control.new()
+	holder.size = card_size
+	holder.pivot_offset = card_size * 0.5
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	show.add_child(holder)
+	var pic := TextureRect.new()
+	pic.texture = tex
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_SCALE
+	pic.size = card_size
+	pic.material = round_corners(aspect)
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(pic)
+	var color: Color = b.get("color", Palette.GOLD)
+	var chip: UiShape = UiShape.chip(str(b.get("title", "")), color, Palette.FG, 20, 34.0, 14.0)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	show.add_child(chip)
+	# Beside that player's column, a little above the middle.
+	var rest := Vector2(size.x - ROSTER_WIDTH - 60.0 - w if right else ROSTER_WIDTH + 60.0, size.y * 0.42 - card_size.y * 0.5)
+	var from := Vector2(size.x + 40.0 if right else -w - 40.0, rest.y)
+	holder.position = from
+	chip.position = Vector2(clampf(rest.x + w * 0.5 - chip.custom_minimum_size.x * 0.5, 16.0, size.x - chip.custom_minimum_size.x - 16.0), rest.y + card_size.y + 14.0)
+	chip.modulate.a = 0.0
+	# Where it goes: the hero's panel, else the top of the column.
+	var to := Vector2(size.x - 200.0 if right else 200.0, 90.0)
+	var hid: String = str(b.get("hero", ""))
+	if _slice_of.has(hid) and is_instance_valid(_slice_of[hid]):
+		to = _slice_of[hid].get_global_rect().get_center() - global_position
+	var hold: float = JsonUtil.as_float(b.get("hold", POP_TIME), POP_TIME) * GameSettings.anim_scale()
+	var t: Tween = show.create_tween()
+	t.tween_property(holder, "position", rest, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(chip, "modulate:a", 1.0, 0.2).set_delay(0.12)
+	t.tween_interval(hold)
+	t.tween_property(chip, "modulate:a", 0.0, 0.15)
+	t.parallel().tween_property(holder, "position", to - card_size * 0.5, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(holder, "scale", Vector2(0.12, 0.12), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(holder, "modulate:a", 0.2, 0.35)
+	t.tween_callback(func() -> void:
+		show.queue_free()
+		_next_banner())
+	_band = show
+	_band_tween = t
+	return true
 
 
 ## The combo card over the screen (2026-11-07, combo plan step 5): the table dims, the card turns in big

@@ -2100,7 +2100,7 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 				p.graveyard.append(out)
 			_take_from_hand(p, cid)
 			p.assists.append(cid)
-			s.event("assist", {"card": cid})
+			s.event("assist", {"card": cid, "player": slot})
 			_note_played(s, slot, cid, "", {})
 		"Action":
 			if card.bonus.is_empty() and card.effects.is_empty():
