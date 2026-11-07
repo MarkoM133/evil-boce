@@ -8,6 +8,7 @@ const MATCH_SCENE: String = "res://scenes/match/match.tscn"
 const REPLAYS_SCENE: String = "res://scenes/replays/replays_menu.tscn"
 const LOBBY_SCENE: String = "res://scenes/net/lobby.tscn"
 const SETUP_SCENE: String = "res://scenes/match/match_setup.tscn"
+const SETTINGS_SCENE: String = "res://scenes/menu/settings_menu.tscn"
 ## Seconds between two bot moves, so a human can follow.
 const BOT_DELAY: float = 0.5
 ## Auto-pass waits this long, the same whether a card could have been played or not (GDD 8).
@@ -99,6 +100,9 @@ var _launching: bool = false
 var _knocking: bool = false
 ## Core id -> ball id, in pick-up order, while a roll runs.
 var _picked: Dictionary[String, String] = {}
+## Online guest: where each ball is going, from the host's positions (~20 a second); the balls glide
+## there every frame (online playtest 2026-11-07: set straight they stuttered).
+var _net_to: Dictionary[String, Vector3] = {}
 var _pick_order: PackedStringArray = PackedStringArray()
 var _bot_wait: float = 0.0
 ## Auto-pass: how long the local player to act has had nothing to play.
@@ -115,6 +119,8 @@ var _menu: Control
 var _menu_log: PanelContainer
 var _menu_info: Label
 var _menu_first: Button
+## Settings over the match, from the pause menu (null when closed).
+var _settings: Control
 ## The pause menu's right side: the match log, or the combo list in its place (COMBO LIST).
 var _menu_log_box: Control
 var _combo_box: Control
@@ -521,6 +527,7 @@ func _build_menu_overlay() -> Control:
 		_menu_entry(col, "SURRENDER" + who, func() -> void:
 			_toggle_menu()
 			_apply(Move.make(Move.SURRENDER, slot)))
+	_menu_entry(col, "SETTINGS", _open_settings)
 	_menu_entry(col, "MAIN MENU", _leave)
 
 	# The match log, right: newest at the bottom.
@@ -787,6 +794,26 @@ func _toggle_menu() -> void:
 		_menu_first.grab_focus.call_deferred()
 
 
+## Settings over the match (Marko 2026-11-07): the same screen as from the main menu; Back or Esc
+## comes back to the pause menu, the match is never left. Changes apply at once.
+func _open_settings() -> void:
+	if _settings != null:
+		return
+	_settings = (load(SETTINGS_SCENE) as PackedScene).instantiate() as Control
+	_settings.set("on_back", _close_settings)
+	_settings.z_index = 110
+	_menu.get_parent().add_child(_settings)
+
+
+func _close_settings() -> void:
+	if _settings == null:
+		return
+	_settings.queue_free()
+	_settings = null
+	hud.refresh()
+	_menu_first.grab_focus.call_deferred()
+
+
 ## The whole log in the pause menu, newest at the bottom, scrolled there.
 func _fill_menu_log() -> void:
 	if _menu_log == null:
@@ -906,6 +933,8 @@ func _apply(m: Move) -> void:
 ## The host sent a new state (host: after any seat's move; client: always).
 func _on_net_state() -> void:
 	if net_role == "client":
+		# The roll is over: the state puts the balls where they ended.
+		_net_to.clear()
 		state = net_client.state
 		hud.state = state
 	else:
@@ -931,9 +960,24 @@ func _on_net_balls(positions: Dictionary) -> void:
 			continue
 		var b: BallBody = _bodies[str(id)]
 		b.freeze = true
-		var to := Vector3(JsonUtil.as_float(p[0]), JsonUtil.as_float(p[1]), JsonUtil.as_float(p[2]))
-		_views[str(id)].roll(to - b.global_position)
-		b.global_position = to
+		_net_to[str(id)] = Vector3(JsonUtil.as_float(p[0]), JsonUtil.as_float(p[1]), JsonUtil.as_float(p[2]))
+	_net_touch_cores()
+
+
+## Online guest: a core a ball runs over goes from the table at once, as on the host (playtest
+## 2026-11-07: it went only when the roll was over). The state after the roll settles it.
+func _net_touch_cores() -> void:
+	for c: CoreState in state.cores:
+		if c.place != CoreState.ON_FIELD or not _core_tokens.has(c.id) or not _core_tokens[c.id].visible:
+			continue
+		var at: Vector3 = arena.hex_center(c.hex)
+		for id: String in _net_to:
+			var to: Vector3 = _net_to[id]
+			if arena.area_at(to) != BallWorld.Area.MAP:
+				continue
+			if Vector2(to.x - at.x, to.z - at.z).length() < _bodies[id].radius() + CORE_RADIUS:
+				_core_tokens[c.id].visible = false
+				break
 
 
 ## Saves the match in progress; when it is over, files the replay and the stats summary.
@@ -1690,6 +1734,15 @@ func _on_roll_finished(o: RollOutcome) -> void:
 # --- frame ------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	if not _net_to.is_empty():
+		var k: float = 1.0 - exp(-delta * 18.0)
+		for id: String in _net_to:
+			if not _bodies.has(id):
+				continue
+			var b: BallBody = _bodies[id]
+			var step: Vector3 = b.global_position.lerp(_net_to[id], k)
+			_views[id].roll(step - b.global_position)
+			b.global_position = step
 	if _sling.is_aiming():
 		_sling.update(cam.camera, get_viewport().get_mouse_position(), get_viewport().get_visible_rect().size.y)
 	_refresh_range()

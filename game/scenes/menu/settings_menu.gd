@@ -12,6 +12,10 @@ const TABS: Array[String] = ["GAME", "INTERFACE", "GRAPHICS", "SOUND", "KEYS"]
 ## The tab last open, kept while the game runs.
 static var _last_tab: int = 0
 
+## Opened over a match from the pause menu (Marko 2026-11-07): Back (or Esc) calls this and the
+## match goes on, instead of going to the main menu.
+var on_back: Callable = Callable()
+
 var _data_path: LineEdit
 var _data_check: Label
 var _key_buttons: Dictionary[String, Button] = {}
@@ -361,11 +365,15 @@ func _input(event: InputEvent) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and (event as InputEventKey).pressed and GameSettings.logical_key((event as InputEventKey).keycode) == KEY_ESCAPE:
+		get_viewport().set_input_as_handled()
 		_back()
 
 
 func _back() -> void:
 	_save_data()
+	if on_back.is_valid():
+		on_back.call()
+		return
 	get_tree().change_scene_to_file(MENU_SCENE)
 
 
