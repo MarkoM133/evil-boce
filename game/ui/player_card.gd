@@ -126,8 +126,47 @@ func picks() -> Dictionary:
 	# the host saw the guest's drawn heroes the guest had not seen).
 	if deck_index == 0 and not _show_built and not d.is_empty():
 		heroes = chosen.duplicate()
-	return {"deck_name": str(d.get("name", "")), "heroes": heroes,
-		"stages": Array(loadout.stages), "cores": Array(loadout.cores)}
+	# Stages and cores are the player's secret until the match (online playtest 2026-11-07).
+	return {"deck_name": str(d.get("name", "")), "heroes": heroes, "stages": [], "cores": [], "hidden": true}
+
+
+## The random deck as it is now, to be remembered (GameSettings.random_deck); {} for a saved deck.
+func random_state() -> Dictionary:
+	if deck_index != 0 or _deck_locked or _drafted:
+		return {}
+	return {"chosen": Array(chosen), "built": built, "shown": _show_built}
+
+
+## Back to a remembered random deck: the same hero picks and the same drawn deck. Heroes no longer
+## in the cards are dropped (and the deck with them).
+func restore_random(d: Dictionary) -> void:
+	if d.is_empty() or deck_index != 0 or db == null:
+		return
+	var ids: PackedStringArray = JsonUtil.as_strings(d.get("chosen", []))
+	if ids.size() != DeckCode.HERO_COUNT:
+		return
+	var ok: bool = true
+	for i: int in ids.size():
+		var c: CardDef = db.catalog.get_card(ids[i]) if not ids[i].is_empty() else null
+		if not ids[i].is_empty() and (c == null or c.type != "Hero"):
+			ids[i] = ""
+			ok = false
+	chosen = ids
+	var b: Dictionary = JsonUtil.as_dict(d.get("built", {}))
+	var heroes: PackedStringArray = JsonUtil.as_strings(b.get("heroes", []))
+	var fits: bool = ok and not b.is_empty() and heroes.size() == DeckCode.HERO_COUNT
+	for h: String in heroes:
+		if db.catalog.get_card(h) == null:
+			fits = false
+	if fits:
+		built = b
+		_show_built = JsonUtil.as_bool(d.get("shown", true))
+		_changed()
+	elif not "".join(chosen).is_empty():
+		_build_random(false)
+	else:
+		built = {}
+		_changed()
 
 
 ## A series (Best of 3, GDD 13): this deck ({name, heroes, cards}) is played again; stages and
@@ -434,12 +473,14 @@ func _build_random(show: bool = true) -> void:
 
 
 func _stage_tile(slot: int) -> Control:
-	return card_tile(db, loadout.stages[slot], Vector2(186, 108), Callable() if _view_only or _locked else func() -> void: _pick_stage(slot))
+	var hidden: bool = _view_only and JsonUtil.as_bool(_shown.get("hidden", false))
+	return card_tile(db, loadout.stages[slot], Vector2(186, 108), Callable() if _view_only or _locked else func() -> void: _pick_stage(slot),
+		false, "?  HIDDEN" if hidden else "?  RANDOM")
 
 
 ## A card as a slanted picture tile (the art part of its image) with its name, and for a stage
 ## its terrain; "?" for none. Clicks call `on_click`; hover gives it a straw edge.
-static func card_tile(db_: CardDb, id: String, tile: Vector2, on_click: Callable, used: bool = false) -> Control:
+static func card_tile(db_: CardDb, id: String, tile: Vector2, on_click: Callable, used: bool = false, empty_label: String = "?  RANDOM") -> Control:
 	var card: CardDef = db_.catalog.get_card(id) if db_ != null and not id.is_empty() else null
 	var s := HeroSlice.new()
 	s.custom_minimum_size = tile
@@ -488,8 +529,8 @@ static func card_tile(db_: CardDb, id: String, tile: Vector2, on_click: Callable
 		s.tooltip_text = "Already picked" if used else "%s\n%s" % [card.name, card.text]
 	else:
 		col.alignment = BoxContainer.ALIGNMENT_CENTER
-		col.add_child(UiTheme.label("?  RANDOM", 22, Palette.DIM))
-		s.tooltip_text = "Random"
+		col.add_child(UiTheme.label(empty_label, 22, Palette.DIM))
+		s.tooltip_text = "Hidden until the match" if empty_label.contains("HIDDEN") else "Random"
 	s.mouse_entered.connect(func() -> void:
 		if clickable:
 			s.outline = Palette.GOLD
@@ -577,6 +618,9 @@ func _open_core_picker() -> void:
 	var hint := Label.new()
 	hint.text = "Two of each kind. Click to pick or drop one; ROLL picks two at random. A row with nothing picked is drawn when the match starts."
 	hint.add_theme_color_override("font_color", Palette.MUTED)
+	# Wrapped to the rows' width (playtest 2026-11-07: one long line left empty room beside the tiles).
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size = Vector2(570, 0)
 	col.add_child(hint)
 	for k: int in Loadout.CORE_KINDS.size():
 		var kind: String = Loadout.CORE_KINDS[k]
@@ -634,7 +678,7 @@ func _open_core_picker() -> void:
 	done.pressed.connect(func() -> void: _popup.hide())
 	col.add_child(done)
 	if not _popup.visible:
-		_popup.popup_centered()
+		_popup_fitted()
 
 
 ## A core tile in the picker, gold edged (along its slant) with PICKED when it is one of the row's picks.
@@ -689,9 +733,12 @@ static func _core_short(card: CardDef) -> String:
 func _whole_card(id: String, on_click: Callable, used: bool) -> Control:
 	var card: CardDef = db.catalog.get_card(id)
 	var tile := PanelContainer.new()
-	var sb: StyleBoxFlat = UiTheme.box(Color(0, 0, 0, 0), 6, Color(0, 0, 0, 0), 0, 0)
+	# The hover edge goes around the card, outside the picture and as round as its corners (playtest
+	# 2026-11-07: drawn under the picture it only showed as gold bits in the round corners).
+	var sb: StyleBoxFlat = UiTheme.box(Color(0, 0, 0, 0), 11, Color(0, 0, 0, 0), 4, 4)
 	sb.set_border_width_all(3)
 	sb.border_color = Color(0, 0, 0, 0)
+	sb.anti_aliasing = true
 	tile.add_theme_stylebox_override("panel", sb)
 	var art := TextureRect.new()
 	art.texture = db.thumb(id)
@@ -741,4 +788,12 @@ func _open_popup(title: String, items: Array[Dictionary], on_pick: Callable, who
 		else:
 			grid.add_child(card_tile(db, id, Vector2(210, 120) if not whole_cards else Vector2(170, 238), pick, used))
 	col.add_child(back)
+	_popup_fitted()
+
+
+## Opens the popup as big as what it holds now (it kept the size of the last one: the cores
+## window opened as big as the stages one, with empty room below and beside).
+func _popup_fitted() -> void:
+	_popup.size = Vector2i.ZERO
+	_popup.reset_size()
 	_popup.popup_centered()

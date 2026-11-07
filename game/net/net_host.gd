@@ -288,9 +288,9 @@ func _send_states() -> void:
 	for s: Dictionary in seats:
 		var p: int = JsonUtil.as_int(s.get("peer", -1))
 		if p > 0 and JsonUtil.as_bool(s.get("connected", false)):
-			link.send(p, {"t": NetProtocol.STATE, "state": NetProtocol.redact(full, JsonUtil.as_int(s["slot"]))})
+			link.send(p, {"t": NetProtocol.STATE, "state": NetProtocol.redact(full, JsonUtil.as_int(s["slot"]), engine.catalog)})
 	for p: int in watchers:
-		link.send(p, {"t": NetProtocol.STATE, "state": NetProtocol.redact(full, -1)})
+		link.send(p, {"t": NetProtocol.STATE, "state": NetProtocol.redact(full, -1, engine.catalog)})
 	if recorder.state.is_over():
 		if series != null and not _series_filed:
 			_series_filed = true
@@ -430,7 +430,7 @@ func _welcome_watcher(peer: int, name: String) -> void:
 	elif started:
 		link.send(peer, {"t": NetProtocol.START, "settings": settings.to_dict(), "players": recorder.record.players,
 			"seed": recorder.record.seed, "cards_version": cards_version})
-		link.send(peer, {"t": NetProtocol.STATE, "state": NetProtocol.redact(recorder.state.to_dict(), -1)})
+		link.send(peer, {"t": NetProtocol.STATE, "state": NetProtocol.redact(recorder.state.to_dict(), -1, engine.catalog)})
 		if paused:
 			link.send(peer, {"t": NetProtocol.PAUSED, "by": paused_by, "name": str(seat(paused_by).get("name", ""))})
 	else:
@@ -543,7 +543,7 @@ func _on_hello(peer: int, msg: Dictionary) -> void:
 	elif started:
 		link.send(peer, {"t": NetProtocol.START, "settings": settings.to_dict(), "players": recorder.record.players,
 			"seed": recorder.record.seed, "cards_version": cards_version})
-		link.send(peer, {"t": NetProtocol.STATE, "state": NetProtocol.redact(recorder.state.to_dict(), slot)})
+		link.send(peer, {"t": NetProtocol.STATE, "state": NetProtocol.redact(recorder.state.to_dict(), slot, engine.catalog)})
 		if paused:
 			link.send(peer, {"t": NetProtocol.PAUSED, "by": paused_by, "name": str(seat(paused_by).get("name", ""))})
 		link.broadcast({"t": NetProtocol.PLAYER, "slot": slot, "name": name, "connected": true})

@@ -8,12 +8,12 @@ export const PHASES = ['Start', 'Preroll', 'Roll', 'Postroll', 'Battle', 'End'];
 const HEAD_RE = /^(\[(?:RNG|Range)\]\s*)?(?:(Start|Preroll|Roll|Postroll|Battle|End)(?: Phase)?(\s+Once Per Turn)?\s*:\s*)?/i;
 
 // Riječi (baza) → tokeni (editor). Riječ stata iza broja se lijepi uz broj ("2 DMG" → "2[DMG]"),
-// iza more/less ostaje razmak ("more HP" → "more [HP]"), "[Range] " na početku je "[RNG]".
+// iza more/less/most/least ostaje razmak ("more HP" → "more [HP]", "the most Power" → "the most [PWR]"), "[Range] " na početku je "[RNG]".
 export function toTokens(text) {
   return (text ?? '')
     .replace(/^\[Range\]\s*/gim, '[RNG]')
     .replace(/(\d)\s?(HP|DMG|Power|Range|Knockback|Energy)\b/g, (_, d, w) => `${d}[${TOKEN[w]}]`)
-    .replace(/\b(more|less)\s(HP|DMG|Power|Range|Knockback|Energy)\b/g, (_, m, w) => `${m} [${TOKEN[w]}]`)
+    .replace(/\b(more|less|most|least)\s(HP|DMG|Power|Range|Knockback|Energy)\b/g, (_, m, w) => `${m} [${TOKEN[w]}]`)
     // "Range" velikim slovom usred rečenice je [RNG] ("Heroes in Range" → "Heroes in [RNG]", "Hero's Range");
     // "[Range] " na početku je glava (gore), "range" malim slovom ostaje riječ.
     .replace(/\bRange\b/g, '[RNG]')

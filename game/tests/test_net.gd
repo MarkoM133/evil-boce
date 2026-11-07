@@ -104,7 +104,10 @@ func test_lobby_match_moves_and_redaction() -> void:
 	assert_true(mine.deck[0] == NetProtocol.PLACEHOLDER_CARD)
 	assert_eq(mine.deck.size(), host.state().player(1).deck.size())
 	for c: CoreState in client_state.cores:
-		assert_eq(c.card_id, NetProtocol.PLACEHOLDER_CARD, "face-down cores are unknown")
+		if c.owner == 1:
+			assert_false(c.card_id.begins_with(NetProtocol.PLACEHOLDER_CARD), "its own cores are known to the guest")
+		else:
+			assert_true(c.card_id.begins_with(NetProtocol.PLACEHOLDER_CARD), "the other side's face-down cores are unknown")
 	# A move for the wrong seat is refused; a right one is applied and comes back as state.
 	client.send_move(Move.make(Move.MULLIGAN, 0, {"keep": true}))
 	client.send_move(Move.make(Move.MULLIGAN, 1, {"keep": true}))

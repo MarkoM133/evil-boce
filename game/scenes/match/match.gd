@@ -378,6 +378,9 @@ func _build_hud() -> void:
 				local.append(p.slot)
 	hud.replay = _replay != null or (net_role == "client" and net_client.replay_stream)
 	hud.setup(engine, state, db, local)
+	# One player here, on the red team: the camera looks from their side (two at one screen keep blue).
+	if local.size() == 1 and state.team_of(local[0]) == 1:
+		cam.set_flipped(true)
 	if _replay != null:
 		_replay_bar = ReplayBar.new()
 		_replay_bar.theme = UiTheme.get_theme()
@@ -1254,6 +1257,8 @@ func _core_token(c: CoreState) -> Node3D:
 			pic = db.large(card.id) if db.large(card.id) != null else db.thumb(card.id)
 		else:
 			pic = db.core_back(card)
+	elif not c.face_up:
+		pic = db.core_back(null, c.card_id)
 	if pic == null:
 		var col: Color = CORE_COLORS.get(card.kind if card != null else "", Palette.MUTED) if c.face_up else Color("2a2622")
 		return _hex_prism(CORE_RADIUS, 0.12, col, Palette.GOLD if not c.face_up else col.lightened(0.3))

@@ -56,7 +56,8 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 
 ## The state as player `slot` may see it (GDD 11: of the opponent you see hand size, energy,
 ## deck size and the graveyard; aims are secret; face-down cores stay unknown).
-static func redact(state_dict: Dictionary, slot: int) -> Dictionary:
+## `catalog` gives a hidden core's family, so its back still shows (the other side sees it too).
+static func redact(state_dict: Dictionary, slot: int, catalog: CardCatalog = null) -> Dictionary:
 	var d: Dictionary = state_dict.duplicate(true)
 	var players: Dictionary = JsonUtil.as_dict(d.get("players", {}))
 	for key: Variant in players:
@@ -85,8 +86,12 @@ static func redact(state_dict: Dictionary, slot: int) -> Dictionary:
 	var cores: Dictionary = JsonUtil.as_dict(d.get("cores", {}))
 	for key: Variant in cores:
 		var c: Dictionary = JsonUtil.as_dict(cores[key])
-		if not JsonUtil.as_bool(c.get("face_up", false)) and str(c.get("place", "")) != CoreState.ON_HERO:
-			c["card"] = PLACEHOLDER_CARD
+		# Hidden from everyone but its owner (online playtest 2026-11-07: the guest saw its own cores as
+		# "Core · ?"); the others get "?" + its family ("?Power"), so its back shows on their table too.
+		if not JsonUtil.as_bool(c.get("face_up", false)) and str(c.get("place", "")) != CoreState.ON_HERO \
+				and JsonUtil.as_int(c.get("owner", -1), -1) != slot:
+			var card: CardDef = catalog.get_card(str(c.get("card", ""))) if catalog != null else null
+			c["card"] = PLACEHOLDER_CARD + (card.core_family() if card != null else "")
 			cores[key] = c
 	d["cores"] = cores
 	# Decisions of the others may list their hand (a discard): keep only that one is pending.

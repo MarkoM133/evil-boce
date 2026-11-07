@@ -1622,11 +1622,30 @@ func _setup_prompt() -> void:
 	_kicker.text = "SETUP · " + ("STAGES" if stages else "CORES")
 	if not local_slots.has(who):
 		_prompt.text = "%s is placing a %s…" % [player_name(who), "stage" if stages else "core"]
+		# Your own ones stay in the tray, dim and not to be picked, while the other places (online
+		# playtest 2026-11-07: they vanished every time it was the other player's turn).
+		if not local_slots.is_empty():
+			_setup_tray(local_slots[0], stages)
+			for c: Node in _tray.get_children():
+				(c as CanvasItem).modulate.a = 0.5
+				_no_mouse(c)
 		return
 	_prompt.text = "Place a stage" if stages else "Place a core"
 	_detail.text = ("In the middle third of the map." if stages else "In the opponent's half.") + "  Pick one below, then click a highlighted hex."
 	if local_slots.size() > 1:
 		_detail.text = "%s: " % player_name(who) + _detail.text
+	_setup_tray(who, stages)
+
+
+static func _no_mouse(n: Node) -> void:
+	if n is Control:
+		(n as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c: Node in n.get_children():
+		_no_mouse(c)
+
+
+## The tray: the stages (or cores) `who` still has to place, as cards where there is a picture.
+func _setup_tray(who: int, stages: bool) -> void:
 	for id: String in setup_items(state, who):
 		# Stages come as their cards, so the effect is there to read (playtest 2026-10-30).
 		if stages and state.stage(id) != null and db != null and db.thumb(state.stage(id).card_id) != null:

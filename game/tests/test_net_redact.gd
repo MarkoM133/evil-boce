@@ -45,3 +45,14 @@ func test_a_roll_offer_hides_the_others_cards() -> void:
 	var for_host: Dictionary = NetProtocol.redact(state.to_dict(), 0)
 	offer = JsonUtil.as_dict(JsonUtil.as_array(for_host["pending"])[0])
 	assert_eq(JsonUtil.as_strings(offer["cards"]), PackedStringArray(["TA-048"]))
+
+
+## A face-down core: its owner sees the card, the other side only "?" and its family, so the back
+## still shows on their table (online playtest 2026-11-07).
+func test_face_down_core_shows_to_its_owner_and_its_family_to_the_other() -> void:
+	var cat: CardCatalog = CardCatalog.from_doc({"cards": [{"id": "CR-9", "name": "+2000 Power", "type": "Core", "kind": "Buff", "bonus": {"pwr": 2000}}]}, false)
+	var d: Dictionary = {"players": {}, "cores": {"c0": {"id": "c0", "card": "CR-9", "owner": 1, "place": "field", "face_up": false}}}
+	var for_owner: Dictionary = NetProtocol.redact(d, 1, cat)
+	assert_eq(str(for_owner["cores"]["c0"]["card"]), "CR-9")
+	var for_other: Dictionary = NetProtocol.redact(d, 0, cat)
+	assert_eq(str(for_other["cores"]["c0"]["card"]), NetProtocol.PLACEHOLDER_CARD + "Power")

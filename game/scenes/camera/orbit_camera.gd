@@ -26,6 +26,10 @@ var _cur_pitch: float = deg_to_rad(52.0)
 var _cur_distance: float = 30.0
 var _drag: Drag = Drag.NONE
 var _home_target := Vector3.ZERO
+## The home view looks from the far (red) side: turned half round, its target mirrored.
+var _home_flipped: bool = false
+var _near_bias: float = 0.06
+var _extent := Vector2(40, 40)
 var _home_distance: float = 30.0
 ## A short shake (a KO): how much is left of it and how hard it started.
 var _shake_t: float = 0.0
@@ -46,14 +50,24 @@ func _init() -> void:
 ## `zoom` scales the distance; the match uses more of both so the HUD does not cover the strip.
 func frame_table(extent: Vector2, near_bias: float = 0.06, zoom: float = 1.25) -> void:
 	bounds = extent * 0.5
-	_home_target = Vector3(0, 0, extent.y * near_bias)
+	_extent = extent
+	_near_bias = near_bias
+	_home_target = Vector3(0, 0, extent.y * near_bias * (-1.0 if _home_flipped else 1.0))
 	_home_distance = maxf(extent.x, extent.y) * zoom
+	reset_view(true)
+
+
+## Home view from the red side (true) or the blue side, at once (online playtest 2026-11-07: the
+## guest on red looked at the table from blue).
+func set_flipped(on: bool) -> void:
+	_home_flipped = on
+	_home_target = Vector3(0, 0, _extent.y * _near_bias * (-1.0 if on else 1.0))
 	reset_view(true)
 
 
 func reset_view(instant: bool = false) -> void:
 	target = _home_target
-	yaw = 0.0
+	yaw = PI if _home_flipped else 0.0
 	pitch = deg_to_rad(52.0)
 	distance = _home_distance
 	if instant:

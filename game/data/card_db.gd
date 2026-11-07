@@ -156,8 +156,10 @@ static func _whitish(c: Color) -> bool:
 
 
 ## A core's face-down back, by family (data/cores/<Family> Cardback.png), or null.
-func core_back(card: CardDef) -> Texture2D:
-	var family: String = card.core_family() if card != null else ""
+## A hidden core's back by its family; `card` null and `placeholder` "?Power" (an online guest's view of
+## the other side's face-down core) gives that family's back.
+func core_back(card: CardDef, placeholder: String = "") -> Texture2D:
+	var family: String = card.core_family() if card != null else placeholder.trim_prefix(NetProtocol.PLACEHOLDER_CARD)
 	return texture(data_dir().path_join("cores/%s Cardback.png" % family)) if not family.is_empty() else null
 
 

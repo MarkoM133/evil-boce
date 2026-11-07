@@ -280,6 +280,16 @@ static func set_loadout(who: String, d: Dictionary) -> void:
 	set_value("loadout", who, d)
 
 
+## A random deck's hero picks and the deck drawn with them, per seat (PlayerCard.random_state):
+## back in the lobby they are the same (online playtest 2026-11-07: they were lost, stages were not).
+static func random_deck(who: String) -> Dictionary:
+	return JsonUtil.as_dict(_config().get_value("random_deck", who, {}))
+
+
+static func set_random_deck(who: String, d: Dictionary) -> void:
+	set_value("random_deck", who, d)
+
+
 ## The saved deck last picked per seat ("p1", "p2", "online"); "" = random.
 static func last_deck(who: String) -> String:
 	return str(_config().get_value("last_deck", who, ""))

@@ -28,7 +28,10 @@ var _card: PlayerCard
 var _opp: PlayerCard
 var _wait: PanelContainer
 var _series: Label
-var _replay_btn: Button
+var _join_btn: Button
+## Under JOIN: connecting, or why it failed (Marko 2026-11-07: by the button, not at the top).
+var _join_status: Label
+var _join_tween: Tween
 var _wait_host: Control
 var _address_label: Label
 var _bot_row: HBoxContainer
@@ -50,12 +53,12 @@ func _ready() -> void:
 	if h is NetHost:
 		host = h
 		_wire_host()
-		_status.text = "Back in the lobby. Pick a deck and start again."
+		_status.text = ""
 	elif c is NetClient:
 		client = c
 		_wire_client()
 		_enter_room(false)
-		_status.text = "Back in the lobby. Press Ready when you are."
+		_status.text = ""
 
 
 func _build() -> void:
@@ -109,18 +112,23 @@ func _build() -> void:
 	_address.add_theme_font_size_override("font_size", 22)
 	_address.text_submitted.connect(func(_t: String) -> void: _join())
 	join_row.add_child(_address)
-	var join_btn := Button.new()
-	join_btn.text = "JOIN"
-	join_btn.theme_type_variation = &"Gold"
-	join_btn.add_theme_font_size_override("font_size", 26)
-	join_btn.pressed.connect(_join)
-	join_row.add_child(join_btn)
+	_join_btn = Button.new()
+	_join_btn.text = "JOIN"
+	_join_btn.theme_type_variation = &"Gold"
+	_join_btn.add_theme_font_size_override("font_size", 26)
+	_join_btn.pressed.connect(_join)
+	join_row.add_child(_join_btn)
 	var watch_btn := Button.new()
 	watch_btn.text = "WATCH"
 	watch_btn.tooltip_text = "Join as a spectator: see the match with both hands hidden"
 	watch_btn.add_theme_font_size_override("font_size", 26)
 	watch_btn.pressed.connect(func() -> void: _join(true))
 	join_row.add_child(watch_btn)
+	_join_status = Label.new()
+	_join_status.add_theme_color_override("font_color", Palette.GOLD)
+	_join_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_join_status.visible = false
+	join_card.add_child(_join_status)
 	var join_info := Label.new()
 	join_info.text = "Both need the same game version and the shared folder synced."
 	join_info.add_theme_color_override("font_color", Palette.MUTED)
@@ -142,6 +150,7 @@ func _build() -> void:
 	_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vs_row.add_child(_card)
 	_card.setup(db, decks, GameSettings.player_name(), 0, GameSettings.last_deck("online"), Loadout.remembered("online"))
+	_card.restore_random(GameSettings.random_deck("online"))
 	_card.changed.connect(_send_deck)
 	var vs: Label = UiTheme.label("VS", 64, Palette.ACCENT)
 	vs.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -163,16 +172,6 @@ func _build() -> void:
 	bottom.add_child(_rules)
 	_rules.setup(GameSettings.match_rules("online"), false)
 	_rules.changed.connect(_push_settings)
-	_replay_btn = Button.new()
-	_replay_btn.text = "WATCH A REPLAY\nTOGETHER"
-	_replay_btn.add_theme_font_size_override("font_size", 16)
-	_replay_btn.tooltip_text = "Pick one of your replays; everyone at the table watches it with you (you hold the controls)"
-	_replay_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_replay_btn.pressed.connect(func() -> void:
-		if host != null:
-			ReplaysMenu.for_host = host
-			get_tree().change_scene_to_file(REPLAYS_SCENE))
-	bottom.add_child(_replay_btn)
 	_ready_btn = Button.new()
 	_ready_btn.text = "READY"
 	_ready_btn.toggle_mode = true
@@ -270,7 +269,6 @@ func _enter_room(as_host: bool) -> void:
 	_wait_host.visible = as_host
 	_rules.set_editable(as_host)
 	_start_btn.visible = as_host
-	_replay_btn.visible = as_host
 	_ready_btn.visible = not as_host and not _watching()
 	_ready_btn.set_pressed_no_signal(false)
 	_ready_btn.text = "READY"
@@ -294,7 +292,7 @@ func _host() -> void:
 	get_tree().root.add_child(host)
 	_push_settings()
 	_wire_host()
-	_status.text = "Hosting. Send the other player your address."
+	_status.text = ""
 
 
 func _wire_host() -> void:
@@ -348,7 +346,7 @@ func _join(spectate: bool = false) -> void:
 		return
 	var address: String = _address.text.strip_edges()
 	if address.is_empty():
-		_status.text = "Type the host's Tailscale address first."
+		_join_note("Type the host's Tailscale address first.")
 		return
 	GameSettings.set_player_name(_name.text)
 	GameSettings.set_last_host(address)
@@ -356,27 +354,53 @@ func _join(spectate: bool = false) -> void:
 	client.name = "NetClient"
 	var err: String = client.connect_to(address, NetProtocol.DEFAULT_PORT, spectate)
 	if not err.is_empty():
-		_status.text = err
+		_join_note(err)
 		client.free()
 		client = null
 		return
 	get_tree().root.add_child(client)
 	_wire_client()
-	_status.text = "Connecting to %s…" % address
+	_join_note("Connecting to %s…" % address)
+	_connecting(true)
+
+
+## The line under JOIN ("" hides it).
+func _join_note(text: String) -> void:
+	_join_status.text = text
+	_join_status.visible = not text.is_empty()
+
+
+## JOIN while a connection is tried: CONNECTING… and a slow pulse, and it cannot be pressed again.
+func _connecting(on: bool) -> void:
+	if _join_tween != null and _join_tween.is_valid():
+		_join_tween.kill()
+	_join_btn.disabled = on
+	_join_btn.text = "CONNECTING…" if on else "JOIN"
+	_join_btn.modulate.a = 1.0
+	if on:
+		_join_tween = _join_btn.create_tween().set_loops()
+		_join_tween.tween_property(_join_btn, "modulate:a", 0.45, 0.5).set_trans(Tween.TRANS_SINE)
+		_join_tween.tween_property(_join_btn, "modulate:a", 1.0, 0.5).set_trans(Tween.TRANS_SINE)
 
 
 func _wire_client() -> void:
 	client.welcomed.connect(func(_slot: int) -> void:
-		_status.text = "Watching. The match starts when the host presses START." if client.spectating else "Connected. Pick a deck and press Ready."
+		_connecting(false)
+		_join_note("")
+		_status.text = "Watching. The match starts when the host presses START." if client.spectating else ""
 		_enter_room(false))
 	client.move_refused.connect(func(move: Dictionary, why: String) -> void:
 		if str(move.get("t", "")) == NetProtocol.DECK:
 			_status.text = why)
 	client.rejected.connect(func(why: String) -> void:
-		_status.text = "Rejected: " + why
+		_connecting(false)
+		_join_note("Rejected: " + why)
+		_status.text = ""
 		_drop_client())
 	client.disconnected.connect(func(why: String) -> void:
-		_status.text = why
+		_connecting(false)
+		_join_note(why)
+		_status.text = ""
 		_drop_client())
 	client.lobby_changed.connect(func(_p: Array, _s: Dictionary) -> void:
 		# The host changed the settings: it un-readied us, so the button follows.
@@ -425,6 +449,7 @@ func _send_deck() -> void:
 	if problems.is_empty():
 		_card.loadout.remember("online")
 		GameSettings.set_last_deck("online", "" if saved.is_empty() else str(saved["name"]))
+		GameSettings.set_random_deck("online", _card.random_state())
 	var deck: Dictionary = _engine_deck(saved, GameSettings.player_name(), _card.loadout) if problems.is_empty() else {}
 	if not deck.is_empty():
 		deck["shown"] = _card.picks()

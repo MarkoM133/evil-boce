@@ -9,6 +9,8 @@ test('card text: words in cards.json, tokens in the editor, and back', () => {
   assert.equal(toWords(tokens), words);
   assert.equal(toTokens('the Hero with more HP gains +3000 Power.'), 'the Hero with more [HP] gains +3000[PWR].');
   assert.equal(toWords('the Hero with more [HP] gains +3000[PWR].'), 'the Hero with more HP gains +3000 Power.');
+  assert.equal(toTokens('The Hero with the most Power gets +2 DMG.'), 'The Hero with the most [PWR] gets +2[DMG].');
+  assert.equal(toWords('The Hero with the most [PWR] gets +2[DMG].'), 'The Hero with the most Power gets +2 DMG.');
   assert.equal(toTokens("[Range] Postroll Phase: an Opponent's Hero in Range takes 3 DMG."), "[RNG]Postroll Phase: an Opponent's Hero in [RNG] takes 3[DMG].");
   assert.equal(toWords("[RNG]Postroll Phase: an Opponent's Hero in [RNG] takes 3[DMG]."), "[Range] Postroll Phase: an Opponent's Hero in Range takes 3 DMG.");
   const intercept = "[Range] Postroll Phase: Swap your Hero with another friendly Hero that is in an Opponent's Hero's Range.";
