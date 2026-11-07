@@ -806,11 +806,15 @@ export function createEditor(env) {
     if (buttons.length) {
       const rare = buttons.splice(2).filter(Boolean);
       rare.push(h('button', { class: 'ghost', type: 'button', title: 'A new card with the next code in this set', onclick: duplicate }, 'Duplicate'),
-        h('button', { class: 'ghost', type: 'button', onclick: downloadPng }, 'Download PNG'));
+        h('button', { class: 'ghost', type: 'button', onclick: downloadPng }, 'Download PNG'),
+        // Ponovno crtanje objavljene karte (Marko 2026-11-07): Objava crta samo nacrte, a slika u bazi
+        // ostane stara kad se promijeni samo renderer (Onigashima: "most Power" kao ikona).
+        h('button', { class: 'ghost', type: 'button', title: 'Draw the published picture again with the current card look (no draft needed)',
+          disabled: !canPublish() || w.new || !!ed.drafts?.cards?.[w.id], onclick: () => env.guard(redrawPicture) }, 'Redraw picture'));
       const menu = h('div', { class: 'ce-more-menu', hidden: true }, rare);
       const close = () => { menu.hidden = true; };
       for (const b of rare) b.addEventListener('click', close);
-      buttons.push(h('div', { class: 'ce-more' }, h('button', { class: 'ghost', type: 'button', title: 'More: Remove background, Duplicate, Download PNG', 'aria-haspopup': 'menu',
+      buttons.push(h('div', { class: 'ce-more' }, h('button', { class: 'ghost', type: 'button', title: 'More: Remove background, Duplicate, Download PNG, Redraw picture', 'aria-haspopup': 'menu',
         onclick: e => { e.stopPropagation(); menu.hidden = !menu.hidden; if (!menu.hidden) setTimeout(() => document.addEventListener('click', close, { once: true })); } }, 'More ▾'), menu));
     }
     return h('section', { class: 'ce-centre' },
@@ -1851,6 +1855,37 @@ export function createEditor(env) {
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     }, 'image/png');
+  }
+
+  // Nacrta objavljenu kartu iznova trenutnim rendererom i upiše novu sliku (novi hash) u bazu bez nove
+  // verzije: izgled, ne igra. Samo na računalu s otvorenim folderom, samo za kartu bez nacrta
+  // (nacrt crta Objava). Stara slika ostaje do iduće Objave, kao i kod Objave (Undo).
+  async function redrawPicture() {
+    const id = ed.work?.id;
+    const card = db().cards.find(c => c.id === id && !c.deleted);
+    if (!card) throw new Error('This card is not published yet: Publish draws it.');
+    if (ed.drafts?.cards?.[id]) throw new Error('This card has a draft: Publish draws it.');
+    await env.assertFresh();
+    const core = card.type === 'Core' && coreMode(card) === 'effect';
+    const url = card.art ? await store().dataUrl(card.art) : null;
+    const art = url ? await loadImage(url).catch(() => null) : null;
+    if (!art && !core) throw new Error('The card has no art to draw.');
+    const heroOfCard = card.type === 'Evolution' ? db().cards.find(x => x.type === 'Hero' && x.name === card.hero) : null;
+    const emblemPath = card.emblem ?? heroOfCard?.emblem ?? null;
+    const eUrl = emblemPath ? await store().dataUrl(emblemPath) : null;
+    const emblem = eUrl ? await loadImage(eUrl).catch(() => null) : null;
+    const canvas = document.createElement('canvas');
+    renderCard(canvas, decorate(card, db().cards.filter(c => !c.deleted)), await templateFor(card), art, emblem);
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const hash = await imageHashOf(bytes);
+    if (hash === card.imageHash) { env.toast(`${card.name}: the picture is already up to date.`); return; }
+    await fs.writeFile(store().root, `data/images/${id}.${hash}.png`, bytes);
+    const { db: next } = applyDrafts(db(), {}, { [id]: hash });
+    await env.commitDb(next, { keepOld: true });
+    await logHistory(id, 'picture redrawn').catch(() => {});
+    env.toast(`${card.name}: picture redrawn (v${next.version}).`);
+    env.render();
   }
 
   // ---------- nova karta, duplikat ----------

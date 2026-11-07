@@ -632,6 +632,10 @@ test('Card editor drafts: game fields bump rev and version, look fields and a ne
   assert.equal(applyDrafts(db, { 'OP9-002': { cost: 1 } }).changed, 0);
   const fx = applyDrafts(db, { 'OP9-001': { fx: 'BATTLE: DAMAGE ENEMY 1', fxStatus: 'ok' } });
   assert.deepEqual([fx.bumped, fx.db.cards[0].fx, fx.db.cards[0].fxStatus], [true, 'BATTLE: DAMAGE ENEMY 1', 'ok']);
+  // Redraw picture (editor, 2026-11-07): a new image with no draft is a look change, no new version.
+  const redrawn = applyDrafts(db, {}, { 'OP9-001': 'dddd4444' });
+  assert.deepEqual([redrawn.changed, redrawn.bumped, redrawn.db.version, redrawn.db.cards[0].image, redrawn.db.cards[0].rev], [1, false, 4, 'images/OP9-001.dddd4444.png', 1]);
+  assert.equal(applyDrafts(db, {}, { 'OP9-001': 'aaaa1111' }).changed, 0);
   const core = applyDrafts(db, { 'OP9-002': { coreImage: 'effect' } });
   assert.deepEqual([core.bumped, core.db.cards[1].coreImage], [false, 'effect']);
   const added = applyDrafts(db, { 'OP9-003': { new: true, name: 'Hero B', type: 'Hero', color: 'Red', stats: { hp: 8 }, text: '', updated: 'x', who: 'Tarik' } }, { 'OP9-003': 'cccc3333' });
