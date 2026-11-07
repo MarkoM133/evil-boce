@@ -15,7 +15,7 @@ export const COLOR_NAMES = Object.values(COLORS);
 
 // Character je preimenovan u Hero (2026-10-24); stari zapisi s 'Character' čitaju se kao Hero (normalizeDb).
 // Core (kodovi Core-001…, kao Stage-001) je za igru: kuglice na mapi, ne idu u deck.
-export const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core'];
+export const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core', 'Combo'];
 export const DECK_TYPES = ['Evolution', 'Action', 'Equipment', 'Assist'];
 export const HERO_TYPES = ['Hero', 'Evolution'];
 // Tipovi bez boje frakcije.

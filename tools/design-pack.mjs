@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { firstTag, GENERAL, HEROES, TRAIT, heroAliases, norm } from '../js/tags.js';
+import { combosOf, isCombo } from '../js/combo.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const MANUAL_START = '<!-- RUCNO:POCETAK (ovaj dio piše se ručno; skripta ga ne dira) -->';
@@ -27,7 +28,7 @@ export function cardText(text) {
   return out;
 }
 
-export function cardBlock(c) {
+export function cardBlock(c, cards = []) {
   const head = [`**${c.id} ${c.name}**`, c.type];
   if (c.color) head.push(colorOf(c));
   if (c.type === 'Evolution') head.push(`razina ${c.evo ?? 1}`, `baza ${c.hero ?? '?'}`);
@@ -41,6 +42,12 @@ export function cardBlock(c) {
   if (c.aliases?.length) rows.push(`  Aliasi: ${c.aliases.join(', ')}`);
   if (c.abilityNames?.filter(Boolean).length) rows.push(`  Ability: ${c.abilityNames.filter(Boolean).join(' · ')}`);
   if (c.terrain) rows.push(`  Teren: ${c.terrain}`);
+  if (isCombo(c)) {
+    const names = (c.ingredients ?? []).map(id => { const x = cards.find(k => k.id === id); return x ? `${x.name} (${id})` : id; });
+    rows.push(`  Sastojci: ${names.join(' + ')} · dodatno +${c.extraCost ?? 0} energije · uvedeno u ${c.introducedIn || '?'}`);
+  }
+  const inCombos = combosOf(cards, c.id);
+  if (inCombos.length) rows.push(`  Combo (iskra uz kod): ${inCombos.map(x => `${x.id} ${x.name}`).join(', ')}`);
   // A stage's terrain line is the Teren field above (the card prints it under the text).
   const text = cardText(c.type === 'Stage' ? String(c.text ?? '').replace(/^s*Terrain:.*$/gim, '') : c.text);
   if (text) rows.push(...text.split('\n').map((l, i) => `  ${i ? '' : 'Tekst: '}${l}`.replace(/^ {2}(?!Tekst)/, '        ')));
@@ -117,7 +124,7 @@ export function balanceSection(db, traits, sets = []) {
     out.push(`| ${cost} | ${list.map(c => c.name).join(', ')} | ${a('pwr')} | ${a('dmg')} | ${a('kb')} |`);
   }
   out.push('', '### Karte po boji', '', '| Boja | Action | Equipment | Assist | Evolution |', '|---|---|---|---|---|');
-  for (const col of [...new Set(live.filter(c => !['Stage', 'Core', 'Hero'].includes(c.type)).map(c => c.color))].sort()) {
+  for (const col of [...new Set(live.filter(c => !['Stage', 'Core', 'Hero', 'Combo'].includes(c.type)).map(c => c.color))].sort()) {
     const n = t => live.filter(c => c.type === t && c.color === col).length;
     out.push(`| ${col === 'None' ? 'Colorless' : col} | ${n('Action')} | ${n('Equipment')} | ${n('Assist')} | ${n('Evolution')} |`);
   }
@@ -143,14 +150,16 @@ export function buildPack({ db, traits, sets, gameVersion, manual, now = new Dat
     'Po setu, unutar seta po heroju: heroj, njegove evolucije i karte čiji ga prvi tag imenuje; zatim karte s traitom ili General kao prvim tagom. **Podebljan tag** je prvi tag (tko kartu smije igrati). Statsi heroja su HP · DMG · PWR · RNG · KB (+ WT, težina kuglice). Bonus kvadratići su statsi koje Action daje sam od sebe kad se odigra.',
     '',
   ];
-  const codes = [...new Set(live.filter(c => !['Stage', 'Core'].includes(c.type)).map(setOf))].sort((a, b) => (sets.findIndex(s => s.code === a) - sets.findIndex(s => s.code === b)) || a.localeCompare(b));
+  const codes = [...new Set(live.filter(c => !['Stage', 'Core', 'Combo'].includes(c.type)).map(setOf))].sort((a, b) => (sets.findIndex(s => s.code === a) - sets.findIndex(s => s.code === b)) || a.localeCompare(b));
   for (const code of codes) {
-    const setCards = live.filter(c => setOf(c) === code && !['Stage', 'Core'].includes(c.type)).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    const setCards = live.filter(c => setOf(c) === code && !['Stage', 'Core', 'Combo'].includes(c.type)).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
     parts.push(`### Set ${code}: ${setName(code)} (${setCards.length} karata)`, '');
-    for (const g of groupSet(db, traits, setCards)) parts.push(`#### ${g.title}`, '', ...g.cards.map(cardBlock), '');
+    for (const g of groupSet(db, traits, setCards)) parts.push(`#### ${g.title}`, '', ...g.cards.map(c => cardBlock(c, live)), '');
   }
   const stages = live.filter(c => c.type === 'Stage').sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  parts.push(`### Stageovi (${stages.length})`, '', ...stages.map(cardBlock), '');
+  parts.push(`### Stageovi (${stages.length})`, '', ...stages.map(c => cardBlock(c, live)), '');
+  const combos = live.filter(isCombo).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  if (combos.length) parts.push(`### Combo karte (${combos.length})`, '', 'Dvije karte (Action ili Assist) odigrane za dva tvoja heroja u istom battleu: igrač smije platiti dodatnu energiju (+X) i umjesto njih vrijedi Combo karta. Ne idu u deck ni u pakete.', '', ...combos.map(c => cardBlock(c, live)), '');
   const cores = live.filter(c => c.type === 'Core').sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   parts.push(`### Coreovi (${cores.length})`, '', ...cores.map(c => `- **${c.id} ${c.name}** · ${c.traits?.[0] ?? '?'}${bonusLine(c.bonus) ? ` · ${bonusLine(c.bonus)}` : ''}`), '');
   parts.push('## 3. Brojke za balans', '', balanceSection(db, traits, sets), '');

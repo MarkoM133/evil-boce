@@ -1368,7 +1368,7 @@ function renderQuickFilters() {
   const chip = (k, v, label, title) => h('button', { type: 'button', class: `qf${on(k, v) ? ' active' : ''}`, title: title ?? '', 'aria-pressed': String(on(k, v)), onclick: () => toggle(k, v) }, label);
   const sets = [...new Set(state.db.cards.filter(c => c.type !== 'Stage' && c.type !== 'Core').map(setOf))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   // Core se nudi tek kad u bazi ima coreova.
-  const types = TYPES.filter(t => t !== 'Core' || state.db.cards.some(c => c.type === 'Core'));
+  const types = TYPES.filter(t => !['Core', 'Combo'].includes(t) || state.db.cards.some(c => c.type === t && !c.deleted));
   const any = f.types.length || f.colors.length || f.sets.length || f.specials.length || f.since || f.q;
   const group = (cls, active, ...kids) => Object.assign(h('div', { class: `qf-group${cls ? ` ${cls}` : ''}` }, ...kids), { activeCount: active });
   const groups = [

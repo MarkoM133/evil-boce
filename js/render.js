@@ -40,7 +40,7 @@ const WORD_ICON = { HP: 'hp', DMG: 'dmg', Power: 'pwr', Range: 'rng', Knockback:
 
 // Predložak za kartu: zadan na karti (template) ili po tipu.
 export function templateName(card) {
-  return card.template ?? ({ Hero: 'hero', Evolution: 'evolution', Stage: 'stage', Core: 'core' })[card.type] ?? 'action';
+  return card.template ?? ({ Hero: 'hero', Evolution: 'evolution', Stage: 'stage', Core: 'core', Combo: 'combo' })[card.type] ?? 'action';
 }
 
 // Predložak iz data/card-frames/<name>/: layout.json i sve slike koje traži (slojevi, privremeni okviri, ikone).
@@ -60,6 +60,8 @@ export async function loadTemplate(name, load) {
   };
   const icons = {};
   for (const [k, rel] of Object.entries(layout.icons ?? {})) icons[k] = await get(rel);
+  // Combo: crta se kodom, bez slika okvira (varijanta D, 2026-11-07).
+  if (layout.kind === 'combo') return { name, layout, icons };
   // Core: slika, ili heksagon s efektom.
   if (layout.kind === 'image') return { name, layout, icons, hexagon: layout.hexagon ? await get(layout.hexagon) : null };
   // Heroj i evolucija: jedan gotov okvir po boji.
@@ -105,6 +107,7 @@ export async function fontsReady() {
 export function renderCard(canvas, card, tpl, art, emblem = null) {
   if (tpl.layout.kind === 'hero') return renderHero(canvas, card, tpl, art, emblem);
   if (tpl.layout.kind === 'image') return renderImage(canvas, card, tpl, art);
+  if (tpl.layout.kind === 'combo') return renderCombo(canvas, card, tpl, art);
   canvas.width = CARD_W;
   canvas.height = CARD_H;
   const ctx = canvas.getContext('2d');
@@ -131,6 +134,7 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   if (color === 'None' && L.cost && card.cost != null) drawCostRim(ctx, L.cost.box, card.bonusColors ?? []);
   fitLine(ctx, card.type ?? '', L.type, { font: TITLE_FONT, color: ink(L.type) });
   fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: ink(L.code) });
+  if (card.comboMark) drawComboMark(ctx, card.id ?? '', L.code);
   drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
   if (L.tags && !drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag bar.');
   // A colour bonus that is only "+N stat" ("Yellow Bonus: +1 DMG.") leaves the text and goes into a box per colour,
@@ -791,6 +795,133 @@ const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 // Heroj ili evolucija: boja pozadine i art u prozoru, okvir u boji heroja, pločica s amblemom, oznakom
 // (HERO, ili EVOLUTION i razina) i nazivom, statsi u kućicama, naziv sposobnosti i tekst, RNG/KB,
 // tagovi, kod. Evolucija ima i cost u pločici.
+// ---------- combo ----------
+
+// Ikona Combo (Marko 2026-11-07, iskra 3): velika iskra i mala gore desno, zlatno, lijevo od koda karte.
+// Karta koja je sastojak nekog comboa dobiva card.comboMark (js/combo.js, decorate).
+export const COMBO_GOLD = '#f4b62a';
+function sparkle(ctx, cx, cy, r) {
+  const k = r * 0.18;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.quadraticCurveTo(cx + k, cy - k, cx + r, cy);
+  ctx.quadraticCurveTo(cx + k, cy + k, cx, cy + r);
+  ctx.quadraticCurveTo(cx - k, cy + k, cx - r, cy);
+  ctx.quadraticCurveTo(cx - k, cy - k, cx, cy - r);
+  ctx.closePath();
+  ctx.fill();
+}
+export function drawComboSpark(ctx, cx, cy, s, color = COMBO_GOLD) {
+  ctx.save();
+  ctx.fillStyle = color;
+  sparkle(ctx, cx - s * 0.08, cy + s * 0.06, s * 0.42);
+  sparkle(ctx, cx + s * 0.32, cy - s * 0.3, s * 0.18);
+  ctx.restore();
+}
+// Iskra odmah lijevo od teksta koda (kod je centriran u kućici; ista veličina kao fitLine).
+function drawComboMark(ctx, code, box) {
+  if (!box || !code) return;
+  const [x, y, w, h] = box.box;
+  let size = box.size;
+  ctx.font = `${size}px ${TITLE_FONT}`;
+  while (size > box.min && ctx.measureText(code).width > w) { size -= 2; ctx.font = `${size}px ${TITLE_FONT}`; }
+  const tw = ctx.measureText(code).width;
+  const align = box.align ?? 'center';
+  const left = align === 'left' ? x : align === 'right' ? x + w - tw : x + w / 2 - tw / 2;
+  const s = size * 0.95;
+  drawComboSpark(ctx, left - size * 0.24 - s / 2, y + h / 2, s);
+}
+
+const COMBO_RIM = { ...TINTS, Blue: '#2f6bff', None: '#c4cad1' };
+function comboGradient(ctx, colors, x0, y0, x1, y1) {
+  const [a, b] = [colors[0], colors[1] ?? colors[0]].map(c => COMBO_RIM[c] ?? COMBO_RIM.None);
+  const g = ctx.createLinearGradient(x0, y0, x1, y1);
+  g.addColorStop(0, a);
+  g.addColorStop(0.46, a);
+  g.addColorStop(0.54, b);
+  g.addColorStop(1, b);
+  return g;
+}
+
+// Combo karta (varijanta D): art preko cijele karte, tamni prijelaz gore (ime) i dolje (tekst), rub u bojama
+// heroja sastojaka, +X za dodatnu energiju, oznaka COMBO iznad teksta, sastojci dolje desno, kod dolje lijevo.
+function renderCombo(canvas, card, tpl, art) {
+  const L = tpl.layout;
+  const [W, H] = L.size;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const warnings = [];
+  ctx.clearRect(0, 0, W, H);
+  const colors = card.comboColors?.length ? card.comboColors : ['None'];
+  const R = L.radius ?? 60;
+  const rim = L.rim ?? 22;
+  ctx.save();
+  roundRect(ctx, 0, 0, W, H, R);
+  ctx.clip();
+  ctx.fillStyle = '#101014';
+  ctx.fillRect(0, 0, W, H);
+  if (art) {
+    const [bx, by, bw, bh] = L.artBox;
+    const c = { x: 0.5, y: 0.5, zoom: 1, ...(card.artCrop ?? {}) };
+    const sc = Math.max(bw / art.width, bh / art.height) * Math.max(c.zoom, 0.05);
+    ctx.drawImage(art, bx + bw / 2 - c.x * art.width * sc, by + bh / 2 - c.y * art.height * sc, art.width * sc, art.height * sc);
+  } else warnings.push('No art yet.');
+  let gr = ctx.createLinearGradient(0, 0, 0, H * 0.2);
+  gr.addColorStop(0, 'rgba(0,0,0,.72)');
+  gr.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gr;
+  ctx.fillRect(0, 0, W, H * 0.2);
+  gr = ctx.createLinearGradient(0, H * 0.55, 0, H * 0.75);
+  gr.addColorStop(0, 'rgba(0,0,0,0)');
+  gr.addColorStop(1, 'rgba(0,0,0,.84)');
+  ctx.fillStyle = gr;
+  ctx.fillRect(0, H * 0.55, W, H * 0.2);
+  ctx.fillStyle = 'rgba(0,0,0,.84)';
+  ctx.fillRect(0, H * 0.75, W, H * 0.25);
+  ctx.restore();
+  // Rub u bojama sastojaka, lijevo → desno.
+  roundRect(ctx, rim / 2 + 3, rim / 2 + 3, W - rim - 6, H - rim - 6, R - rim / 2);
+  ctx.lineWidth = rim;
+  ctx.strokeStyle = comboGradient(ctx, colors, 0, 0, W, 0);
+  ctx.stroke();
+  // Ime, sa sjenom da se čita preko arta.
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,.85)';
+  ctx.shadowBlur = 18;
+  if (!fitLine(ctx, card.name ?? '', L.title, { font: TITLE_FONT, color: '#ffffff', bold: true })) warnings.push('The name is too long for the title.');
+  ctx.restore();
+  // +X: dodatna energija, u kvadratu s rubom u istim bojama.
+  if (L.cost) {
+    const [cx, cy, cw, ch] = L.cost.box;
+    roundRect(ctx, cx, cy, cw, ch, 14);
+    ctx.fillStyle = '#0d0b0e';
+    ctx.fill();
+    ctx.lineWidth = 9;
+    ctx.strokeStyle = comboGradient(ctx, colors, cx, cy, cx + cw, cy + ch);
+    ctx.stroke();
+    fitLine(ctx, `+${card.extraCost ?? 0}`, L.cost, { font: TITLE_FONT, color: '#ffffff', bold: true });
+  }
+  // Oznaka COMBO u bojama sastojaka.
+  if (L.tag) {
+    const [tx, ty, tw, th] = L.tag.box;
+    roundRect(ctx, tx, ty, tw, th, 12);
+    ctx.fillStyle = comboGradient(ctx, colors, tx, ty, tx + tw, ty);
+    ctx.fill();
+    ctx.save();
+    ctx.letterSpacing = `${Math.round(th * 0.16)}px`;
+    fitLine(ctx, 'COMBO', { box: [tx, ty, tw, th], size: L.tag.size ?? 48, min: 24 }, { font: TITLE_FONT, color: '#0d0b0e', bold: true });
+    ctx.restore();
+  }
+  const t = drawEffect(ctx, card.text ?? '', colors[0] === 'None' ? 'Purple' : colors[0], L.effect, tpl.icons, '', false);
+  if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
+  const names = card.ingredientNames?.length ? card.ingredientNames : (card.ingredients ?? []);
+  if (names.length) fitLine(ctx, names.join('  +  '), L.ingredients, { font: TITLE_FONT, color: '#ffffff', bold: true });
+  else warnings.push('Pick the two cards that make the combo.');
+  fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: '#ffffff', bold: true });
+  return warnings;
+}
+
 function renderHero(canvas, card, tpl, art, emblem) {
   const L = tpl.layout;
   const [W, H] = L.size;

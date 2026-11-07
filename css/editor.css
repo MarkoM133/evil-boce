@@ -55,6 +55,7 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-badge.evolution { background: #d9dde3; }
 .ce-badge.stage { background: #9a9a9a; }
 .ce-badge.core { background: #1f2f2f; color: var(--bone); }
+.ce-badge.combo { background: linear-gradient(90deg, #2f6bff, #2ecc71); color: #fff; }
 .ce-top-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 .ce-lockchip { font: 600 14px var(--text); color: var(--straw); background: var(--straw-wash); padding: 9px 14px; display: inline-flex; gap: 10px; align-items: center; }
 .ce-lockchip.other { color: var(--bone); background: var(--red-wash); }

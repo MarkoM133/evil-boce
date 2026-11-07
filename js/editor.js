@@ -14,6 +14,7 @@ import { createGuideView, readGuide, avoidWarnings, suggest } from './editor-gui
 import { createFramesView } from './editor-frames.js';
 import { toTokens, toWords, headAt, withHeadAt, stripTerrain, withTerrain, coreBonus, coreEffect, PHASES } from './card-text.js';
 import { deckPool, heroEvolutions, setTraits } from './deck.js';
+import { decorate, comboProblems, touchedIngredients, INGREDIENT_TYPES } from './combo.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -22,10 +23,12 @@ const WISH_PATH = 'data/fx-wishlist.json';
 const HISTORY_PATH = 'data/editor/history.json';
 // Zadnja Objava iz editora: baza prije nje i objavljeni nacrti, za Undo.
 const LAST_PUBLISH_PATH = 'data/editor/last-publish.json';
-export const EDIT_TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core'];
+export const EDIT_TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core', 'Combo'];
 export const PAGES = ['sets', 'publish', 'traits', 'guide', 'frames', 'wishlist', 'words'];
 const PORTRAIT = ['Action', 'Equipment', 'Assist'];
 const HEROISH = ['Hero', 'Evolution'];
+// Vodoravne karte: heroji, evolucije i Combo karte (2026-11-07).
+const WIDE = ['Hero', 'Evolution', 'Combo'];
 const COLORS = Object.keys(TINTS);
 // Review je maknut 2026-11-06 (nije korišten): karta je Draft ili Done, a Looks good je stavlja na Done.
 const STATUSES = ['draft', 'done'];
@@ -36,8 +39,8 @@ const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'PWR'], ['rng', 'RNG'],
 const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB', 'EN'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
 const FIELDS = ['name', 'type', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain',
-  'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status'];
-const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equipment: 'action', Assist: 'action', Stage: 'stage', Core: 'core' };
+  'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'ingredients', 'extraCost', 'introducedIn'];
+const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equipment: 'action', Assist: 'action', Stage: 'stage', Core: 'core', Combo: 'combo' };
 
 // Prazan objekt ili popis je isto što i polje kojeg nema (Stage bez bonusa, karta bez tagova).
 const empty = v => v == null || v === '' || (typeof v === 'object' && Object.keys(v).length === 0);
@@ -783,10 +786,10 @@ export function createEditor(env) {
 
   function renderCentre() {
     const w = ed.work;
-    const views = w.type === 'Core' ? [] : HEROISH.includes(w.type) ? [['card', 'Card'], ['board', 'On the board'], ['old', 'Old vs new']]
+    const views = w.type === 'Core' ? [] : w.type === 'Combo' ? [['card', 'Card'], ['old', 'Old vs new']] : HEROISH.includes(w.type) ? [['card', 'Card'], ['board', 'On the board'], ['old', 'Old vs new']]
       : w.type === 'Stage' ? [['card', 'Card'], ['map', 'On the map'], ['old', 'Old vs new']] : [['card', 'Card'], ['old', 'Old vs new']];
     if (!views.some(([k]) => k === ed.view)) ed.view = 'card';
-    const wide = HEROISH.includes(w.type);
+    const wide = WIDE.includes(w.type);
     // Isto platno između crtanja: novo prazno platno bi na trenutak bljesnulo.
     const [cw, chh] = wide ? [2100, 1500] : [1500, 2100];
     if (!ed.canvas || ed.canvas.width !== cw || ed.canvas.height !== chh) ed.canvas = h('canvas', { width: cw, height: chh });
@@ -860,7 +863,7 @@ export function createEditor(env) {
       ed.emblem = url ? await loadImage(url).catch(() => null) : null;
     }
     if (w !== ed.work) return;
-    ed.warn = renderCard(ed.canvas, card, tpl, ed.art, ed.emblem);
+    ed.warn = renderCard(ed.canvas, decorate(card, allCards()), tpl, ed.art, ed.emblem);
     paintStage(card);
     if (ed.checkBox) {
       const all = checks(w, card);
@@ -1156,7 +1159,7 @@ export function createEditor(env) {
           const eu = card.emblem ? await store().dataUrl(card.emblem) : null;
           const emblem = eu ? await loadImage(eu).catch(() => null) : null;
           const full = document.createElement('canvas');
-          renderCard(full, card, tpl, art, emblem);
+          renderCard(full, decorate(card, allCards()), tpl, art, emblem);
           const small = document.createElement('canvas');
           small.width = 360;
           small.height = Math.round((360 * full.height) / full.width);
@@ -1265,6 +1268,26 @@ export function createEditor(env) {
         field('FIRST TAG (WHO MAY PLAY THE CARD)', h('select', { onchange: e => set('traits', [e.target.value, ...w.traits.slice(1)]) },
           h('option', { value: '' }, '–'), firstOptions.map(([v, label]) => h('option', { value: v, selected: v === w.traits[0] }, label)))),
         chips(w, 1, traits, []),
+      ];
+    } else if (w.type === 'Combo') {
+      // Sastojci: Action i Assist karte (Equipment i ability heroja nisu dio para), po imenu i kodu.
+      const pool = allCards().filter(c => INGREDIENT_TYPES.includes(c.type)).sort((a, b) => a.name.localeCompare(b.name));
+      const ing = w.ingredients ?? ['', ''];
+      const pick = i => h('select', { onchange: e => { const next = [...ing]; next[i] = e.target.value; set('ingredients', next); env.render(); } },
+        h('option', { value: '' }, '–'), pool.map(c => h('option', { value: c.id, selected: c.id === ing[i] }, `${c.name} · ${c.id} (${c.type}, ${c.color === 'None' ? 'Colorless' : c.color})`)));
+      const setCodes = sets.list().map(s => s.code);
+      body = [
+        h('h2', {}, 'Combo'),
+        field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
+        h('div', { class: 'ce-row' }, code,
+          field('EXTRA ENERGY (X)', num(w.extraCost, e => set('extraCost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })),
+          field('INTRODUCED IN', h('select', { onchange: e => set('introducedIn', e.target.value) }, h('option', { value: '' }, '–'),
+            setCodes.map(c => h('option', { value: c, selected: c === w.introducedIn }, c))))),
+        field('FIRST CARD', pick(0)),
+        field('SECOND CARD', pick(1)),
+        h('p', { class: 'small muted' }, 'Both cards played for two of your heroes in the same battle: the player may pay X more energy to turn them into this card. The rim takes the colours of the two cards. Combo cards never go in a deck or a pack.'),
+        h('h2', {}, 'Effect text'),
+        ...text,
       ];
     } else if (w.type === 'Stage') {
       body = [
@@ -1567,6 +1590,12 @@ export function createEditor(env) {
       if (!w.emblem && !(w.type === 'Evolution' && heroCard(w)?.emblem)) out.push([false, 'No emblem on the plate']);
     }
     if (w.type === 'Stage') out.push([!!w.terrain && w.terrain !== '', `Terrain set (${w.terrain ?? 'None'})`]);
+    if (w.type === 'Combo') {
+      const bad = comboProblems(allCards(), w);
+      for (const p of bad) out.push([false, p]);
+      if (!bad.length) out.push([true, `${decorate(cardOf(w), allCards()).ingredientNames.join(' + ')}, +${w.extraCost} energy`]);
+      if (!w.introducedIn) out.push([false, 'Pick the set it comes out with (Introduced in)']);
+    }
     if (w.type === 'Core') {
       out.push(Object.keys(card.bonus ?? {}).length ? [true, 'The game reads the effect'] : [false, 'Write the bonus, e.g. +2000[PWR]']);
       if (!CORE_KINDS.includes(w.traits[0])) out.push([false, 'Pick Buff, Major or Debuff']);
@@ -1577,7 +1606,7 @@ export function createEditor(env) {
       if (!w.art) out.push([false, 'No art yet']);
     }
     for (const x of ed.warn.filter(x => !/smallest size|No art yet/.test(x))) out.push([false, x.replace(/\.$/, '')]);
-    if (w.type === 'Stage' || HEROISH.includes(w.type)) gameReads();
+    if (w.type === 'Stage' || w.type === 'Combo' || HEROISH.includes(w.type)) gameReads();
     if (w.type === 'Hero') {
       const n = deckPool(liveDb(card), [w.id], heroEvolutions(liveDb(card), [w.id])).filter(c => c.color === w.color).length;
       out.push([n >= 8, `${w.name || 'This hero'} has ${n} cards to play`]);
@@ -1746,6 +1775,8 @@ export function createEditor(env) {
     Evolution: { color: 'Cyan', cost: 4, evo: 1, hero: '', stats: { hp: 8, dmg: 4, pwr: 3000, rng: 2, kb: 2 }, traits: [], abilityNames: [''], text: '' },
     Stage: { color: null, traits: [], text: '', terrain: 'None' },
     Core: { color: null, traits: ['Buff'], bonus: { pwr: 1000 }, text: '', coreImage: 'effect' },
+    // Combo (2026-11-07): dvije karte (Action ili Assist) i dodatna energija X; boje dolaze od sastojaka.
+    Combo: { color: null, traits: [], ingredients: ['', ''], extraCost: 1, introducedIn: '', text: 'Battle Phase: ' },
   };
 
   function startCard(id, card) {
@@ -2131,11 +2162,35 @@ export function createEditor(env) {
       const eUrl = emblemPath ? await store().dataUrl(emblemPath) : null;
       const emblem = eUrl ? await loadImage(eUrl).catch(() => null) : null;
       const canvas = document.createElement('canvas');
-      renderCard(canvas, card, await templateFor(card), art, emblem);
+      renderCard(canvas, decorate(card, applyDrafts(db(), drafts, {}).db.cards.filter(c => !c.deleted)), await templateFor(card), art, emblem);
       const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const hash = await imageHashOf(bytes);
       if (hash === base.imageHash) continue;
+      await fs.writeFile(store().root, `data/images/${id}.${hash}.png`, bytes);
+      images[id] = hash;
+    }
+    // Combo (2026-11-07): the spark by the code shows on a card that is an ingredient of some combo, so the
+    // ingredients of a published combo (old and new) are drawn again from the cards as they will be.
+    const afterCards = applyDrafts(db(), drafts, {}).db.cards.filter(c => !c.deleted);
+    const redo = new Set();
+    for (const id of list) {
+      const was = db().cards.find(c => c.id === id);
+      const now = afterCards.find(c => c.id === id);
+      if (was?.type === 'Combo' || now?.type === 'Combo') for (const x of touchedIngredients(was, now)) if (x && !drafts[x]) redo.add(x);
+    }
+    for (const id of redo) {
+      const card = afterCards.find(c => c.id === id);
+      if (!card?.art) continue;
+      const url = await store().dataUrl(card.art);
+      const art = url ? await loadImage(url).catch(() => null) : null;
+      if (!art) continue;
+      const canvas = document.createElement('canvas');
+      renderCard(canvas, decorate(card, afterCards), await templateFor(card), art, null);
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const hash = await imageHashOf(bytes);
+      if (hash === card.imageHash) continue;
       await fs.writeFile(store().root, `data/images/${id}.${hash}.png`, bytes);
       images[id] = hash;
     }

@@ -6,7 +6,8 @@ import * as fs from './fsdir.js';
 import { fxProblems } from './fx-grammar.js';
 
 export const SETS_PATH = 'data/sets/sets.json';
-const NOT_SETS = ['Stage', 'Core'];
+// Pseudo-setovi po prefiksu koda: Stage-001, Core-001, CB-001 (Combo karte, 2026-11-07).
+const NOT_SETS = ['Stage', 'Core', 'CB'];
 const CODE_RE = /^[A-Z]{2,4}\d{1,2}$/;
 const DEFAULT_PACK = 10;
 const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist'];
@@ -89,7 +90,7 @@ export function createSetsView(ctx) {
   }
 
   const sets = () => setList(v.saved, ctx.state.db.cards.filter(c => !c.deleted));
-  const nameOf = code => (code === 'Stage' ? 'Stages' : code === 'Core' ? 'Cores' : sets().find(s => s.code === code)?.name ?? code);
+  const nameOf = code => (code === 'Stage' ? 'Stages' : code === 'Core' ? 'Cores' : code === 'CB' ? 'Combos' : sets().find(s => s.code === code)?.name ?? code);
 
   function packImg(code, cls) {
     const img = h('img', { class: cls, alt: '' });
@@ -112,7 +113,7 @@ export function createSetsView(ctx) {
       h('nav', { class: 'ce-settabs' },
         list.map(s => tab([s.code, `${s.name} · ${s.code}`])),
         h('span', { class: 'ce-settab-sep', 'aria-hidden': 'true' }),
-        tab(['Stage', 'Stages']), tab(['Core', 'Cores']),
+        tab(['Stage', 'Stages']), tab(['Core', 'Cores']), tab(['CB', 'Combos']),
         h('span', { class: 'ce-settab-rest' },
           h('button', { type: 'button', class: `ce-settab-pref${v.code === 'default' ? ' active' : ''}`, title: 'Name, number, pack size, pack image and Draft background of every set, and of packs that mix sets', onclick: () => { v.code = 'default'; v.focus = null; ctx.render(); } }, '⚙ Sets & packs'),
           newSetButton(list))),
@@ -150,7 +151,7 @@ export function createSetsView(ctx) {
       if (v.status === 'noart' && c.art) return false;
       return !q || `${c.id} ${c.name} ${c.text ?? ''} ${(c.traits ?? []).join(' ')}`.toLowerCase().includes(q);
     });
-    const newType = s.code === 'Stage' ? 'Stage' : s.code === 'Core' ? 'Core' : 'Action';
+    const newType = s.code === 'Stage' ? 'Stage' : s.code === 'Core' ? 'Core' : s.code === 'CB' ? 'Combo' : 'Action';
     const next = ctx.nextId(s.code);
     const sel = (value, items, onpick) => h('select', { onchange: e => onpick(e.target.value) }, items.map(([val, label]) => h('option', { value: val, selected: val === value }, label)));
     return h('section', { class: 'ce-set' },
@@ -179,15 +180,22 @@ export function createSetsView(ctx) {
     const byId = (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true });
     const heroes = shown.filter(c => c.type === 'Hero').sort(byId);
     const evos = shown.filter(c => c.type === 'Evolution');
+    // Combo karte su vodoravne kao heroji.
+    const combos = shown.filter(c => c.type === 'Combo').sort(byId);
     const wide = [];
     for (const hero of heroes) {
       wide.push(hero);
       wide.push(...evos.filter(e => e.hero === hero.name).sort((a, b) => (a.evo ?? 0) - (b.evo ?? 0) || byId(a, b)));
     }
     wide.push(...evos.filter(e => !wide.includes(e)).sort(byId));
-    const tall = shown.filter(c => c.type !== 'Hero' && c.type !== 'Evolution').sort(byId);
+    wide.push(...combos);
+    const tall = shown.filter(c => !['Hero', 'Evolution', 'Combo'].includes(c.type)).sort(byId);
     v.order = [...wide, ...tall].map(c => c.id);
     const out = [];
+    if (combos.length && combos.length === wide.length && !tall.length) {
+      out.push(h('h3', { class: 'ce-grid-head' }, `${combos.length} ${combos.length === 1 ? 'combo' : 'combos'}`), h('div', { class: 'ce-grid wide' }, wide.map(c => tile(c, drafts[c.id])), newTile));
+      return out;
+    }
     if (wide.length) out.push(h('h3', { class: 'ce-grid-head' }, `Heroes & evolutions (${wide.length})`), h('div', { class: 'ce-grid wide' }, wide.map(c => tile(c, drafts[c.id]))));
     out.push(h('h3', { class: 'ce-grid-head' }, wide.length ? `Cards (${tall.length})` : `${tall.length} cards`), h('div', { class: 'ce-grid' }, tall.map(c => tile(c, drafts[c.id])), newTile));
     return out;
@@ -204,7 +212,7 @@ export function createSetsView(ctx) {
   function tile(c, draft) {
     const lock = ctx.locks()[c.id];
     const canvas = h('canvas', { class: 'ce-tile-img' });
-    ctx.thumbInto(canvas, c, c.type === 'Hero' || c.type === 'Evolution' ? 300 : 210);
+    ctx.thumbInto(canvas, c, ['Hero', 'Evolution', 'Combo'].includes(c.type) ? 300 : 210);
     const badge = lock ? h('span', { class: 'ce-st lock' }, `🔒 ${lock.who.toUpperCase()}`)
       : needsFx(c) ? h('span', { class: 'ce-st fx' }, 'NEEDS FX')
         : h('span', { class: `ce-st ${c.status ?? 'draft'}` }, (c.status ?? 'draft').toUpperCase());
@@ -281,6 +289,7 @@ export function createSetsView(ctx) {
 
   return {
     render, nameOf, newCardButton, ensure: () => (v.saved ? null : load()),
+    list: () => sets(),
     pick: code => { v.code = code; },
     current: () => (v.code && !NOT_SETS.includes(v.code) && v.code !== 'default' ? v.code : null),
     // Karte kako ih mreža seta zadnji put pokazala (s filterima): redoslijed za Prev / Next na stranici karte.
