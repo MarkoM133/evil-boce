@@ -168,7 +168,7 @@ export function createSetsView(ctx) {
         special ? null : sel(v.type, [['', 'All types'], ...TYPES.map(t => [t, t])], x => { v.type = x; ctx.render(); }),
         special ? null : sel(v.color, [['', 'All colors'], ...COLORS.map(c => [c, c])], x => { v.color = x; ctx.render(); }),
         sel(v.status, STATUS_FILTERS, x => { v.status = x; ctx.render(); })),
-      ...groupedGrid(shown, drafts, h('div', { class: 'ce-tile ce-tile-new' },
+      ...groupedGrid(shown, drafts, h('div', { class: `ce-tile ce-tile-new${s.code === 'CB' ? ' wide' : ''}` },
           h('span', { class: 'plus' }, '+'), h('span', {}, 'New card'),
           h('div', { class: 'ce-newtypes' }, (special ? [newType] : NEW_TYPES).map(t => h('button', { type: 'button', class: 'ghost', onclick: () => ctx.newCard(s.code, t) }, t))),
           h('small', { class: 'muted' }, `Next code: ${next}`))));

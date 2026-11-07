@@ -1283,8 +1283,18 @@ export function createEditor(env) {
           field('EXTRA ENERGY (X)', num(w.extraCost, e => set('extraCost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })),
           field('INTRODUCED IN', h('select', { onchange: e => set('introducedIn', e.target.value) }, h('option', { value: '' }, '–'),
             setCodes.map(c => h('option', { value: c, selected: c === w.introducedIn }, c))))),
-        field('FIRST CARD (LEFT COLOUR)', pick(0)),
-        field('SECOND CARD (RIGHT COLOUR)', pick(1)),
+        // Sličice odabranih karata (Marko 2026-11-07): klik otvara kartu.
+        h('div', { class: 'ce-combo-parts' }, [0, 1].map(k => {
+          const c = pool.find(x => x.id === ing[k]);
+          const label = k === 0 ? 'FIRST CARD (LEFT COLOUR)' : 'SECOND CARD (RIGHT COLOUR)';
+          let pic = h('div', { class: 'ce-combo-pic empty' }, '–');
+          if (c) {
+            const cv = h('canvas', { class: 'ce-combo-pic' });
+            thumbInto(cv, c, 150);
+            pic = h('button', { type: 'button', class: 'ce-combo-pic-btn', title: 'Open ' + c.name, onclick: () => go(c.id) }, cv);
+          }
+          return h('div', { class: 'ce-combo-part' }, field(label, pick(k)), pic);
+        })),
         // Redoslijed sastojaka je i redoslijed boja na rubu i imena dolje desno (Marko 2026-11-07).
         h('div', { class: 'ce-adds' }, h('button', { type: 'button', class: 'ce-add-effect', disabled: !ing[0] && !ing[1], title: 'The first card gives the left colour of the rim and the COMBO tag, the second the right', onclick: () => { set('ingredients', [ing[1] ?? '', ing[0] ?? '']); env.render(); } }, '⇄ Swap the two cards')),
         h('p', { class: 'small muted' }, 'Both cards played for two of your heroes in the same battle: the player may pay X more energy to turn them into this card. The rim takes the colours of the two cards. Combo cards never go in a deck or a pack.'),

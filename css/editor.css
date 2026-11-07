@@ -568,3 +568,15 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
   .ce-tag-add input { width: 100%; }
   .ce-tag-ac { left: 0; right: auto; min-width: 100%; max-height: 50vh; }
 }
+
+/* Combo form: the two cards side by side, each with its picture (2026-11-07). */
+.ce-combo-parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ce-combo-part { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.ce-combo-part select { width: 100%; }
+.ce-combo-pic-btn { padding: 0; background: none; clip-path: none; justify-self: start; }
+.ce-combo-pic { display: block; width: 150px !important; max-width: 100%; height: auto; border-radius: 6px; }
+.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-items: center; color: var(--muted); border: 1px dashed var(--line); }
+.ce-combo-pic-btn:hover .ce-combo-pic { outline: 2px solid var(--bone); }
+@media (max-width: 700px) { .ce-combo-parts { grid-template-columns: minmax(0, 1fr); } }
+/* The Combos tab's New card tile has the shape of a landscape combo card. */
+.ce-tile-new.wide { min-height: 0; aspect-ratio: 2100 / 1500; }
