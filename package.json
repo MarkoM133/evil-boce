@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server/server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "design-pack": "node tools/design-pack.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0"
