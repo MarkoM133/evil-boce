@@ -2541,6 +2541,21 @@ func demo_damage() -> void:
 	hud.toggle_damage_card(1)
 
 
+## Screenshot helper: the ring-out's cost (1 DMG, or a card from the hand) asked of player 1.
+func demo_ring_out_damage() -> void:
+	_demo = true
+	var h: HeroState = state.heroes_of(0)[0]
+	state.pending = [{"type": RulesEngine.DECISION_DAMAGE, "player": 0, "winner": "", "by": "ring_out",
+		"amount": RulesEngine.RING_OUT_DAMAGE, "targets": [h.id], "min_hero": 0, "ring_out": true}]
+	var p: PlayerState = state.player(0)
+	if p.hand.is_empty():
+		p.hand = p.deck.slice(0, 5)
+	state.turn = maxi(state.turn, 1)
+	state.phase = GameState.PHASE_ROLL
+	hud.local_slots = PackedInt32Array([0])
+	hud.refresh()
+
+
 ## Screenshot helper: the energy claim variant: player 1's heroes on two open stages with energy
 ## in them, a third stage contested, and the End phase box splitting 6 energy.
 func demo_energy() -> void:

@@ -1,5 +1,5 @@
 {
-  "name": "Knockback into a wall: stays put and takes wall damage once",
+  "name": "Knockback into a wall: stays put, and the wall costs nothing (no wall damage since 2026-11-07)",
   "steps": [
     {"setup": {"seed": 1}},
     {"move": {"type": "mulligan", "player": 0, "keep": true}},
@@ -16,7 +16,7 @@
     {"pass_round": true},
     {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001"}},
     {"expect": {
-      "heroes.p0:TA-001.hp": 5,
+      "heroes.p0:TA-001.hp": 7,
       "heroes.p0:TA-001.hex": [4, 8],
       "players.p0.deck": {"$size": 33},
       "players.p0.graveyard": {"$size": 0},

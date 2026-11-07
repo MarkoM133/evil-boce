@@ -6,6 +6,8 @@ extends RefCounted
 ## docs/rules.md.
 
 const DECISION_DAMAGE: String = "damage"
+## What a ring-out costs (Marko 2026-11-07): 1 DMG, or a card from the hand instead.
+const RING_OUT_DAMAGE: int = 1
 const DECISION_RETURN_CORE: String = "return_core"
 ## After the roll: a player with a "Roll Phase:" card or ability may use one (or pass).
 const DECISION_ROLL_OFFER: String = "roll_offer"
@@ -469,8 +471,9 @@ func _apply_decision(s: GameState, m: Move) -> String:
 					return "%s is not in your hand" % cid
 				left.remove_at(at)
 			s.pending.pop_front()
-			hand_damage(s, p, cards, winner)
-			hero_damage(s, s.hero(target), amount - cards.size(), false, winner)
+			var by: String = str(d.get("by", winner))
+			hand_damage(s, p, cards, by)
+			hero_damage(s, s.hero(target), amount - cards.size(), false, by)
 			_drop_dead_targets(s)
 		DECISION_RETURN_CORE:
 			if m.type != Move.RETURN_CORE:
@@ -694,7 +697,7 @@ func core_return_error(s: GameState, c: CoreState, a: Vector2i) -> String:
 
 ## Feeds the physics result of the pending knockbacks (GDD 10, 2026-10-26): every ball the sim
 ## moved lands where it stopped, with cores picked, stages revealed and ring-outs as in a roll;
-## a knocked hero takes `wall_damage` once for every ball or wall it hit. Then the match goes on.
+## a hit costs nothing (Marko 2026-11-07: no wall damage; a ring-out costs 1 DMG). Then the match goes on.
 func apply_knockback(s: GameState, o: RollOutcome) -> String:
 	if s.pending_knockbacks.is_empty():
 		return "no knockback waiting"
@@ -718,11 +721,6 @@ func apply_knockback(s: GameState, o: RollOutcome) -> String:
 		if asked.has(h.id):
 			s.event("knockback", {"hero": h.id, "from": Hex.to_json(from), "to": Hex.to_json(h.hex),
 				"steps": asked[h.id], "physics": true, "hits": r.collisions.size() + r.walls_hit})
-			var hits: int = r.collisions.size() + r.walls_hit
-			if h.is_on_map() and hits > 0:
-				# The log says what it hit (online playtest 2026-11-07: a ball pinned against another
-				# took "hits a wall" three times): the heroes it bumped into, and how many walls.
-				hero_damage(s, h, hits * s.settings.wall_damage, false, "wall", "", {"bumped": Array(r.collisions), "walls": r.walls_hit})
 		end_move(s, h, was, by_team)
 	s.event("knockback_done", {"heroes": asked.keys()})
 	_check_win(s)
@@ -1435,16 +1433,13 @@ func _battle_tie(s: GameState, members: Array[HeroState]) -> void:
 # =====================================================================================
 
 ## Damage to a hero, after "takes ±N DMG from all sources" modifiers (unless unblockable).
-## `by`: who or what dealt it (a hero id, "wall", "trap"), `card`: the card that did, for the log;
-## `extra` goes into the event as it is (a knockback's `bumped` heroes and `walls`).
-func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = false, by: String = "", card: String = "", extra: Dictionary = {}) -> void:
+## `by`: who or what dealt it (a hero id, "wall", "trap", "ring_out"), `card`: the card that did, for the log.
+func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = false, by: String = "", card: String = "") -> void:
 	if h == null or h.is_ko() or amount <= 0:
 		return
 	if not unblockable:
 		amount = maxi(amount + fx.damage_mod(s, h), 0)
 	var info: Dictionary = {"hero": h.id, "amount": maxi(amount, 0), "hp": h.hp}
-	for k: Variant in extra:
-		info[k] = extra[k]
 	if not by.is_empty():
 		info["by"] = by
 	if not card.is_empty():
@@ -1518,6 +1513,14 @@ func ring_out(s: GameState, h: HeroState, reason: String) -> void:
 	h.locked_with = PackedStringArray()
 	_lost_active(s, h)
 	s.event("ring_out", {"hero": h.id, "reason": reason})
+	# Every ring-out costs 1 DMG (Marko 2026-11-07, in place of wall damage): with a card in the
+	# hand the player may discard one instead (the usual damage decision, nothing has to land on
+	# the hero); with none it lands at once. A hero at 1 HP can be knocked out by it.
+	if s.player(h.owner).hand.is_empty():
+		hero_damage(s, h, RING_OUT_DAMAGE, false, "ring_out")
+	else:
+		s.pending.append({"type": DECISION_DAMAGE, "player": h.owner, "winner": "", "by": "ring_out",
+			"amount": RING_OUT_DAMAGE, "targets": [h.id], "min_hero": 0, "ring_out": true})
 
 
 ## Cores fall off a ringed-out hero and the game throws them onto random free hexes
@@ -1563,8 +1566,8 @@ func _lost_active(s: GameState, h: HeroState) -> void:
 		s.only_pass.append(h.owner)
 
 
-## Grid knockback: `steps` hexes in direction `dir`. A wall or hero stops it, with
-## wall_damage once when blocked; leaving the map is a ring-out.
+## Grid knockback: `steps` hexes in direction `dir`. A wall or hero stops it (no damage,
+## Marko 2026-11-07); leaving the map is a ring-out.
 ## Knockback (GDD 10). In the "physics" mode (the game) the hero is not moved here: the
 ## knockback waits in `pending_knockbacks` for the sim (apply_knockback). On the grid it goes
 ## hex by hex, stopped by walls and heroes.
@@ -1586,8 +1589,6 @@ func _grid_knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 	var start: Vector2i = h.hex
 	var pos: Vector2i = h.hex
 	var left: int = steps
-	var bumped: Array = []
-	var walls: int = 0
 	while left > 0:
 		var next: Vector2i = Hex.neighbor(pos, dir)
 		var off_map: bool = false
@@ -1595,14 +1596,8 @@ func _grid_knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 		for cell: Vector2i in Hex.spiral(next, 1 if h.big else 0):
 			if not s.map().contains(cell):
 				off_map = true
-			elif s.wall_at(cell):
+			elif s.wall_at(cell) or s.hero_at(cell, h) != null:
 				blocked = true
-				walls = 1
-			elif s.hero_at(cell, h) != null:
-				blocked = true
-				var other: HeroState = s.hero_at(cell, h)
-				if not bumped.has(other.id):
-					bumped.append(other.id)
 		if off_map:
 			h.hex = next
 			s.event("knockback", {"hero": h.id, "from": Hex.to_json(start), "to": Hex.to_json(next), "steps": steps - left + 1})
@@ -1615,9 +1610,6 @@ func _grid_knockback(s: GameState, h: HeroState, dir: int, steps: int) -> void:
 	h.hex = pos
 	s.event("knockback", {"hero": h.id, "from": Hex.to_json(start), "to": Hex.to_json(pos), "steps": steps - left})
 	arrive(s, h)
-	if left > 0:
-		# Blocked by a wall or a hero: wall_damage once (GDD 10, 2026-10-26), not per step short.
-		hero_damage(s, h, s.settings.wall_damage, false, "wall", "", {"bumped": bumped, "walls": walls})
 
 
 # =====================================================================================

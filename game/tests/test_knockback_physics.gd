@@ -47,7 +47,7 @@ func test_a_physics_knockback_waits_for_the_sim_and_blocks_moves() -> void:
 	var hp: int = hero.hp
 	assert_eq(engine.apply_knockback(state, _outcome(Vector2i(7, 10), PackedStringArray(["p1:TB-001"]))), "")
 	assert_eq(hero.hex, Vector2i(7, 10), "lands where the sim stopped it")
-	assert_eq(hero.hp, hp - state.settings.wall_damage, "wall damage once per ball hit")
+	assert_eq(hero.hp, hp, "a hit costs nothing (no wall damage, Marko 2026-11-07)")
 	assert_true(state.pending_knockbacks.is_empty())
 	assert_eq(engine.apply_knockback(state, _outcome(Vector2i(7, 10))), "no knockback waiting")
 	assert_eq(engine.apply(state, Move.make(Move.MULLIGAN, 0, {"keep": true})), "", "moves again")
@@ -59,8 +59,27 @@ func test_no_hit_no_damage_and_a_ring_out_counts() -> void:
 	assert_eq(engine.apply_knockback(state, _outcome(Vector2i(4, 12))), "")
 	assert_eq(hero.hp, hp, "a clean slide hurts nobody")
 	engine.knockback(state, hero, 2, 2)
+	var hand: PackedStringArray = state.player(0).hand.duplicate()
 	assert_eq(engine.apply_knockback(state, _outcome(Vector2i(4, 14), PackedStringArray(), true)), "")
 	assert_false(hero.is_on_map(), "off the table is a ring-out")
+	# The ring-out costs 1 DMG (Marko 2026-11-07): with a card in the hand the player decides, and may
+	# discard one instead.
+	assert_eq(hero.hp, hp, "not yet: the player decides")
+	assert_eq(state.pending.size(), 1)
+	assert_eq(str(state.pending[0].get("type", "")), RulesEngine.DECISION_DAMAGE)
+	assert_true(JsonUtil.as_bool(state.pending[0].get("ring_out", false)))
+	assert_eq(engine.apply(state, Move.make(Move.DAMAGE_TO, 0, {"target": hero.id, "cards": [hand[0]]})), "")
+	assert_eq(hero.hp, hp, "the card took it")
+	assert_eq(state.player(0).hand.size(), hand.size() - 1)
+	assert_true(state.pending.is_empty())
+	# With no card in the hand it lands at once.
+	hero.zone = HeroState.ZONE_MAP
+	hero.hex = Vector2i(4, 10)
+	state.player(0).hand = PackedStringArray()
+	engine.knockback(state, hero, 2, 2)
+	assert_eq(engine.apply_knockback(state, _outcome(Vector2i(4, 14), PackedStringArray(), true)), "")
+	assert_eq(hero.hp, hp - 1, "1 DMG for the ring-out")
+	assert_true(state.pending.is_empty())
 
 
 func test_the_grid_mode_moves_the_hero_itself() -> void:

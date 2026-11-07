@@ -13,8 +13,6 @@ var assist_limit: int = 3
 ## "physics" (the game, 2026-10-26: a real hit) or "grid" (hex by hex: the engine on its
 ## own, as in the scenario tests). `new()` keeps the grid; `standard()` plays physics.
 var knockback: String = "grid"
-## Damage per knockback step a hero could not take (wall, hero).
-var wall_damage: int = 2
 ## Fewest empty hexes between stage edges, and between a core and other cores or stages.
 var stage_gap: int = 3
 ## Stage gap on maps up to `small_map_max` wide (six stages do not fit the middle third of
@@ -152,7 +150,6 @@ func to_dict() -> Dictionary:
 		"equipment_limit": equipment_limit,
 		"assist_limit": assist_limit,
 		"knockback": knockback,
-		"wall_damage": wall_damage,
 		"stage_gap": stage_gap,
 		"stage_gap_small": stage_gap_small,
 		"small_map_max": small_map_max,
@@ -182,7 +179,6 @@ static func from_dict(d: Dictionary) -> MatchSettings:
 	s.equipment_limit = JsonUtil.as_int(d.get("equipment_limit", s.equipment_limit), s.equipment_limit)
 	s.assist_limit = JsonUtil.as_int(d.get("assist_limit", s.assist_limit), s.assist_limit)
 	s.knockback = str(d.get("knockback", s.knockback))
-	s.wall_damage = JsonUtil.as_int(d.get("wall_damage", s.wall_damage), s.wall_damage)
 	s.stage_gap = JsonUtil.as_int(d.get("stage_gap", s.stage_gap), s.stage_gap)
 	s.stage_gap_small = JsonUtil.as_int(d.get("stage_gap_small", s.stage_gap_small), s.stage_gap_small)
 	s.small_map_max = JsonUtil.as_int(d.get("small_map_max", s.small_map_max), s.small_map_max)

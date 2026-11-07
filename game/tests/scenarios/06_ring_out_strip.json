@@ -1,5 +1,5 @@
 {
-  "name": "Rolling onto any start strip is a ring-out; cores scatter, the player may only pass. A throw that never leaves its own strip is thrown again.",
+  "name": "Rolling onto any start strip is a ring-out; cores scatter, the player may only pass, and the ring-out costs 1 DMG or a card from the hand. A throw that never leaves its own strip is thrown again.",
   "steps": [
     {"setup": {"seed": 1}},
     {"move": {"type": "mulligan", "player": 0, "keep": true}},
@@ -7,7 +7,8 @@
     {"set": {
       "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 10],
       "heroes.p0:TA-001.cores": ["core:p1:1"],
-      "cores.core:p1:1.place": "hero", "cores.core:p1:1.holder": "p0:TA-001", "cores.core:p1:1.face_up": true
+      "cores.core:p1:1.place": "hero", "cores.core:p1:1.holder": "p0:TA-001", "cores.core:p1:1.face_up": true,
+      "players.p0.hand": ["TX-010", "TX-011"]
     }},
     {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": true}},
     {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": true}},
@@ -29,8 +30,12 @@
       "heroes.p1:TB-001.zone": "strip",
       "only_pass": {"$has": 0},
       "phase": "roll",
-      "rolled": false
+      "rolled": false,
+      "pending.0.type": "damage", "pending.0.ring_out": true, "pending.0.player": 0, "pending.0.min_hero": 0
     }},
+    {"move": {"type": "aim", "player": 1, "dir": [0, -1], "power": 0.8}, "error": "waiting for player 0"},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001", "cards": ["TX-011"]}},
+    {"expect": {"heroes.p0:TA-001.hp": 10, "players.p0.hand": ["TX-010"], "players.p0.graveyard": ["TX-011"], "pending": {"$size": 0}, "phase": "roll"}},
     {"move": {"type": "aim", "player": 1, "dir": [0, -1], "power": 0.8}},
     {"roll": {"thrower": "p1:TB-001", "results": [
       {"ball": "p1:TB-001", "thrown": true, "end_area": 0, "strip_entered": -1, "end_hex": [4, 3]}

@@ -65,8 +65,7 @@ describes energy claims as the rule since 2026-11-04 (final); Stay stays an opti
   ball touched it, directly or through other balls (`roll_causes`; without touches reported,
   another team that threw); a KO, whoever dealt the damage; a card's move or knockback, the
   card's player; a physics knockback, each knocked hero's own (a tie-break sends each side back
-  by the other's), and a ball one of them touches the same. Only a hero's outermost move counts,
-  so a knockback's wall damage is part of it.
+  by the other's), and a ball one of them touches the same. Only a hero's outermost move counts.
 - Decided with Marko (2026-11-02; final and in the GDD since 2026-11-04): a KO by
   the other side on a stage counts as being knocked off; a card of the other side that moves or
   knocks the hero off counts too; energy may go into any unclaimed stage, whoever placed it; a
@@ -155,6 +154,12 @@ Paths use the JSON form of the state: `players.p0.hand`, `heroes.<id>.hp`, `core
 - Cores off a ringed-out hero are thrown by the game onto random free hexes (not on a
   stage), keeping their face state. Cores off a KO'd hero go to the core owner's inventory
   and come back anywhere free in the owner's own half.
+- Ring-out (Marko 2026-11-07, in place of the wall damage, which is gone with its MATCH RULES
+  setting): every ring-out costs the hero 1 DMG (`RulesEngine.RING_OUT_DAMAGE`; a hero at 1 HP
+  is knocked out by it), whoever caused it, the strips included. With a card in the hand the
+  player gets the usual damage decision (`damage` with `ring_out: true`, `by: "ring_out"`,
+  `min_hero` 0) and may discard one card instead; with none it lands at once. The hit's
+  `damage` / `hand_damage` events carry `by: "ring_out"`.
 
 ## Assumptions
 
@@ -217,9 +222,8 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    and every move is refused with "waiting for the knockback" until the scene runs the sim
    (hit along the hex direction, power = steps / full-power hexes of the WT) and brings the
    `RollOutcome` to `apply_knockback`. The outcome lands every moved ball as a roll does
-   (cores, stages, ring-outs); a knocked hero takes `wall_damage` once per ball and once per wall
-   it hit (a wall is one body per hex sharing a "wall" meta: a seam or a scrape is one hit); the
-   `damage` event carries `bumped` (the heroes) and `walls`, so the log says what it hit. The
+   (cores, stages, ring-outs); the balls and walls it hit are counted (`knockback.hits`) but cost
+   nothing (Marko 2026-11-07: no wall damage any more; a ring-out costs 1 DMG, see below). The
 9d. (2026-10-26) `series_wins` > 1 is a series (`MatchSeries`, not a rule: the scene and the host
    keep it); `first_initiative` names who starts (the last loser), -1 draws lots as before.
    A seat may bring a sideboard (up to 10 cards its heroes may take, each under its limit;
@@ -241,8 +245,8 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    and `_play` (the first tag still counts), and `bonusColors` on the card drive the fx
    `BONUS` / `INSTEAD` effects and `OWN_COST` (docs/fx-keywords.md). The Draft counts a
    colorless card as a card of any colour.
-g. (2026-10-26) A grid knockback stopped by a wall or a hero costs `wall_damage` once, not per
-   step short. A Wind stage draws its direction (`StageState.wind_dir`, one of six) when it is
+g. (2026-10-26) A grid knockback stopped by a wall or a hero just stops (no damage since
+   2026-11-07). A Wind stage draws its direction (`StageState.wind_dir`, one of six) when it is
    revealed; `terrain()` blows that way and the state and the replay keep it.
 10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.

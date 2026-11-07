@@ -2416,11 +2416,21 @@ func _damage_dialog(d: Dictionary, who: int) -> void:
 	var p: PlayerState = state.player(who)
 	var spare: int = damage_spare()
 	var on_hero: int = amount - damage_cards.size()
-	_dialog_box.add_child(UiTheme.label("BATTLE LOST · %s" % player_name(who).to_upper(), 15, Palette.GOLD))
-	_dialog_box.add_child(UiTheme.label("%d DMG FROM %s" % [amount, hero_name(winner).to_upper() if winner != null else "?"], 36))
+	var ring: bool = JsonUtil.as_bool(d.get("ring_out", false))
 	var sub := Label.new()
 	sub.add_theme_color_override("font_color", Palette.MUTED)
-	if min_hero >= amount and not p.hand.is_empty():
+	if ring:
+		# A ring-out's cost (Marko 2026-11-07): 1 DMG, or a card from the hand instead.
+		var fallen: HeroState = state.hero(targets[0]) if not targets.is_empty() else null
+		_dialog_box.add_child(UiTheme.label("RING-OUT · %s" % player_name(who).to_upper(), 15, Palette.GOLD))
+		_dialog_box.add_child(UiTheme.label("%s TAKES %d DMG" % [hero_name(fallen).to_upper() if fallen != null else "?", amount], 36))
+		sub.text = "Or discard a card from your hand instead: click it in your hand." if spare > 0 else "The hero takes it: no card in your hand to discard instead."
+	else:
+		_dialog_box.add_child(UiTheme.label("BATTLE LOST · %s" % player_name(who).to_upper(), 15, Palette.GOLD))
+		_dialog_box.add_child(UiTheme.label("%d DMG FROM %s" % [amount, hero_name(winner).to_upper() if winner != null else "?"], 36))
+	if ring:
+		pass
+	elif min_hero >= amount and not p.hand.is_empty():
 		sub.text = "All %d lands on the hero: this hit cannot go on cards from your hand." % amount
 	elif spare <= 0:
 		sub.text = "At least %d must land on a hero%s." % [min_hero, "; with no cards in your hand it all does" if p.hand.is_empty() and amount > min_hero else ""]
@@ -3488,14 +3498,10 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 				return dot + "%s takes no damage." % _hero_b(hero)
 			var dmg: String = "[color=#%s]%d DMG[/color]" % [red, amount]
 			if src == "wall":
-				# A knockback's damage: into a wall, into heroes, or both (playtest 2026-11-07).
-				var bumped := PackedStringArray()
-				for id: String in JsonUtil.as_strings(e.get("bumped", [])):
-					bumped.append(_hero_b(id))
-				var what: String = "hits a wall"
-				if not bumped.is_empty():
-					what = ("hits a wall and bumps into %s" if JsonUtil.as_int(e.get("walls", 0)) > 0 else "bumps into %s") % " and ".join(bumped)
-				return dot + "%s %s: %s (HP %d)." % [_hero_b(hero), what, dmg, hp]
+				# Replays from before 2026-11-07 only: wall damage is gone.
+				return dot + "%s hits a wall: %s (HP %d)." % [_hero_b(hero), dmg, hp]
+			if src == "ring_out":
+				return dot + "%s takes %s for the ring-out (HP %d)." % [_hero_b(hero), dmg, hp]
 			if src == "trap":
 				return dot + "The trap deals %s to %s (HP %d)." % [dmg, _hero_b(hero), hp]
 			if not src.is_empty() and state.hero(src) != null:
@@ -3515,6 +3521,8 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			var names := PackedStringArray()
 			for cid: String in JsonUtil.as_strings(e.get("cards", [])):
 				names.append(_card_b(cid))
+			if by3 == "ring_out":
+				return dot + "%s discards %s to shake off the ring-out." % [_who(slot), ", ".join(names)]
 			return dot + "%s takes %s of %s hit on the hand: %s discarded." % [_who(slot),
 				"[color=#%s]%d DMG[/color]" % [Palette.ACCENT.lightened(0.25).to_html(false), JsonUtil.as_int(e.get("amount", 0))],
 				("%s's" % _hero_b(by3)) if not by3.is_empty() and state.hero(by3) != null else "the", ", ".join(names)]
