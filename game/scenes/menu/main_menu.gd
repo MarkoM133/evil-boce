@@ -37,6 +37,7 @@ func _ready() -> void:
 	theme = UiTheme.get_theme()
 	GameSettings.apply(get_tree())
 	db = CardDb.load_from(GameSettings.data_path())
+	ReplayStore.drop_stale(str(ProjectSettings.get_setting("application/config/version", "")))
 	var logo: Texture2D = db.logo()
 	if logo != null:
 		DisplayServer.set_icon(logo.get_image())

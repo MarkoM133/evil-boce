@@ -156,11 +156,57 @@ func test_reconnect_keeps_the_seat_and_pauses_meanwhile() -> void:
 	assert_true(client.started)
 	assert_not_null(client_state)
 	assert_true(JsonUtil.as_bool(host.seat(1).get("connected", false)))
-	assert_true(client.paused)
-	# The host resumes.
-	assert_eq(host.set_paused(false, 0), "")
+	# Everyone is back: the pause the drop made goes by itself (online playtest 2026-11-07).
 	await _settle(0.4)
+	assert_false(host.paused, "the match goes on once everyone is back")
 	assert_false(client.paused)
+
+
+## A host that left its online match carries it on from the record: it waits paused, the guest joins
+## under its old name, gets its old seat and the state, and the match goes on (online playtest 2026-11-07).
+func test_the_host_carries_on_a_saved_match() -> void:
+	_start_host()
+	host.set_my_deck(_deck(true))
+	_start_client("Guest")
+	await _settle()
+	client.send_deck(_deck(false))
+	client.send_ready(true)
+	await _settle(0.4)
+	assert_eq(host.start(11), "")
+	await _settle()
+	var saved: MatchRecord = MatchRecord.from_dict(host.recorder.record.to_dict())
+	var phase: String = host.state().phase
+	client.link.close()
+	client.queue_free()
+	client = null
+	host.link.close()
+	host.queue_free()
+	host = null
+	await wait_frames(4)
+	host = NetHost.new(RulesEngine.new(catalog), "Somebody", "1.0", 1)
+	add_child_autofree(host)
+	assert_eq(host.listen(PORT), "")
+	assert_eq(host.resume_match(saved), "you hosted this match as someone else; use that name")
+	host.queue_free()
+	host = null
+	await wait_frames(4)
+	host = NetHost.new(RulesEngine.new(catalog), "Host", "1.0", 1)
+	add_child_autofree(host)
+	assert_eq(host.listen(PORT), "")
+	assert_eq(host.resume_match(saved), "")
+	assert_true(host.started)
+	assert_true(host.paused, "it waits for the guest")
+	assert_eq(host.state().phase, phase)
+	client_state = null
+	welcomed_slot = -1
+	_start_client("Guest")
+	await _settle()
+	assert_eq(welcomed_slot, 1, "the old seat")
+	assert_true(client.started)
+	assert_not_null(client_state)
+	assert_eq(client_state.phase, phase)
+	await _settle(0.4)
+	assert_false(host.paused, "everyone is back, the match goes on")
 
 
 func test_big_packets_are_gzipped_and_come_back_the_same() -> void:

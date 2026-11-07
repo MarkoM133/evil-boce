@@ -67,6 +67,8 @@ var host_slot: int = 0
 var started: bool = false
 var paused: bool = false
 var paused_by: int = -1
+## Paused because a player was missing: it goes on by itself once everyone is back.
+var _auto_pause: bool = false
 var _ping: float = 0.0
 
 
@@ -181,6 +183,48 @@ func can_start() -> String:
 	return ""
 
 
+## Every player's seat has its player (bots always do).
+func all_connected() -> bool:
+	for s: Dictionary in seats:
+		if not JsonUtil.as_bool(s.get("connected", false)) and not JsonUtil.as_bool(s.get("bot", false)):
+			return false
+	return true
+
+
+## Carries on a saved online match this computer hosted (online playtest 2026-11-07: there was no
+## way back to it). The seats come from the record, the host's by its name; the others are empty
+## until their player joins under the name they played with, and the match waits paused until
+## everyone is back, then goes on by itself.
+func resume_match(record: MatchRecord) -> String:
+	if record == null or record.frame_count() == 0 or record.finished:
+		return "no match to continue"
+	var my_name: String = str(seat(host_slot).get("name", ""))
+	var me: int = -1
+	for i: int in record.players.size():
+		if str(record.players[i].get("name", "")) == my_name:
+			me = i
+	if me < 0:
+		return "you hosted this match as someone else; use that name"
+	engine = RulesEngine.new(record.catalog())
+	settings = MatchSettings.from_dict(record.settings)
+	host_slot = me
+	seats = []
+	for i: int in record.players.size():
+		var p: Dictionary = record.players[i]
+		var bot: bool = JsonUtil.as_bool(p.get("bot", false))
+		seats.append({"slot": i, "name": str(p.get("name", "")), "peer": 0 if i == me else (-1 if bot else -2), "ready": true,
+			"bot": bot, "bot_level": str(p.get("bot_level", "")), "deck": JsonUtil.as_dict(record.decks[i]) if i < record.decks.size() else {},
+			"connected": i == me or bot})
+	series = null
+	recorder = MatchRecorder.resume(engine, record)
+	started = true
+	match_started.emit()
+	if not all_connected():
+		set_paused(true, host_slot)
+		_auto_pause = true
+	return ""
+
+
 func start(seed: int) -> String:
 	var why: String = can_start()
 	if not why.is_empty():
@@ -269,6 +313,7 @@ func send_balls(positions: Dictionary) -> void:
 func set_paused(on: bool, by: int) -> String:
 	if on == paused:
 		return ""
+	_auto_pause = false
 	if not on and paused_by != by and by != host_slot:
 		return "only %s or the host can resume" % str(seat(paused_by).get("name", "?"))
 	paused = on
@@ -548,6 +593,8 @@ func _on_hello(peer: int, msg: Dictionary) -> void:
 			link.send(peer, {"t": NetProtocol.PAUSED, "by": paused_by, "name": str(seat(paused_by).get("name", ""))})
 		link.broadcast({"t": NetProtocol.PLAYER, "slot": slot, "name": name, "connected": true})
 		player_changed.emit(slot, true)
+		if _auto_pause and paused and all_connected():
+			set_paused(false, host_slot)
 	else:
 		_lobby()
 
@@ -569,7 +616,9 @@ func _on_peer_left(peer: int) -> void:
 	if started:
 		link.broadcast({"t": NetProtocol.PLAYER, "slot": slot, "name": s["name"], "connected": false})
 		player_changed.emit(slot, false)
-		set_paused(true, host_slot)
+		if not paused:
+			set_paused(true, host_slot)
+			_auto_pause = true
 	else:
 		seats.erase(s)
 		for i: int in seats.size():

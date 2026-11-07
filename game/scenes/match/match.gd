@@ -260,8 +260,11 @@ func _ready() -> void:
 
 	_build_balls()
 	_build_hud()
+	if net_role == "host" and net_host.paused:
+		# A carried-on match waits for the others, paused (NetHost.resume_match).
+		_on_net_pause(true, net_host.paused_by, str(net_host.seat(net_host.paused_by).get("name", "")))
 	_sync()
-	if state.turn == 0 and _replay == null and resume_from == null and not _demo:
+	if state.turn == 0 and _replay == null and resume_from == null and not _demo and not _setup_begun():
 		# A new match: the last one's battle pictures (menu idle preview) make way.
 		ReplayStore.clear_highlights()
 		_show_initiative()
@@ -269,6 +272,14 @@ func _ready() -> void:
 		net_host.stream_start(_replay)
 		net_host.stream_state(state)
 
+
+
+## Setup has started already (a stage is down): a match carried on online, the who-starts dice are over.
+func _setup_begun() -> bool:
+	for st: StageState in state.stages:
+		if st.placed:
+			return true
+	return false
 
 
 ## The host watching a replay with its table: every frame goes out (NetHost.stream_*).
@@ -938,15 +949,21 @@ func _after_change() -> void:
 		_snapshot()
 		if net_role == "":
 			ReplayStore.clear_current()
+		elif net_role == "host":
+			ReplayStore.clear_current_online()
 		ReplayStore.save_replay(recorder.record)
 		ReplayStore.write_stats(recorder.record, db.root_dir)
 		hud.end_summary = recorder.record.summary()
 		if _local_series() and not MatchSeries.current.is_over():
 			MatchSeries.current.record(state.winner)
-	elif net_role == "" and recorder.record.frame_count() != _saved_frames:
-		# Only local matches can be continued; an online one needs everyone at the table.
+	elif (net_role == "" or (net_role == "host" and _replay == null)) and recorder.record.frame_count() != _saved_frames:
+		# The host keeps its online match too (online playtest 2026-11-07: a match the host left was
+		# gone): Online › CONTINUE THE MATCH opens the table again and the others join back.
 		_saved_frames = recorder.record.frame_count()
-		ReplayStore.save_current(recorder.record)
+		if net_role == "host":
+			ReplayStore.save_current_online(recorder.record)
+		else:
+			ReplayStore.save_current(recorder.record)
 
 
 ## Puts every node where the state says and redraws the HUD.

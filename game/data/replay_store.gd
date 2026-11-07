@@ -7,6 +7,8 @@ const REPLAY_DIR: String = "user://replays"
 const SAVE_DIR: String = "user://saves"
 ## The match in progress, written after every move so a crash or quit can be resumed.
 const CURRENT_SAVE: String = "user://saves/current.json"
+## The online match this computer hosts, kept apart from the local one (Online › Continue).
+const CURRENT_ONLINE: String = "user://saves/current_online.json"
 
 
 static func replay_path(record: MatchRecord) -> String:
@@ -64,6 +66,35 @@ static func has_current() -> bool:
 
 static func load_current() -> MatchRecord:
 	return load_record(CURRENT_SAVE) if has_current() else null
+
+
+static func save_current_online(record: MatchRecord) -> void:
+	_write_json(CURRENT_ONLINE, record.to_dict())
+
+
+static func has_current_online() -> bool:
+	return FileAccess.file_exists(CURRENT_ONLINE)
+
+
+static func load_current_online() -> MatchRecord:
+	return load_record(CURRENT_ONLINE) if has_current_online() else null
+
+
+static func clear_current_online() -> void:
+	if has_current_online():
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(CURRENT_ONLINE))
+
+
+## A saved match from another game version is not offered to continue (online playtest 2026-11-07:
+## CONTINUE stayed across versions and crashed the game): both saves are dropped unless they were
+## made by `version`.
+static func drop_stale(version: String) -> void:
+	for path: String in [CURRENT_SAVE, CURRENT_ONLINE]:
+		if not FileAccess.file_exists(path):
+			continue
+		var d: Dictionary = JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(path)))
+		if str(d.get("game_version", "")) != version:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 static func clear_current() -> void:

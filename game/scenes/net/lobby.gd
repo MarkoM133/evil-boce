@@ -29,6 +29,7 @@ var _opp: PlayerCard
 var _wait: PanelContainer
 var _series: Label
 var _join_btn: Button
+var _resume_info: Label
 ## Under JOIN: connecting, or why it failed (Marko 2026-11-07: by the button, not at the top).
 var _join_status: Label
 var _join_tween: Tween
@@ -100,6 +101,37 @@ func _build() -> void:
 	host_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	host_btn.pressed.connect(_host)
 	host_card.add_child(host_btn)
+	# The online match this computer hosted and left: open the table again, the others join back.
+	var saved: MatchRecord = ReplayStore.load_current_online()
+	if saved != null and saved.frame_count() > 0 and not saved.finished and saved.game_version == _version():
+		var names := PackedStringArray()
+		for p: Dictionary in saved.players:
+			names.append(str(p.get("name", "")))
+		var last: GameState = saved.state_at(saved.frame_count() - 1)
+		var cont_row := HBoxContainer.new()
+		cont_row.add_theme_constant_override("separation", 10)
+		host_card.add_child(cont_row)
+		var cont := Button.new()
+		cont.text = "CONTINUE THE MATCH"
+		cont.theme_type_variation = &"Gold"
+		cont.add_theme_font_size_override("font_size", 22)
+		cont.pressed.connect(func() -> void: _host_resume(saved))
+		cont_row.add_child(cont)
+		var drop := Button.new()
+		drop.text = "DISCARD"
+		drop.theme_type_variation = &"Ghost"
+		drop.add_theme_font_size_override("font_size", 16)
+		drop.tooltip_text = "Forget this match (its replay so far stays in Replays only if it ended)"
+		drop.pressed.connect(func() -> void:
+			ReplayStore.clear_current_online()
+			cont_row.queue_free()
+			_resume_info.queue_free())
+		cont_row.add_child(drop)
+		_resume_info = Label.new()
+		_resume_info.text = "%s  ·  %s. The others join with the name they played under." % [" vs ".join(names), ("turn %d" % last.turn) if last != null and last.turn > 0 else "setup"]
+		_resume_info.add_theme_color_override("font_color", Palette.MUTED)
+		_resume_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		host_card.add_child(_resume_info)
 	var join_card: VBoxContainer = MenuScreen.card(pair, 26, true)
 	join_card.add_child(UiTheme.label("JOIN", 40))
 	var join_row := HBoxContainer.new()
@@ -293,6 +325,25 @@ func _host() -> void:
 	_push_settings()
 	_wire_host()
 	_status.text = ""
+
+
+## Opens the table with the saved online match and goes straight to it; it waits paused for the others.
+func _host_resume(record: MatchRecord) -> void:
+	GameSettings.set_player_name(_name.text)
+	host = NetHost.new(RulesEngine.new(record.catalog()), GameSettings.player_name(), _version(), db.version)
+	host.name = "NetHost"
+	var err: String = host.listen()
+	if err.is_empty():
+		err = host.resume_match(record)
+	if not err.is_empty():
+		_status.text = err
+		host.link.close()
+		host.free()
+		host = null
+		return
+	get_tree().root.add_child(host)
+	MatchLaunch.config = {"net": {"role": "host", "node": host}, "settings": host.settings, "decks": [], "bots": PackedInt32Array(), "seed": 0}
+	get_tree().change_scene_to_file(MATCH_SCENE)
 
 
 func _wire_host() -> void:
