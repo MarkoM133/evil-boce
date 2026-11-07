@@ -2573,6 +2573,39 @@ func demo_energy() -> void:
 	hud.refresh()
 
 
+## Screenshot helper: both stage boxes with energy in them (each side's, and both in some) and an
+## assist box on each side (two on the left).
+func demo_boards() -> void:
+	_demo = true
+	state.settings.stage_claim = MatchSettings.CLAIM_ENERGY
+	state.settings.stage_goal = 14
+	var spots: Array[Vector2i] = [Vector2i(7, 12), Vector2i(15, 12), Vector2i(11, 8), Vector2i(7, 10), Vector2i(15, 10), Vector2i(11, 14)]
+	var progress: Array = [{0: 6}, {0: 9, 1: 3}, {0: 4, 1: 7}, {1: 11}, {0: 2, 1: 5}, {1: 4}]
+	for i: int in mini(6, state.stages.size()):
+		var st: StageState = state.stages[i]
+		st.placed = true
+		st.revealed = true
+		st.center = Hex.offset_to_axial(spots[i].x, spots[i].y)
+		st.progress.clear()
+		var pd: Dictionary = progress[i]
+		for k: Variant in pd:
+			st.progress[JsonUtil.as_int(k)] = JsonUtil.as_int(pd[k])
+	var assists: Array[CardDef] = engine.catalog.of_type("Assist")
+	var two := PackedStringArray()
+	for c: CardDef in assists:
+		if two.size() < 2:
+			two.append(c.id)
+	state.player(0).assists = two
+	if not assists.is_empty():
+		state.player(1).assists = PackedStringArray([assists[assists.size() - 1].id])
+	state.turn = maxi(state.turn, 6)
+	state.phase = GameState.PHASE_PREROLL
+	state.pending = []
+	hud.local_slots = PackedInt32Array([0])
+	_sync()
+	hud.refresh()
+
+
 ## Screenshot helper: the end screen as if player 1 won on stages (drawn only).
 func demo_victory() -> void:
 	_demo = true

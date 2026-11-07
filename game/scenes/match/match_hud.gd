@@ -855,14 +855,6 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 	head.add_child(stars)
 
 	var align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
-	if not p.assists.is_empty():
-		var assists := Label.new()
-		assists.theme_type_variation = &"Muted"
-		assists.text = "Assists: " + ", ".join(_card_names(p.assists))
-		assists.horizontal_alignment = align
-		assists.tooltip_text = _card_tip(_card_texts(p.assists))
-		assists.mouse_filter = Control.MOUSE_FILTER_PASS
-		col.add_child(assists)
 	for h: HeroState in state.heroes_of(slot):
 		# In the battle camera only the heroes fighting show.
 		if battle_cam and not _in_battle(h):
@@ -878,6 +870,8 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 		col.add_child(inv)
 	if state.turn > 0 and not state.is_over() and not battle_cam:
 		col.add_child(_side_board(slot, right))
+		if not p.assists.is_empty():
+			col.add_child(_assist_board(p, slot, right))
 	# Your own deck and graveyard stand as piles by the hand (_refresh_piles); the counts here
 	# are for the other side (and for two players at one screen).
 	if local_slots.size() == 1 and local_slots[0] == slot:
@@ -4236,6 +4230,11 @@ func _side_board(slot: int, right: bool) -> Control:
 	head.add_child(UiTheme.label(title, 12, Palette.GOLD if own else Color(Palette.team(state.team_of(slot)), 0.9).lightened(0.3)))
 	if open:
 		head.add_child(UiTheme.label("CLAIMED %d/%d" % [claimed, state.settings.stages_to_win], 12, Palette.MUTED))
+		if state.settings.energy_claims():
+			# The goal once, small (Marko 2026-11-07), not on every tile.
+			var goal_l: Label = UiTheme.label(("%d ENERGY CLAIMS A STAGE  ·" if right else "·  %d ENERGY CLAIMS A STAGE") % state.settings.stage_goal, 9, Palette.DIM)
+			goal_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			head.add_child(goal_l)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -4282,6 +4281,76 @@ func _core_known(c: CoreState) -> bool:
 
 
 ## A small drawn chevron: up while the box is open (click folds it), down while folded.
+## A player's assists (Marko 2026-11-07, mockup 2c): under the stage box, the same slanted slice with
+## the team's edge, as wide as its cards: each one's picture and name. Hovering one shows it big (a
+## right click too, as on a hero panel).
+func _assist_board(p: PlayerState, slot: int, right: bool) -> Control:
+	var box := HeroSlice.new()
+	box.set_mirrored(right)
+	box.art_w = 0.0
+	box.bg = Palette.PANEL_SOLID
+	box.color_edge = Palette.team(state.team_of(slot))
+	box.custom_minimum_size = Vector2(0, 40)
+	box.size_flags_horizontal = Control.SIZE_SHRINK_END if right else Control.SIZE_SHRINK_BEGIN
+	var cut: int = int(HeroSlice.CUT) + 8
+	box.content.add_theme_constant_override("margin_left", cut)
+	box.content.add_theme_constant_override("margin_right", cut)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.content.add_child(col)
+	var fit := func() -> void: box.custom_minimum_size = box.content.get_combined_minimum_size()
+	box.content.minimum_size_changed.connect(fit)
+	fit.call_deferred()
+	var own: bool = local_slots.has(slot)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	head.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(UiTheme.label("ASSISTS" if own else "%s ASSISTS" % player_name(slot).to_upper(), 12,
+		Palette.GOLD if own else Color(Palette.team(state.team_of(slot)), 0.9).lightened(0.3)))
+	head.add_child(UiTheme.label("%d/%d" % [p.assists.size(), state.settings.assist_limit], 12, Palette.MUTED))
+	col.add_child(head)
+	var cards := HBoxContainer.new()
+	cards.add_theme_constant_override("separation", 12)
+	cards.layout_direction = Control.LAYOUT_DIRECTION_RTL if right else Control.LAYOUT_DIRECTION_LTR
+	cards.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(cards)
+	for cid: String in p.assists:
+		var card: CardDef = engine.catalog.get_card(cid)
+		var cell := HBoxContainer.new()
+		cell.add_theme_constant_override("separation", 6)
+		cell.mouse_filter = Control.MOUSE_FILTER_STOP
+		cell.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		cell.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text]) if card != null else ""
+		var tex: Texture2D = db.thumb(cid) if db != null else null
+		if tex != null:
+			var pic := TextureRect.new()
+			pic.texture = tex
+			pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			pic.stretch_mode = TextureRect.STRETCH_SCALE
+			pic.custom_minimum_size = Vector2(30, 42)
+			pic.material = round_corners()
+			pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			cell.add_child(pic)
+		var name_l: Label = UiTheme.label(card.name if card != null else cid, 16, Palette.FG)
+		name_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cell.add_child(name_l)
+		cell.mouse_entered.connect(func() -> void:
+			_hover_cid = cid
+			_show_big(cid))
+		cell.mouse_exited.connect(func() -> void:
+			if _hover_cid == cid:
+				_hover_cid = ""
+			if _big_cid == cid:
+				_show_big(""))
+		cell.gui_input.connect(func(e: InputEvent) -> void:
+			_card_click(e, cid))
+		cards.add_child(cell)
+	return box
+
+
 func _fold_chevron(open: bool) -> Control:
 	var chev := Control.new()
 	chev.custom_minimum_size = Vector2(16, 16)
@@ -4337,7 +4406,7 @@ func _board_stage(st: StageState, slot: int) -> Control:
 	var card: CardDef = engine.catalog.get_card(st.card_id) if known and not st.card_id.is_empty() else null
 	var contested: bool = state.settings.energy_claims() and engine.contested(state, st)
 	var tile := PanelContainer.new()
-	tile.custom_minimum_size = Vector2(82, 48)
+	tile.custom_minimum_size = Vector2(96, 64)
 	tile.clip_contents = true
 	var sb: StyleBoxFlat = UiTheme.box(Palette.SURFACE_2, 3, Color(0, 0, 0, 0), 0, 0)
 	sb.set_border_width_all(3 if st.is_claimed() else 2)
@@ -4409,38 +4478,45 @@ func _board_stage(st: StageState, slot: int) -> Control:
 			if stayer != null and state.heroes_on_stage(st).has(stayer):
 				line.add_child(UiTheme.label("STAY 1/2", 10, Palette.team(state.team_of(stayer.owner)).lightened(0.45)))
 		if energy:
-			var goal: int = state.settings.stage_goal
-			# Each side's energy in its own team's colour, then the goal: "6/14", or "0 5 /14"
-			# with both (Marko 2026-11-02: "0 | 5" read like "0/14").
-			var nums := HBoxContainer.new()
-			nums.add_theme_constant_override("separation", 3)
-			# Read left to right in the mirrored box too (playtest 2026-11-07: it showed "/14 4").
-			nums.layout_direction = Control.LAYOUT_DIRECTION_LTR
-			nums.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			line.add_child(nums)
-			for who: int in ([slot, other] if other >= 0 else [slot]):
-				# In team colours even while contested (the name and the bar go grey then).
-				var col: Color = Palette.team(state.team_of(who)).lightened(0.45)
-				nums.add_child(UiTheme.label(str(st.progress_of(who)), 11, col))
-			nums.add_child(UiTheme.label("/%d" % goal, 9, Palette.MUTED))
-			var track := ColorRect.new()
-			track.color = Palette.LINE
-			track.custom_minimum_size = Vector2(0, 3)
-			track.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			rows.add_child(track)
-			var fill := ColorRect.new()
-			fill.color = Palette.DIM if contested else Palette.team(state.team_of(slot))
-			fill.set_anchors_preset(Control.PRESET_LEFT_WIDE)
-			fill.anchor_right = clampf(float(st.progress_of(slot)) / maxf(float(goal), 1.0), 0.0, 1.0)
-			fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			track.add_child(fill)
-			if other >= 0:
-				var theirs := ColorRect.new()
-				theirs.color = Palette.DIM if contested else Palette.team(state.team_of(other))
-				theirs.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-				theirs.anchor_left = 1.0 - clampf(float(st.progress_of(other)) / maxf(float(goal), 1.0), 0.0, 1.0)
-				theirs.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				track.add_child(theirs)
+			# Pips (Marko 2026-11-07, mockup 3): the blue team's energy fills from the left with its
+			# number at that end, the red team's from the right with its number there; the goal is
+			# said once in the box header. Grey while contested, the numbers stay in team colours.
+			var goal: int = maxi(state.settings.stage_goal, 1)
+			var sides: Array[int] = [-1, -1]
+			for q: PlayerState in state.players:
+				sides[clampi(state.team_of(q.slot), 0, 1)] = q.slot
+			var row := HBoxContainer.new()
+			row.layout_direction = Control.LAYOUT_DIRECTION_LTR
+			row.add_theme_constant_override("separation", 2)
+			row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			rows.add_child(row)
+			var amounts: Array[int] = []
+			for t: int in 2:
+				amounts.append(st.progress_of(sides[t]) if sides[t] >= 0 else 0)
+			var pips := HBoxContainer.new()
+			pips.add_theme_constant_override("separation", 1)
+			pips.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			pips.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			for t: int in 2:
+				var n: Label = UiTheme.label(str(amounts[t]), 12, Palette.team(t).lightened(0.45))
+				n.custom_minimum_size = Vector2(9, 0)
+				n.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if t == 1 else HORIZONTAL_ALIGNMENT_LEFT
+				if t == 1:
+					row.add_child(pips)
+				row.add_child(n)
+			for i: int in goal:
+				var pip := ColorRect.new()
+				pip.custom_minimum_size = Vector2(3, 8)
+				pip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				var c: Color = Color(0.22, 0.22, 0.22)
+				if i < amounts[0]:
+					c = Palette.team(0)
+				elif i >= goal - amounts[1]:
+					c = Palette.team(1)
+				pip.color = c.darkened(0.5) if contested and c != Color(0.22, 0.22, 0.22) else c
+				pips.add_child(pip)
 	if lit:
 		var gain: UiShape = UiShape.chip("+%d" % JsonUtil.as_int(flash.get("amount", 0)),
 			Palette.team(state.team_of(JsonUtil.as_int(flash.get("player", 0)))), Palette.FG, 12, 18.0, 6.0)
