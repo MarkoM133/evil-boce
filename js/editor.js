@@ -1283,8 +1283,10 @@ export function createEditor(env) {
           field('EXTRA ENERGY (X)', num(w.extraCost, e => set('extraCost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })),
           field('INTRODUCED IN', h('select', { onchange: e => set('introducedIn', e.target.value) }, h('option', { value: '' }, '–'),
             setCodes.map(c => h('option', { value: c, selected: c === w.introducedIn }, c))))),
-        field('FIRST CARD', pick(0)),
-        field('SECOND CARD', pick(1)),
+        field('FIRST CARD (LEFT COLOUR)', pick(0)),
+        field('SECOND CARD (RIGHT COLOUR)', pick(1)),
+        // Redoslijed sastojaka je i redoslijed boja na rubu i imena dolje desno (Marko 2026-11-07).
+        h('div', { class: 'ce-adds' }, h('button', { type: 'button', class: 'ce-add-effect', disabled: !ing[0] && !ing[1], title: 'The first card gives the left colour of the rim and the COMBO tag, the second the right', onclick: () => { set('ingredients', [ing[1] ?? '', ing[0] ?? '']); env.render(); } }, '⇄ Swap the two cards')),
         h('p', { class: 'small muted' }, 'Both cards played for two of your heroes in the same battle: the player may pay X more energy to turn them into this card. The rim takes the colours of the two cards. Combo cards never go in a deck or a pack.'),
         h('h2', {}, 'Effect text'),
         ...text,
