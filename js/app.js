@@ -1087,7 +1087,12 @@ function renderCombos() {
       h('button', { class: 'combo-card', type: 'button', onclick: () => showCard(c.id), 'aria-label': c.name }, cardImg(c, { alt: c.name })),
       h('div', { class: 'combo-body' },
         h('h3', {}, c.name, h('span', { class: 'combo-x' }, '+' + (c.extraCost ?? 0) + ' energy')),
-        h('p', { class: 'combo-parts' }, parts.map((p, i) => [i ? h('span', { class: 'muted' }, ' + ') : null, p ? cardLink(p.id) : h('span', {}, c.ingredients[i])])),
+        h('div', { class: 'combo-parts' }, parts.map((p, i) => [
+          i ? h('span', { class: 'combo-plus', 'aria-hidden': 'true' }, '+') : null,
+          h('figure', { class: 'combo-part' },
+            p ? h('button', { class: 'combo-part-pic', type: 'button', onclick: () => showCard(p.id), 'aria-label': p.name }, cardImg(p, { alt: p.name }))
+              : h('div', { class: 'combo-part-pic empty' }, '?'),
+            h('figcaption', {}, p ? cardLink(p.id) : c.ingredients[i], h('span', { class: 'muted small' }, c.ingredients[i])))])),
         h('p', { class: 'combo-text' }, c.text ?? ''),
         h('p', { class: 'muted small' }, c.id + (c.introducedIn ? ' · introduced in ' + c.introducedIn : '') + ' · both cards played for two of your heroes in the same battle')));
   };

@@ -120,7 +120,6 @@ var _menu_log_box: Control
 var _combo_box: Control
 var _combo_list: VBoxContainer
 var _combo_toggle: HBoxContainer
-var _combo_entry: Button
 ## The combo list shows every combo, not only the ones this screen's deck can make.
 var _combo_all: bool = false
 ## Setup: the stage or core the local player places next ("" = the first one left) and the
@@ -508,8 +507,6 @@ func _build_menu_overlay() -> Control:
 		_menu_entry(col, "SURRENDER" + who, func() -> void:
 			_toggle_menu()
 			_apply(Move.make(Move.SURRENDER, slot)))
-	if not engine.catalog.of_type("Combo").is_empty():
-		_combo_entry = _menu_entry(col, "COMBO LIST", func() -> void: _show_combos(not _combo_box.visible))
 	_menu_entry(col, "MAIN MENU", _leave)
 
 	# The match log, right: newest at the bottom.
@@ -521,7 +518,11 @@ func _build_menu_overlay() -> Control:
 	log_box.add_theme_constant_override("separation", 10)
 	root.add_child(log_box)
 	_menu_log_box = log_box
-	log_box.add_child(UiTheme.label("MATCH LOG", 26, Palette.GOLD))
+	# Tabs MATCH LOG and COMBO LIST when there are combos (Marko 2026-11-07), else just the heading.
+	if engine.catalog.of_type("Combo").is_empty():
+		log_box.add_child(UiTheme.label("MATCH LOG", 26, Palette.GOLD))
+	else:
+		log_box.add_child(_menu_tabs(false))
 	_menu_log = PanelContainer.new()
 	_menu_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_menu_log.add_theme_stylebox_override("panel", UiTheme.box(Color(Palette.PANEL_SOLID, 0.9), 0, Color(0, 0, 0, 0), 22, 16))
@@ -562,9 +563,9 @@ func _build_combo_box() -> Control:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 10)
 	box.add_child(head)
-	var title: Label = UiTheme.label("COMBO LIST", 26, Palette.GOLD)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(title)
+	var tabs: HBoxContainer = _menu_tabs(true)
+	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(tabs)
 	_combo_toggle = HBoxContainer.new()
 	_combo_toggle.add_theme_constant_override("separation", 6)
 	head.add_child(_combo_toggle)
@@ -591,14 +592,34 @@ func _build_combo_box() -> Control:
 	return box
 
 
+## The two tabs over the pause menu's right side; the open one gold, the other one a quiet button.
+func _menu_tabs(combos_open: bool) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 22)
+	for combos: bool in [false, true]:
+		var b := Button.new()
+		b.text = "COMBO LIST" if combos else "MATCH LOG"
+		b.flat = true
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_override("font", UiTheme.display_heavy())
+		b.add_theme_font_size_override("font_size", 26)
+		var open: bool = combos == combos_open
+		b.add_theme_color_override("font_color", Palette.GOLD if open else Palette.MUTED)
+		b.add_theme_color_override("font_hover_color", Palette.GOLD if open else Palette.FG)
+		b.add_theme_color_override("font_pressed_color", Palette.GOLD)
+		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		if not open:
+			b.pressed.connect(func() -> void: _show_combos(combos))
+		row.add_child(b)
+	return row
+
+
 ## The right side shows the combo list (true) or the match log.
 func _show_combos(on: bool) -> void:
 	if _combo_box == null:
 		return
 	_combo_box.visible = on
 	_menu_log_box.visible = not on
-	if _combo_entry != null:
-		_combo_entry.text = "MATCH LOG" if on else "COMBO LIST"
 	if on:
 		_fill_combos()
 
@@ -617,7 +638,7 @@ func _fill_combos() -> void:
 		var makes: bool = has_deck and c.ingredients.size() == 2 and mine.has(c.ingredients[0]) and mine.has(c.ingredients[1])
 		if has_deck and not makes and not show_all:
 			continue
-		_combo_list.add_child(_combo_row(c, makes or not has_deck, has_deck))
+		_combo_list.add_child(_combo_row(c, makes or not has_deck, has_deck, mine))
 		shown += 1
 	if shown == 0:
 		var none: Label = UiTheme.label("Your deck makes no combo. ALL shows every combo.", 20, Palette.MUTED, false)
@@ -625,8 +646,9 @@ func _fill_combos() -> void:
 		_combo_list.add_child(none)
 
 
-## One combo: its card, name and extra energy, its two cards with their codes, its text.
-func _combo_row(c: CardDef, lit: bool, has_deck: bool) -> Control:
+## One combo: its card, name and extra energy, its two cards (pictures, names, codes; one your deck
+## lacks is dim), its text.
+func _combo_row(c: CardDef, lit: bool, has_deck: bool, mine: PackedStringArray) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
 	var tex: Texture2D = db.thumb(c.id) if db.thumb(c.id) != null else db.large(c.id)
@@ -645,13 +667,16 @@ func _combo_row(c: CardDef, lit: bool, has_deck: bool) -> Control:
 	col.add_theme_constant_override("separation", 4)
 	row.add_child(col)
 	col.add_child(UiTheme.label("%s   +%d ENERGY" % [c.name.to_upper(), c.extra_cost], 26, Palette.FG))
-	var names := PackedStringArray()
-	for i: String in c.ingredients:
-		var ing: CardDef = engine.catalog.get_card(i)
-		names.append("%s (%s)" % [ing.name if ing != null else "?", i])
-	var parts: Label = UiTheme.label(" + ".join(names), 20, Palette.GOLD, false)
-	parts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var parts := HBoxContainer.new()
+	parts.add_theme_constant_override("separation", 12)
 	col.add_child(parts)
+	for k: int in c.ingredients.size():
+		var id: String = c.ingredients[k]
+		if k > 0:
+			var plus: Label = UiTheme.label("+", 34, Palette.GOLD)
+			plus.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			parts.add_child(plus)
+		parts.add_child(_combo_part(id, has_deck and not mine.has(id)))
 	var text := Label.new()
 	text.text = c.text
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -662,6 +687,36 @@ func _combo_row(c: CardDef, lit: bool, has_deck: bool) -> Control:
 		col.add_child(UiTheme.label("NOT IN YOUR DECK", 15, Palette.MUTED))
 		row.modulate.a = 0.6
 	return row
+
+
+## One card of a combo: its picture, name and code under it; dim when your deck lacks it.
+func _combo_part(id: String, missing: bool) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.custom_minimum_size.x = 120
+	var tex: Texture2D = db.thumb(id) if db.thumb(id) != null else db.large(id)
+	if tex != null:
+		var a: float = float(tex.get_width()) / tex.get_height()
+		var pic := TextureRect.new()
+		pic.texture = tex
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_SCALE
+		pic.custom_minimum_size = Vector2(120, 120 / a)
+		pic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		pic.material = MatchHud.round_corners(a)
+		box.add_child(pic)
+	var card: CardDef = engine.catalog.get_card(id)
+	var name: Label = UiTheme.label(card.name if card != null else "?", 17, Palette.GOLD, false)
+	name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name.custom_minimum_size.x = 120
+	box.add_child(name)
+	var code: Label = UiTheme.label(id, 14, Palette.MUTED, false)
+	code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(code)
+	if missing:
+		box.modulate.a = 0.45
+	return box
 
 
 ## The cards of the deck this screen plays: from the match record (local, host), or the deck this

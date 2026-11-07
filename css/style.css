@@ -972,4 +972,11 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
 .combo-body h3 { margin: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
 .combo-x { font: 700 15px var(--text); color: var(--straw); }
 .combo-parts, .combo-text { margin: 0; }
+.combo-parts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.combo-part { margin: 0; display: grid; gap: 4px; justify-items: center; text-align: center; width: 130px; min-width: 0; }
+.combo-part figcaption { display: grid; overflow-wrap: anywhere; }
+.combo-part-pic { padding: 0; background: none; clip-path: none; }
+.combo-part-pic img, .combo-part-pic.empty { display: block; width: 130px; height: auto; aspect-ratio: 1500 / 2100; border-radius: 6px; background: var(--surface-2); }
+.combo-part-pic.empty { display: grid; place-items: center; color: var(--muted); }
+.combo-plus { font: 700 30px var(--text); color: var(--straw); }
 @media (max-width: 700px) { .combo-row { grid-template-columns: minmax(0, 1fr); } }

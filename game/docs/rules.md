@@ -124,7 +124,8 @@ describes energy claims as the rule since 2026-11-04 (final); Stay stays an opti
   being fought. Scenarios 57 and 58; the bot takes the first combo on offer.
 - Match scene (no rules): the offer dialog shows the combo card above its buttons. Event `combo` shows the
   combo card over the screen (`MatchHud._combo_show`, queued with the bands; a click or Enter skips it).
-  The pause menu's COMBO LIST shows the combos this screen's deck can make, or every combo (ALL); it reads
+  The pause menu's right side has tabs MATCH LOG and COMBO LIST (when there are combos); COMBO LIST shows the
+  pictures of each combo and its two cards, and the combos this screen's deck can make, or every combo (ALL); it reads
   the deck from the match record, or the deck an online guest sent (`NetClient.my_deck`), never the
   opponent's.
 
