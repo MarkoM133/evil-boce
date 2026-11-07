@@ -582,8 +582,9 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
 button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-items: center; color: var(--muted); border: 1px dashed var(--line); background: none; clip-path: none; font: 600 15px var(--text); }
 .ce-combo-swap { width: 52px; height: 52px; padding: 0; border-radius: 50%; clip-path: none; font: 700 24px var(--text); }
 .ce-combo-picker { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--straw); }
-.ce-combo-picker-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.ce-combo-picker-head input { flex: 1 1 200px; }
+.ce-combo-picker-head { display: flex; gap: 8px; align-items: stretch; }
+.ce-combo-picker-head input { flex: 1 1 auto; min-width: 0; }
+.ce-combo-back { flex: 0 0 auto; width: 48px; padding: 0; clip-path: none; font: 700 22px var(--text); }
 .ce-combo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: 520px; overflow-y: auto; }
 .ce-combo-option { display: grid; gap: 4px; justify-items: center; padding: 6px; background: none; clip-path: none; text-align: center; font: 500 13px var(--text); }
 .ce-combo-option .ce-combo-pic { width: 120px !important; }

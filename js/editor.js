@@ -1214,16 +1214,37 @@ export function createEditor(env) {
           cv, h('span', { class: 'small' }, c.name), h('span', { class: 'small muted' }, `${c.id} · ${colourName(c)}`));
       }) : [h('p', { class: 'small muted' }, 'No Action or Assist card matches.')]));
     };
-    const input = h('input', { type: 'search', placeholder: 'Search name, code or text…', value: ed.comboQ ?? '', 'aria-label': 'Search a card',
+    // Zatvaranje (Marko 2026-11-07): strelica lijevo, klik bilo gdje izvan tražilice ili Esc. Bez ponovnog crtanja forme,
+    // da klik izvan stigne do polja na koje je kliknut.
+    const off = () => { document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); };
+    const close = () => {
+      off();
+      ed.comboPick = null; ed.comboQ = '';
+      box.remove();
+      document.querySelectorAll('.ce-combo-slot.picking').forEach(x => x.classList.remove('picking'));
+    };
+    const onDown = e => {
+      if (!box.isConnected) return off();
+      if (box.contains(e.target) || e.target.closest?.('.ce-combo-slot, .ce-combo-big')) return;
+      close();
+    };
+    const onKey = e => {
+      if (!box.isConnected) return off();
+      if (e.key === 'Escape' && !document.querySelector('.ce-combo-big')) { e.preventDefault(); close(); }
+    };
+    const input = h('input', { type: 'search', placeholder: `${k === 0 ? 'First' : 'Second'} card: name, code or text…`, value: ed.comboQ ?? '',
+      'aria-label': k === 0 ? 'Search the first card' : 'Search the second card',
       oninput: e => { ed.comboQ = e.target.value; fill(); } });
     fill();
-    requestAnimationFrame(() => input.focus());
-    return h('div', { class: 'ce-combo-picker' },
+    const box = h('div', { class: 'ce-combo-picker' },
       h('div', { class: 'ce-combo-picker-head' },
-        h('span', { class: 'ce-combo-label' }, k === 0 ? 'PICK THE FIRST CARD' : 'PICK THE SECOND CARD'),
-        input,
-        h('button', { type: 'button', class: 'link', onclick: () => { ed.comboPick = null; env.render(); } }, 'Cancel')),
+        h('button', { type: 'button', class: 'ce-combo-back', title: 'Close the search', 'aria-label': 'Close the search', onclick: close }, '←'),
+        input),
       grid);
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    requestAnimationFrame(() => input.focus());
+    return box;
   }
 
   // Karta velika preko ekrana, s Open card; klik izvan ili Esc zatvara.
