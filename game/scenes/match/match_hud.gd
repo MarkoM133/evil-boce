@@ -4050,6 +4050,13 @@ func _pile(cid: String, count: String, face_down: bool) -> Control:
 			pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 			pic.position = Vector2(3, 3)
 			pic.size = Vector2(50, 72)
+			# A landscape card (an evolution) stands upright, as in the hand (playtest 2026-11-07: it
+			# lay across the pile): a quarter turn about its top left corner, moved back in.
+			if tex.get_width() > tex.get_height():
+				pic.stretch_mode = TextureRect.STRETCH_SCALE
+				pic.size = Vector2(72, 50)
+				pic.rotation = PI * 0.5
+				pic.position = Vector2(53, 3)
 			pic.modulate = Color(1, 1, 1, 0.7)
 			pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			box.add_child(pic)
@@ -4088,7 +4095,11 @@ func open_graveyard(slot: int) -> void:
 	overlay.add_child(dim)
 	overlay.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed:
-			overlay.queue_free())
+			var b: MouseButton = (e as InputEventMouseButton).button_index
+			overlay.accept_event()
+			# The wheel scrolls the cards (playtest 2026-11-07: it closed the window and zoomed the map).
+			if b == MOUSE_BUTTON_LEFT or b == MOUSE_BUTTON_RIGHT:
+				overlay.queue_free())
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -4118,15 +4129,25 @@ func open_graveyard(slot: int) -> void:
 		var cid: String = p.graveyard[i]
 		var card: CardDef = engine.catalog.get_card(cid)
 		var tex: Texture2D = db.large(cid) if db != null and db.large(cid) != null else (db.thumb(cid) if db != null else null)
+		var cell := Control.new()
+		cell.custom_minimum_size = Vector2(160, 224)
+		cell.mouse_filter = Control.MOUSE_FILTER_PASS
+		if card != null:
+			cell.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
 		var pic := TextureRect.new()
-		pic.custom_minimum_size = Vector2(160, 224)
 		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		pic.texture = tex
-		pic.mouse_filter = Control.MOUSE_FILTER_PASS
-		if card != null:
-			pic.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
-		grid.add_child(pic)
+		pic.size = Vector2(160, 224)
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if tex != null and tex.get_width() > tex.get_height():
+			# Upright, as in the hand.
+			pic.stretch_mode = TextureRect.STRETCH_SCALE
+			pic.size = Vector2(224, 160)
+			pic.rotation = PI * 0.5
+			pic.position = Vector2(160, 0)
+		cell.add_child(pic)
+		grid.add_child(cell)
 
 
 ## "Zoro vs Shanks" for an event's "heroes".

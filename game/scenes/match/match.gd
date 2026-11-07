@@ -3411,6 +3411,10 @@ func demo_piles() -> void:
 	for i: int in 3:
 		p.graveyard.append(p.deck[0])
 		p.deck.remove_at(0)
+	# An evolution on top: landscape cards stand upright on the pile and in the window.
+	var evos: Array[CardDef] = engine.catalog.of_type("Evolution")
+	if not evos.is_empty():
+		p.graveyard.append(evos[0].id)
 	hud.local_slots = PackedInt32Array([0])
 	_sync()
 
