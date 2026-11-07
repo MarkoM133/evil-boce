@@ -15,7 +15,7 @@ export const VERBS = {
   HOLD_HIT: [true, 0], FULL_HIT: [true, 0], NOOP: [false, 0], FREE_PLAY: [false, 1], SWAP: [true, 0], DUEL_TOP: [false, 2], MOVE_ID: [false, 2],
 };
 export const HERO_TARGETS = ['SELF', 'EQUIPPED', 'ENEMY', 'FRIENDLY', 'ALL_FRIENDLY', 'ALL_ENEMY', 'ALL_OTHER_IN_RANGE',
-  'ALL_FRIENDLY_IN_RANGE', 'ALL_ENEMY_IN_RANGE', 'ALL_HEROES', 'EACH_HERO', 'MOST_HP', 'MOST_PWR', 'MOST_ENERGY'];
+  'ALL_FRIENDLY_IN_RANGE', 'ALL_ENEMY_IN_RANGE', 'ALL_FRIENDLY_IN_BATTLE', 'ALL_HEROES', 'EACH_HERO', 'MOST_HP', 'MOST_PWR', 'MOST_ENERGY'];
 export const PLAYER_TARGETS = ['ME', 'OPP'];
 export const STATS = ['PWR', 'DMG', 'KB', 'RNG', 'HP'];
 

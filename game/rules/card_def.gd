@@ -40,6 +40,11 @@ var aliases: PackedStringArray = PackedStringArray()
 var ability_names: PackedStringArray = PackedStringArray()
 ## Effects in the fx language: the web app's `fx` field when set, else what FxTextParser read
 ## from the text. `fx_hand_written` says which. Sentences nobody understood are in `unparsed`.
+## Combo (2026-11-07): the two cards (Action or Assist) that make it, the extra energy on top of their costs,
+## and the set it came out with. Combo cards are never in a deck.
+var ingredients: PackedStringArray = PackedStringArray()
+var extra_cost: int = 0
+var introduced_in: String = ""
 var fx: String = ""
 var fx_hand_written: bool = false
 var effects: Array[FxEffect] = []
@@ -135,6 +140,9 @@ static func from_card(c: Dictionary) -> CardDef:
 	d.bonus_colors = JsonUtil.as_strings(c.get("bonusColors", []))
 	d.aliases = JsonUtil.as_strings(c.get("aliases", []))
 	d.ability_names = JsonUtil.as_strings(c.get("abilityNames", []))
+	d.ingredients = JsonUtil.as_strings(c.get("ingredients", []))
+	d.extra_cost = JsonUtil.as_int(c.get("extraCost", 0))
+	d.introduced_in = str(c.get("introducedIn", "")) if c.get("introducedIn") != null else ""
 	var bonus: Dictionary = JsonUtil.as_dict(c.get("bonus", {}))
 	for k: Variant in bonus:
 		var v: int = JsonUtil.as_int(bonus[k])
@@ -176,6 +184,11 @@ func to_record() -> Dictionary:
 		rec["abilityNames"] = Array(ability_names)
 	if not bonus.is_empty():
 		rec["bonus"] = bonus.duplicate()
+	if type == "Combo":
+		rec["ingredients"] = Array(ingredients)
+		rec["extraCost"] = extra_cost
+		if not introduced_in.is_empty():
+			rec["introducedIn"] = introduced_in
 	if terrain != Terrain.Type.NONE and parse_terrain(text) == Terrain.Type.NONE:
 		rec["terrain"] = Terrain.name_of(terrain)
 	if fx_hand_written:

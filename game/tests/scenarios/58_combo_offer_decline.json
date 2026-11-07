@@ -1,0 +1,152 @@
+{
+  "name": "combo: declining the offer plays the card as it is, and the pair is not offered twice (2026-11-07)",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          4,
+          8
+        ],
+        "heroes.p0:TA-002.zone": "map",
+        "heroes.p0:TA-002.hex": [
+          5,
+          9
+        ],
+        "heroes.p1:TB-002.zone": "map",
+        "heroes.p1:TB-002.hex": [
+          6,
+          8
+        ],
+        "players.p0.hand": [
+          "TA-040",
+          "TA-042"
+        ],
+        "players.p0.energy": 4,
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-002",
+        "roll": false
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "phase": "battle",
+        "battles": {
+          "$size": 1
+        },
+        "battles.0.heroes": {
+          "$size": 3
+        },
+        "to_act": 0
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-040"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.phase_bonus.pwr": 1000,
+        "players.p0.energy": 3,
+        "battles.0.played.0.card": "TA-040",
+        "battles.0.played.0.hero": "p0:TA-001",
+        "to_act": 1
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-042",
+        "hero": "p0:TA-002"
+      }
+    },
+    {
+      "expect": {
+        "pending": {
+          "$size": 1
+        },
+        "pending.0.type": "combo_offer",
+        "pending.0.player": 0,
+        "pending.0.card": "TA-042",
+        "pending.0.hero": "p0:TA-002",
+        "pending.0.cost": 1,
+        "pending.0.combos.0.id": "TC-001",
+        "pending.0.combos.0.with": "TA-040",
+        "pending.0.combos.0.extra": 1,
+        "players.p0.hand": [
+          "TA-042"
+        ],
+        "players.p0.energy": 3,
+        "to_act": 1
+      }
+    },
+    {
+      "move": {
+        "type": "choose",
+        "player": 0,
+        "value": ""
+      }
+    },
+    {
+      "expect": {
+        "pending": {
+          "$size": 0
+        },
+        "players.p0.energy": 2,
+        "players.p0.hand": [],
+        "heroes.p0:TA-001.phase_bonus.pwr": 1000,
+        "heroes.p0:TA-002.phase_bonus.pwr": 1000,
+        "battles.0.played.1.card": "TA-042"
+      }
+    }
+  ]
+}

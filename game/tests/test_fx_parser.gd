@@ -82,6 +82,11 @@ func test_actions_and_equipment() -> void:
 
 
 ## The card wording agreed on 2026-11-05 (range next to the target, gain / lose Energy, your Hero, additional).
+func test_combo_wording_2026_11_07() -> void:
+	_assert_fx(_fx("Combo", "Conquest of the Sea", "Battle Phase: Each of your Heroes in this Battle gets +3000 Power and +2 DMG."),
+		"BATTLE: BUFF ALL_FRIENDLY_IN_BATTLE PWR 3000; BUFF ALL_FRIENDLY_IN_BATTLE DMG 2")
+
+
 func test_wording_2026_11_05() -> void:
 	var none: Dictionary = {"color": "None", "bonusColors": ["Red"]}
 	_assert_fx(_fx("Action", "Observation Haki", "Preroll Phase: Reveal a Core in Range.\nCyan Bonus: This card costs 1 less.", none),

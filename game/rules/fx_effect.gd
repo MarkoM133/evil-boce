@@ -59,7 +59,7 @@ const VERBS: Dictionary[String, Array] = {
 	"MOVE_ID": [false, 2],      # MOVE_ID <hero id> <n>  (one hero of a group move; written by the runtime)
 }
 const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "ALL_FRIENDLY", "ALL_ENEMY",
-	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_ENEMY_IN_RANGE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR", "MOST_ENERGY"]
+	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_ENEMY_IN_RANGE", "ALL_FRIENDLY_IN_BATTLE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR", "MOST_ENERGY"]
 const PLAYER_TARGETS: Array[String] = ["ME", "OPP"]
 const STATS: Array[String] = ["PWR", "DMG", "KB", "RNG", "HP"]
 const COUNTERS: Array[String] = ["TRAIT_EQUIPPED", "CORES", "MISSING_HP", "ENERGY", "LOW_HP_FRIENDLY", "LOW_HP_OTHER_FRIENDLY", "COUNT"]

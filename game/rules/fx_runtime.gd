@@ -473,6 +473,11 @@ func _passive_applies(s: GameState, src: Dictionary, target: String, h: HeroStat
 			return owner != null and owner != h and _in_range_flat(s, owner, h)
 		"ALL_ENEMY_IN_RANGE":
 			return owner != null and not s.same_team(owner, h) and _in_range_flat(s, owner, h)
+		"ALL_FRIENDLY_IN_BATTLE":
+			# A passive on it holds while the hero fights the battle being fought.
+			if slot < 0 or s.battle_index < 0 or s.battle_index >= s.battles.size():
+				return false
+			return s.team_of(h.owner) == s.team_of(slot) and JsonUtil.as_strings(s.battles[s.battle_index].get("heroes", [])).has(h.id)
 		"EACH_HERO", "ALL_HEROES":
 			if st != null:
 				return h.is_on_map() and st.covers(h.hex)
@@ -1142,6 +1147,15 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 			if me != null:
 				for h: HeroState in s.heroes:
 					if not h.is_ko() and not s.same_team(h, me) and engine.in_range(s, me, h):
+						out.append(h)
+		"ALL_FRIENDLY_IN_BATTLE":
+			# Every hero of the card's player in the battle the context names, else the battle being fought
+			# (a combo, 2026-11-07: "Each of your Heroes in this Battle").
+			var index: int = JsonUtil.as_int(ctx.get("battle", s.battle_index), -1)
+			if index >= 0 and index < s.battles.size():
+				for id: String in JsonUtil.as_strings(s.battles[index].get("heroes", [])):
+					var h: HeroState = s.hero(id)
+					if h != null and not h.is_ko() and s.team_of(h.owner) == s.team_of(player):
 						out.append(h)
 		"EACH_HERO", "ALL_HEROES":
 			for h: HeroState in s.heroes:

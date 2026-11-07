@@ -86,7 +86,7 @@ in the battle, the hero with the ability, the equipped hero), `EQUIPPED` (same, 
 equipment), `ENEMY` / `FRIENDLY` (the player picks one; one candidate is picked for them; `FRIENDLY` is
 always another friendly hero, never SELF: "a friendly Hero" on Bon Apetit or Giorno is not the hero the card is
 played for, Marko 2026-11-05; with `RANGE` it must be in SELF's range),
-`ALL_FRIENDLY`, `ALL_ENEMY`, `ALL_OTHER_IN_RANGE`, `ALL_FRIENDLY_IN_RANGE`, `ALL_ENEMY_IN_RANGE` (every enemy in SELF's range, "Opponent's Heroes in Range"), `ALL_HEROES`,
+`ALL_FRIENDLY`, `ALL_ENEMY`, `ALL_OTHER_IN_RANGE`, `ALL_FRIENDLY_IN_RANGE`, `ALL_ENEMY_IN_RANGE` (every enemy in SELF's range, "Opponent's Heroes in Range"), `ALL_FRIENDLY_IN_BATTLE` (every hero of the card's player in the battle being fought, "Each of your Heroes in this Battle"; a combo, 2026-11-07), `ALL_HEROES`,
 `EACH_HERO` (on a stage: those standing on it), `MOST_HP`, `MOST_PWR` (on a stage; nobody on a tie), `MOST_ENERGY`
 (with `PICK` as the last argument of the action, one hero of the group picked by the owner of its heroes: `BUFF
 MOST_ENERGY PWR 3000 PICK` = "the player with more Energy chooses one of their Heroes in this Battle"; a group

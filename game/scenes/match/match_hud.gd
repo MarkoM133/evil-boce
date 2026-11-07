@@ -71,7 +71,7 @@ const MERGED_MAX_TIME: float = 6.0
 const LIFT: float = 56.0
 ## Log events that get a banner (the rest only go to the log).
 const BANNER_EVENTS: Array[String] = ["battle", "battle_locked", "battle_tie_break", "ring_out", "ko", "stage_claimed", "triggered",
-	"damage", "deck_damage", "hand_damage", "stage_knocked_off"]
+	"damage", "deck_damage", "hand_damage", "stage_knocked_off", "combo"]
 
 var engine: RulesEngine
 var state: GameState
@@ -1495,6 +1495,9 @@ func _refresh_prompt() -> void:
 			_detail.text = "%s: click a lit card in your hand." % player_name(who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
 			_roll_offer_prompt(d, who)
+		elif str(d.get("type", "")) == RulesEngine.DECISION_COMBO:
+			_prompt.text = "Combo?"
+			_detail.text = "%s: pay the extra energy to turn both cards into the combo, or play %s as it is." % [player_name(who), _card_name(str(d.get("card", "")))]
 		elif str(d.get("type", "")) == RulesEngine.DECISION_STAGE_ENERGY:
 			_prompt.text = "Put your energy into your stages"
 			_detail.text = "%s: − and + in the box share it out, then CONFIRM." % player_name(who)
@@ -2371,6 +2374,9 @@ func _refresh_dialog() -> void:
 	if str(d.get("type", "")) == RulesEngine.DECISION_STAGE_ENERGY:
 		_energy_dialog(d, who)
 		return
+	if str(d.get("type", "")) == RulesEngine.DECISION_COMBO:
+		_combo_dialog(d, who)
+		return
 	if str(d.get("type", "")) != RulesEngine.DECISION_DAMAGE:
 		return
 	_damage_dialog(d, who)
@@ -2663,6 +2669,29 @@ func _choose_dialog(d: Dictionary, who: int) -> void:
 		_option_button(text, func() -> void: choose_pressed.emit(who, value))
 
 
+## Combo offer (2026-11-07): the second card of a pair was played; each combo on offer is a button with its
+## extra energy, and the last one plays the card as it is. The big card and the activation show come later.
+func _combo_dialog(d: Dictionary, who: int) -> void:
+	_dialog.visible = true
+	var cid: String = str(d.get("card", ""))
+	_dialog_box.add_child(UiTheme.label("COMBO", 15, Palette.GOLD))
+	var title: Label = UiTheme.label("Spend more Energy to turn %s and the card before it into a combo?" % _card_name(cid), 30)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_dialog_box.add_child(title)
+	if local_slots.size() > 1:
+		var sub := Label.new()
+		sub.add_theme_color_override("font_color", Palette.MUTED)
+		sub.text = player_name(who)
+		_dialog_box.add_child(sub)
+	for o: Variant in JsonUtil.as_array(d.get("combos", [])):
+		var c: Dictionary = JsonUtil.as_dict(o)
+		var id: String = str(c.get("id", ""))
+		var extra: int = JsonUtil.as_int(c.get("extra", 0))
+		var b: Button = _option_button("%s   +%d ENERGY   (with %s)" % [_card_name(id).to_upper(), extra, _card_name(str(c.get("with", "")))], func() -> void: choose_pressed.emit(who, id))
+		b.theme_type_variation = &"Gold"
+	_option_button("NO, PLAY %s AS IT IS" % _card_name(cid).to_upper(), func() -> void: choose_pressed.emit(who, ""))
+
+
 func _option_button(text: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
@@ -2742,6 +2771,9 @@ func _scan_log() -> void:
 
 func _banner_for(e: Dictionary) -> void:
 	match str(e.get("type", "")):
+		"combo":
+			# A plain band for now; the combo card over the screen and its animation come with the activation show.
+			banner("COMBO!", Palette.GOLD, _card_name(str(e.get("combo", ""))).to_upper(), "", 2.0)
 		"battle":
 			# Power is per team: each side's heroes in that battle and their total.
 			var power: Dictionary = JsonUtil.as_dict(e.get("power", {}))
@@ -3196,6 +3228,11 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			for id: String in JsonUtil.as_strings(e.get("losers", [])):
 				far.append(_hero_b(id))
 			return dot + "%s can't reach %s: no hit." % [_hero_b(hero), " or ".join(far)]
+		"combo":
+			var names := PackedStringArray()
+			for c: String in JsonUtil.as_strings(e.get("cards", [])):
+				names.append(_card_b(c))
+			return dot + "%s turns %s into %s (+%d Energy)." % [_who(JsonUtil.as_int(e.get("player", 0))), " and ".join(names), _card_b(str(e.get("combo", ""))), JsonUtil.as_int(e.get("extra", 0))]
 		"hit_held", "hold_hit":
 			return dot + "%s holds the hit back for double knockback." % _hero_b(hero) if t == "hit_held" else ""
 		"damage":

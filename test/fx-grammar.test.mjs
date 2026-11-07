@@ -18,6 +18,7 @@ test('lines from fx-keywords.md read as the game reads them', () => {
     'POSTROLL RANGE: SWAP FRIENDLY ENGAGED',
     'BATTLE: BUFF MOST_ENERGY PWR 3000',
     'BATTLE: BUFF MOST_ENERGY PWR 3000 PICK',
+    'BATTLE: BUFF ALL_FRIENDLY_IN_BATTLE PWR 3000; BUFF ALL_FRIENDLY_IN_BATTLE DMG 2',
   ]) assert.equal(lineProblem(line), '', line);
 });
 

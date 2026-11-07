@@ -162,6 +162,12 @@ func _decide(engine: RulesEngine, s: GameState, slot: int, d: Dictionary) -> Mov
 				if best != null:
 					return best
 			return Move.make(Move.PASS, slot)
+		RulesEngine.DECISION_COMBO:
+			# A combo is the stronger play by design (the engine offers it only when it can be paid): take the first.
+			var combos: Array = JsonUtil.as_array(d.get("combos", []))
+			if combos.is_empty():
+				return Move.make(Move.PASS, slot)
+			return Move.make(Move.CHOOSE, slot, {"value": str(JsonUtil.as_dict(combos[0]).get("id", ""))})
 		RulesEngine.DECISION_DAMAGE:
 			return _damage_split(engine, s, slot, d)
 		RulesEngine.DECISION_STAGE_ENERGY:

@@ -1010,6 +1010,19 @@
       "cost": 1,
       "text": "Postroll Phase: Opponent's Heroes in Range can't claim a Stage this turn.",
       "fx": "POSTROLL: NO_CLAIM ALL_ENEMY_IN_RANGE"
+    },
+    {
+      "id": "TC-001",
+      "name": "Test Combo",
+      "type": "Combo",
+      "ingredients": [
+        "TA-040",
+        "TA-042"
+      ],
+      "extraCost": 1,
+      "introducedIn": "TA",
+      "text": "Battle Phase: Each of your Heroes in this Battle gets +3000 Power.",
+      "fx": "BATTLE: BUFF ALL_FRIENDLY_IN_BATTLE PWR 3000"
     }
   ]
 }
