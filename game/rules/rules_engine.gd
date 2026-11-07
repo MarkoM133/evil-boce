@@ -427,6 +427,8 @@ func _apply_card_round_move(s: GameState, m: Move) -> String:
 		var err: String = fx.use_ability(s, m.player, m.str_arg("hero"), m.str_arg("card"), JsonUtil.as_int(m.data.get("index", 0)))
 		if not err.is_empty():
 			return err
+		# A core the ability took off comes back now, after the ability's own choices.
+		_queue_core_returns(s)
 		s.passed = PackedInt32Array()
 		s.to_act = _next_slot(s, s.to_act)
 		return ""
@@ -587,6 +589,7 @@ func _answer_roll_offer(s: GameState, index: int, m: Move) -> String:
 		if not err.is_empty():
 			s.pending = trial
 		else:
+			_queue_core_returns(s)
 			_decisions_first(s, trial.size() - 1)
 		return err
 	if m.type == Move.PLAY_CARD:
@@ -1123,16 +1126,25 @@ func other_slot(s: GameState, slot: int) -> int:
 	return -1
 
 
-## At the start of every phase a player with cores in the inventory must put them back.
+## At the start of every phase a player with cores in the inventory must put them back; a core
+## deactivated by an ability or a card is asked for at once, in the same phase (Marko 2026-11-07:
+## Zoro's core waited for the Battle phase), after the effect's own choices. One asking per core.
 func _queue_core_returns(s: GameState) -> void:
 	if s.phase == GameState.PHASE_SETUP_STAGES or s.phase == GameState.PHASE_SETUP_CORES \
 			or s.phase == GameState.PHASE_MULLIGAN:
 		return
 	for p: PlayerState in s.players:
 		for cid: String in p.inventory:
-			if not _has_free_return_spot(s, s.core(cid)):
+			if _return_pending(s, cid) or not _has_free_return_spot(s, s.core(cid)):
 				continue
 			s.pending.append({"type": DECISION_RETURN_CORE, "player": p.slot, "core": cid})
+
+
+func _return_pending(s: GameState, cid: String) -> bool:
+	for d: Dictionary in s.pending:
+		if str(d.get("type", "")) == DECISION_RETURN_CORE and str(d.get("core", "")) == cid:
+			return true
+	return false
 
 
 func _has_free_return_spot(s: GameState, c: CoreState) -> bool:
@@ -2320,6 +2332,8 @@ func _run_play_effects(s: GameState, slot: int, target: HeroState, card: CardDef
 		var err: String = fx.run(s, ctx, e)
 		if not err.is_empty():
 			s.event("fx_skipped", {"card": card.id, "why": err})
+	# A core the card took off comes back now, after the card's own choices.
+	_queue_core_returns(s)
 
 
 ## The phase an Action is locked to ("" = any card round).

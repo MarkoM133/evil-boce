@@ -182,7 +182,9 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    log says `setup_gap_relaxed`.
 5. **Overflow cores** (confirmed 2026-10-26) (a hero already holding three) come back within that hero's range, or
    anywhere in the owner's half if the hero is gone. Inventory cores are queued at the next
-   phase change; until they are placed the owner can do nothing else.
+   phase change; until they are placed the owner can do nothing else. A core an ability or a card
+   deactivates is asked for at once, in the same phase, right after that effect's own choices
+   (Marko 2026-11-07: Zoro's core waited for a Battle phase with no battle; scenario 61).
 6. **Core pick-up order** (confirmed 2026-10-26) within one roll follows the order of results in the outcome
    (thrower first); the sim will stamp exact times later if that ever matters.
 7. **Stage reveal** (confirmed 2026-10-26) happens when a hero's centre hex ends inside the stage's 7 hexes.
