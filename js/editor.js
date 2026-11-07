@@ -1177,6 +1177,70 @@ export function createEditor(env) {
     thumbBusy = false;
   }
 
+  // ---------- combo: utori, tražilica, povećanje (Marko 2026-11-07) ----------
+
+  function comboSlot(k, c, colourName) {
+    const label = k === 0 ? 'FIRST CARD · LEFT COLOUR' : 'SECOND CARD · RIGHT COLOUR';
+    const open = () => { ed.comboPick = k; ed.comboQ = ''; env.render(); };
+    let pic;
+    if (c) {
+      const cv = h('canvas', { class: 'ce-combo-pic' });
+      thumbInto(cv, c, 170);
+      pic = h('button', { type: 'button', class: 'ce-combo-pic-btn', title: 'See it big', onclick: () => comboBig(c) }, cv);
+    } else {
+      pic = h('button', { type: 'button', class: 'ce-combo-pic empty', onclick: open }, '+ Pick a card');
+    }
+    return h('div', { class: `ce-combo-slot${ed.comboPick === k ? ' picking' : ''}` },
+      h('span', { class: 'ce-combo-label' }, label),
+      pic,
+      c ? h('strong', { class: 'ce-combo-name' }, c.name) : null,
+      c ? h('span', { class: 'small muted' }, `${c.id} · ${c.type} · ${colourName(c)}`) : null,
+      h('span', { class: 'ce-combo-links' },
+        h('button', { type: 'button', class: 'link', onclick: open }, c ? 'Change' : 'Pick'),
+        c ? h('button', { type: 'button', class: 'link', onclick: () => go(c.id) }, 'Open card') : null));
+  }
+
+  // Tražilica s mrežom sličica: ime, kod ili tekst; samo Action i Assist.
+  function comboPicker(pool, ing, colourName, choose) {
+    const k = ed.comboPick;
+    const grid = h('div', { class: 'ce-combo-grid' });
+    const fill = () => {
+      const q = (ed.comboQ ?? '').trim().toLowerCase();
+      const list = pool.filter(c => !q || `${c.name} ${c.id} ${c.text ?? ''}`.toLowerCase().includes(q));
+      grid.replaceChildren(...(list.length ? list.map(c => {
+        const cv = h('canvas', { class: 'ce-combo-pic' });
+        thumbInto(cv, c, 120);
+        return h('button', { type: 'button', class: `ce-combo-option${c.id === ing[k] ? ' current' : ''}`, title: `${c.name} · ${c.id}`, onclick: () => choose(k, c.id) },
+          cv, h('span', { class: 'small' }, c.name), h('span', { class: 'small muted' }, `${c.id} · ${colourName(c)}`));
+      }) : [h('p', { class: 'small muted' }, 'No Action or Assist card matches.')]));
+    };
+    const input = h('input', { type: 'search', placeholder: 'Search name, code or text…', value: ed.comboQ ?? '', 'aria-label': 'Search a card',
+      oninput: e => { ed.comboQ = e.target.value; fill(); } });
+    fill();
+    requestAnimationFrame(() => input.focus());
+    return h('div', { class: 'ce-combo-picker' },
+      h('div', { class: 'ce-combo-picker-head' },
+        h('span', { class: 'ce-combo-label' }, k === 0 ? 'PICK THE FIRST CARD' : 'PICK THE SECOND CARD'),
+        input,
+        h('button', { type: 'button', class: 'link', onclick: () => { ed.comboPick = null; env.render(); } }, 'Cancel')),
+      grid);
+  }
+
+  // Karta velika preko ekrana, s Open card; klik izvan ili Esc zatvara.
+  function comboBig(c) {
+    const cv = h('canvas', { class: 'ce-combo-big-card' });
+    thumbInto(cv, c, 560);
+    const close = () => { box.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    const box = h('div', { class: 'ce-combo-big', role: 'dialog', 'aria-label': c.name, onclick: e => { if (e.target === box) close(); } },
+      h('div', { class: 'ce-combo-big-inner' }, cv,
+        h('div', { class: 'ce-combo-big-actions' },
+          h('button', { type: 'button', class: 'primary', onclick: () => { close(); go(c.id); } }, 'Open card'),
+          h('button', { type: 'button', class: 'ghost', onclick: close }, 'Close'))));
+    document.addEventListener('keydown', onKey);
+    document.body.append(box);
+  }
+
   // ---------- desna forma ----------
 
   function renderForm() {
@@ -1273,8 +1337,8 @@ export function createEditor(env) {
       // Sastojci: Action i Assist karte (Equipment i ability heroja nisu dio para), po imenu i kodu.
       const pool = allCards().filter(c => INGREDIENT_TYPES.includes(c.type)).sort((a, b) => a.name.localeCompare(b.name));
       const ing = w.ingredients ?? ['', ''];
-      const pick = i => h('select', { onchange: e => { const next = [...ing]; next[i] = e.target.value; set('ingredients', next); env.render(); } },
-        h('option', { value: '' }, '–'), pool.map(c => h('option', { value: c.id, selected: c.id === ing[i] }, `${c.name} · ${c.id} (${c.type}, ${c.color === 'None' ? 'Colorless' : c.color})`)));
+      const colourName = c => (c.color === 'None' ? 'Colorless' : c.color);
+      const choose = (k, id) => { const next = [ing[0] ?? '', ing[1] ?? '']; next[k] = id; ed.comboPick = null; ed.comboQ = ''; set('ingredients', next); env.render(); };
       const setCodes = sets.list().map(s => s.code);
       body = [
         h('h2', {}, 'Combo'),
@@ -1283,20 +1347,14 @@ export function createEditor(env) {
           field('EXTRA ENERGY (X)', num(w.extraCost, e => set('extraCost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })),
           field('INTRODUCED IN', h('select', { onchange: e => set('introducedIn', e.target.value) }, h('option', { value: '' }, '–'),
             setCodes.map(c => h('option', { value: c, selected: c === w.introducedIn }, c))))),
-        // Sličice odabranih karata (Marko 2026-11-07): klik otvara kartu.
-        h('div', { class: 'ce-combo-parts' }, [0, 1].map(k => {
-          const c = pool.find(x => x.id === ing[k]);
-          const label = k === 0 ? 'FIRST CARD (LEFT COLOUR)' : 'SECOND CARD (RIGHT COLOUR)';
-          let pic = h('div', { class: 'ce-combo-pic empty' }, '–');
-          if (c) {
-            const cv = h('canvas', { class: 'ce-combo-pic' });
-            thumbInto(cv, c, 150);
-            pic = h('button', { type: 'button', class: 'ce-combo-pic-btn', title: 'Open ' + c.name, onclick: () => go(c.id) }, cv);
-          }
-          return h('div', { class: 'ce-combo-part' }, field(label, pick(k)), pic);
-        })),
-        // Redoslijed sastojaka je i redoslijed boja na rubu i imena dolje desno (Marko 2026-11-07).
-        h('div', { class: 'ce-adds' }, h('button', { type: 'button', class: 'ce-add-effect', disabled: !ing[0] && !ing[1], title: 'The first card gives the left colour of the rim and the COMBO tag, the second the right', onclick: () => { set('ingredients', [ing[1] ?? '', ing[0] ?? '']); env.render(); } }, '⇄ Swap the two cards')),
+        // Dvije karte comboa (Marko 2026-11-07): dva utora, zamjena u sredini; klik na sliku je poveća (s Open card),
+        // Change otvara tražilicu s mrežom sličica, Open otvara kartu.
+        h('div', { class: 'ce-combo-slots' },
+          comboSlot(0, pool.find(x => x.id === ing[0]), colourName),
+          h('button', { type: 'button', class: 'ce-combo-swap', disabled: !ing[0] && !ing[1], title: 'Swap the two cards: the first gives the left colour of the rim and the COMBO tag', 'aria-label': 'Swap the two cards',
+            onclick: () => { set('ingredients', [ing[1] ?? '', ing[0] ?? '']); env.render(); } }, '⇄'),
+          comboSlot(1, pool.find(x => x.id === ing[1]), colourName)),
+        ed.comboPick == null ? null : comboPicker(pool, ing, colourName, choose),
         h('p', { class: 'small muted' }, 'Both cards played for two of your heroes in the same battle: the player may pay X more energy to turn them into this card. The rim takes the colours of the two cards. Combo cards never go in a deck or a pack.'),
         h('h2', {}, 'Effect text'),
         ...text,
