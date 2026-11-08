@@ -2620,6 +2620,32 @@ func demo_damage() -> void:
 	hud.toggle_damage_card(1)
 
 
+## Screenshot helpers: the damage choice with one hero in reach; with three and none picked yet;
+## and the second of two hits in a battle.
+func demo_damage_one() -> void:
+	demo_damage()
+	state.pending[0]["targets"] = [state.heroes_of(0)[0].id]
+	hud.refresh()
+
+
+func demo_damage_none() -> void:
+	demo_damage()
+	hud.toggle_damage_card(1)
+	hud.damage_target = ""
+	hud.refresh()
+
+
+func demo_damage_two_hits() -> void:
+	demo_damage()
+	state.pending.append(state.pending[0].duplicate(true))
+	hud.refresh()
+
+
+func demo_damage_second_hit() -> void:
+	state.pending.pop_front()
+	hud.refresh()
+
+
 ## Screenshot helper: the ring-out's cost (1 DMG, or a card from the hand) asked of player 1.
 func demo_ring_out_damage() -> void:
 	_demo = true

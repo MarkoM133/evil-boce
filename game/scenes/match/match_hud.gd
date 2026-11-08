@@ -70,6 +70,10 @@ const BATTLE_BANNER_TIME: float = 1.6
 const COMBO_SHOW_TIME: float = 2.6
 ## Half a breath of the edge on a stage energy just went into.
 const ENERGY_PULSE_TIME: float = 0.7
+## A hero's picture in the damage choice: alone, and among several.
+const DAMAGE_HERO_W: float = 158.0
+const DAMAGE_HERO_W_MANY: float = 128.0
+const DAMAGE_HERO_H: float = 196.0
 ## The stage box's fold chevron: its control, the x where its lines start and end, how far from the
 ## top of the box, and the gap between those lines and the team's colour edge.
 const FOLD_CHEVRON_SIZE: Vector2 = Vector2(16, 16)
@@ -211,6 +215,9 @@ var damage_heroes: PackedStringArray = PackedStringArray()
 ## The hero picked to take it ("" until picked, or the only one) and the hand cards picked to take
 ## 1 DMG each, as positions in the hand (the same card may be there twice). CONFIRM sends them.
 var damage_target: String = ""
+## How many hits the battle in `_hit_key` started with: "HIT 1 OF 2" when more than one winner strikes.
+var _hit_key: String = ""
+var _hit_total: int = 0
 var damage_cards: PackedInt32Array = PackedInt32Array()
 ## Which hit the picks belong to (slot, hitter, targets): a new hit starts with nothing picked,
 ## a band passing over the same hit keeps them.
@@ -239,6 +246,10 @@ var _panel_hover: String = ""
 ## Preroll: PASS offered under the clicked ball (offer_ball_pass).
 var _ball_pass: Button
 var _ball_pass_slot: int = -1
+## Behind the damage choice, under the hand: its cards are clicked to take 1 DMG each.
+var _damage_dim: ColorRect
+var _dialog_sb: StyleBoxFlat
+var _dialog_center: CenterContainer
 var _big: TextureRect
 var _big_cid: String = ""
 ## Big card: the height it shows at.
@@ -782,6 +793,12 @@ func _build() -> void:
 	_grave_spot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_grave_spot)
 	# The hand: a fan of cards at the bottom; it slides down when the mouse is over the table.
+	_damage_dim = ColorRect.new()
+	_damage_dim.color = Color(0, 0, 0, 0.38)
+	_damage_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_damage_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_damage_dim.visible = false
+	add_child(_damage_dim)
 	_hand_box = Control.new()
 	_hand_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_hand_box.position = Vector2(-HAND_WIDTH * 0.5, -HAND_HEIGHT)
@@ -811,17 +828,18 @@ func _build() -> void:
 	_mulligan_row.visible = false
 	_hand_box.add_child(_mulligan_row)
 
-	var dialog_center := CenterContainer.new()
-	dialog_center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dialog_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(dialog_center)
+	_dialog_center = CenterContainer.new()
+	_dialog_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_dialog_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_dialog_center)
 	_dialog = PanelContainer.new()
 	_dialog.visible = false
 	var dsb: StyleBoxFlat = UiTheme.box(Color(0.03, 0.03, 0.03, 0.96), 0, Color(0, 0, 0, 0), 28, 22)
 	dsb.border_color = Palette.GOLD
 	dsb.border_width_top = 4
 	_dialog.add_theme_stylebox_override("panel", dsb)
-	dialog_center.add_child(_dialog)
+	_dialog_sb = dsb
+	_dialog_center.add_child(_dialog)
 	_dialog_box = VBoxContainer.new()
 	_dialog_box.custom_minimum_size = Vector2(420, 0)
 	_dialog_box.add_theme_constant_override("separation", 10)
@@ -1619,10 +1637,8 @@ func _refresh_prompt() -> void:
 			_prompt.text = "Put your energy into your stages"
 			_detail.text = "%s: − and + in the box share it out, then CONFIRM." % player_name(who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_DAMAGE:
-			_prompt.text = "Take the hit"
-			_detail.text = "%s: %s%sthen CONFIRM." % [player_name(who),
-				"pick the hero on the table or in the box, " if damage_heroes.size() > 1 else "",
-				"click cards in your hand to put 1 DMG on each, " if damage_picking(who) else ""]
+			# The box in the middle says it all (Marko 2026-11-08).
+			pass
 		return
 	var any_local: bool = false
 	for slot: int in local_slots:
@@ -2497,6 +2513,10 @@ func _lift(card: Control, up: bool, playable: bool) -> void:
 func _refresh_dialog() -> void:
 	_clear(_dialog_box)
 	_dialog.visible = false
+	_damage_dim.visible = false
+	_dialog_sb.border_color = Palette.GOLD
+	_set_dialog_pad(28, 22)
+	_dialog_center.offset_bottom = 0.0
 	# Not over a band: the choice comes once the bands are through (`_next_banner` asks again).
 	if state.pending.is_empty() or _banner_busy:
 		return
@@ -2518,75 +2538,185 @@ func _refresh_dialog() -> void:
 	_damage_dialog(d, who)
 
 
-## A lost battle's hit (GDD 10, 2026-11-02): at least half of it (rounded up) lands on a hero, the
-## rest the loser may put on cards from the hand, 1 DMG each, picked by clicking them in the hand.
-## With more than one hero in reach the hero is picked here or on the table. CONFIRM sends it.
+func _set_dialog_pad(x: float, y: float) -> void:
+	_dialog_sb.content_margin_left = x
+	_dialog_sb.content_margin_right = x
+	_dialog_sb.content_margin_top = y
+	_dialog_sb.content_margin_bottom = y
+
+
+## A lost battle's hit (GDD 10, 2026-11-02; Marko 2026-11-08, from the mockups): at least half of it
+## (rounded up) lands on a hero, the rest the loser may put on cards from the hand, 1 DMG each, picked
+## by clicking them in the hand. The heroes in reach stand on the left, each with its life right under
+## its picture; one is picked here or on the table, CONFIRM sends it. A ring-out's cost looks the same.
 func _damage_dialog(d: Dictionary, who: int) -> void:
 	_dialog.visible = true
+	_damage_dim.visible = true
+	_dialog_sb.border_color = Palette.ACCENT
+	_set_dialog_pad(16, 16)
+	# Centred on the room above the hand.
+	_dialog_center.offset_bottom = -110.0
 	var amount: int = JsonUtil.as_int(d.get("amount", 0))
 	var min_hero: int = JsonUtil.as_int(d.get("min_hero", RulesEngine.hero_share(amount)))
 	var winner: HeroState = state.hero(str(d.get("winner", "")))
 	var targets: PackedStringArray = JsonUtil.as_strings(d.get("targets", []))
 	var p: PlayerState = state.player(who)
-	var spare: int = damage_spare()
 	var on_hero: int = amount - damage_cards.size()
 	var ring: bool = JsonUtil.as_bool(d.get("ring_out", false))
-	var sub := Label.new()
-	sub.add_theme_color_override("font_color", Palette.MUTED)
-	if ring:
-		# A ring-out's cost (Marko 2026-11-07): 1 DMG, or a card from the hand instead.
-		var fallen: HeroState = state.hero(targets[0]) if not targets.is_empty() else null
-		_dialog_box.add_child(UiTheme.label("RING-OUT · %s" % player_name(who).to_upper(), 15, Palette.GOLD))
-		_dialog_box.add_child(UiTheme.label("%s TAKES %d DMG" % [hero_name(fallen).to_upper() if fallen != null else "?", amount], 36))
-		sub.text = "Or discard a card from your hand instead: click it in your hand." if spare > 0 else "The hero takes it: no card in your hand to discard instead."
-	else:
-		_dialog_box.add_child(UiTheme.label("BATTLE LOST · %s" % player_name(who).to_upper(), 15, Palette.GOLD))
-		_dialog_box.add_child(UiTheme.label("%d DMG FROM %s" % [amount, hero_name(winner).to_upper() if winner != null else "?"], 36))
-	if ring:
-		pass
-	elif min_hero >= amount and not p.hand.is_empty():
-		sub.text = "All %d lands on the hero: this hit cannot go on cards from your hand." % amount
-	elif spare <= 0:
-		sub.text = "At least %d must land on a hero%s." % [min_hero, "; with no cards in your hand it all does" if p.hand.is_empty() and amount > min_hero else ""]
-	else:
-		sub.text = "At least %d land on a hero. Up to %d more can go on cards from your hand instead, 1 DMG each: click them in your hand." % [min_hero, spare]
-	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sub.custom_minimum_size.x = 420
-	_dialog_box.add_child(sub)
-	# The hero: a line for one, a button per hero when there is a choice (the picked one in straw).
-	for id: String in targets:
-		var h: HeroState = state.hero(id)
-		if h == null:
-			continue
-		var line: String = "%s   HP %d → %d" % [hero_name(h).to_upper(), h.hp, maxi(h.hp - on_hero, 0)]
-		if targets.size() == 1:
-			_dialog_box.add_child(UiTheme.label(line, 22))
-		else:
-			var b: Button = _option_button(line, func() -> void: pick_damage_hero(id))
-			if id == damage_target:
-				b.theme_type_variation = &"Gold"
-	# The cards picked so far, by name.
-	if spare > 0:
-		var names := PackedStringArray()
-		for i: int in damage_cards:
-			if i >= 0 and i < p.hand.size():
-				names.append(_card_name(p.hand[i]))
-		var cards_l := Label.new()
-		cards_l.add_theme_color_override("font_color", Palette.MUTED if names.is_empty() else Palette.FG)
-		cards_l.text = "CARDS   %d of %d%s" % [names.size(), spare, (": " + ", ".join(names)) if not names.is_empty() else ""]
-		cards_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		cards_l.custom_minimum_size.x = 420
-		_dialog_box.add_child(cards_l)
 	var target: String = damage_target if not damage_target.is_empty() else (targets[0] if targets.size() == 1 else "")
 	var hero: HeroState = state.hero(target)
-	var confirm: Button = _option_button("CONFIRM%s" % (("   %s TAKES %d" % [hero_name(hero).to_upper(), on_hero]) if hero != null else "   PICK A HERO"), func() -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	_dialog_box.add_child(row)
+	var tiles := HBoxContainer.new()
+	tiles.add_theme_constant_override("separation", 6)
+	row.add_child(tiles)
+	for id: String in targets:
+		var h: HeroState = state.hero(id)
+		if h != null:
+			tiles.add_child(_damage_hero(h, targets.size(), id == target, on_hero))
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	col.custom_minimum_size.x = 300
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(col)
+	var kicker: String = "RING-OUT" if ring else _battle_lost_line()
+	if local_slots.size() > 1:
+		kicker += "  ·  %s" % player_name(who).to_upper()
+	col.add_child(UiTheme.label(kicker, 13, Palette.GOLD))
+	if ring:
+		var fallen: HeroState = state.hero(targets[0]) if not targets.is_empty() else null
+		col.add_child(UiTheme.label("%s TAKES %d DMG" % [hero_name(fallen).to_upper() if fallen != null else "?", amount], 28))
+	else:
+		col.add_child(UiTheme.label("%d DMG FROM %s" % [amount, hero_name(winner).to_upper() if winner != null else "?"], 28))
+	var split := HBoxContainer.new()
+	split.add_theme_constant_override("separation", 3)
+	col.add_child(split)
+	for i: int in amount:
+		var pip: UiShape = UiShape.make(UiShape.Kind.SLANT, Palette.ACCENT if i < on_hero else Palette.GOLD, Vector2(30, 14))
+		pip.cut = 6.0
+		split.add_child(pip)
+	if hero == null:
+		col.add_child(_damage_note("Click who takes it, here or on the table.", 16, Palette.FG))
+	col.add_child(_damage_note(_damage_rule(amount, min_hero, ring, p), 13, Palette.MUTED))
+	var confirm: Button = _option_button("CONFIRM" if hero != null else "PICK A HERO", func() -> void:
 		var cards: Array = []
 		for i: int in damage_cards:
 			if i >= 0 and i < p.hand.size():
 				cards.append(p.hand[i])
 		damage_pressed.emit(who, target, cards))
-	confirm.theme_type_variation = &"Gold"
+	_dialog_box.remove_child(confirm)
+	col.add_child(confirm)
+	confirm.theme_type_variation = &"Primary"
+	confirm.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	confirm.custom_minimum_size = Vector2(0, 48)
+	confirm.add_theme_font_size_override("font_size", 24)
 	confirm.disabled = hero == null
+
+
+## "BATTLE LOST", and which hit this is when more than one winner strikes in the battle.
+func _battle_lost_line() -> String:
+	var left: int = 0
+	for q: Dictionary in state.pending:
+		if str(q.get("type", "")) == RulesEngine.DECISION_DAMAGE and not JsonUtil.as_bool(q.get("ring_out", false)):
+			left += 1
+	var key: String = "%d|%d" % [state.turn, state.battle_index]
+	# The first hit shown sets the count; going back in a replay can only show more left.
+	if key != _hit_key or left > _hit_total:
+		_hit_key = key
+		_hit_total = left
+	return "BATTLE LOST" if _hit_total <= 1 else "BATTLE LOST  ·  HIT %d OF %d" % [_hit_total - left + 1, _hit_total]
+
+
+func _damage_rule(amount: int, min_hero: int, ring: bool, p: PlayerState) -> String:
+	var spare: int = damage_spare()
+	if ring:
+		return "Or discard a card from your hand instead: click it." if spare > 0 else "No card in your hand to discard instead."
+	if min_hero >= amount and not p.hand.is_empty():
+		return "All %d land on the hero: this hit cannot go on hand cards." % amount
+	if spare <= 0:
+		return "All %d land on the hero: no cards in your hand." % amount
+	return "Up to %d can go on hand cards: click them." % spare
+
+
+func _damage_note(text: String, font_size: int, color: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_color_override("font_color", color)
+	l.add_theme_font_size_override("font_size", font_size)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return l
+
+
+## A hero that can take the hit: its picture, and right under it its life, as wide as the picture's
+## slanted bottom edge. Picked, the life shows what falls.
+func _damage_hero(h: HeroState, among: int, picked: bool, on_hero: int) -> VBoxContainer:
+	var card: CardDef = engine.stat_card(h)
+	var cid: String = card.id if card != null else h.card_id
+	var tile := Vector2(DAMAGE_HERO_W if among == 1 else DAMAGE_HERO_W_MANY, DAMAGE_HERO_H)
+	var hit: int = mini(on_hero, h.hp) if picked else 0
+	var max_hp: int = engine.max_hp(state, h)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	col.custom_minimum_size.x = tile.x
+	var s := HeroSlice.new()
+	s.custom_minimum_size = tile
+	s.art_w = PlayerCard.ALL_PICTURE
+	s.set_mirrored(false)
+	s.art = db.thumb(cid) if db != null else null
+	s.art_region = HeroSlice.region_for(s.art)
+	s.art_fallback = Palette.hero(card.color if card != null else "").darkened(0.3)
+	s.color_edge = Palette.hero(card.color if card != null else "")
+	if picked:
+		s.outline = Palette.GOLD
+	elif among > 1 and not damage_target.is_empty():
+		s.art_tint = Color(0.55, 0.55, 0.55)
+	# Off the slant and the colour edge, so a long name breaks in two instead of running over.
+	s.content.add_theme_constant_override("margin_left", 10)
+	s.content.add_theme_constant_override("margin_right", int(HeroSlice.CUT + HeroSlice.EDGE_W) + 5)
+	col.add_child(s)
+	var names := VBoxContainer.new()
+	names.alignment = BoxContainer.ALIGNMENT_END
+	names.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.content.add_child(names)
+	var name_l: Label = UiTheme.label(hero_name(h), 16)
+	name_l.add_theme_color_override("font_outline_color", Color.BLACK)
+	name_l.add_theme_constant_override("outline_size", 6)
+	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD
+	names.add_child(name_l)
+	if among > 1:
+		s.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		s.mouse_entered.connect(func() -> void:
+			s.outline = Palette.GOLD
+			s.queue_redraw())
+		s.mouse_exited.connect(func() -> void:
+			s.outline = Palette.GOLD if picked else Color(0, 0, 0, 0)
+			s.queue_redraw())
+	s.gui_input.connect(func(e: InputEvent) -> void:
+		if _card_click(e, cid) or among <= 1:
+			return
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			pick_damage_hero(h.id))
+	var under := VBoxContainer.new()
+	under.add_theme_constant_override("separation", 3)
+	under.custom_minimum_size.x = tile.x - HeroSlice.CUT
+	under.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	under.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(under)
+	var segs := UiSegments.new()
+	segs.max_value = max_hp
+	segs.value = h.hp
+	segs.ghost = hit
+	segs.color = Palette.hp(float(h.hp) / maxf(float(max_hp), 1.0))
+	segs.lean = 1.5
+	segs.custom_minimum_size = Vector2(0, 10)
+	segs.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	under.add_child(segs)
+	var numbers: Label = UiTheme.label("%d  →  %d" % [h.hp, h.hp - hit] if hit > 0 else "%d" % h.hp, 26, Palette.ACCENT if hit > 0 else Palette.MUTED)
+	numbers.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	under.add_child(numbers)
+	return col
 
 
 ## The energy claim variant's End phase (Marko 2026-11-02): the energy left goes into
