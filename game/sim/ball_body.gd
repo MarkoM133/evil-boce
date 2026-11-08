@@ -252,8 +252,12 @@ func _start_snap() -> void:
 		return
 	freeze = true
 	_snap_tween = create_tween()
-	_snap_tween.tween_property(self, "global_position", target, tuning.snap_time) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	var time: float = tuning.snap_duration(target.distance_to(pos))
+	# The usual small settle eases out; a long way starts gently too, or it reads as a jump.
+	var long_way: bool = time > tuning.snap_time
+	_snap_tween.tween_property(self, "global_position", target, time) \
+		.set_trans(Tween.TRANS_SINE if long_way else Tween.TRANS_QUAD) \
+		.set_ease(Tween.EASE_IN_OUT if long_way else Tween.EASE_OUT)
 	_snap_tween.tween_callback(_on_snapped)
 
 

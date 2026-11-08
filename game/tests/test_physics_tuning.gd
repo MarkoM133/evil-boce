@@ -29,3 +29,12 @@ func test_launch_speed_matches_range() -> void:
 		var v: float = t.launch_speed(wt)
 		var metres: float = v * v / (2.0 * t.deceleration)
 		assert_almost_eq(metres / t.hex_spacing(), t.full_power_hexes(wt), 0.001)
+
+
+func test_a_longer_way_to_rest_is_glided() -> void:
+	var t: PhysicsTuning = PhysicsTuning.new()
+	var hex: float = t.hex_spacing()
+	assert_eq(t.snap_duration(0.0), t.snap_time, "the usual small settle")
+	assert_eq(t.snap_duration(hex * 0.5), t.snap_time)
+	assert_almost_eq(t.snap_duration(hex * 1.4), 1.4 * t.snap_time_per_hex, 0.001)
+	assert_eq(t.snap_duration(hex * 3.0), t.snap_time_max, "never too long")
