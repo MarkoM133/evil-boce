@@ -42,6 +42,10 @@ extends Resource
 
 @export_group("Snap")
 @export var snap_time: float = 0.16
+## A longer way to the resting hex is glided, not jumped (Marko 2026-11-08: a big ball pulled back from
+## the edge looked as if it had hit something): seconds per hex of the way, at most snap_time_max.
+@export var snap_time_per_hex: float = 0.28
+@export var snap_time_max: float = 0.55
 
 @export_group("Terrain")
 ## Multiplies deceleration on that terrain.
@@ -91,6 +95,11 @@ func full_power_hexes(wt: int) -> float:
 
 func is_big(wt: int) -> bool:
 	return wt >= big_from_wt
+
+
+## How long a ball takes to get to its resting place `distance` away.
+func snap_duration(distance: float) -> float:
+	return clampf(distance / hex_spacing() * snap_time_per_hex, snap_time, maxf(snap_time, snap_time_max))
 
 
 func hex_spacing() -> float:
