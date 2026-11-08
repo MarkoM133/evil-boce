@@ -122,6 +122,40 @@ static func last_host() -> String:
 	return str(_config().get_value("online", "host", ""))
 
 
+## The hosts this computer joined, newest first: [{name, address, at (unix time)}], one per address,
+## at most RECENT_HOSTS (Online › JOIN, Marko 2026-11-08).
+const RECENT_HOSTS: int = 5
+
+
+static func recent_hosts() -> Array:
+	return JsonUtil.as_array(_config().get_value("online", "recent", []))
+
+
+static func remember_host(name: String, address: String, now: int) -> void:
+	var out: Array = [{"name": name, "address": address.strip_edges(), "at": now}]
+	for e: Variant in recent_hosts():
+		var d: Dictionary = JsonUtil.as_dict(e)
+		if str(d.get("address", "")) != address.strip_edges() and out.size() < RECENT_HOSTS:
+			out.append(d)
+	set_value("online", "recent", out)
+
+
+## "2 days ago", from how many seconds back.
+static func ago_text(seconds: int) -> String:
+	if seconds < 60:
+		return "just now"
+	if seconds < 3600:
+		return "%d min ago" % (seconds / 60)
+	if seconds < 86400:
+		return "%d h ago" % (seconds / 3600)
+	var days: int = seconds / 86400
+	if days == 1:
+		return "yesterday"
+	if days < 14:
+		return "%d days ago" % days
+	return "%d weeks ago" % (days / 7)
+
+
 static func set_last_host(address: String) -> void:
 	_config().set_value("online", "host", address.strip_edges())
 	save()

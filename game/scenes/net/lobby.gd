@@ -29,7 +29,12 @@ var _opp: PlayerCard
 var _wait: PanelContainer
 var _series: Label
 var _join_btn: Button
-var _resume_info: Label
+var _address_join: Button
+var _recent_box: VBoxContainer
+## Where the last JOIN went (remembered with the host's name once it answers).
+var _joining: String = ""
+## READY over the other player's card, in the style of CLAIMED.
+var _ready_stamp: UiShape
 ## Under JOIN: connecting, or why it failed (Marko 2026-11-07: by the button, not at the top).
 var _join_status: Label
 var _join_tween: Tween
@@ -63,109 +68,92 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var frame: Dictionary = MenuScreen.build(self, db, "Online", "Play over Tailscale: one hosts, the other joins.", _back, 1300.0)
+	var frame: Dictionary = MenuScreen.build(self, db, "Online", "One hosts, the other joins.", _back, 1300.0)
 	var content: VBoxContainer = frame["content"]
 	_status = Label.new()
 	_status.add_theme_color_override("font_color", Palette.GOLD)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(_status)
 
-	# Before connecting: your name, then host or join.
+	# Before connecting: your name, then two big cards (Marko 2026-11-08, from the mockups).
 	_front = VBoxContainer.new()
 	_front.add_theme_constant_override("separation", 14)
 	content.add_child(_front)
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 12)
 	_front.add_child(name_row)
-	name_row.add_child(UiTheme.label("YOUR NAME", 18, Palette.GOLD))
+	name_row.add_child(UiTheme.label("PLAYING AS", 18, Palette.GOLD))
 	_name = LineEdit.new()
 	_name.text = GameSettings.player_name()
 	_name.max_length = 24
-	_name.custom_minimum_size = Vector2(360, 0)
+	_name.custom_minimum_size = Vector2(300, 0)
 	_name.add_theme_font_size_override("font_size", 22)
 	name_row.add_child(_name)
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation", 18)
 	_front.add_child(pair)
-	var host_card: VBoxContainer = MenuScreen.card(pair, 26, true)
-	host_card.add_child(UiTheme.label("HOST", 40))
-	var host_info := Label.new()
-	host_info.text = "Open a table on this computer (port %d). Send the other player your Tailscale address." % NetProtocol.DEFAULT_PORT
-	host_info.add_theme_color_override("font_color", Palette.MUTED)
-	host_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	host_card.add_child(host_info)
-	var host_btn := Button.new()
-	host_btn.text = "HOST A MATCH"
-	host_btn.theme_type_variation = &"Primary"
-	host_btn.add_theme_font_size_override("font_size", 30)
-	host_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	host_btn.pressed.connect(_host)
-	host_card.add_child(host_btn)
+	var host_card: VBoxContainer = MenuScreen.card(pair, 34, true)
+	host_card.custom_minimum_size.y = 520
+	host_card.add_theme_constant_override("separation", 16)
+	host_card.add_child(UiTheme.label("HOST", 76))
+	host_card.add_child(_muted("Open a table on this computer. Your friend joins with your address.", 20))
+	var host_gap := Control.new()
+	host_gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	host_card.add_child(host_gap)
 	# The online match this computer hosted and left: open the table again, the others join back.
 	var saved: MatchRecord = ReplayStore.load_current_online()
 	if saved != null and saved.frame_count() > 0 and not saved.finished and saved.game_version == _version():
-		var names := PackedStringArray()
-		for p: Dictionary in saved.players:
-			names.append(str(p.get("name", "")))
-		var last: GameState = saved.state_at(saved.frame_count() - 1)
-		var cont_row := HBoxContainer.new()
-		cont_row.add_theme_constant_override("separation", 10)
-		host_card.add_child(cont_row)
-		var cont := Button.new()
-		cont.text = "CONTINUE THE MATCH"
-		cont.theme_type_variation = &"Gold"
-		cont.add_theme_font_size_override("font_size", 22)
-		cont.pressed.connect(func() -> void: _host_resume(saved))
-		cont_row.add_child(cont)
-		var drop := Button.new()
-		drop.text = "DISCARD"
-		drop.theme_type_variation = &"Ghost"
-		drop.add_theme_font_size_override("font_size", 16)
-		drop.tooltip_text = "Forget this match (its replay so far stays in Replays only if it ended)"
-		drop.pressed.connect(func() -> void:
-			ReplayStore.clear_current_online()
-			cont_row.queue_free()
-			_resume_info.queue_free())
-		cont_row.add_child(drop)
-		_resume_info = Label.new()
-		_resume_info.text = "%s  ·  %s. The others join with the name they played under." % [" vs ".join(names), ("turn %d" % last.turn) if last != null and last.turn > 0 else "setup"]
-		_resume_info.add_theme_color_override("font_color", Palette.MUTED)
-		_resume_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		host_card.add_child(_resume_info)
-	var join_card: VBoxContainer = MenuScreen.card(pair, 26, true)
-	join_card.add_child(UiTheme.label("JOIN", 40))
+		_add_continue(host_card, saved)
+	var host_btn := Button.new()
+	host_btn.text = "HOST A MATCH"
+	host_btn.theme_type_variation = &"Primary"
+	host_btn.add_theme_font_size_override("font_size", 44)
+	host_btn.pressed.connect(_host)
+	host_card.add_child(host_btn)
+	var join_card: VBoxContainer = MenuScreen.card(pair, 34, true)
+	join_card.add_theme_constant_override("separation", 16)
+	join_card.add_child(UiTheme.label("JOIN", 76))
+	_recent_box = VBoxContainer.new()
+	_recent_box.add_theme_constant_override("separation", 12)
+	join_card.add_child(_recent_box)
+	var join_gap := Control.new()
+	join_gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	join_card.add_child(join_gap)
+	join_card.add_child(UiTheme.label("ANOTHER ADDRESS", 15, Palette.GOLD))
 	var join_row := HBoxContainer.new()
 	join_row.add_theme_constant_override("separation", 10)
 	join_card.add_child(join_row)
 	_address = LineEdit.new()
-	_address.placeholder_text = "host's Tailscale address, e.g. 100.64.1.2"
-	_address.text = GameSettings.last_host()
+	_address.placeholder_text = "their address"
 	_address.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_address.add_theme_font_size_override("font_size", 22)
 	_address.text_submitted.connect(func(_t: String) -> void: _join())
 	join_row.add_child(_address)
-	_join_btn = Button.new()
-	_join_btn.text = "JOIN"
-	_join_btn.theme_type_variation = &"Gold"
-	_join_btn.add_theme_font_size_override("font_size", 26)
-	_join_btn.pressed.connect(_join)
-	join_row.add_child(_join_btn)
-	var watch_btn := Button.new()
-	watch_btn.text = "WATCH"
-	watch_btn.tooltip_text = "Join as a spectator: see the match with both hands hidden"
-	watch_btn.add_theme_font_size_override("font_size", 26)
-	watch_btn.pressed.connect(func() -> void: _join(true))
-	join_row.add_child(watch_btn)
+	_address_join = Button.new()
+	_address_join.text = "JOIN"
+	_address_join.theme_type_variation = &"Gold"
+	_address_join.add_theme_font_size_override("font_size", 26)
+	_address_join.pressed.connect(func() -> void:
+		_join_btn = _address_join
+		_join())
+	join_row.add_child(_address_join)
+	_join_btn = _address_join
 	_join_status = Label.new()
 	_join_status.add_theme_color_override("font_color", Palette.GOLD)
 	_join_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_join_status.visible = false
 	join_card.add_child(_join_status)
-	var join_info := Label.new()
-	join_info.text = "Both need the same game version and the shared folder synced."
-	join_info.add_theme_color_override("font_color", Palette.MUTED)
-	join_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	join_card.add_child(join_info)
+	var watch_btn := Button.new()
+	watch_btn.text = "WATCH INSTEAD"
+	watch_btn.flat = true
+	watch_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	watch_btn.tooltip_text = "Join as a spectator: see the match with both hands hidden"
+	watch_btn.add_theme_font_size_override("font_size", 15)
+	watch_btn.pressed.connect(func() -> void:
+		_join_btn = _address_join
+		_join(true))
+	join_card.add_child(watch_btn)
+	_fill_recent()
 
 	# Connected: you VS the other seat, the map and rules under them.
 	_room = VBoxContainer.new()
@@ -194,6 +182,17 @@ func _build() -> void:
 	vs_row.add_child(_opp)
 	_opp.setup(db, decks, "Opponent", 1, "", Loadout.new())
 	_opp.show_only({})
+	var opp_layer := Control.new()
+	opp_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_opp.add_child(opp_layer)
+	_ready_stamp = UiShape.chip("READY", Palette.GOLD, Color.BLACK, 76, 108.0, 34.0)
+	_ready_stamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ready_stamp.pivot_offset = _ready_stamp.custom_minimum_size * 0.5
+	_ready_stamp.rotation_degrees = -8.0
+	_ready_stamp.visible = false
+	opp_layer.add_child(_ready_stamp)
+	var place_stamp := func() -> void: _ready_stamp.position = (opp_layer.size - _ready_stamp.custom_minimum_size) * 0.5
+	opp_layer.resized.connect(place_stamp)
 	_build_wait(vs_row)
 
 	var bottom := HBoxContainer.new()
@@ -237,41 +236,48 @@ func _build_wait(parent: Control) -> void:
 	parent.add_child(_wait)
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 14)
+	col.add_theme_constant_override("separation", 18)
 	_wait.add_child(col)
-	col.add_child(UiTheme.label("WAITING FOR A PLAYER…", 34, Palette.DIM))
+	col.add_child(UiTheme.label("WAITING FOR A PLAYER…", 40, Palette.FG))
 	_wait_host = VBoxContainer.new()
 	_wait_host.add_theme_constant_override("separation", 8)
 	col.add_child(_wait_host)
-	_wait_host.add_child(UiTheme.label("SEND THEM YOUR ADDRESS", 13, Palette.GOLD))
-	var addr_row := HBoxContainer.new()
-	addr_row.add_theme_constant_override("separation", 8)
-	_wait_host.add_child(addr_row)
-	_address_label = Label.new()
-	_address_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_wait_host.add_theme_constant_override("separation", 18)
+	_wait_host.add_child(_muted("Send them this address. They press JOIN and paste it.", 19))
+	_address_label = UiTheme.label("", 64, Palette.GOLD)
 	_address_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_address_label.add_theme_font_override("font", UiTheme.display_italic())
-	_address_label.add_theme_font_size_override("font_size", 24)
-	addr_row.add_child(_address_label)
+	_wait_host.add_child(_address_label)
 	var copy := Button.new()
-	copy.text = "COPY"
+	copy.text = "COPY ADDRESS"
+	copy.theme_type_variation = &"Gold"
+	copy.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	copy.add_theme_font_size_override("font_size", 30)
 	copy.tooltip_text = "Copy the address to send it to the other player"
-	copy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	copy.pressed.connect(func() -> void:
 		DisplayServer.clipboard_set(_my_addresses()[0])
-		_status.text = "Address copied.")
-	addr_row.add_child(copy)
+		copy.text = "COPIED"
+		get_tree().create_timer(1.5).timeout.connect(func() -> void:
+			if is_instance_valid(copy):
+				copy.text = "COPY ADDRESS"))
+	_wait_host.add_child(copy)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 10)
 	_wait_host.add_child(gap)
-	_wait_host.add_child(UiTheme.label("OR PLAY A BOT", 13, Palette.GOLD))
+	var low := HBoxContainer.new()
+	low.add_theme_constant_override("separation", 10)
+	_wait_host.add_child(low)
+	var nobody: Label = _muted("Nobody around?", 16)
+	nobody.autowrap_mode = TextServer.AUTOWRAP_OFF
+	nobody.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	low.add_child(nobody)
 	_bot_row = HBoxContainer.new()
 	_bot_row.add_theme_constant_override("separation", 8)
-	_wait_host.add_child(_bot_row)
+	low.add_child(_bot_row)
 	for hard: bool in [false, true]:
 		var b := Button.new()
-		b.text = "BOT · HARD" if hard else "BOT · EASY"
-		b.add_theme_font_size_override("font_size", 20)
+		b.text = "BOT · HARD" if hard else "PLAY A BOT · EASY"
+		b.theme_type_variation = &"Ghost"
+		b.add_theme_font_size_override("font_size", 16)
 		b.tooltip_text = "Fill the other seat with a bot instead of waiting for a player"
 		b.pressed.connect(func() -> void:
 			if host == null:
@@ -346,10 +352,110 @@ func _host_resume(record: MatchRecord) -> void:
 	get_tree().change_scene_to_file(MATCH_SCENE)
 
 
+func _muted(text: String, font_size: int) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_color_override("font_color", Palette.MUTED)
+	l.add_theme_font_size_override("font_size", font_size)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return l
+
+
+## One slanted row: a big line, a small line and what goes at its end.
+func _row(parent: Control, big: String, small: String) -> HBoxContainer:
+	var row := PanelContainer.new()
+	row.add_theme_stylebox_override("panel", UiTheme.slant(Palette.SURFACE_2, 22, 10))
+	parent.add_child(row)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 16)
+	row.add_child(h)
+	var names := VBoxContainer.new()
+	names.add_theme_constant_override("separation", 0)
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(names)
+	names.add_child(UiTheme.label(big, 28))
+	names.add_child(_muted(small, 15))
+	return h
+
+
+## The saved online match in the HOST card: CONTINUE opens the table, DISCARD forgets it.
+func _add_continue(parent: Control, saved: MatchRecord) -> void:
+	var names := PackedStringArray()
+	for p: Dictionary in saved.players:
+		names.append(str(p.get("name", "")).to_upper())
+	var last: GameState = saved.state_at(saved.frame_count() - 1)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	parent.add_child(box)
+	box.add_child(UiTheme.label("YOUR LAST MATCH", 15, Palette.GOLD))
+	var when: String = ("Turn %d" % last.turn) if last != null and last.turn > 0 else "Setup"
+	var h: HBoxContainer = _row(box, " VS ".join(names), "%s  ·  they join again under the same name" % when)
+	var cont := Button.new()
+	cont.text = "CONTINUE"
+	cont.theme_type_variation = &"Gold"
+	cont.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cont.add_theme_font_size_override("font_size", 22)
+	cont.pressed.connect(func() -> void: _host_resume(saved))
+	h.add_child(cont)
+	var drop := Button.new()
+	drop.text = "DISCARD"
+	drop.theme_type_variation = &"Ghost"
+	drop.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	drop.add_theme_font_size_override("font_size", 14)
+	drop.tooltip_text = "Forget this match"
+	drop.pressed.connect(func() -> void:
+		ReplayStore.clear_current_online()
+		box.queue_free())
+	h.add_child(drop)
+
+
+## The hosts joined before, one click each; none yet: the last address (from before this list) waits in the field.
+func _fill_recent() -> void:
+	for c: Node in _recent_box.get_children():
+		c.queue_free()
+	var recent: Array = GameSettings.recent_hosts()
+	_recent_box.visible = not recent.is_empty()
+	_address.text = "" if not recent.is_empty() else GameSettings.last_host()
+	if recent.is_empty():
+		return
+	_recent_box.add_child(UiTheme.label("RECENT", 15, Palette.GOLD))
+	var now: int = int(Time.get_unix_time_from_system())
+	for e: Variant in recent.slice(0, 3):
+		var d: Dictionary = JsonUtil.as_dict(e)
+		var addr: String = str(d.get("address", ""))
+		var h: HBoxContainer = _row(_recent_box, str(d.get("name", "?")).to_upper(),
+			"%s  ·  %s" % [addr, GameSettings.ago_text(now - JsonUtil.as_int(d.get("at", now)))])
+		var b := Button.new()
+		b.text = "JOIN"
+		b.theme_type_variation = &"Gold"
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		b.add_theme_font_size_override("font_size", 24)
+		b.pressed.connect(func() -> void:
+			_join_btn = b
+			_address.text = addr
+			_join())
+		h.add_child(b)
+
+
+## READY over the other player's card; it lands like a stamp.
+func _set_ready_stamp(on: bool) -> void:
+	if on == _ready_stamp.visible:
+		return
+	_ready_stamp.visible = on
+	if on:
+		_ready_stamp.scale = Vector2(1.8, 1.8)
+		_ready_stamp.modulate.a = 0.0
+		var t: Tween = _ready_stamp.create_tween().set_parallel(true)
+		t.tween_property(_ready_stamp, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.tween_property(_ready_stamp, "modulate:a", 1.0, 0.1)
+
+
 func _wire_host() -> void:
 	host.lobby_changed.connect(_refresh)
 	_rules.set_settings(MatchSettings.from_dict(host.settings.to_dict()))
-	_address_label.text = "%s  ·  PORT %d" % [", ".join(_my_addresses()), NetProtocol.DEFAULT_PORT]
+	_address_label.text = _my_addresses()[0]
+	if _address_label.text.begins_with("("):
+		_address_label.add_theme_font_size_override("font_size", 30)
 	_enter_room(true)
 
 
@@ -396,11 +502,14 @@ func _join(spectate: bool = false) -> void:
 	if client != null:
 		return
 	var address: String = _address.text.strip_edges()
+	if address.is_empty() and spectate:
+		address = GameSettings.last_host()
 	if address.is_empty():
 		_join_note("Type the host's Tailscale address first.")
 		return
 	GameSettings.set_player_name(_name.text)
 	GameSettings.set_last_host(address)
+	_joining = address
 	client = NetClient.new(GameSettings.player_name(), _version(), db.version)
 	client.name = "NetClient"
 	var err: String = client.connect_to(address, NetProtocol.DEFAULT_PORT, spectate)
@@ -438,6 +547,13 @@ func _wire_client() -> void:
 	client.welcomed.connect(func(_slot: int) -> void:
 		_connecting(false)
 		_join_note("")
+		if not _joining.is_empty():
+			var host_name: String = "?"
+			for p: Variant in client.players:
+				if JsonUtil.as_int(JsonUtil.as_dict(p).get("slot", -1)) == 0:
+					host_name = str(JsonUtil.as_dict(p).get("name", "?"))
+			GameSettings.remember_host(host_name, _joining, int(Time.get_unix_time_from_system()))
+			_joining = ""
 		_status.text = "Watching. The match starts when the host presses START." if client.spectating else ""
 		_enter_room(false))
 	client.move_refused.connect(func(move: Dictionary, why: String) -> void:
@@ -533,6 +649,8 @@ func _refresh() -> void:
 			other = d
 	_opp.visible = not other.is_empty()
 	_wait.visible = other.is_empty()
+	_set_ready_stamp(not other.is_empty() and JsonUtil.as_bool(other.get("ready", false)) \
+			and not JsonUtil.as_bool(other.get("bot", false)) and JsonUtil.as_int(other.get("slot", 0)) != 0)
 	if not other.is_empty():
 		_opp.set_header(str(other.get("name", "")), JsonUtil.as_int(other.get("slot", 1)))
 		_opp.show_only(JsonUtil.as_dict(other.get("shown", {})))
@@ -568,8 +686,12 @@ func _refresh() -> void:
 		var why: String = host.can_start()
 		_start_btn.disabled = not why.is_empty()
 		_start_btn.tooltip_text = why
-		_start_btn.text = (("START GAME %d" % (series.games + 1)) if in_series else "START MATCH") if why.is_empty() else why.to_upper()
-		_start_btn.add_theme_font_size_override("font_size", 40 if why.is_empty() else 22)
+		var label: String = why.to_upper()
+		for tail: String in [" IS NOT READY", " HAS NO DECK"]:
+			if label.ends_with(tail):
+				label = "WAITING FOR " + label.trim_suffix(tail)
+		_start_btn.text = (("START GAME %d" % (series.games + 1)) if in_series else "START MATCH") if why.is_empty() else label
+		_start_btn.add_theme_font_size_override("font_size", 40 if _start_btn.text.length() <= 20 else 26)
 
 
 ## Best of 3 between games: swap with the sideboard; the host checks the swap and sends the
@@ -609,7 +731,7 @@ func _tags(card: PlayerCard, d: Dictionary, mine: bool) -> void:
 	var bot: bool = JsonUtil.as_bool(d.get("bot", false))
 	if not JsonUtil.as_bool(d.get("has_deck", false)):
 		card.header_extra.add_child(UiShape.chip("NO DECK", Palette.ACCENT_DEEP, Palette.FG, 14, 26.0, 10.0))
-	var tag: String = "NOT READY"
+	var tag: String = "NOT READY" if mine else "PICKING…"
 	var bg: Color = Palette.SURFACE_2
 	var fg: Color = Palette.MUTED
 	if bot:
@@ -622,6 +744,9 @@ func _tags(card: PlayerCard, d: Dictionary, mine: bool) -> void:
 		fg = Color.BLACK
 	if not JsonUtil.as_bool(d.get("connected", true)):
 		tag = "AWAY"
+	# The other player's READY is the stamp over their card.
+	if not mine and tag == "READY":
+		return
 	if mine and tag == "NOT READY":
 		return
 	card.header_extra.add_child(UiShape.chip(tag, bg, fg, 14, 26.0, 10.0))
@@ -651,6 +776,20 @@ func _back() -> void:
 # --- screenshot helpers (tools/screenshot.gd --call=...) -----------------------------------
 
 ## Hosts on the default port and seats a Hard bot, to show the room.
+## Screenshot helper: JOIN with people joined before (only in memory when run with --setting=).
+func demo_recent() -> void:
+	var now: int = int(Time.get_unix_time_from_system())
+	GameSettings.remember_host("Luka", "100.71.3.90", now - 700000)
+	GameSettings.remember_host("Marin", "100.88.12.4", now - 180000)
+	_fill_recent()
+
+
+## Screenshot helper: the room with the other side's READY stamp.
+func demo_ready() -> void:
+	demo_room()
+	_set_ready_stamp(true)
+
+
 func demo_room() -> void:
 	_host()
 	if host != null:

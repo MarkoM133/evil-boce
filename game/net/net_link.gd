@@ -61,6 +61,14 @@ func broadcast_fast(msg: Dictionary) -> void:
 	send_fast(MultiplayerPeer.TARGET_PEER_BROADCAST, msg)
 
 
+## Round trip to `id` in milliseconds as the link itself measures it, -1 when there is none.
+func rtt_ms(id: int) -> int:
+	if peer == null or not connected:
+		return -1
+	var p: ENetPacketPeer = peer.get_peer(id)
+	return int(p.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)) if p != null else -1
+
+
 func _put(to: int, msg: Dictionary, mode: MultiplayerPeer.TransferMode, channel: int) -> void:
 	if peer == null or not connected:
 		return

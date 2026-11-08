@@ -13,6 +13,29 @@ func after_all() -> void:
 	GameSettings._cfg = null
 
 
+func test_recent_hosts_newest_first_one_per_address() -> void:
+	GameSettings.remember_host("A", "100.1.1.1", 10)
+	GameSettings.remember_host("B", "100.2.2.2", 20)
+	GameSettings.remember_host("A again", " 100.1.1.1 ", 30)
+	var list: Array = GameSettings.recent_hosts()
+	assert_eq(list.size(), 2)
+	assert_eq(str(JsonUtil.as_dict(list[0])["name"]), "A again")
+	assert_eq(str(JsonUtil.as_dict(list[0])["address"]), "100.1.1.1")
+	assert_eq(str(JsonUtil.as_dict(list[1])["name"]), "B")
+	for i: int in 10:
+		GameSettings.remember_host("X", "100.9.9.%d" % i, 40 + i)
+	assert_eq(GameSettings.recent_hosts().size(), GameSettings.RECENT_HOSTS)
+
+
+func test_ago_text() -> void:
+	assert_eq(GameSettings.ago_text(5), "just now")
+	assert_eq(GameSettings.ago_text(600), "10 min ago")
+	assert_eq(GameSettings.ago_text(7200), "2 h ago")
+	assert_eq(GameSettings.ago_text(90000), "yesterday")
+	assert_eq(GameSettings.ago_text(172800), "2 days ago")
+	assert_eq(GameSettings.ago_text(1209600), "2 weeks ago")
+
+
 func test_default_keys_read_as_themselves() -> void:
 	assert_eq(GameSettings.logical_key(KEY_ESCAPE), KEY_ESCAPE)
 	assert_eq(GameSettings.logical_key(KEY_SPACE), KEY_SPACE)

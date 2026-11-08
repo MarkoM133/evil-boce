@@ -40,6 +40,8 @@ signal ability_fired(hero_id: String, card_id: String)
 ## The centre is taken by a band (true) or free again (false): the match waits while it is taken.
 signal announcing_changed(busy: bool)
 signal menu_pressed
+## Leave the match for the main menu (the drop screen).
+signal leave_pressed
 signal rematch_pressed
 signal watch_replay_pressed
 signal new_match_pressed
@@ -101,6 +103,9 @@ var rolling: bool = false
 var replay: bool = false
 ## Online: who paused the match ("" when it runs); shown instead of the prompt.
 var net_paused: String = ""
+var _ping: UiShape
+var _ping_text: String = ""
+var _drop: Control
 ## Only watching (a spectator): no prompts, no buttons, "WATCHING" instead.
 var spectating: bool = false
 ## Text of the end screen's first button; "" hides it (an online guest waits for the host).
@@ -344,6 +349,97 @@ func _refresh_battle_bar() -> void:
 			battle_cam_pressed.emit())
 	_battle_bar.add_child(sw)
 	_battle_bar.mouse_filter = Control.MOUSE_FILTER_PASS
+
+
+## The connection above the other player's name (Marko 2026-11-08): green, gold or red by the round
+## trip in ms, -1 hides it. On the left the MENU button is above the name, so it stands beside that.
+func set_ping(ms: int, right: bool) -> void:
+	if ms < 0:
+		if _ping != null:
+			_ping.queue_free()
+			_ping = null
+		_ping_text = ""
+		return
+	var text: String = "%d MS" % ms
+	if text != _ping_text or _ping == null:
+		if _ping != null:
+			_ping.queue_free()
+		_ping_text = text
+		var col: Color = Color("23b14d") if ms < 90 else (Palette.GOLD if ms < 200 else Palette.ACCENT)
+		_ping = UiShape.chip(text, col, Color.BLACK if ms < 200 else Palette.FG, 13, 22.0, 9.0)
+		_ping.tooltip_text = "Connection to the other player"
+		_ping.mouse_filter = Control.MOUSE_FILTER_PASS
+		add_child(_ping)
+	_ping.position = Vector2(size.x - 16.0 - _ping.custom_minimum_size.x, 32.0) if right else Vector2(116.0, 26.0)
+
+
+## Who dropped, over the table (Marko 2026-11-08, from the mockups). The host waits for the guest and
+## may go on waiting behind it or leave (the match is saved); a guest without its host can only leave.
+func show_drop(who: String, host_side: bool) -> void:
+	hide_drop()
+	_drop = Control.new()
+	_drop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_drop.mouse_filter = Control.MOUSE_FILTER_STOP
+	_drop.z_index = 80
+	add_child(_drop)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.72)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_drop.add_child(dim)
+	var centre := CenterContainer.new()
+	centre.set_anchors_preset(Control.PRESET_FULL_RECT)
+	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_drop.add_child(centre)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	box.custom_minimum_size = Vector2(700, 0)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	centre.add_child(box)
+	var chip: UiShape = UiShape.chip("CONNECTION LOST", Palette.ACCENT, Palette.FG, 20, 34.0, 14.0)
+	chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(chip)
+	var title: Label = UiTheme.label("%s DROPPED" % who.to_upper(), 76)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(title)
+	var line: Label = UiTheme.label("Waiting for them to come back  ·  0:00" if host_side else "The match cannot go on without the host", 24, Palette.GOLD, false)
+	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(line)
+	var note := Label.new()
+	note.text = "The match is saved. They can join again with the same name." if host_side else "The match is saved on their computer. Join again with the same name when they are back."
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_color_override("font_color", Palette.MUTED)
+	box.add_child(note)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 12)
+	box.add_child(row)
+	if host_side:
+		var keep := Button.new()
+		keep.text = "KEEP WAITING"
+		keep.add_theme_font_size_override("font_size", 24)
+		keep.pressed.connect(hide_drop)
+		row.add_child(keep)
+	var leave := Button.new()
+	leave.text = "SAVE AND LEAVE" if host_side else "MAIN MENU"
+	leave.add_theme_font_size_override("font_size", 24)
+	leave.pressed.connect(func() -> void: leave_pressed.emit())
+	row.add_child(leave)
+	if host_side:
+		var since: int = Time.get_ticks_msec()
+		var clock: Tween = line.create_tween().set_loops()
+		clock.tween_interval(1.0)
+		clock.tween_callback(func() -> void:
+			var s: int = (Time.get_ticks_msec() - since) / 1000
+			line.text = "Waiting for them to come back  ·  %d:%02d" % [s / 60, s % 60])
+
+
+func hide_drop() -> void:
+	if _drop != null:
+		_drop.queue_free()
+		_drop = null
 
 
 ## A short message under the ribbon on a slanted chip of `color`.

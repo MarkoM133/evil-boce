@@ -100,3 +100,9 @@ join again" (the host never sends cards or images; Syncthing is required, GDD 2)
 - Watching a replay together (the host steps through frames, the guests follow).
 - Spectator seats, timer per phase, 2v2 seats (step 4), a dedicated server build.
 - A real test over Tailscale between two computers.
+
+## Connection and dropped players (2026-11-08)
+
+- The ping above the other player's name is `NetLink.rtt_ms`, ENet's own round-trip statistic: nothing extra is sent.
+- `GameSettings.recent_hosts` keeps the hosts this computer joined (name, address, time), for Online › JOIN.
+- A guest that drops pauses the match (`NetHost._on_peer_left`), and the host sees `MatchHud.show_drop`; when it comes back the pause goes by itself. A guest that loses the host gets the same screen with only MAIN MENU.

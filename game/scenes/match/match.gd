@@ -102,6 +102,7 @@ var _launching: bool = false
 var _knocking: bool = false
 ## Core id -> ball id, in pick-up order, while a roll runs.
 var _picked: Dictionary[String, String] = {}
+var _ping_tick: float = 0.0
 ## Online guest: where each ball is going, from the host's positions (~20 a second); the balls glide
 ## there every frame (online playtest 2026-11-07: set straight they stuttered).
 var _net_to: Dictionary[String, Vector3] = {}
@@ -178,7 +179,12 @@ func _ready() -> void:
 		net_host.state_changed.connect(_on_net_state)
 		net_host.paused_changed.connect(func(on: bool, by: int) -> void: _on_net_pause(on, by, str(net_host.seat(by).get("name", ""))))
 		net_host.player_changed.connect(func(slot: int, on: bool) -> void:
-			hud.toast("%s %s" % [str(net_host.seat(slot).get("name", "")), "is back" if on else "dropped; waiting…"]))
+			var who: String = str(net_host.seat(slot).get("name", ""))
+			if on:
+				hud.hide_drop()
+				hud.toast("%s is back" % who)
+			elif not state.is_over():
+				hud.show_drop(who, true))
 	elif net_role == "client":
 		net_client = net["node"]
 		settings = MatchSettings.from_dict(net_client.settings)
@@ -192,7 +198,13 @@ func _ready() -> void:
 			hud.toast("%s %s" % [name, "is back" if on else "dropped; waiting…"]))
 		net_client.disconnected.connect(func(why: String) -> void:
 			hud.net_paused = "Lost the host (%s). Esc → Main menu" % why
-			hud.refresh())
+			hud.refresh()
+			if not state.is_over() and not net_client.replay_stream:
+				var host_name: String = "The host"
+				for p: Variant in net_client.players:
+					if JsonUtil.as_int(JsonUtil.as_dict(p).get("slot", -1)) == 0:
+						host_name = str(JsonUtil.as_dict(p).get("name", host_name))
+				hud.show_drop(host_name, false))
 		net_client.match_over.connect(func(summary: Dictionary, record: MatchRecord) -> void:
 			# The host keeps the stats; the guest keeps its own replay (GDD 2).
 			_end_moment()
@@ -450,6 +462,7 @@ func _build_hud() -> void:
 		_refresh_range())
 	hud.ball_choice_made.connect(func(_id: String) -> void: _refresh_target_fx())
 	hud.menu_pressed.connect(_toggle_menu)
+	hud.leave_pressed.connect(_leave)
 	hud.rematch_pressed.connect(_rematch)
 	hud.new_match_pressed.connect(func() -> void:
 		await _snapshot()
@@ -1006,6 +1019,21 @@ func _after_change() -> void:
 			ReplayStore.save_current_online(recorder.record)
 		else:
 			ReplayStore.save_current(recorder.record)
+
+
+## The connection above the other player's name: the link's own round trip, nothing extra is sent.
+func _update_ping() -> void:
+	var ms: int = -1
+	var other: int = 1
+	if net_role == "host":
+		other = 1 - net_host.host_slot
+		var s: Dictionary = net_host.seat(other)
+		if not s.is_empty() and not JsonUtil.as_bool(s.get("bot", false)) and JsonUtil.as_bool(s.get("connected", false)):
+			ms = net_host.link.rtt_ms(JsonUtil.as_int(s.get("peer", -1)))
+	elif net_client != null and net_client.slot >= 0:
+		other = 1 - net_client.slot
+		ms = net_client.link.rtt_ms(1)
+	hud.set_ping(ms if not state.is_over() else -1, other == 1)
 
 
 ## The deciding moment before the end screen (Marko 2026-11-08: "I did not know why I won"): the
@@ -1778,6 +1806,10 @@ func _on_roll_finished(o: RollOutcome) -> void:
 # --- frame ------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	_ping_tick -= delta
+	if _ping_tick <= 0.0 and net_role != "" and _replay == null:
+		_ping_tick = 1.0
+		_update_ping()
 	if not _net_to.is_empty():
 		var k: float = 1.0 - exp(-delta * 18.0)
 		for id: String in _net_to:
@@ -2695,6 +2727,13 @@ func demo_end_moment() -> void:
 	last.zone = HeroState.ZONE_KO
 	_end_moment()
 	hud.refresh()
+
+
+## Screenshot helper: the screen of a guest that dropped, as the host sees it, with the ping shown.
+func demo_drop() -> void:
+	demo_boards()
+	hud.set_ping(42, true)
+	hud.show_drop("Marin", true)
 
 
 ## Screenshot helper: the end screen as if player 1 won on stages (drawn only).
