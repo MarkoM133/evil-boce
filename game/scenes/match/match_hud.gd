@@ -158,6 +158,8 @@ var _hand_dealt: bool = false
 var _hand_sig: String = ""
 ## The last hand built was the starting hand: laid out differently, so nothing slides from it.
 var _hand_was_mulligan: bool = false
+## Which card of the hand the player just played, by position: of two copies the right one leaves.
+var hand_leaving: int = -1
 var _ribbon: HBoxContainer
 var _rosters: Array[VBoxContainer] = []
 var _kicker: Label
@@ -2019,6 +2021,19 @@ static func hand_keys(slot: int, hand: PackedStringArray) -> PackedStringArray:
 	return out
 
 
+## Of several copies the keys cannot tell which one went: the last key is the one that goes missing.
+## So the copy played (`key`) changes places with the ones after it in `before`.
+static func played_copy_last(before: Dictionary[String, Dictionary], key: String) -> void:
+	var at: int = key.rfind("#")
+	var stem: String = key.substr(0, at + 1)
+	var copy: int = key.substr(at + 1).to_int()
+	var played: Dictionary = before[key]
+	while before.has(stem + str(copy + 1)):
+		before[stem + str(copy)] = before[stem + str(copy + 1)]
+		copy += 1
+	before[stem + str(copy)] = played
+
+
 ## Where each card of the hand is now, by `hand_keys`: the next build carries on from there.
 func _hand_snapshot() -> Dictionary[String, Dictionary]:
 	var out: Dictionary[String, Dictionary] = {}
@@ -2027,7 +2042,7 @@ func _hand_snapshot() -> Dictionary[String, Dictionary]:
 	for n: Node in _hand.get_children():
 		var c := n as Control
 		if c != null and c.has_meta("hand_key"):
-			out[str(c.get_meta("hand_key"))] = {"x": c.position.x, "turn": c.rotation_degrees, "mod": c.modulate,
+			out[str(c.get_meta("hand_key"))] = {"index": JsonUtil.as_int(c.get_meta("index", -1), -1), "x": c.position.x, "turn": c.rotation_degrees, "mod": c.modulate,
 				"stand": JsonUtil.as_float(c.get_meta("base_y")) - JsonUtil.as_float(c.get_meta("rest_y"))}
 	return out
 
@@ -2114,6 +2129,12 @@ func _refresh_hand() -> void:
 	var n: int = p.hand.size()
 	var step: float = minf(176.0 if mulligan else 104.0, (HAND_WIDTH - 40.0) / maxf(float(n), 1.0))
 	var keys: PackedStringArray = hand_keys(slot, p.hand)
+	if hand_leaving >= 0 and n < before.size():
+		for key: String in before:
+			if JsonUtil.as_int(before[key].get("index", -1), -1) == hand_leaving:
+				played_copy_last(before, key)
+				break
+		hand_leaving = -1
 	for i: int in n:
 		var cid: String = p.hand[i]
 		var check: Dictionary = _play_check(slot, cid) if my_round else {}
@@ -2209,6 +2230,7 @@ func _play_check(slot: int, cid: String, as_turn: bool = false) -> Dictionary:
 func _card_chosen(slot: int, cid: String, heroes: PackedStringArray, index: int = -1) -> void:
 	if heroes.size() <= 1:
 		cancel_targeting()
+		hand_leaving = index
 		card_pressed.emit(slot, cid, heroes[0] if heroes.size() == 1 else "")
 		return
 	if cid == target_cid and index == target_index:
@@ -2245,7 +2267,9 @@ func play_target(hero_id: String) -> bool:
 		return false
 	var slot: int = target_slot
 	var cid: String = target_cid
+	var index: int = target_index
 	cancel_targeting()
+	hand_leaving = index
 	card_pressed.emit(slot, cid, hero_id)
 	return true
 
@@ -2533,6 +2557,7 @@ func _drag_input(event: InputEvent) -> bool:
 	if heroes.is_empty():
 		# Nothing to aim at (an assist): let go above the hand plays it.
 		if get_global_mouse_position().y < size.y - HAND_HEIGHT:
+			hand_leaving = JsonUtil.as_int(d.get("index", -1), -1)
 			card_pressed.emit(JsonUtil.as_int(d["slot"]), str(d["cid"]), "")
 		return true
 	if not play_target(hover_hero):

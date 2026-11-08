@@ -2651,6 +2651,8 @@ func demo_damage_second_hit() -> void:
 func demo_hand_stand() -> void:
 	var p: PlayerState = state.player(0)
 	p.hand = p.deck.slice(0, 7)
+	# Two copies of one card: demo_hand_spent plays the left one.
+	p.hand[4] = p.hand[0]
 	p.energy = 2
 	# The hand only shows from turn 1.
 	state.turn = maxi(state.turn, 1)
@@ -2661,6 +2663,7 @@ func demo_hand_spent() -> void:
 	var p: PlayerState = state.player(0)
 	p.hand = p.hand.slice(1)
 	p.energy = 0
+	hud.hand_leaving = 0
 	hud.refresh()
 
 
