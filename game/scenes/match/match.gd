@@ -647,9 +647,6 @@ func _menu_tabs(combos_open: bool) -> HBoxContainer:
 			b.theme_type_variation = &"Gold"
 		else:
 			b.pressed.connect(func() -> void: _show_combos(combos))
-		# Pressed it is the open one, not the theme's red (Marko 2026-11-08).
-		b.add_theme_stylebox_override("pressed", UiTheme.get_theme().get_stylebox("normal", "Gold"))
-		b.add_theme_color_override("font_pressed_color", Color.BLACK)
 		row.add_child(b)
 	return row
 

@@ -121,8 +121,6 @@ static func _build() -> Theme:
 	t.set_font_size("font_size", "Button", 18)
 	t.set_color("font_color", "Button", Palette.FG)
 	t.set_color("font_hover_color", "Button", Color.WHITE)
-	t.set_color("font_pressed_color", "Button", Color.WHITE)
-	t.set_color("font_hover_pressed_color", "Button", Color.WHITE)
 	t.set_color("font_focus_color", "Button", Palette.FG)
 	t.set_color("font_disabled_color", "Button", Color(Palette.MUTED, 0.45))
 	t.set_stylebox("normal", "Button", slant(Palette.BUTTON))
@@ -131,8 +129,11 @@ static func _build() -> Theme:
 	hover_b.border_color = Palette.GOLD
 	hover_b.set_border_width_all(2)
 	t.set_stylebox("hover", "Button", hover_b)
-	t.set_stylebox("pressed", "Button", slant(Palette.ACCENT))
-	t.set_stylebox("hover_pressed", "Button", slant(Palette.ACCENT_HOVER))
+	# Pressed or switched on is straw on every plain button (Marko 2026-11-08: red only for the red ones).
+	t.set_stylebox("pressed", "Button", slant(Palette.GOLD))
+	t.set_stylebox("hover_pressed", "Button", slant(Palette.GOLD.lightened(0.15)))
+	t.set_color("font_pressed_color", "Button", Color.BLACK)
+	t.set_color("font_hover_pressed_color", "Button", Color.BLACK)
 	t.set_stylebox("disabled", "Button", slant(Color("111111")))
 	var focus := slant(Color(0, 0, 0, 0))
 	focus.draw_center = false
@@ -155,6 +156,8 @@ static func _build() -> Theme:
 	t.set_stylebox("normal", "Primary", prim)
 	t.set_stylebox("hover", "Primary", prim_hover)
 	t.set_stylebox("pressed", "Primary", slant(Palette.ACCENT_DEEP, 26, 10))
+	t.set_color("font_pressed_color", "Primary", Palette.FG)
+	t.set_color("font_hover_pressed_color", "Primary", Palette.FG)
 	# Off (something to fix first) still reads as the main button, only dimmer (it looked black).
 	t.set_stylebox("disabled", "Primary", slant(Palette.ACCENT.darkened(0.55), 26, 10))
 	t.set_color("font_disabled_color", "Primary", Color(1, 1, 1, 0.45))
@@ -189,6 +192,8 @@ static func _build() -> Theme:
 	t.set_stylebox("disabled", "MenuItem", plain)
 	t.set_stylebox("hover", "MenuItem", hover)
 	t.set_stylebox("pressed", "MenuItem", slant(Palette.ACCENT_DEEP, 26, 2))
+	t.set_color("font_pressed_color", "MenuItem", Color.WHITE)
+	t.set_color("font_hover_pressed_color", "MenuItem", Color.WHITE)
 	t.set_stylebox("focus", "MenuItem", hover)
 
 	# Check boxes: no button frame.
