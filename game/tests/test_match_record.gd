@@ -128,6 +128,8 @@ func test_header_and_summary() -> void:
 	var h: Dictionary = MatchRecord.header_from_dict(rec.record.to_dict())
 	assert_eq(str(h["title"]), "Marko vs Bot")
 	assert_eq(JsonUtil.as_int(h["turns"]), 1)
+	assert_eq(JsonUtil.as_strings(h["names"]), PackedStringArray(["Marko", "Bot"]))
+	assert_false(ReplayStore.is_match_against_someone(h, "Marko"), "a bot is not someone")
 	assert_true(JsonUtil.as_bool(h["finished"]))
 	var s: Dictionary = rec.record.summary()
 	assert_eq(JsonUtil.as_int(s["winner"]), 0)
@@ -146,6 +148,18 @@ func test_header_and_summary() -> void:
 	assert_true(JsonUtil.as_int(hp.get(0, hp.get("0", 0))) > 0, "team 0 has HP")
 	assert_true(JsonUtil.as_int(hp.get(1, hp.get("1", 0))) > 0, "team 1 has HP")
 	assert_eq(JsonUtil.as_array(pt["claimed"]).size(), 0)
+
+
+func test_which_replays_are_matches_against_someone() -> void:
+	var h: Dictionary = {"finished": true, "result": "ko", "names": ["Marko", "Tarik"], "bots": [false, false]}
+	assert_true(ReplayStore.is_match_against_someone(h, "Marko"))
+	assert_false(ReplayStore.is_match_against_someone(h, "Luka"), "not one of the seats")
+	var open: Dictionary = h.duplicate()
+	open["finished"] = false
+	assert_false(ReplayStore.is_match_against_someone(open, "Marko"), "not finished")
+	var local: Dictionary = h.duplicate()
+	local["names"] = ["Marko", "Player 2"]
+	assert_false(ReplayStore.is_match_against_someone(local, "Marko"), "two seats at one screen")
 
 
 func test_store_round_trip() -> void:

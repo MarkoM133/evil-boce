@@ -219,16 +219,20 @@ func to_dict() -> Dictionary:
 ## Only what lists need, without parsing frames into states.
 static func header_from_dict(d: Dictionary) -> Dictionary:
 	var names := PackedStringArray()
+	var bots: Array = []
 	var heroes: Array = []
 	for p: Variant in JsonUtil.as_array(d.get("players", [])):
 		var pd: Dictionary = JsonUtil.as_dict(p)
 		names.append(str(pd.get("name", "?")))
+		bots.append(JsonUtil.as_bool(pd.get("bot", false)))
 		heroes.append(JsonUtil.as_array(pd.get("heroes", [])))
 	var frames: Array = JsonUtil.as_array(d.get("frames", []))
 	var last: Dictionary = JsonUtil.as_dict(frames[frames.size() - 1]) if not frames.is_empty() else {}
 	return {
 		"created": str(d.get("created", "")),
 		"title": " vs ".join(names),
+		"names": names,
+		"bots": bots,
 		"heroes": heroes,
 		"turns": JsonUtil.as_int(last.get("turn", 0)),
 		"frames": frames.size(),

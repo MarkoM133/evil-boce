@@ -54,6 +54,46 @@ static func delete(path: String) -> bool:
 	return DirAccess.remove_absolute(ProjectSettings.globalize_path(path)) == OK
 
 
+## Whether a replay's header is a finished match `me` played against another person: a seat of
+## theirs, no bot at the table, and not two local seats ("Player 2"). Replays do not say "online".
+static func is_match_against_someone(h: Dictionary, me: String) -> bool:
+	var names: PackedStringArray = JsonUtil.as_strings(h.get("names", []))
+	if not JsonUtil.as_bool(h.get("finished", false)) or names.size() != 2 or not names.has(me) or str(h.get("result", "")) == "":
+		return false
+	for b: Variant in JsonUtil.as_array(h.get("bots", [])):
+		if JsonUtil.as_bool(b):
+			return false
+	for n: String in names:
+		if n != me and n.begins_with("Player "):
+			return false
+	return names[0] != names[1]
+
+
+## The newest matches `me` played against someone (headers with "path"), at most `count`. Reads
+## newest first and stops early: a replay file is big and this is for a menu.
+static func recent_against_someone(me: String, count: int, scan: int = 30) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if count <= 0 or not DirAccess.dir_exists_absolute(REPLAY_DIR):
+		return out
+	var files: PackedStringArray = DirAccess.get_files_at(REPLAY_DIR)
+	files.sort()
+	files.reverse()
+	for f: String in files.slice(0, scan):
+		if not f.ends_with(".json"):
+			continue
+		var path: String = REPLAY_DIR.path_join(f)
+		var d: Dictionary = _read_json(path)
+		if d.is_empty():
+			continue
+		var h: Dictionary = MatchRecord.header_from_dict(d)
+		if is_match_against_someone(h, me):
+			h["path"] = path
+			out.append(h)
+			if out.size() >= count:
+				break
+	return out
+
+
 # --- the match in progress ---------------------------------------------------------------
 
 static func save_current(record: MatchRecord) -> void:

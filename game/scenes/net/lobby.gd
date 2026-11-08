@@ -31,6 +31,7 @@ var _series: Label
 var _join_btn: Button
 var _address_join: Button
 var _recent_box: VBoxContainer
+var _matches_box: VBoxContainer
 ## Where the last JOIN went (remembered with the host's name once it answers).
 var _joining: String = ""
 ## READY over the other player's card, in the style of CLAIMED.
@@ -95,24 +96,35 @@ func _build() -> void:
 	var host_card: VBoxContainer = MenuScreen.card(pair, 34, true)
 	host_card.custom_minimum_size.y = 520
 	host_card.add_theme_constant_override("separation", 16)
-	host_card.add_child(UiTheme.label("HOST", 76))
-	host_card.add_child(_muted("Open a table on this computer. Your friend joins with your address.", 20))
-	var host_gap := Control.new()
-	host_gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	host_card.add_child(host_gap)
-	# The online match this computer hosted and left: open the table again, the others join back.
-	var saved: MatchRecord = ReplayStore.load_current_online()
-	if saved != null and saved.frame_count() > 0 and not saved.finished and saved.game_version == _version():
-		_add_continue(host_card, saved)
+	host_card.add_child(UiTheme.label("HOST", 56))
+	host_card.add_child(UiTheme.label("YOUR ADDRESS", 15, Palette.GOLD))
+	var addr_line := HBoxContainer.new()
+	addr_line.add_theme_constant_override("separation", 14)
+	host_card.add_child(addr_line)
+	var my_addr: String = _my_addresses()[0]
+	var addr_l: Label = UiTheme.label(my_addr, 38 if not my_addr.begins_with("(") else 22, Palette.GOLD)
+	addr_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	addr_line.add_child(addr_l)
+	var addr_copy := Button.new()
+	addr_copy.text = "COPY"
+	addr_copy.disabled = my_addr.begins_with("(")
+	addr_copy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	addr_copy.add_theme_font_size_override("font_size", 22)
+	addr_copy.pressed.connect(func() -> void: _copy_address(addr_copy, "COPY"))
+	addr_line.add_child(addr_copy)
 	var host_btn := Button.new()
 	host_btn.text = "HOST A MATCH"
 	host_btn.theme_type_variation = &"Primary"
 	host_btn.add_theme_font_size_override("font_size", 44)
 	host_btn.pressed.connect(_host)
 	host_card.add_child(host_btn)
+	_matches_box = VBoxContainer.new()
+	_matches_box.add_theme_constant_override("separation", 10)
+	host_card.add_child(_matches_box)
+	_fill_matches()
 	var join_card: VBoxContainer = MenuScreen.card(pair, 34, true)
 	join_card.add_theme_constant_override("separation", 16)
-	join_card.add_child(UiTheme.label("JOIN", 76))
+	join_card.add_child(UiTheme.label("JOIN", 56))
 	_recent_box = VBoxContainer.new()
 	_recent_box.add_theme_constant_override("separation", 12)
 	join_card.add_child(_recent_box)
@@ -253,12 +265,7 @@ func _build_wait(parent: Control) -> void:
 	copy.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	copy.add_theme_font_size_override("font_size", 30)
 	copy.tooltip_text = "Copy the address to send it to the other player"
-	copy.pressed.connect(func() -> void:
-		DisplayServer.clipboard_set(_my_addresses()[0])
-		copy.text = "COPIED"
-		get_tree().create_timer(1.5).timeout.connect(func() -> void:
-			if is_instance_valid(copy):
-				copy.text = "COPY ADDRESS"))
+	copy.pressed.connect(func() -> void: _copy_address(copy, "COPY ADDRESS"))
 	_wait_host.add_child(copy)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 10)
@@ -378,35 +385,94 @@ func _row(parent: Control, big: String, small: String) -> HBoxContainer:
 	return h
 
 
-## The saved online match in the HOST card: CONTINUE opens the table, DISCARD forgets it.
-func _add_continue(parent: Control, saved: MatchRecord) -> void:
-	var names := PackedStringArray()
-	for p: Dictionary in saved.players:
-		names.append(str(p.get("name", "")).to_upper())
-	var last: GameState = saved.state_at(saved.frame_count() - 1)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
-	parent.add_child(box)
-	box.add_child(UiTheme.label("YOUR LAST MATCH", 15, Palette.GOLD))
-	var when: String = ("Turn %d" % last.turn) if last != null and last.turn > 0 else "Setup"
-	var h: HBoxContainer = _row(box, " VS ".join(names), "%s  ·  they join again under the same name" % when)
-	var cont := Button.new()
-	cont.text = "CONTINUE"
-	cont.theme_type_variation = &"Gold"
-	cont.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	cont.add_theme_font_size_override("font_size", 22)
-	cont.pressed.connect(func() -> void: _host_resume(saved))
-	h.add_child(cont)
-	var drop := Button.new()
-	drop.text = "DISCARD"
-	drop.theme_type_variation = &"Ghost"
-	drop.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	drop.add_theme_font_size_override("font_size", 14)
-	drop.tooltip_text = "Forget this match"
-	drop.pressed.connect(func() -> void:
-		ReplayStore.clear_current_online()
-		box.queue_free())
-	h.add_child(drop)
+## Copies this computer's address; the button says so for a moment.
+func _copy_address(button: Button, idle: String) -> void:
+	DisplayServer.clipboard_set(_my_addresses()[0])
+	button.text = "COPIED"
+	get_tree().create_timer(1.5).timeout.connect(func() -> void:
+		if is_instance_valid(button):
+			button.text = idle)
+
+
+## The HOST card's list (Marko 2026-11-08), three rows at most: the saved online match first
+## (CONTINUE opens the table, DISCARD forgets it), then the last matches against someone (WATCH).
+func _fill_matches() -> void:
+	for c: Node in _matches_box.get_children():
+		_matches_box.remove_child(c)
+		c.queue_free()
+	var me: String = GameSettings.player_name()
+	var saved: MatchRecord = ReplayStore.load_current_online()
+	var has_saved: bool = saved != null and saved.frame_count() > 0 and not saved.finished and saved.game_version == _version()
+	var played: Array[Dictionary] = ReplayStore.recent_against_someone(me, 2 if has_saved else 3)
+	_matches_box.visible = has_saved or not played.is_empty()
+	if not _matches_box.visible:
+		return
+	_matches_box.add_child(UiTheme.label("RECENT MATCHES", 15, Palette.GOLD))
+	if has_saved:
+		var others := PackedStringArray()
+		for p: Dictionary in saved.players:
+			if str(p.get("name", "")) != me:
+				others.append(str(p.get("name", "")).to_upper())
+		var last: GameState = saved.state_at(saved.frame_count() - 1)
+		var when: String = ("Turn %d" % last.turn) if last != null and last.turn > 0 else "Setup"
+		var h: HBoxContainer = _row(_matches_box, "VS " + " + ".join(others), "%s  ·  waiting where you left it" % when)
+		_row_chip(h, "SAVED", Palette.SURFACE_2.lightened(0.15), Palette.FG)
+		var cont := Button.new()
+		cont.text = "CONTINUE"
+		cont.theme_type_variation = &"Gold"
+		cont.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		cont.add_theme_font_size_override("font_size", 20)
+		cont.pressed.connect(func() -> void: _host_resume(saved))
+		h.add_child(cont)
+		var drop := Button.new()
+		drop.text = "DISCARD"
+		drop.theme_type_variation = &"Ghost"
+		drop.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		drop.add_theme_font_size_override("font_size", 14)
+		drop.tooltip_text = "Forget this match"
+		drop.pressed.connect(func() -> void:
+			ReplayStore.clear_current_online()
+			_fill_matches())
+		h.add_child(drop)
+	var now: int = int(Time.get_unix_time_from_system())
+	var why: Dictionary = {"ko": "All heroes KO", "stages": "Stages claimed", "stages_energy": "More energy", "surrender": "Surrender", "draw": "Draw"}
+	for m: Dictionary in played:
+		var names: PackedStringArray = JsonUtil.as_strings(m.get("names", []))
+		var mine: int = names.find(me)
+		var at: int = Time.get_unix_time_from_datetime_string(str(m.get("created", "")).trim_suffix("Z"))
+		var result: String = str(m.get("result", ""))
+		var h: HBoxContainer = _row(_matches_box, "VS " + names[1 - mine].to_upper(),
+			"%s  ·  turn %d  ·  %s" % [str(why.get(result, result.capitalize())), JsonUtil.as_int(m.get("turns", 0)), GameSettings.ago_text(now - at)])
+		var winner: int = JsonUtil.as_int(m.get("winner", -1), -1)
+		if winner < 0:
+			_row_chip(h, "DRAW", Palette.SURFACE_2.lightened(0.15), Palette.FG)
+		elif winner == mine:
+			_row_chip(h, "WIN", Palette.GOLD, Color.BLACK)
+		else:
+			_row_chip(h, "LOSS", Palette.ACCENT_DEEP, Palette.FG)
+		var watch := Button.new()
+		watch.text = "WATCH"
+		watch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		watch.add_theme_font_size_override("font_size", 20)
+		var path: String = str(m["path"])
+		watch.pressed.connect(func() -> void: _watch_replay(path))
+		h.add_child(watch)
+
+
+func _row_chip(h: HBoxContainer, text: String, col: Color, fg: Color) -> void:
+	var chip: UiShape = UiShape.chip(text, col, fg, 15, 26.0, 10.0)
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(chip)
+	h.move_child(chip, 0)
+
+
+func _watch_replay(path: String) -> void:
+	var record: MatchRecord = ReplayStore.load_record(path)
+	if record == null or record.frame_count() == 0:
+		_status.text = "That replay could not be read."
+		return
+	MatchLaunch.config = MatchLaunch.from_record(record, 0, true)
+	get_tree().change_scene_to_file(MATCH_SCENE)
 
 
 ## The hosts joined before, one click each; none yet: the last address (from before this list) waits in the field.
