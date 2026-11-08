@@ -14,6 +14,9 @@ var art_w: float = ART_W
 var art: Texture2D
 ## Part of the texture to show, in 0..1 texture coordinates.
 var art_region: Rect2 = Rect2(0, 0, 1, 1)
+## The art keeps its proportions (Marko 2026-11-08: the resting panels squeezed the faces wide):
+## art_region is cut to the drawn shape, a band near its top (faces) or its middle, not stretched.
+var fit_art: bool = true
 var art_tint: Color = Color.WHITE
 var mirrored: bool = false
 var bg: Color = Palette.PANEL_SOLID
@@ -29,7 +32,11 @@ var content: MarginContainer
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	# The art is a card thumbnail drawn much smaller: through its mipmaps, or its edges shimmer and
+	# look crumpled (Marko 2026-11-08). The text inside keeps the plain filter.
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	content = MarginContainer.new()
+	content.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	content.set_anchors_preset(Control.PRESET_FULL_RECT)
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(content)
@@ -80,9 +87,10 @@ func _draw() -> void:
 		var uvs := PackedVector2Array()
 		var x0: float = a[3].x
 		var span: float = aw + CUT
+		var r: Rect2 = _fitted(art_region, span / maxf(h, 1.0)) if fit_art else art_region
 		for p: Vector2 in a:
-			uvs.append(Vector2(art_region.position.x + art_region.size.x * (p.x - x0) / span,
-				art_region.position.y + art_region.size.y * p.y / h))
+			uvs.append(Vector2(r.position.x + r.size.x * (p.x - x0) / span,
+				r.position.y + r.size.y * p.y / h))
 		draw_polygon(a, PackedColorArray([art_tint, art_tint, art_tint, art_tint]), uvs, art)
 	else:
 		draw_colored_polygon(a, art_fallback * art_tint)
@@ -100,6 +108,22 @@ func _draw() -> void:
 		var loop: PackedVector2Array = body.duplicate()
 		loop.append(body[0])
 		draw_polyline(loop, outline, outline_width, true)
+
+
+## `box` cut to `aspect` (width / height) in the texture's pixels: a wider shape keeps the box's
+## width and takes a band near its top (where the faces are), a taller one keeps its height and
+## takes the middle.
+func _fitted(box: Rect2, aspect: float) -> Rect2:
+	var px := Vector2(art.get_width(), art.get_height())
+	var bw: float = box.size.x * px.x
+	var bh: float = box.size.y * px.y
+	if bw <= 0.0 or bh <= 0.0:
+		return box
+	if bw / bh < aspect:
+		var nh: float = bw / aspect
+		return Rect2(box.position.x, box.position.y + (bh - nh) * 0.15 / px.y, box.size.x, nh / px.y)
+	var nw: float = bh * aspect
+	return Rect2(box.position.x + (bw - nw) * 0.5 / px.x, box.position.y, nw / px.x, box.size.y)
 
 
 func _notification(what: int) -> void:
