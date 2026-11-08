@@ -2708,6 +2708,53 @@ func demo_combo_other() -> void:
 	hud.refresh()
 
 
+## tools/try_kaido.gd: Kaido on the map about to be thrown by hand, a core four hexes up the table and a
+## wall right behind it; every other hero back in its start zone.
+func demo_try_kaido() -> void:
+	if _runner.is_running() or _launching:
+		return
+	_demo = true
+	var kaido: HeroState = null
+	for h: HeroState in state.heroes:
+		h.zone = HeroState.ZONE_STRIP
+		h.cores = PackedStringArray()
+		if h.card_id == "OP1-005" and h.owner == 0:
+			kaido = h
+	kaido.zone = HeroState.ZONE_MAP
+	kaido.hex = Hex.offset_to_axial(11, 15)
+	for c: CoreState in state.cores:
+		c.place = CoreState.UNPLACED
+	var core: CoreState = state.cores[0]
+	core.place = CoreState.ON_FIELD
+	core.hex = Hex.offset_to_axial(11, 11)
+	var wall := WallState.new()
+	wall.id = "try"
+	wall.hexes = [Hex.offset_to_axial(10, 9), Hex.offset_to_axial(11, 9), Hex.offset_to_axial(12, 9)]
+	state.walls = [wall]
+	state.pending.clear()
+	state.pending_knockbacks.clear()
+	state.battles.clear()
+	state.turn = maxi(state.turn, 3)
+	state.phase = GameState.PHASE_ROLL
+	state.active = {0: kaido.id}
+	state.choices = {0: true}
+	state.aims = {}
+	state.awaiting_roll = false
+	state.rolled = false
+	state.pending_rolls = PackedStringArray()
+	state.to_act = 0
+	_picked.clear()
+	_pick_order.clear()
+	hud.local_slots = PackedInt32Array([0])
+	_sync()
+	hud.refresh()
+
+
+## tools/try_kaido.gd --check: throws him straight up the table.
+func demo_try_kaido_throw(power: float) -> void:
+	_apply(Move.make(Move.AIM, 0, {"dir": [0.0, -1.0], "power": power}))
+
+
 ## Screenshot helper: the ring-out's cost (1 DMG, or a card from the hand) asked of player 1.
 func demo_ring_out_damage() -> void:
 	_demo = true
