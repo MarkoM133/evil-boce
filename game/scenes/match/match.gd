@@ -98,6 +98,9 @@ var _range_key: String = ""
 ## Hexes of the stage or core hovered in the HUD strip (marked like a footprint).
 var _board_marks: Array[Vector2i] = []
 var _launching: bool = false
+var _ball_watch: float = 0.0
+const BALL_WATCH_TIME: float = 0.25
+const BALL_OFF_HEX: float = 0.3
 ## The sim is running a physics knockback, not a roll (_launch_knockbacks).
 var _knocking: bool = false
 ## Core id -> ball id, in pick-up order, while a roll runs.
@@ -1812,7 +1815,32 @@ func _on_roll_finished(o: RollOutcome) -> void:
 
 # --- frame ------------------------------------------------------------------
 
+## A resting ball off the hex the rules have it on goes back there (Marko 2026-11-08: a ball stood a
+## hex away from its range). The rules are right; what moved it is logged for next time.
+func _watch_balls(delta: float) -> void:
+	_ball_watch -= delta
+	if _ball_watch > 0.0:
+		return
+	_ball_watch = BALL_WATCH_TIME
+	if state == null or _replay != null or net_role == "client" or _runner.is_running() or _launching \
+			or state.awaiting_roll or not state.pending_knockbacks.is_empty() or not _sliding.is_empty():
+		return
+	for h: HeroState in state.heroes:
+		if not h.is_on_map() or h.is_ko():
+			continue
+		var b: BallBody = _bodies[h.id]
+		if b.motion != BallBody.Motion.RESTING:
+			continue
+		var at: Vector3 = arena.hex_center(h.hex)
+		var off: float = Vector2(b.global_position.x - at.x, b.global_position.z - at.z).length()
+		if off > BALL_OFF_HEX:
+			print("ball off its hex: %s %.2f away, turn %d %s, last event %s" % [h.id, off, state.turn, state.phase,
+				str(state.log[state.log.size() - 1].get("type", "")) if not state.log.is_empty() else "none"])
+			_sync_hero(h)
+
+
 func _process(delta: float) -> void:
+	_watch_balls(delta)
 	_ping_tick -= delta
 	if _ping_tick <= 0.0 and net_role != "" and _replay == null:
 		_ping_tick = 1.0
