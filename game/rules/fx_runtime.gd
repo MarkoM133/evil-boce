@@ -648,7 +648,15 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			if not owners.has(h.owner):
 				owners.append(h.owner)
 		var who: int = owners[0] if owners.size() == 1 else player
-		return {"player": who, "kind": "hero", "options": ids, "prompt": "Pick a hero"}
+		# Says what it is for (Marko 2026-11-08: "Pick a hero" alone, with the battle camera on two
+		# heroes, read as if something were missing): the bonus and the card that gives it.
+		var card: CardDef = engine.catalog.get_card(str(ctx.get("card", "")))
+		var prompt: String = "Pick a hero"
+		if verb == "BUFF" and args.size() >= 2:
+			prompt = "Who gets +%s %s?" % [args[1], args[0]]
+		if card != null:
+			prompt += " · %s" % card.name
+		return {"player": who, "kind": "hero", "options": ids, "prompt": prompt}
 	match verb:
 		"DAMAGE", "HEAL", "KNOCKBACK", "STATUS", "REMOVE_EVO", "BUFF", "DAMAGE_MOD":
 			if target == "ENEMY" or target == "FRIENDLY":
