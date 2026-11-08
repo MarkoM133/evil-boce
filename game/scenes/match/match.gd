@@ -644,6 +644,9 @@ func _menu_tabs(combos_open: bool) -> HBoxContainer:
 			b.theme_type_variation = &"Gold"
 		else:
 			b.pressed.connect(func() -> void: _show_combos(combos))
+		# Pressed it is the open one, not the theme's red (Marko 2026-11-08).
+		b.add_theme_stylebox_override("pressed", UiTheme.get_theme().get_stylebox("normal", "Gold"))
+		b.add_theme_color_override("font_pressed_color", Color.BLACK)
 		row.add_child(b)
 	return row
 
@@ -2305,7 +2308,7 @@ func _on_hero_clicked(id: String) -> void:
 			hud.refresh()
 			_refresh_target_fx()
 		elif h.tie_turns > 0:
-			hud.toast("%s is locked in a tied battle: it cannot be picked, and it fights that battle again this turn." % hud.hero_name(h))
+			hud.toast("%s is locked in a tied battle and fights it again this turn." % hud.hero_name(h))
 		return
 	# Preroll, your move: a click on your activated ball offers PASS under it (Marko 2026-11-06).
 	if state.phase == GameState.PHASE_PREROLL and str(state.active.get(h.owner, "")) == id and hud.can_pass(h.owner) and _bodies.has(id):

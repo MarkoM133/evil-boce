@@ -85,6 +85,11 @@ const COMBO_FLY_TIME: float = 0.26
 const COMBO_DASH_TIME: float = 0.2
 ## Half a breath of the edge on a stage energy just went into.
 const ENERGY_PULSE_TIME: float = 0.7
+const TOAST_H: float = 40.0
+const TOAST_PAD: float = 20.0
+const TOAST_FONT: int = 22
+const TOAST_FONT_MIN: int = 13
+const TOAST_CLEAR: float = 14.0
 ## How dark the table gets behind the starting hand, and how fast.
 const MULLIGAN_DIM: float = 0.55
 const MULLIGAN_DIM_TIME: float = 0.2
@@ -525,18 +530,42 @@ func hide_drop() -> void:
 
 
 ## A short message under the ribbon on a slanted chip of `color`.
+## How wide something centred on the screen can be at height `y` without touching what stands on the
+## two sides there (the hero panels and their ability tabs).
+func _room_between_rosters(y: float, height: float) -> float:
+	var mid: float = size.x * 0.5
+	var room: float = mid
+	for i: int in mini(_rosters.size(), 2):
+		for n: Node in _rosters[i].get_children():
+			var row := n as Control
+			if row == null or not row.visible:
+				continue
+			var r: Rect2 = row.get_global_rect()
+			if r.position.y > y + height or r.end.y < y:
+				continue
+			room = minf(room, mid - r.end.x if i == 0 else r.position.x - mid)
+	return 2.0 * maxf(room - TOAST_CLEAR, 0.0)
+
+
 func toast(text: String, color: Color = Palette.GOLD, hold: float = 1.5) -> void:
 	for c: Node in _toast_box.get_children():
 		c.queue_free()
 	var fg: Color = Color.BLACK if color.get_luminance() > 0.5 else Palette.FG
-	var chip: UiShape = UiShape.chip(text.to_upper(), color, fg, 22, 40.0, 20.0)
+	# Below the battle bar when one shows.
+	var base: float = 148.0 if _battle_bar.visible else 70.0
+	var caps: String = text.to_upper()
+	# As big as fits between the hero panels (Marko 2026-11-08: a long one ran over them).
+	var room: float = _room_between_rosters(base, TOAST_H)
+	var font_size: int = TOAST_FONT
+	var font: Font = UiTheme.display_heavy()
+	while font_size > TOAST_FONT_MIN and font.get_string_size(caps, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + TOAST_PAD * 2.0 > room:
+		font_size -= 1
+	var chip: UiShape = UiShape.chip(caps, color, fg, font_size, TOAST_H, TOAST_PAD)
 	chip.position = Vector2(-chip.custom_minimum_size.x * 0.5, 0)
 	_toast_box.add_child(chip)
 	if _toast_tween != null and _toast_tween.is_valid():
 		_toast_tween.kill()
 	_toast_box.modulate.a = 1.0
-	# Below the battle bar when one shows.
-	var base: float = 148.0 if _battle_bar.visible else 70.0
 	_toast_box.position.y = base - 6.0
 	_toast_tween = create_tween()
 	_toast_tween.tween_property(_toast_box, "position:y", base, 0.12).from(base - 18.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -1342,6 +1371,8 @@ func offer_ball_pass(slot: int, at: Vector2) -> void:
 			if can_pass(who):
 				pass_pressed.emit(who))
 		add_child(_ball_pass)
+		# Under the bands (Marko 2026-11-08: ROLL stood over a phase call-out).
+		move_child(_ball_pass, _banner_layer.get_index())
 	_ball_pass_slot = slot
 	_ball_pass.text = "PASS  ·  ON TO ROLL" if state.phase == GameState.PHASE_PREROLL else "PASS"
 	_ball_pass.reset_size()
@@ -4753,6 +4784,7 @@ func show_ball_choice(hero_id: String, at: Vector2) -> void:
 		_ball_choice = HBoxContainer.new()
 		_ball_choice.add_theme_constant_override("separation", 4)
 		add_child(_ball_choice)
+		move_child(_ball_choice, _banner_layer.get_index())
 		for roll_choice: bool in [true, false]:
 			var b := Button.new()
 			b.text = "ROLL" if roll_choice else "STAY"
