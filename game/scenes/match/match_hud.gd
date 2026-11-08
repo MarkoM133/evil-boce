@@ -85,6 +85,9 @@ const COMBO_FLY_TIME: float = 0.26
 const COMBO_DASH_TIME: float = 0.2
 ## Half a breath of the edge on a stage energy just went into.
 const ENERGY_PULSE_TIME: float = 0.7
+## How dark the table gets behind the starting hand, and how fast.
+const MULLIGAN_DIM: float = 0.55
+const MULLIGAN_DIM_TIME: float = 0.2
 ## The card beside a choice it asks for: how tall, upright and on its side.
 const CHOICE_CARD_H: float = 250.0
 const CHOICE_CARD_H_WIDE: float = 170.0
@@ -181,6 +184,9 @@ var _hand_dealt: bool = false
 var _hand_sig: String = ""
 ## The last hand built was the starting hand: laid out differently, so nothing slides from it.
 var _hand_was_mulligan: bool = false
+## Behind the starting hand: dims the table and takes the mouse (Marko 2026-11-08).
+var _mulligan_dim: ColorRect
+var _menu_button: Control
 ## The two cards in the combo window, and where they stood when COMBO was pressed.
 var _combo_pics: Array[Control] = []
 var _combo_from: Array[Rect2] = []
@@ -704,6 +710,7 @@ func _build() -> void:
 	menu.position = Vector2(14, 12)
 	menu.add_theme_font_size_override("font_size", 16)
 	menu.pressed.connect(func() -> void: menu_pressed.emit())
+	_menu_button = menu
 	add_child(menu)
 
 	_ribbon = HBoxContainer.new()
@@ -860,6 +867,14 @@ func _build() -> void:
 	_damage_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_damage_dim.visible = false
 	add_child(_damage_dim)
+	_mulligan_dim = ColorRect.new()
+	_mulligan_dim.color = Color(0, 0, 0, MULLIGAN_DIM)
+	_mulligan_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_mulligan_dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_mulligan_dim.visible = false
+	add_child(_mulligan_dim)
+	# The menu stays within reach above it.
+	move_child(_menu_button, _mulligan_dim.get_index())
 	_hand_box = Control.new()
 	_hand_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_hand_box.position = Vector2(-HAND_WIDTH * 0.5, -HAND_HEIGHT)
@@ -1296,7 +1311,7 @@ func _stats_bbcode(h: HeroState, right: bool) -> String:
 func _track_panel_hover() -> void:
 	var mouse: Vector2 = get_global_mouse_position()
 	var now: String = ""
-	for id: String in _slice_of if not menu_open else {}:
+	for id: String in _slice_of if not menu_open and not board_blocked() else {}:
 		var c: Control = _slice_of[id]
 		if c != null and is_instance_valid(c) and c.is_visible_in_tree() and c.get_global_rect().has_point(mouse):
 			now = id
@@ -2190,7 +2205,26 @@ func _stand_cards(delta: float, up: bool) -> void:
 		card.position.y = y
 
 
+## The starting hand is up for a player here: the table is dark and out of reach behind it.
+func board_blocked() -> bool:
+	return _mulligan_dim != null and _mulligan_dim.visible
+
+
+func _refresh_mulligan_dim() -> void:
+	var slot: int = hand_slot()
+	var on: bool = state.phase == GameState.PHASE_MULLIGAN and slot >= 0 and _needs_input(slot)
+	if on == _mulligan_dim.visible:
+		return
+	_mulligan_dim.visible = on
+	if on:
+		_mulligan_dim.modulate.a = 0.0
+		_mulligan_dim.create_tween().tween_property(_mulligan_dim, "modulate:a", 1.0, MULLIGAN_DIM_TIME * GameSettings.anim_scale())
+		# Whatever was lit under the mouse goes out (deferred: this runs inside a refresh).
+		hero_hovered.emit.call_deferred("")
+
+
 func _refresh_hand() -> void:
+	_refresh_mulligan_dim()
 	# A new starting hand (mulligan taken) flies in again.
 	if state.phase == GameState.PHASE_MULLIGAN and hand_slot() >= 0 and _hand_sig != ",".join(state.player(hand_slot()).hand):
 		_hand_sig = ",".join(state.player(hand_slot()).hand)

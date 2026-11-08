@@ -794,7 +794,6 @@ func _toggle_menu() -> void:
 		return
 	_menu.visible = not _menu.visible
 	hud.set_menu_open(_menu.visible)
-	cam.keys_on = not _menu.visible
 	if _menu.visible:
 		# Nothing goes on under it: no ball stays lit, no throw stays in the hand.
 		_set_hover("", true)
@@ -1824,6 +1823,7 @@ func _process(delta: float) -> void:
 			var step: Vector3 = b.global_position.lerp(_net_to[id], k)
 			_views[id].roll(step - b.global_position)
 			b.global_position = step
+	cam.keys_on = not _menu.visible and not hud.board_blocked()
 	if _sling.is_aiming():
 		_sling.update(cam.camera, get_viewport().get_mouse_position(), get_viewport().get_visible_rect().size.y)
 	_refresh_range()
@@ -2096,6 +2096,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _replay != null:
 		_replay_input(event)
+		return
+	if hud.board_blocked():
+		# The starting hand is up: only its buttons, and Esc for the menu (Marko 2026-11-08).
+		if event is InputEventKey and (event as InputEventKey).pressed and GameSettings.logical_key((event as InputEventKey).keycode) == KEY_ESCAPE:
+			_toggle_menu()
 		return
 	if event is InputEventKey:
 		_on_key(event as InputEventKey)
