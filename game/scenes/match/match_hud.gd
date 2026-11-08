@@ -57,8 +57,13 @@ const SLICE_HEIGHT: float = 70.0
 const CARD_SIZE := Vector2(128, 178)
 ## Height of the hand strip; the cards stick out of the bottom of the screen a little.
 const HAND_HEIGHT: float = 210.0
-## The hand's width; the deck and the graveyard stand right of it (Marko 2026-10-26).
+## The hand's width.
 const HAND_WIDTH: float = 760.0
+## The deck and the graveyard: how big, how far from the left, and how far above the bottom.
+const PILE_SCALE: float = 0.75
+const PILES_X: float = 180.0
+const DECK_PILE_Y: float = -148.0
+const GRAVE_PILE_Y: float = -78.0
 const BANNER_TIME: float = 0.8
 ## Phase call-outs stay a little longer, to be read.
 const PHASE_BANNER_TIME: float = 2.2
@@ -796,15 +801,17 @@ func _build() -> void:
 	# The deck and the graveyard of the player whose hand shows: the graveyard left of the hand,
 	# the deck right of it (Marko 2026-10-26).
 	_piles = VBoxContainer.new()
-	_piles.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_piles.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_piles.position = Vector2(HAND_WIDTH * 0.5 + 14.0, -16.0)
+	# Small, one above the other beside the energy, clear of the hand (Marko 2026-11-08, from the mockups).
+	_piles.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_piles.position = Vector2(PILES_X, DECK_PILE_Y)
+	_piles.scale = Vector2.ONE * PILE_SCALE
 	_piles.add_theme_constant_override("separation", 18)
 	_piles.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_piles)
 	_grave_spot = Control.new()
-	_grave_spot.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_grave_spot.position = Vector2(-HAND_WIDTH * 0.5 - 76.0, -94.0)
+	_grave_spot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_grave_spot.position = Vector2(PILES_X, GRAVE_PILE_Y)
+	_grave_spot.scale = Vector2.ONE * PILE_SCALE
 	_grave_spot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_grave_spot)
 	# The hand: a fan of cards at the bottom; it slides down when the mouse is over the table.
