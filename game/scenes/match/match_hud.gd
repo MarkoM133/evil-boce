@@ -4583,7 +4583,8 @@ func _board_stage(st: StageState, slot: int) -> Control:
 	var tex: Texture2D = db.thumb(card.id) if card != null and db != null else null
 	# The tile is its slanted picture, as the hero panels (Marko 2026-11-08, mockup 3), inside the
 	# card's art frame so its dark corners stay out; the name and the energy stand under it. A state
-	# is an edge along the slant: gold when energy just went in, the team's when claimed, grey contested.
+	# is an edge along the slant: gold when energy just went in, grey contested; a claimed one has
+	# CLAIMED on the picture in the claimer's colour (Marko 2026-11-08).
 	var pic := HeroSlice.new()
 	pic.art = tex
 	pic.art_region = Rect2(0.115, 0.125, 0.77, 0.37)
@@ -4601,12 +4602,17 @@ func _board_stage(st: StageState, slot: int) -> Control:
 		pic.art_tint = Color(1, 1, 1, 0.45)
 	if lit:
 		pic.outline = Palette.GOLD
-	elif st.is_claimed():
-		pic.outline = Palette.team(state.team_of(st.claimed_by))
-	elif contested:
+	elif contested and not st.is_claimed():
 		pic.outline = Palette.DIM
 		pic.outline_width = 2.0
 	inner.add_child(pic)
+	if st.is_claimed():
+		var stamp: UiShape = UiShape.chip("CLAIMED", Palette.team(state.team_of(st.claimed_by)), Palette.FG, 16, 26.0, 9.0)
+		stamp.position = Vector2(48, 30) - stamp.custom_minimum_size * 0.5
+		stamp.pivot_offset = stamp.custom_minimum_size * 0.5
+		stamp.rotation_degrees = -8.0
+		stamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		inner.add_child(stamp)
 	if tex == null:
 		var q: Label = UiTheme.label("?", 26, Palette.DIM)
 		q.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -4614,7 +4620,7 @@ func _board_stage(st: StageState, slot: int) -> Control:
 		q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		pic.add_child(q)
 	# The band along the bottom: the name, and the progress.
-	var word: String = "CLAIMED" if st.is_claimed() else ("HIDDEN" if not st.revealed and card != null else (card.name.to_upper() if card != null else ""))
+	var word: String = "HIDDEN" if not st.revealed and card != null else (card.name.to_upper() if card != null else "")
 	var energy: bool = state.settings.energy_claims() and st.placed and not st.is_claimed() and card != null
 	var other: int = -1
 	for q: PlayerState in state.players:
