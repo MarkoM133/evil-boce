@@ -6,13 +6,14 @@ extends Control
 ## Level, the meeting point stands straight on the middle line with TIE on it. A change is animated:
 ## the bar slides, the totals count, the mark pops up.
 
-const WIDTH: float = 520.0
+## Narrow enough to stand clear of the ability tabs beside the hero panels on both sides.
+const WIDTH: float = 440.0
 const HEIGHT: float = 34.0
 const CUT: float = 12.0
 const MOVE_TIME: float = 0.35
 const POP_TIME: float = 0.25
 ## The bar never gets narrower than this for the side behind: its total and the mark must fit.
-const MIN_SHARE: float = 0.3
+const MIN_SHARE: float = 0.35
 ## From the meeting point to the mark, on either side.
 const MARK_GAP_RIGHT: float = 8.0
 const MARK_GAP_LEFT: float = 4.0
