@@ -1524,7 +1524,12 @@ func _roll_offer_prompt(d: Dictionary, who: int) -> void:
 		var b: Button = _action(title.to_upper(), func() -> void: ability_pressed.emit(who, parts[0], parts[1], parts[2].to_int()), &"Gold")
 		if card != null:
 			b.tooltip_text = _card_tip(card.text)
+	# Copies of a card are one offer (Marko 2026-11-08): the button plays one of them.
+	var offered := PackedStringArray()
 	for cid: String in cards:
+		if offered.has(cid):
+			continue
+		offered.append(cid)
 		var card: CardDef = engine.catalog.get_card(cid)
 		var cost: int = engine.card_cost(state, state.player(who), card) if card != null else 0
 		_action("PLAY %s  ·  %d" % [(card.name if card != null else cid).to_upper(), cost],
