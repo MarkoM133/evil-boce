@@ -24,6 +24,9 @@ var _address: LineEdit
 var _status: Label
 var _front: Control
 var _room: Control
+## The room fits under its title without scrolling with heroes this tall.
+const ROOM_PORTRAIT_H: float = 224.0
+
 var _card: PlayerCard
 var _opp: PlayerCard
 var _wait: PanelContainer
@@ -187,6 +190,7 @@ func _build() -> void:
 	_room.add_child(vs_row)
 	_card = PlayerCard.new()
 	_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_card.portrait_h = ROOM_PORTRAIT_H
 	vs_row.add_child(_card)
 	_card.setup(db, decks, GameSettings.player_name(), 0, GameSettings.last_deck("online"), Loadout.remembered("online"))
 	_card.restore_random(GameSettings.random_deck("online"))
@@ -198,6 +202,7 @@ func _build() -> void:
 	vs_row.add_child(vs)
 	_opp = PlayerCard.new()
 	_opp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_opp.portrait_h = ROOM_PORTRAIT_H
 	vs_row.add_child(_opp)
 	_opp.setup(db, decks, "Opponent", 1, "", Loadout.new())
 	_opp.show_only({})

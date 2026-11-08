@@ -10,6 +10,13 @@ signal changed
 const KIND_COLORS: Dictionary[String, Color] = {"Buff": Color("23b14d"), "Major": Color("f4b62a"), "Debuff": Color("e3120b")}
 ## A core's value colour in its picker tile, by family (as the core icons: Power gold, Damage red, Knockback blue).
 const CORE_FAMILY_COLORS: Dictionary[String, Color] = {"Power": Color("f4c22f"), "Damage": Color("ff5a4a"), "Knockback": Color("4aa3ff")}
+## The heroes stand tall (Marko 2026-11-08, from the mockups); the stages are a low row under them
+## or, on a wide side, a column beside them, and then the heroes take the row's height too.
+const PORTRAIT_H: float = 244.0
+const STAGE_ROW_H: float = 70.0
+const STAGE_BESIDE: Vector2 = Vector2(330, 88)
+## A tile that stretches: its picture runs its whole width.
+const ALL_PICTURE: float = 4096.0
 
 var db: CardDb
 var decks: Array[Dictionary] = []
@@ -25,6 +32,14 @@ var loadout: Loadout = Loadout.new()
 var team: int = 0
 ## Extra controls in the header (the opponent type in Play setup).
 var header_extra: HBoxContainer
+## Header and body together, to hide this side (the opponent's column in Play setup replaces it).
+var side: VBoxContainer
+## How wide the heroes are on a side that can go wide; 0 = they fill the side (no stages beside).
+var heroes_width: float = 0.0
+## How tall the heroes are with the stages under them; set before `setup` (the online room has less room).
+var portrait_h: float = PORTRAIT_H
+## 0 = the stages beside the heroes, 1 = under them (the default); the values between are the way there.
+var split: float = 1.0
 
 var _title: String = ""
 ## Chaos: deck, stages and cores are random and cannot be changed (set_locked_random).
@@ -45,6 +60,9 @@ var _chip: UiShape
 ## Someone else's side, only shown (online lobby): {deck_name, heroes, stages, cores}, ids "" for random.
 var _shown: Dictionary = {}
 var _view_only: bool = false
+var _portraits: HBoxContainer
+var _beside: Control
+var _below: Control
 
 
 func setup(db_: CardDb, decks_: Array[Dictionary], title: String, team_: int, deck_name: String, start: Loadout) -> void:
@@ -64,6 +82,7 @@ func setup(db_: CardDb, decks_: Array[Dictionary], title: String, team_: int, de
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 12)
 	add_child(col)
+	side = col
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
 	col.add_child(head)
@@ -341,58 +360,59 @@ func _rebuild() -> void:
 	next.pressed.connect(func() -> void: _flip(1))
 	if not deck_fixed_:
 		deck_row.add_child(next)
-	var heroes := HBoxContainer.new()
-	heroes.add_theme_constant_override("separation", 6)
-	_body.add_child(heroes)
+	_portraits = HBoxContainer.new()
+	_portraits.add_theme_constant_override("separation", 4)
 	var ids: PackedStringArray = JsonUtil.as_strings((_shown if _view_only else saved_deck()).get("heroes", []))
 	for i: int in DeckCode.HERO_COUNT:
 		var id: String = ids[i] if i < ids.size() else ""
 		var pickable: bool = deck_index == 0 and not deck_fixed_
 		if pickable and (id.is_empty() or not _show_built):
 			id = chosen[i]
-		heroes.add_child(_hero_tile(id, pickable, i))
+		_portraits.add_child(_hero_tile(id, pickable, i))
+	var mid := HBoxContainer.new()
+	mid.add_theme_constant_override("separation", 14)
+	_body.add_child(mid)
+	mid.add_child(_portraits)
+	_beside = null
+	if heroes_width > 0.0:
+		_portraits.custom_minimum_size.x = heroes_width
+		_beside = _stages_beside()
+		mid.add_child(_beside)
+	else:
+		_portraits.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_below = _stages_below()
+	_body.add_child(_below)
+	_layout_split()
 
-	# Stages.
-	_body.add_child(UiTheme.label("STAGES", 13, Palette.GOLD))
-	var stages := HBoxContainer.new()
-	stages.add_theme_constant_override("separation", 8)
-	_body.add_child(stages)
-	for i: int in Loadout.STAGES:
-		stages.add_child(_stage_tile(i))
-
-	# Cores: two of each kind.
-	_body.add_child(UiTheme.label("CORES", 13, Palette.GOLD))
+	# Cores: two of each kind, on one line.
 	var cores := HBoxContainer.new()
-	cores.add_theme_constant_override("separation", 22)
+	cores.add_theme_constant_override("separation", 16)
 	_body.add_child(cores)
+	var cores_title: Label = UiTheme.label("CORES", 15, Palette.GOLD)
+	cores_title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	cores.add_child(cores_title)
 	for k: int in Loadout.CORE_KINDS.size():
-		var group := VBoxContainer.new()
-		group.add_theme_constant_override("separation", 4)
-		cores.add_child(group)
-		var kind: String = Loadout.CORE_KINDS[k]
-		var lab := Label.new()
-		lab.text = kind.to_upper()
-		lab.add_theme_color_override("font_color", Palette.MUTED)
-		lab.add_theme_font_size_override("font_size", 12)
-		group.add_child(lab)
+		var lab: Label = UiTheme.label(Loadout.CORE_KINDS[k].to_upper(), 13, Palette.MUTED, false)
+		lab.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		cores.add_child(lab)
 		var pair := HBoxContainer.new()
-		pair.add_theme_constant_override("separation", 6)
-		group.add_child(pair)
+		pair.add_theme_constant_override("separation", 4)
+		cores.add_child(pair)
 		for j: int in Loadout.CORES_PER_KIND:
 			pair.add_child(_core_button(k * Loadout.CORES_PER_KIND + j))
-	var all_random := Button.new()
-	all_random.text = "ALL RANDOM"
-	all_random.theme_type_variation = &"Ghost"
-	all_random.add_theme_font_size_override("font_size", 15)
-	all_random.size_flags_horizontal = Control.SIZE_SHRINK_END
-	all_random.size_flags_vertical = Control.SIZE_SHRINK_END
-	all_random.pressed.connect(func() -> void:
-		loadout = Loadout.random()
-		_changed())
 	if not fixed:
+		var cores_gap := Control.new()
+		cores_gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cores.add_child(cores_gap)
+		var all_random := Button.new()
+		all_random.text = "ALL RANDOM"
+		all_random.theme_type_variation = &"Ghost"
+		all_random.add_theme_font_size_override("font_size", 15)
+		all_random.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		all_random.pressed.connect(func() -> void:
+			loadout = Loadout.random()
+			_changed())
 		cores.add_child(all_random)
-	else:
-		all_random.free()
 
 	var probs: PackedStringArray = problems() if not _view_only else PackedStringArray()
 	if not probs.is_empty():
@@ -416,30 +436,94 @@ func _changed() -> void:
 	changed.emit()
 
 
-## A hero of the deck as a slanted art slice with its name; "?" for a random deck. In a random
+## Moves the stages between beside the heroes (0) and under them (1); the heights add up the same
+## at every step, so the side does not jump while it changes.
+func set_split(t: float) -> void:
+	split = t
+	_layout_split()
+
+
+func _layout_split() -> void:
+	if _portraits == null:
+		return
+	_portraits.custom_minimum_size.y = lerpf(portrait_h + STAGE_ROW_H, portrait_h, split)
+	_below.custom_minimum_size.y = STAGE_ROW_H * split
+	_below.modulate.a = clampf((split - 0.35) / 0.65, 0.0, 1.0)
+	if _beside != null:
+		_beside.modulate.a = clampf(1.0 - split / 0.6, 0.0, 1.0)
+
+
+## The stages as a column; the holder narrows with the side and clips what no longer fits.
+func _stages_beside() -> Control:
+	var holder := Control.new()
+	holder.clip_contents = true
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	holder.add_child(col)
+	col.add_child(UiTheme.label("STAGES", 15, Palette.GOLD))
+	for i: int in Loadout.STAGES:
+		col.add_child(_stage_tile(i, STAGE_BESIDE))
+	return holder
+
+
+## The stages as a row as wide as the heroes; the holder opens up to its height.
+func _stages_below() -> Control:
+	var holder := Control.new()
+	holder.clip_contents = true
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	row.custom_minimum_size = Vector2(heroes_width, STAGE_ROW_H)
+	holder.add_child(row)
+	if heroes_width <= 0.0:
+		row.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	for i: int in Loadout.STAGES:
+		row.add_child(_stage_tile(i, Vector2(60, STAGE_ROW_H), true))
+	return holder
+
+
+## A hero of the deck as a tall slanted picture with its name; "?" for a random deck. In a random
 ## deck every slot is picked on its own: a click picks that hero, Random leaves it to the draw.
 func _hero_tile(id: String, pickable: bool = false, slot: int = 0) -> Control:
 	var s := HeroSlice.new()
-	s.custom_minimum_size = Vector2(176, 70)
+	s.custom_minimum_size = Vector2(60, 0)
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.art_w = ALL_PICTURE
+	s.set_mirrored(false)
 	var card: CardDef = db.catalog.get_card(id) if db != null and not id.is_empty() else null
 	s.art = db.thumb(id) if card != null else null
 	s.art_region = HeroSlice.region_for(s.art)
-	s.art_fallback = Palette.hero(card.color if card != null else "").darkened(0.3) if card != null else Palette.SURFACE_2
+	s.art_fallback = Palette.hero(card.color).darkened(0.3) if card != null else Palette.team(team).darkened(0.74)
+	if card != null:
+		s.color_edge = Palette.hero(card.color)
 	s.mouse_filter = Control.MOUSE_FILTER_PASS
 	if pickable and not id.is_empty() and slot < chosen.size() and chosen[slot] == id:
-		# Over the art, so the name keeps its room.
-		var chip: UiShape = UiShape.chip("PICKED", Palette.GOLD, Color.BLACK, 11, 18.0, 7.0)
-		chip.position = Vector2(14, -9)
+		var chip: UiShape = UiShape.chip("PICKED", Palette.GOLD, Color.BLACK, 13, 22.0, 8.0)
+		chip.position = Vector2(26, 10)
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		s.add_child(chip)
-	var l: Label = UiTheme.label(card.name if card != null else "?", 15 if card != null else 30,
-		Palette.FG if card != null else Palette.DIM)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD
-	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	s.content.add_child(l)
+	var col := VBoxContainer.new()
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.content.add_child(col)
 	if card != null:
+		col.alignment = BoxContainer.ALIGNMENT_END
+		var l: Label = UiTheme.label(card.name, 24)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD
+		l.add_theme_color_override("font_outline_color", Color.BLACK)
+		l.add_theme_constant_override("outline_size", 6)
+		col.add_child(l)
 		s.tooltip_text = "%s\n%s" % [card.name, card.text]
 	else:
+		col.alignment = BoxContainer.ALIGNMENT_CENTER
+		var q: Label = UiTheme.label("?", 96, Palette.team(team).lightened(0.15))
+		q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(q)
+		if pickable:
+			var hint: Label = UiTheme.label("PICK A HERO", 15, Palette.MUTED)
+			hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			col.add_child(hint)
 		s.tooltip_text = "A random hero, drawn when the match starts"
 	if pickable:
 		s.tooltip_text = "Click to pick this hero (Random leaves it to the draw)\n\n" + s.tooltip_text
@@ -472,10 +556,17 @@ func _build_random(show: bool = true) -> void:
 	_changed()
 
 
-func _stage_tile(slot: int) -> Control:
+## A stage tile `tile` big; with `stretch` it takes an equal share of its row instead.
+func _stage_tile(slot: int, tile: Vector2, stretch: bool = false) -> Control:
 	var hidden: bool = _view_only and JsonUtil.as_bool(_shown.get("hidden", false))
-	return card_tile(db, loadout.stages[slot], Vector2(186, 108), Callable() if _view_only or _locked else func() -> void: _pick_stage(slot),
+	var t: Control = card_tile(db, loadout.stages[slot], tile, Callable() if _view_only or _locked else func() -> void: _pick_stage(slot),
 		false, "?  HIDDEN" if hidden else "?  RANDOM")
+	if stretch:
+		var slice := t as HeroSlice
+		slice.art_w = ALL_PICTURE
+		slice.set_mirrored(false)
+		slice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return t
 
 
 ## A card as a slanted picture tile (the art part of its image) with its name, and for a stage

@@ -1,8 +1,10 @@
 class_name MatchSetup
 extends Control
-## Before a match (GDD 7), as a match screen: two player cards face each other across a VS
-## (deck, stages and cores each), who plays the second seat (bot Easy / Hard or a second player
-## on this computer), then the map and the match rules (MatchRules) beside a big START MATCH.
+## Before a match (GDD 7; Marko 2026-11-08, from the mockups), as a match screen: player cards face
+## each other across a VS (deck, stages and cores each). Against a bot you get most of the screen and
+## the bot a column that says who it is; with a second player (or to set the bot up) the two sides are
+## equal, and the screen moves between the two. Then the map and the match rules (MatchRules) beside
+## a big START MATCH.
 ## Online play has its own lobby, which looks the same.
 
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
@@ -10,6 +12,14 @@ const DRAFT_SCENE: String = "res://scenes/match/draft.tscn"
 ## Back goes to the Play screen (local, online, practice).
 const MENU_SCENE: String = "res://scenes/menu/play_menu.tscn"
 const OPPONENTS: Array[String] = ["BOT · EASY", "BOT · HARD", "PLAYER 2"]
+const CONTENT_W: float = 1500.0
+const ROW_GAP: int = 14
+## How wide the first player's heroes are: they fit half the screen too, so only the panels move.
+const HEROES_W: float = 630.0
+const OPPONENT_COLUMN_W: float = 340.0
+## The move between the column and two equal sides: what goes out fades, the panels slide, what comes in fades.
+const SPLIT_FADE: float = 0.1
+const SPLIT_TIME: float = 0.34
 
 var db: CardDb
 var decks: Array[Dictionary] = []
@@ -21,6 +31,18 @@ var _rules: MatchRules
 var _in_series: bool = false
 var _problems: Label
 var _start_btn: Button
+var _vs: Label
+## The opponent's column, in place of its side while it is a bot nobody is setting up.
+var _compact: VBoxContainer
+var _compact_why: Label
+var _compact_heroes: HBoxContainer
+var _compact_more: Button
+var _opp_open: bool = false
+var _head_buttons: Array[Button] = []
+var _column_buttons: Array[Button] = []
+var _hide_btn: Button
+var _split_tween: Tween
+var _half_shown: bool = false
 
 
 func _ready() -> void:
@@ -35,7 +57,7 @@ func _ready() -> void:
 	var title: String = ("Game %d" % (series.games + 1)) if _in_series else "New match"
 	var subtitle: String = ("Series %s. The decks stay; pick your stages and cores." % series.score()) if _in_series else "Decks, stages and cores, then start."
 	var frame: Dictionary = MenuScreen.build(self, db, title, subtitle,
-		func() -> void: get_tree().change_scene_to_file(MENU_SCENE), 1300.0)
+		func() -> void: get_tree().change_scene_to_file(MENU_SCENE), CONTENT_W)
 	var content: VBoxContainer = frame["content"]
 	if not db.is_ok():
 		var err := Label.new()
@@ -44,11 +66,14 @@ func _ready() -> void:
 		content.add_child(err)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 18)
+	row.add_theme_constant_override("separation", ROW_GAP)
 	content.add_child(row)
 	for slot: int in 2:
 		var card := PlayerCard.new()
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# The second side's width is set (and moved) from here; the first takes what is left.
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL if slot == 0 else Control.SIZE_FILL
+		if slot == 0:
+			card.heroes_width = HEROES_W
 		row.add_child(card)
 		card.setup(db, decks, "Player %d" % (slot + 1), slot, GameSettings.last_deck("p%d" % (slot + 1)),
 			Loadout.remembered("p%d" % (slot + 1)))
@@ -62,30 +87,19 @@ func _ready() -> void:
 				card.swap_handler = _swap.bind(slot)
 				card.set_fixed_deck(JsonUtil.as_dict(series.decks[slot]))
 		if slot == 0:
-			var vs: Label = UiTheme.label("VS", 64, Palette.ACCENT)
-			vs.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			vs.add_theme_color_override("font_outline_color", Color.BLACK)
-			vs.add_theme_constant_override("outline_size", 8)
-			row.add_child(vs)
-	# Who plays the second seat: chips in its header.
-	var group := ButtonGroup.new()
-	for i: int in OPPONENTS.size():
-		var b := Button.new()
-		b.text = OPPONENTS[i]
-		b.toggle_mode = true
-		b.button_group = group
-		b.button_pressed = i == _opponent
-		b.disabled = _in_series
-		b.add_theme_font_size_override("font_size", 15)
-		b.pressed.connect(func() -> void:
-			_opponent = i
-			last_opponent = i)
-		_cards[1].header_extra.add_child(b)
+			_vs = UiTheme.label("VS", 96, Palette.ACCENT)
+			_vs.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			_vs.add_theme_color_override("font_outline_color", Color.BLACK)
+			_vs.add_theme_constant_override("outline_size", 8)
+			row.add_child(_vs)
+	_cards[1].changed.connect(_refresh_compact)
+	_build_opponent_choice()
 
 	_problems = Label.new()
 	_problems.add_theme_color_override("font_color", Palette.MUTED)
 	_problems.add_theme_font_size_override("font_size", 13)
 	_problems.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_problems.visible = false
 	content.add_child(_problems)
 
 	var bottom := HBoxContainer.new()
@@ -107,6 +121,175 @@ func _ready() -> void:
 	_start_btn.pressed.connect(_start)
 	bottom.add_child(_start_btn)
 	_check()
+	_refresh_compact()
+	_half_shown = not _wants_half()
+	_apply_split(false)
+
+
+## Who plays the second seat: chips in its side's header, big buttons in its column.
+func _build_opponent_choice() -> void:
+	var p2: PlayerCard = _cards[1]
+	var head_group := ButtonGroup.new()
+	_hide_btn = Button.new()
+	_hide_btn.text = "HIDE"
+	_hide_btn.theme_type_variation = &"Ghost"
+	_hide_btn.tooltip_text = "Back to the small column for the bot"
+	_hide_btn.add_theme_font_size_override("font_size", 15)
+	_hide_btn.pressed.connect(func() -> void:
+		_opp_open = false
+		_apply_split(true))
+	p2.header_extra.add_child(_hide_btn)
+	for i: int in OPPONENTS.size():
+		var b := _opponent_button(i, 15, head_group)
+		p2.header_extra.add_child(b)
+		_head_buttons.append(b)
+	_compact = VBoxContainer.new()
+	_compact.add_theme_constant_override("separation", 12)
+	p2.add_child(_compact)
+	_compact.add_child(UiShape.chip("OPPONENT", Palette.team(1), Palette.FG, 22, 34.0, 18.0))
+	var column_group := ButtonGroup.new()
+	for i: int in OPPONENTS.size():
+		var b := _opponent_button(i, 30, column_group)
+		_compact.add_child(b)
+		_column_buttons.append(b)
+	_compact_why = Label.new()
+	_compact_why.add_theme_color_override("font_color", Palette.MUTED)
+	_compact_why.add_theme_font_size_override("font_size", 18)
+	_compact_why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_compact.add_child(_compact_why)
+	var gap := Control.new()
+	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_compact.add_child(gap)
+	_compact_heroes = HBoxContainer.new()
+	_compact_heroes.add_theme_constant_override("separation", 2)
+	_compact.add_child(_compact_heroes)
+	_compact_more = Button.new()
+	_compact_more.text = "CHOOSE ITS DECK AND STAGES"
+	_compact_more.add_theme_font_size_override("font_size", 17)
+	_compact_more.pressed.connect(func() -> void:
+		_opp_open = true
+		_apply_split(true))
+	_compact.add_child(_compact_more)
+
+
+func _opponent_button(i: int, font_size: int, group: ButtonGroup) -> Button:
+	var b := Button.new()
+	b.text = OPPONENTS[i]
+	b.toggle_mode = true
+	b.button_group = group
+	b.button_pressed = i == _opponent
+	b.disabled = _in_series
+	b.add_theme_font_size_override("font_size", font_size)
+	b.pressed.connect(func() -> void: _set_opponent(i))
+	return b
+
+
+func _set_opponent(i: int) -> void:
+	if i == _opponent:
+		return
+	# To or from a second player the bot's column comes back folded.
+	if i == 2 or _opponent == 2:
+		_opp_open = false
+	_opponent = i
+	last_opponent = i
+	_apply_split(true)
+
+
+func _wants_half() -> bool:
+	return _in_series or _opponent == 2 or _opp_open
+
+
+func _half_width() -> float:
+	return (CONTENT_W - 2.0 * ROW_GAP - _vs.get_combined_minimum_size().x) * 0.5
+
+
+func _set_split(t: float) -> void:
+	_cards[0].set_split(t)
+
+
+## The second side as a column or as an equal half. Animated, what is showing fades, the panels
+## slide (the first player's stages move with them), then the new content fades in. A click in the
+## middle of it carries on from wherever the panels are.
+func _apply_split(animate: bool) -> void:
+	var half: bool = _wants_half()
+	for list: Array[Button] in [_head_buttons, _column_buttons]:
+		for i: int in list.size():
+			list[i].set_pressed_no_signal(i == _opponent)
+	_hide_btn.visible = _opp_open and _opponent < 2 and not _in_series
+	if half == _half_shown:
+		return
+	_half_shown = half
+	if _split_tween != null:
+		_split_tween.kill()
+		_split_tween = null
+	var p2: PlayerCard = _cards[1]
+	var width: float = _half_width() if half else OPPONENT_COLUMN_W
+	var target: float = 1.0 if half else 0.0
+	var coming: Control = p2.side if half else _compact
+	if not animate:
+		_set_split(target)
+		p2.custom_minimum_size.x = width
+		p2.side.visible = half
+		p2.side.modulate.a = 1.0
+		_compact.visible = not half
+		_compact.modulate.a = 1.0
+		return
+	var going: Control = _compact if _compact.visible else (p2.side if p2.side.visible else null)
+	_split_tween = create_tween()
+	if going != null:
+		_split_tween.tween_property(going, "modulate:a", 0.0, SPLIT_FADE)
+		_split_tween.tween_callback(going.hide)
+	_split_tween.tween_property(p2, "custom_minimum_size:x", width, SPLIT_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_split_tween.parallel().tween_method(_set_split, _cards[0].split, target, SPLIT_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_split_tween.tween_callback(func() -> void:
+		coming.modulate.a = 0.0
+		coming.show())
+	_split_tween.tween_property(coming, "modulate:a", 1.0, SPLIT_FADE * 1.5)
+
+
+## What the opponent's column says about the bot, and its heroes when they are known.
+func _refresh_compact() -> void:
+	if _compact_why == null or _rules == null:
+		return
+	var p2: PlayerCard = _cards[1]
+	var mode: String = _rules.settings.mode
+	_compact_more.visible = mode != "chaos"
+	if mode == "chaos":
+		_compact_why.text = "Chaos: everything is random."
+	elif mode == "draft":
+		_compact_why.text = "Drafts its deck with you."
+	else:
+		var d: Dictionary = p2.saved_deck()
+		var deck: String = "a random deck" if d.is_empty() else str(d.get("name", "its deck"))
+		var picked: bool = not "".join(p2.loadout.stages).is_empty() or not "".join(p2.loadout.cores).is_empty()
+		_compact_why.text = "Plays %s, with %s stages and cores." % [deck, "the chosen" if picked else "random"]
+	for c: Node in _compact_heroes.get_children():
+		_compact_heroes.remove_child(c)
+		c.queue_free()
+	var ids: PackedStringArray = JsonUtil.as_strings(p2.picks().get("heroes", []))
+	for i: int in DeckCode.HERO_COUNT:
+		_compact_heroes.add_child(_compact_hero(ids[i] if i < ids.size() else ""))
+
+
+func _compact_hero(id: String) -> HeroSlice:
+	var s := HeroSlice.new()
+	s.custom_minimum_size = Vector2(98, 116)
+	s.art_w = PlayerCard.ALL_PICTURE
+	s.set_mirrored(false)
+	var card: CardDef = db.catalog.get_card(id) if not id.is_empty() else null
+	s.mouse_filter = Control.MOUSE_FILTER_PASS
+	if card != null:
+		s.art = db.thumb(id)
+		s.art_region = HeroSlice.region_for(s.art)
+		s.color_edge = Palette.hero(card.color)
+		s.tooltip_text = card.name
+		return s
+	s.art_fallback = Palette.team(1).darkened(0.74)
+	var q: Label = UiTheme.label("?", 48, Palette.team(1).lightened(0.15))
+	q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	s.content.add_child(q)
+	return s
 
 
 ## Chaos (GDD 13): both sides play random decks, stages and cores; Draft: the decks are drafted.
@@ -119,6 +302,7 @@ func _lock_cards() -> void:
 		card.set_sideboard_mode(_rules.settings.series_wins > 1 and not _in_series and not drafted and not chaos)
 		if a or b:
 			_check()
+	_refresh_compact()
 
 
 ## Problems of both sides; any one keeps START MATCH off.
@@ -129,8 +313,9 @@ func _check() -> void:
 			lines.append("Player %d: %s" % [slot + 1, e])
 	if _start_btn != null:
 		_start_btn.disabled = not lines.is_empty()
-	_problems.text = "\n".join(lines) if not lines.is_empty() else "Cards whose text effects are not ready yet are refused when played."
-	_problems.add_theme_color_override("font_color", Palette.GOLD if not lines.is_empty() else Palette.MUTED)
+	_problems.text = "\n".join(lines)
+	_problems.visible = not lines.is_empty()
+	_problems.add_theme_color_override("font_color", Palette.GOLD)
 
 
 func _start() -> void:
@@ -196,6 +381,7 @@ func _swap(slot: int) -> void:
 			if not err.is_empty():
 				_problems.text = "Player %d: %s" % [slot + 1, err]
 				_problems.add_theme_color_override("font_color", Palette.GOLD)
+				_problems.visible = true
 				return
 			_cards[slot].set_fixed_deck(JsonUtil.as_dict(series.decks[slot]))
 			_check())
@@ -214,6 +400,15 @@ func _start_draft(settings: MatchSettings) -> void:
 	DraftScreen.local = {"settings": settings, "loadouts": loadouts,
 		"names": ["Player 1", ("Bot (%s)" % level.capitalize()) if bot else "Player 2"], "bot": bot, "bot_level": level}
 	get_tree().change_scene_to_file(DRAFT_SCENE)
+
+
+## Screenshot helpers: the move to two equal sides, and back to the bot's column.
+func demo_player2() -> void:
+	_set_opponent(2)
+
+
+func demo_bot() -> void:
+	_set_opponent(0)
 
 
 ## Screenshot helper: opens player 1's stage picker.
