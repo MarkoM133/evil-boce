@@ -8,7 +8,7 @@ extends Control
 
 ## At its widest; `set_bar_width` narrows it to stand clear of the ability tabs (their width depends
 ## on the ability's name) beside the hero panels.
-const WIDTH: float = 520.0
+const WIDTH: float = 720.0
 const MIN_WIDTH: float = 320.0
 const HEIGHT: float = 34.0
 const CUT: float = 12.0
@@ -25,7 +25,7 @@ const MARK_FONT: int = 16
 const MARK_H: float = 24.0
 const MARK_CUT: float = 8.0
 
-var bar_width: float = WIDTH
+var bar_width: float = 520.0
 var _a: int = -1
 var _b: int = -1
 var _share: float = 0.5

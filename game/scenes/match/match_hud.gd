@@ -78,6 +78,8 @@ const ENERGY_PULSE_TIME: float = 0.7
 ## The battle's balance bar: how far down, and how far it keeps from what stands beside it.
 const TUG_Y: float = 106.0
 const TUG_CLEAR: float = 14.0
+## How far in from the strip above it, the same on both sides.
+const TUG_INSET: float = 30.0
 ## A hero's picture in the damage choice: alone, and among several.
 const DAMAGE_HERO_W: float = 158.0
 const DAMAGE_HERO_W_MANY: float = 128.0
@@ -2044,13 +2046,18 @@ func _process(delta: float) -> void:
 
 # --- hand ------------------------------------------------------------------------
 
-## The balance bar stays centred and as wide as the room between what stands at its height on the two
-## sides: an ability tab is as wide as its name (Marko 2026-11-08: it ran over them).
+## The balance bar sits under the strip, in from its two ends by the same amount: both lean, so that is
+## measured where they meet, the strip's bottom corners and the bar's top ones (Marko 2026-11-08). It
+## narrows for what stands at its height on the two sides: an ability tab is as wide as its name.
 func _fit_tug() -> void:
-	if _battle_tug == null or not _battle_tug.visible or _rosters.size() < 2:
+	if _battle_tug == null or not _battle_tug.visible or _rosters.size() < 2 or _battle_bar.get_child_count() == 0:
 		return
-	var mid: float = size.x * 0.5
-	var room: float = mid
+	var strip: Rect2 = _battle_bar.get_global_rect()
+	var last := _battle_bar.get_child(_battle_bar.get_child_count() - 1) as UiShape
+	var left: float = strip.position.x + TUG_INSET - BattleTug.CUT
+	var right: float = strip.end.x - (last.cut if last != null else 0.0) - TUG_INSET
+	var mid: float = (left + right) * 0.5
+	var room: float = (right - left) * 0.5
 	for i: int in 2:
 		for n: Node in _rosters[i].get_children():
 			var row := n as Control
@@ -2059,11 +2066,9 @@ func _fit_tug() -> void:
 			var r: Rect2 = row.get_global_rect()
 			if r.position.y > TUG_Y + BattleTug.HEIGHT or r.end.y < TUG_Y:
 				continue
-			room = minf(room, mid - r.end.x if i == 0 else r.position.x - mid)
-	var w: float = clampf(2.0 * (room - TUG_CLEAR), BattleTug.MIN_WIDTH, BattleTug.WIDTH)
-	if not is_equal_approx(w, _battle_tug.bar_width):
-		_battle_tug.set_bar_width(w)
-		_battle_tug.position.x = mid - w * 0.5
+			room = minf(room, (mid - r.end.x if i == 0 else r.position.x - mid) - TUG_CLEAR)
+	_battle_tug.set_bar_width(2.0 * room)
+	_battle_tug.position.x = mid - _battle_tug.bar_width * 0.5
 
 
 ## A card's name in the hand from one rebuild to the next: its seat, its id and which copy it is.
