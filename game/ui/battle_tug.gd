@@ -6,14 +6,18 @@ extends Control
 ## Level, the meeting point stands straight on the middle line with TIE on it. A change is animated:
 ## the bar slides, the totals count, the mark pops up.
 
-## Narrow enough to stand clear of the ability tabs beside the hero panels on both sides.
-const WIDTH: float = 440.0
+## At its widest; `set_bar_width` narrows it to stand clear of the ability tabs (their width depends
+## on the ability's name) beside the hero panels.
+const WIDTH: float = 520.0
+const MIN_WIDTH: float = 320.0
 const HEIGHT: float = 34.0
 const CUT: float = 12.0
 const MOVE_TIME: float = 0.35
 const POP_TIME: float = 0.25
 ## The bar never gets narrower than this for the side behind: its total and the mark must fit.
-const MIN_SHARE: float = 0.35
+const MIN_SHARE: float = 0.3
+## ... and never fewer pixels than this, on a narrowed bar.
+const MIN_SIDE: float = 150.0
 ## From the meeting point to the mark, on either side.
 const MARK_GAP_RIGHT: float = 8.0
 const MARK_GAP_LEFT: float = 4.0
@@ -21,6 +25,7 @@ const MARK_FONT: int = 16
 const MARK_H: float = 24.0
 const MARK_CUT: float = 8.0
 
+var bar_width: float = WIDTH
 var _a: int = -1
 var _b: int = -1
 var _share: float = 0.5
@@ -38,7 +43,7 @@ func _init() -> void:
 	custom_minimum_size = Vector2(WIDTH, HEIGHT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_left = _total(HORIZONTAL_ALIGNMENT_LEFT, 20.0)
-	_right = _total(HORIZONTAL_ALIGNMENT_RIGHT, WIDTH - 140.0)
+	_right = _total(HORIZONTAL_ALIGNMENT_RIGHT, bar_width - 140.0)
 
 
 func _total(align: HorizontalAlignment, x: float) -> Label:
@@ -58,6 +63,21 @@ static func share_of(a: int, b: int) -> float:
 	if a + b <= 0 or a == b:
 		return 0.5
 	return clampf(float(a) / float(a + b), MIN_SHARE, 1.0 - MIN_SHARE)
+
+
+## How wide the bar is now; the meeting point and the right total follow at once.
+func set_bar_width(w: float) -> void:
+	bar_width = clampf(w, MIN_WIDTH, WIDTH)
+	custom_minimum_size.x = bar_width
+	size.x = bar_width
+	_right.position.x = bar_width - 140.0
+	_layout()
+
+
+## Where the two colours meet on the bar as it is now.
+func _meet_x() -> float:
+	var least: float = maxf(MIN_SHARE, MIN_SIDE / bar_width)
+	return bar_width * clampf(_share, least, 1.0 - least)
 
 
 ## A new battle: from level to its totals.
@@ -136,14 +156,15 @@ func _set_shown_b(v: float) -> void:
 
 func _layout() -> void:
 	if _mark != null:
-		_mark.position = Vector2(WIDTH * _share + _mark_off, (HEIGHT - MARK_H) * 0.5)
+		_mark.position = Vector2(_meet_x() + _mark_off, (HEIGHT - MARK_H) * 0.5)
 	queue_redraw()
 
 
 func _draw() -> void:
-	var x: float = WIDTH * _share
+	var x: float = _meet_x()
+	var w: float = bar_width
 	# The gap closes with the lean: level, the two colours meet on the middle line.
 	var gap: float = 2.0 * _lean / (CUT * 0.5)
 	draw_colored_polygon(PackedVector2Array([Vector2(CUT, 0), Vector2(x + _lean, 0), Vector2(x - _lean, HEIGHT), Vector2(0, HEIGHT)]), Palette.team(0))
-	draw_colored_polygon(PackedVector2Array([Vector2(x + _lean + gap, 0), Vector2(WIDTH, 0), Vector2(WIDTH - CUT, HEIGHT), Vector2(x - _lean + gap, HEIGHT)]), Palette.team(1))
-	draw_rect(Rect2(WIDTH * 0.5 - 1.0, -4.0, 2.0, HEIGHT + 8.0), Palette.FG)
+	draw_colored_polygon(PackedVector2Array([Vector2(x + _lean + gap, 0), Vector2(w, 0), Vector2(w - CUT, HEIGHT), Vector2(x - _lean + gap, HEIGHT)]), Palette.team(1))
+	draw_rect(Rect2(w * 0.5 - 1.0, -4.0, 2.0, HEIGHT + 8.0), Palette.FG)

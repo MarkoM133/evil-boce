@@ -3170,6 +3170,20 @@ func demo_tug(team: int, power: int) -> void:
 	hud.refresh()
 
 
+## Screenshot helper (after demo_battle): the ability tabs of both battle heroes open, the bar between them.
+func demo_tug_tabs() -> void:
+	for slot: int in 2:
+		for id: String in JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", [])):
+			var h: HeroState = state.hero(id)
+			if h != null and h.owner == slot:
+				state.active[slot] = h.id
+				for c: CardDef in db.catalog.of_type("Evolution"):
+					if h.evolutions.is_empty() and c.effects.any(func(e: FxEffect) -> bool: return e.optional and e.cond != "WIN"):
+						h.evolutions.append(c.id)
+				break
+	hud.refresh()
+
+
 func demo_tug_blue() -> void:
 	demo_tug(0, 6000)
 	demo_tug(1, 3000)

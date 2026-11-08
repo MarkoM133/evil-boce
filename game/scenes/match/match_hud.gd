@@ -75,6 +75,9 @@ const BATTLE_BANNER_TIME: float = 1.6
 const COMBO_SHOW_TIME: float = 2.6
 ## Half a breath of the edge on a stage energy just went into.
 const ENERGY_PULSE_TIME: float = 0.7
+## The battle's balance bar: how far down, and how far it keeps from what stands beside it.
+const TUG_Y: float = 106.0
+const TUG_CLEAR: float = 14.0
 ## A hero's picture in the damage choice: alone, and among several.
 const DAMAGE_HERO_W: float = 158.0
 const DAMAGE_HERO_W_MANY: float = 128.0
@@ -893,7 +896,7 @@ func _build() -> void:
 	add_child(_battle_bar)
 	_battle_tug = BattleTug.new()
 	_battle_tug.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_battle_tug.position = Vector2(-BattleTug.WIDTH * 0.5, 106.0)
+	_battle_tug.position = Vector2(-BattleTug.WIDTH * 0.5, TUG_Y)
 	_battle_tug.visible = false
 	add_child(_battle_tug)
 
@@ -2006,6 +2009,7 @@ func _process(delta: float) -> void:
 	_track_panel_hover()
 	if _hand_box == null or state == null:
 		return
+	_fit_tug()
 	# A card under the mouse shows on the dial what would be left after paying for it.
 	if _energy != null and _energy.visible:
 		var left: int = -1
@@ -2037,6 +2041,28 @@ func _process(delta: float) -> void:
 
 
 # --- hand ------------------------------------------------------------------------
+
+## The balance bar stays centred and as wide as the room between what stands at its height on the two
+## sides: an ability tab is as wide as its name (Marko 2026-11-08: it ran over them).
+func _fit_tug() -> void:
+	if _battle_tug == null or not _battle_tug.visible or _rosters.size() < 2:
+		return
+	var mid: float = size.x * 0.5
+	var room: float = mid
+	for i: int in 2:
+		for n: Node in _rosters[i].get_children():
+			var row := n as Control
+			if row == null or not row.visible:
+				continue
+			var r: Rect2 = row.get_global_rect()
+			if r.position.y > TUG_Y + BattleTug.HEIGHT or r.end.y < TUG_Y:
+				continue
+			room = minf(room, mid - r.end.x if i == 0 else r.position.x - mid)
+	var w: float = clampf(2.0 * (room - TUG_CLEAR), BattleTug.MIN_WIDTH, BattleTug.WIDTH)
+	if not is_equal_approx(w, _battle_tug.bar_width):
+		_battle_tug.set_bar_width(w)
+		_battle_tug.position.x = mid - w * 0.5
+
 
 ## A card's name in the hand from one rebuild to the next: its seat, its id and which copy it is.
 static func hand_keys(slot: int, hand: PackedStringArray) -> PackedStringArray:
