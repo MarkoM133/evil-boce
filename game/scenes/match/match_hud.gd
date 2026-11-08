@@ -251,6 +251,9 @@ var _last_why_by: Dictionary = {}
 var _aim_line: Control
 ## Under the phase ribbon while a battle is fought: which one and who with what Power.
 var _battle_bar: HBoxContainer
+var _battle_tug: BattleTug
+## Which battle the tug shows ("" = none): a new one starts level.
+var _tug_key: String = ""
 ## Each side's stages and cores in a box under its heroes (_side_board); key G folds them.
 ## The small STAGES tab beside the strip that hides or shows it.
 ## The battle camera is on (set by the match): letterbox, only the fighting heroes in the rosters.
@@ -360,23 +363,36 @@ func _refresh_battle_bar() -> void:
 		c.queue_free()
 	var on: bool = state.phase == GameState.PHASE_BATTLE and state.battle_index >= 0 and state.battle_index < state.battles.size()
 	_battle_bar.visible = on
+	_battle_tug.visible = on
 	for bar: ColorRect in _letterbox:
 		bar.visible = on and battle_cam
 	if not on:
+		_tug_key = ""
 		return
 	_battle_bar.add_child(UiShape.chip("BATTLE %d / %d" % [state.battle_index + 1, state.battles.size()], Palette.ACCENT, Palette.FG, 20, 32.0, 16.0))
 	var sides: Array[PackedStringArray] = [PackedStringArray(), PackedStringArray()]
+	# The sum decides the battle (Marko 2026-11-08), of the heroes the engine counts: those on the map.
+	var totals: Array[int] = [0, 0]
 	for hid: String in JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", [])):
 		var h: HeroState = state.hero(hid)
-		if h != null:
-			sides[clampi(state.team_of(h.owner), 0, 1)].append("%s %d" % [hero_name(h).to_upper(), engine.stat(state, h, "pwr")])
+		if h != null and h.is_on_map():
+			var t: int = clampi(state.team_of(h.owner), 0, 1)
+			var pwr: int = engine.stat(state, h, "pwr")
+			sides[t].append("%s %d" % [hero_name(h).to_upper(), pwr])
+			totals[t] += pwr
 	for t: int in 2:
 		if t == 1:
 			_battle_bar.add_child(UiShape.chip("VS", Palette.PANEL_SOLID, Palette.MUTED, 16, 32.0, 10.0))
-		_battle_bar.add_child(UiShape.chip("  ·  ".join(sides[t]), Palette.PANEL_SOLID, Palette.team(t).lightened(0.25), 20, 32.0, 16.0))
+		_battle_bar.add_child(UiShape.chip("  +  ".join(sides[t]), Palette.PANEL_SOLID, Palette.team(t).lightened(0.25), 16, 32.0, 14.0))
+	var key: String = "%d|%d" % [state.turn, state.battle_index]
+	if key != _tug_key:
+		_tug_key = key
+		_battle_tug.start(totals[0], totals[1])
+	else:
+		_battle_tug.show_totals(totals[0], totals[1])
 	# The camera switch: on the battle, or the whole table (key in Settings → Keys).
-	var key: String = GameSettings.key_name(GameSettings.key("battle_cam"))
-	var sw: UiShape = UiShape.chip(("● BATTLE CAM" if battle_cam else "○ TABLE") + "  ·  " + key,
+	var cam_key: String = GameSettings.key_name(GameSettings.key("battle_cam"))
+	var sw: UiShape = UiShape.chip(("● BATTLE CAM" if battle_cam else "○ TABLE") + "  ·  " + cam_key,
 		Palette.GOLD if battle_cam else Palette.SURFACE_2, Color.BLACK if battle_cam else Palette.FG, 16, 32.0, 14.0)
 	sw.mouse_filter = Control.MOUSE_FILTER_STOP
 	sw.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -491,7 +507,7 @@ func toast(text: String, color: Color = Palette.GOLD, hold: float = 1.5) -> void
 		_toast_tween.kill()
 	_toast_box.modulate.a = 1.0
 	# Below the battle bar when one shows.
-	var base: float = 108.0 if _battle_bar.visible else 70.0
+	var base: float = 148.0 if _battle_bar.visible else 70.0
 	_toast_box.position.y = base - 6.0
 	_toast_tween = create_tween()
 	_toast_tween.tween_property(_toast_box, "position:y", base, 0.12).from(base - 18.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -875,6 +891,11 @@ func _build() -> void:
 	_battle_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_battle_bar.visible = false
 	add_child(_battle_bar)
+	_battle_tug = BattleTug.new()
+	_battle_tug.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_battle_tug.position = Vector2(-BattleTug.WIDTH * 0.5, 106.0)
+	_battle_tug.visible = false
+	add_child(_battle_tug)
 
 	_aim_line = Control.new()
 	_aim_line.set_anchors_preset(Control.PRESET_FULL_RECT)

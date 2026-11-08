@@ -3154,6 +3154,42 @@ func demo_battle() -> void:
 
 
 
+## Screenshot helper (after demo_battle): the side of `team` gets `power` in all for this phase,
+## as a card would give it, so the tug at the top moves.
+func demo_tug(team: int, power: int) -> void:
+	var ids: Array[HeroState] = []
+	for id: String in JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", [])):
+		var h: HeroState = state.hero(id)
+		if h != null and state.team_of(h.owner) == team:
+			ids.append(h)
+			h.phase_bonus.clear()
+	var now: int = 0
+	for h: HeroState in ids:
+		now += engine.stat(state, h, "pwr")
+	ids[0].phase_bonus["pwr"] = power - now
+	hud.refresh()
+
+
+func demo_tug_blue() -> void:
+	demo_tug(0, 6000)
+	demo_tug(1, 3000)
+
+
+func demo_tug_red() -> void:
+	demo_tug(0, 3000)
+	demo_tug(1, 6000)
+
+
+func demo_tug_near() -> void:
+	demo_tug(0, 5000)
+	demo_tug(1, 4000)
+
+
+func demo_tug_level() -> void:
+	demo_tug(0, 4000)
+	demo_tug(1, 4000)
+
+
 ## Screenshot helper (playtest 2026-11-06): demo_battle, then the opponent's hero in the first battle
 ## is knocked out; its battle ring must go with its ball.
 func demo_battle_ko() -> void:
