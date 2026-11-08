@@ -669,8 +669,8 @@ func _fill_combos() -> void:
 		_combo_list.add_child(none)
 
 
-## One combo: its card, name and extra energy, its two cards (pictures, names, codes; one your deck
-## lacks is dim), its text.
+## One combo: its card (its text is on it), name and extra energy, its two cards (pictures, names, codes; one your deck
+## lacks is dim).
 func _combo_row(c: CardDef, lit: bool, has_deck: bool, mine: PackedStringArray) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
@@ -700,12 +700,6 @@ func _combo_row(c: CardDef, lit: bool, has_deck: bool, mine: PackedStringArray) 
 			plus.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			parts.add_child(plus)
 		parts.add_child(_combo_part(id, has_deck and not mine.has(id)))
-	var text := Label.new()
-	text.text = c.text
-	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	text.add_theme_font_size_override("font_size", 17)
-	text.add_theme_color_override("font_color", Color("d8d3cb"))
-	col.add_child(text)
 	# Each combo on its own plate (Marko 2026-11-07: with several they ran together); one your deck
 	# makes has a gold edge on the left, the same size as the others (the edge is drawn inside).
 	var plate := PanelContainer.new()
