@@ -7,6 +7,7 @@ extends Control
 
 const ART_W: float = 84.0
 const CUT: float = 16.0
+const EDGE_W: float = 7.0
 
 ## Width of the art end; set it to the full width for a tile that is all picture.
 var art_w: float = ART_W
@@ -99,7 +100,7 @@ func _draw() -> void:
 		draw_colored_polygon(PackedVector2Array([Vector2(sx + CUT, 0), Vector2(sx + CUT + 6, 0), Vector2(sx + 6, h),
 			Vector2(sx, h)]), stripe)
 	if color_edge.a > 0.0:
-		var e: float = 7.0
+		var e: float = EDGE_W
 		if mirrored:
 			draw_colored_polygon(PackedVector2Array([Vector2(CUT, 0), Vector2(CUT + e, 0), Vector2(e, h), Vector2(0, h)]), color_edge)
 		else:
@@ -108,6 +109,12 @@ func _draw() -> void:
 		var loop: PackedVector2Array = body.duplicate()
 		loop.append(body[0])
 		draw_polyline(loop, outline, outline_width, true)
+
+
+## Where the colour edge's inner side is, at height `y`: the slice leans, so it depends on the height.
+func edge_inner_x(y: float) -> float:
+	var lean: float = CUT * y / maxf(size.y, 1.0)
+	return (CUT + EDGE_W - lean) if mirrored else (size.x - EDGE_W - lean)
 
 
 ## `box` cut to `aspect` (width / height) in the texture's pixels: a wider shape keeps the box's

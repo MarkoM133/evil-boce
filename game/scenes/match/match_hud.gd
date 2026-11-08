@@ -70,6 +70,12 @@ const BATTLE_BANNER_TIME: float = 1.6
 const COMBO_SHOW_TIME: float = 2.6
 ## Half a breath of the edge on a stage energy just went into.
 const ENERGY_PULSE_TIME: float = 0.7
+## The stage box's fold chevron: its control, the x where its lines start and end, how far from the
+## top of the box, and the gap between those lines and the team's colour edge.
+const FOLD_CHEVRON_SIZE: Vector2 = Vector2(16, 16)
+const FOLD_CHEVRON_INK: Vector2 = Vector2(3, 13)
+const FOLD_CHEVRON_Y: float = 7.0
+const FOLD_CHEVRON_GAP: float = 8.0
 ## The +X on a stage energy just went into: how long it pops up, and how long it floats away.
 const ENERGY_GAIN_IN: float = 0.3
 const ENERGY_GAIN_OUT: float = 0.45
@@ -4504,8 +4510,19 @@ func _side_board(slot: int, right: bool) -> Control:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(spacer)
-	# Right by the team's colour edge on both sides (playtest 2026-11-07: on the right it sat apart).
-	head.add_child(_fold_chevron(open))
+	# The same gap from the team's colour edge on both sides, measured on the slant at the chevron's
+	# own height (Marko 2026-11-08): the box leans away from a straight margin on one side and
+	# towards it on the other. The header only keeps its place free.
+	var chev_room := Control.new()
+	chev_room.custom_minimum_size = FOLD_CHEVRON_SIZE
+	chev_room.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(chev_room)
+	var chev: Control = _fold_chevron(open)
+	box.add_child(chev)
+	var place_chev := func() -> void:
+		var inner: float = box.edge_inner_x(FOLD_CHEVRON_Y + FOLD_CHEVRON_SIZE.y * 0.5)
+		chev.position = Vector2(inner + FOLD_CHEVRON_GAP - FOLD_CHEVRON_INK.x if right else inner - FOLD_CHEVRON_GAP - FOLD_CHEVRON_INK.y, FOLD_CHEVRON_Y)
+	box.resized.connect(place_chev)
 	col.add_child(head)
 	if not open:
 		return box
@@ -4618,8 +4635,8 @@ func _assist_board(p: PlayerState, slot: int, right: bool) -> Control:
 
 func _fold_chevron(open: bool) -> Control:
 	var chev := Control.new()
-	chev.custom_minimum_size = Vector2(16, 16)
-	chev.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	chev.custom_minimum_size = FOLD_CHEVRON_SIZE
+	chev.size = FOLD_CHEVRON_SIZE
 	chev.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	chev.draw.connect(func() -> void:
 		var pts := PackedVector2Array([Vector2(3, 10), Vector2(8, 5), Vector2(13, 10)] if open
