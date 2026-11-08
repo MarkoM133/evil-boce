@@ -68,6 +68,9 @@ const BATTLE_BANNER_TIME: float = 1.6
 const COMBO_SHOW_TIME: float = 2.6
 ## Half a breath of the edge on a stage energy just went into.
 const ENERGY_PULSE_TIME: float = 0.7
+## The +X on a stage energy just went into: how long it pops up, and how long it floats away.
+const ENERGY_GAIN_IN: float = 0.3
+const ENERGY_GAIN_OUT: float = 0.45
 ## The table stays this long after the deciding moment before the end screen (a click skips it).
 const END_HOLD_TIME: float = 3.0
 ## The other side's Equipment or Assist stays this long before it flies to its place.
@@ -4704,15 +4707,31 @@ func _board_stage(st: StageState, slot: int) -> Control:
 				pip.color = c.darkened(0.5) if contested and c != Color(0.22, 0.22, 0.22) else c
 				pips.add_child(pip)
 	if lit:
+		# Big and tilted in the middle, as CLAIMED (Marko 2026-11-08, from the mockups): pops up from
+		# nothing, then floats off. Timed from the flash's start, the tiles are rebuilt on every refresh.
 		var gain: UiShape = UiShape.chip("+%d" % JsonUtil.as_int(flash.get("amount", 0)),
-			Palette.team(state.team_of(JsonUtil.as_int(flash.get("player", 0)))), Palette.FG, 12, 18.0, 6.0)
-		gain.position = Vector2(18, 4)
+			Palette.team(state.team_of(JsonUtil.as_int(flash.get("player", 0)))), Palette.FG, 24, 34.0, 11.0)
+		var rest: Vector2 = Vector2(48, 30) - gain.custom_minimum_size * 0.5
+		gain.position = rest
+		gain.pivot_offset = gain.custom_minimum_size * 0.5
+		gain.rotation_degrees = -8.0
 		gain.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		inner.add_child(gain)
-		# It pops in once; the tiles are rebuilt on every refresh.
-		if Time.get_ticks_msec() - JsonUtil.as_int(flash.get("start", 0)) < 400:
-			gain.scale = Vector2(1.4, 1.4)
-			gain.create_tween().tween_property(gain, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		var ticks: int = Time.get_ticks_msec()
+		var age: float = (ticks - JsonUtil.as_int(flash.get("start", 0))) / 1000.0
+		var left: float = (JsonUtil.as_int(flash.get("until", 0)) - ticks) / 1000.0
+		var away: float = minf(ENERGY_GAIN_OUT, left)
+		var moves: Tween = gain.create_tween()
+		if age < ENERGY_GAIN_IN:
+			gain.scale = Vector2.ONE * lerpf(0.2, 1.0, age / ENERGY_GAIN_IN)
+			moves.tween_property(gain, "scale", Vector2.ONE, ENERGY_GAIN_IN - age).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		moves.tween_interval(maxf(left - away - maxf(ENERGY_GAIN_IN - age, 0.0), 0.0))
+		# A refresh during the float carries on from where it was.
+		var done: float = 1.0 - away / ENERGY_GAIN_OUT
+		gain.position.y = rest.y - 22.0 * done
+		gain.modulate.a = 1.0 - done
+		moves.tween_property(gain, "position:y", rest.y - 22.0, away).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		moves.parallel().tween_property(gain, "modulate:a", 0.0, away)
 	var whose: String = player_name(st.owner)
 	if card != null:
 		tile.tooltip_text = "%s (%s's stage%s)%s" % [card.name, whose, ", face down" if not st.revealed else "",
