@@ -66,6 +66,8 @@ const START_BANNER_TIME: float = 2.2
 const BATTLE_BANNER_TIME: float = 1.6
 ## The combo card stays over the screen this long (a click or Enter puts it away sooner).
 const COMBO_SHOW_TIME: float = 2.6
+## Half a breath of the edge on a stage energy just went into.
+const ENERGY_PULSE_TIME: float = 0.7
 ## The table stays this long after the deciding moment before the end screen (a click skips it).
 const END_HOLD_TIME: float = 3.0
 ## The other side's Equipment or Assist stays this long before it flies to its place.
@@ -4583,7 +4585,8 @@ func _board_stage(st: StageState, slot: int) -> Control:
 	var tex: Texture2D = db.thumb(card.id) if card != null and db != null else null
 	# The tile is its slanted picture, as the hero panels (Marko 2026-11-08, mockup 3), inside the
 	# card's art frame so its dark corners stay out; the name and the energy stand under it. A state
-	# is an edge along the slant: gold when energy just went in, grey contested; a claimed one has
+	# is an edge along the slant: breathing in the player's colour when energy just went in, grey
+	# contested; a claimed one has
 	# CLAIMED on the picture in the claimer's colour (Marko 2026-11-08).
 	var pic := HeroSlice.new()
 	pic.art = tex
@@ -4601,7 +4604,15 @@ func _board_stage(st: StageState, slot: int) -> Control:
 	if tex != null and not st.revealed:
 		pic.art_tint = Color(1, 1, 1, 0.45)
 	if lit:
-		pic.outline = Palette.GOLD
+		# A slow, calm pulse in the colour of whoever put the energy in (Marko 2026-11-08).
+		var edge: Color = Palette.team(state.team_of(JsonUtil.as_int(flash.get("player", 0)))).lightened(0.15)
+		pic.outline = edge
+		var breathe := func(a: float) -> void:
+			pic.outline = Color(edge, a)
+			pic.queue_redraw()
+		var pulse: Tween = pic.create_tween().set_loops()
+		pulse.tween_method(breathe, 1.0, 0.4, ENERGY_PULSE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		pulse.tween_method(breathe, 0.4, 1.0, ENERGY_PULSE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	elif contested and not st.is_claimed():
 		pic.outline = Palette.DIM
 		pic.outline_width = 2.0
