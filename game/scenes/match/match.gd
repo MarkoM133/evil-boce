@@ -797,6 +797,7 @@ func _toggle_menu() -> void:
 		return
 	_menu.visible = not _menu.visible
 	hud.set_menu_open(_menu.visible)
+	cam.keys_on = not _menu.visible
 	if _menu.visible:
 		# Nothing goes on under it: no ball stays lit, no throw stays in the hand.
 		_set_hover("", true)

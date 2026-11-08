@@ -11,6 +11,8 @@ const SMOOTH: float = 14.0
 
 enum Drag { NONE, ORBIT, PAN }
 
+## Off while the pause menu is up.
+var keys_on: bool = true
 var camera: Camera3D
 ## Target, yaw, pitch and distance the camera eases towards.
 var target := Vector3.ZERO
@@ -122,21 +124,25 @@ func handle_input(event: InputEvent) -> bool:
 	return false
 
 
+func _held(key: Key) -> bool:
+	return keys_on and Input.is_key_pressed(key)
+
+
 func _process(delta: float) -> void:
 	var move := Vector2.ZERO
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+	if _held(KEY_A) or _held(KEY_LEFT):
 		move.x -= 1.0
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+	if _held(KEY_D) or _held(KEY_RIGHT):
 		move.x += 1.0
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+	if _held(KEY_W) or _held(KEY_UP):
 		move.y += 1.0
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+	if _held(KEY_S) or _held(KEY_DOWN):
 		move.y -= 1.0
 	if move != Vector2.ZERO:
 		_pan(move.normalized() * distance * 0.9 * delta)
-	if Input.is_key_pressed(KEY_Q):
+	if _held(KEY_Q):
 		yaw += 1.6 * delta
-	if Input.is_key_pressed(KEY_E):
+	if _held(KEY_E):
 		yaw -= 1.6 * delta
 	var a: float = 1.0 - exp(-SMOOTH * delta)
 	_cur_target = _cur_target.lerp(target, a)
