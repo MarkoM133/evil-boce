@@ -166,6 +166,8 @@ var _hand_dealt: bool = false
 var _hand_sig: String = ""
 ## The last hand built was the starting hand: laid out differently, so nothing slides from it.
 var _hand_was_mulligan: bool = false
+## The pause menu is up: nothing behind it reacts to the mouse (Marko 2026-11-08).
+var menu_open: bool = false
 ## Which card of the hand the player just played, by position: of two copies the right one leaves.
 var hand_leaving: int = -1
 var _ribbon: HBoxContainer
@@ -1276,7 +1278,7 @@ func _stats_bbcode(h: HeroState, right: bool) -> String:
 func _track_panel_hover() -> void:
 	var mouse: Vector2 = get_global_mouse_position()
 	var now: String = ""
-	for id: String in _slice_of:
+	for id: String in _slice_of if not menu_open else {}:
 		var c: Control = _slice_of[id]
 		if c != null and is_instance_valid(c) and c.is_visible_in_tree() and c.get_global_rect().has_point(mouse):
 			now = id
@@ -2030,7 +2032,7 @@ func _process(delta: float) -> void:
 		return
 	# Up while the mouse is near the bottom of the screen (or a hero is being picked for a
 	# card, or a card effect asks for a card from it), else only the tops of the cards show.
-	var up: bool = (get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0 and state.phase != GameState.PHASE_START) or is_targeting() or (not choice_cards.is_empty() and choice_slot == hand_slot()) or damage_picking(hand_slot())
+	var up: bool = (not menu_open and get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0 and state.phase != GameState.PHASE_START) or is_targeting() or (not choice_cards.is_empty() and choice_slot == hand_slot()) or damage_picking(hand_slot())
 	if _aim_line != null and (is_targeting() or _aim_line.get_meta("drawn", false)):
 		_aim_line.set_meta("drawn", is_targeting())
 		_aim_line.queue_redraw()
@@ -2553,7 +2555,21 @@ func _show_big(cid: String) -> void:
 
 
 ## The card-zoom key (Settings → Keys; held, or pressed on and off) shows the card under the mouse.
+## The pause menu opened or closed: a card held in the hand is put back, a big card goes away.
+func set_menu_open(on: bool) -> void:
+	menu_open = on
+	if not on:
+		return
+	if not _drag.is_empty():
+		_drag = {}
+		_dragging = false
+		cancel_targeting()
+	_show_big("")
+
+
 func _input(event: InputEvent) -> void:
+	if menu_open:
+		return
 	if not _drag.is_empty() and _drag_input(event):
 		return
 	if _banner_busy and ((event is InputEventMouseButton and (event as InputEventMouseButton).pressed

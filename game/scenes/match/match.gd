@@ -796,7 +796,14 @@ func _toggle_menu() -> void:
 		_leave()
 		return
 	_menu.visible = not _menu.visible
+	hud.set_menu_open(_menu.visible)
 	if _menu.visible:
+		# Nothing goes on under it: no ball stays lit, no throw stays in the hand.
+		_set_hover("", true)
+		if _sling.is_aiming():
+			_sling.cancel()
+			arena.set_grid_emphasis(false)
+			_refresh_target_fx()
 		var phase: String = MatchHud._ribbon_phase(state.phase).to_upper()
 		_menu_info.text = ("TURN %d  ·  %s PHASE" % [state.turn, phase]) if state.turn > 0 else "SETUP"
 		_fill_menu_log()
