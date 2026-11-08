@@ -1,8 +1,9 @@
 class_name ReplaysMenu
 extends Control
 ## Replays (GDD 2) in the menus' look: every match this player played, newest first, each with
-## both sides' heroes as art slices and how it ended. Watch it phase by phase, carry on from
-## where it stopped, or delete it. Replays are local to this computer.
+## both sides' heroes as art slices and how it ended, under a heading per day, with filters on top
+## (Marko 2026-11-08, from the mockups). Watch it phase by phase, carry on from where it stopped, or
+## delete it. Replays are local to this computer.
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const MATCH_SCENE: String = "res://scenes/match/match.tscn"
@@ -12,9 +13,21 @@ static var for_host: NetHost
 const RESULTS: Dictionary = {"ko": "all heroes KO", "stages": "stages claimed", "deckout": "deck-out",
 	"surrender": "surrender", "draw": "draw"}
 
+## [button, filter]; see `matches`.
+const FILTERS: Array[Array] = [["ALL", ""], ["ONLINE", "online"], ["BOTS", "bot"], ["NOT FINISHED", "open"]]
+const MONTHS: Array[String] = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+const SECONDS_A_DAY: int = 86400
+const NOTHING_YET: String = "NO REPLAYS YET. EVERY MATCH IS SAVED HERE WHEN IT ENDS."
+const NOTHING_HERE: String = "NO MATCHES HERE."
+
+## The filter open, kept while the game runs (back from watching a replay it is still on).
+static var filter_open: String = ""
+
 var db: CardDb
 var _list: VBoxContainer
 var _empty: Label
+var _filter_bar: HBoxContainer
+var _items: Array[Dictionary] = []
 
 
 func _ready() -> void:
@@ -30,10 +43,13 @@ func _ready() -> void:
 	var back_btn: Button = frame["back"]
 	title_row.move_child(balance, back_btn.get_index())
 	var content: VBoxContainer = frame["content"]
+	_filter_bar = HBoxContainer.new()
+	_filter_bar.add_theme_constant_override("separation", 8)
+	content.add_child(_filter_bar)
 	_list = VBoxContainer.new()
 	_list.add_theme_constant_override("separation", 10)
 	content.add_child(_list)
-	_empty = UiTheme.label("NO REPLAYS YET. EVERY MATCH IS SAVED HERE WHEN IT ENDS.", 22, Palette.DIM)
+	_empty = UiTheme.label(NOTHING_YET, 22, Palette.DIM)
 	content.add_child(_empty)
 	_fill()
 
@@ -44,17 +60,102 @@ func _back() -> void:
 	get_tree().change_scene_to_file(LOBBY_SCENE if to_lobby else MENU_SCENE)
 
 
+## Reads the replays again (a new visit, one deleted) and shows them.
 func _fill() -> void:
-	for c: Node in _list.get_children():
+	_items = ReplayStore.list_replays()
+	_show_list()
+
+
+func _show_filters() -> void:
+	for c: Node in _filter_bar.get_children():
+		_filter_bar.remove_child(c)
 		c.queue_free()
-	var items: Array[Dictionary] = ReplayStore.list_replays()
-	_empty.visible = items.is_empty()
-	for i: int in items.size():
-		var row: Control = _row(items[i])
-		_list.add_child(row)
-		# Rows come in one after another.
-		row.modulate.a = 0.0
-		row.create_tween().tween_property(row, "modulate:a", 1.0, 0.18).set_delay(0.03 * mini(i, 12))
+	_filter_bar.visible = not _items.is_empty()
+	for f: Array in FILTERS:
+		var key: String = f[1]
+		var b := Button.new()
+		b.text = str(f[0])
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 18)
+		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		if key == filter_open:
+			b.theme_type_variation = &"Gold"
+		b.pressed.connect(func() -> void:
+			filter_open = key
+			_show_list())
+		_filter_bar.add_child(b)
+
+
+## The replays the filter lets through, a heading above each day's first.
+func _show_list() -> void:
+	_show_filters()
+	for c: Node in _list.get_children():
+		_list.remove_child(c)
+		c.queue_free()
+	var now: int = int(Time.get_unix_time_from_system())
+	var bias: int = JsonUtil.as_int(Time.get_time_zone_from_system().get("bias", 0))
+	var day_at: String = ""
+	var shown: int = 0
+	for r: Dictionary in _items:
+		if not matches(r, filter_open):
+			continue
+		var day: String = day_label(_unix(str(r["created"])), now, bias)
+		if day != day_at:
+			day_at = day
+			_appear(UiTheme.label(day, 18, Palette.GOLD), shown)
+		_appear(_row(r), shown)
+		shown += 1
+	_empty.text = NOTHING_YET if _items.is_empty() else NOTHING_HERE
+	_empty.visible = shown == 0
+
+
+## Rows come in one after another.
+func _appear(c: Control, i: int) -> void:
+	_list.add_child(c)
+	c.modulate.a = 0.0
+	c.create_tween().tween_property(c, "modulate:a", 1.0, 0.18).set_delay(0.03 * mini(i, 12))
+
+
+## Whether replay header `r` goes through `filter`: "" all, "open" not finished, else its kind.
+static func matches(r: Dictionary, filter: String) -> bool:
+	if filter.is_empty():
+		return true
+	if filter == "open":
+		return not JsonUtil.as_bool(r.get("finished", false))
+	return kind_of(r) == filter
+
+
+## "bot" with a bot at the table, "local" for two seats at one screen ("Player 2"), else "online".
+## By name too: replays from before the bot flag have none.
+static func kind_of(r: Dictionary) -> String:
+	for b: Variant in JsonUtil.as_array(r.get("bots", [])):
+		if JsonUtil.as_bool(b):
+			return "bot"
+	var local: bool = false
+	for n: String in JsonUtil.as_strings(r.get("names", [])):
+		if n.begins_with("Bot"):
+			return "bot"
+		local = local or n.begins_with("Player ")
+	return "local" if local else "online"
+
+
+## The heading of the day of `unix` (seconds, UTC), as seen `bias` minutes ahead of UTC at `now`.
+static func day_label(unix: int, now: int, bias: int) -> String:
+	var at: int = unix + bias * 60
+	var today: int = now + bias * 60
+	var ago: int = floori(today / float(SECONDS_A_DAY)) - floori(at / float(SECONDS_A_DAY))
+	if ago == 0:
+		return "TODAY"
+	if ago == 1:
+		return "YESTERDAY"
+	var d: Dictionary = Time.get_date_dict_from_unix_time(at)
+	var text: String = "%d %s" % [JsonUtil.as_int(d["day"]), MONTHS[JsonUtil.as_int(d["month"]) - 1]]
+	var this_year: int = JsonUtil.as_int(Time.get_date_dict_from_unix_time(today)["year"])
+	return text if JsonUtil.as_int(d["year"]) == this_year else "%s %d" % [text, JsonUtil.as_int(d["year"])]
+
+
+static func _unix(iso: String) -> int:
+	return Time.get_unix_time_from_datetime_string(iso.trim_suffix("Z"))
 
 
 func _row(r: Dictionary) -> Control:
@@ -178,9 +279,26 @@ func demo_watch_current(frame_i: int = 6) -> void:
 
 
 static func _when(iso: String) -> String:
-	# "2026-10-25T13:40:00Z" -> "2026-10-25 13:40" (UTC)
-	return iso.replace("T", " ").substr(0, 16)
+	# "2026-10-25T13:40:00Z" -> "2026-10-25 14:40", this computer's time, as the day headings.
+	var bias: int = JsonUtil.as_int(Time.get_time_zone_from_system().get("bias", 0))
+	return Time.get_datetime_string_from_unix_time(_unix(iso) + bias * 60, true).substr(0, 16)
 
 
 static func _turns(n: int) -> String:
 	return "setup" if n <= 0 else "%d turn%s" % [n, "" if n == 1 else "s"]
+
+
+## Screenshot helpers: the list with a filter on.
+func demo_filter_online() -> void:
+	filter_open = "online"
+	_show_list()
+
+
+func demo_filter_bots() -> void:
+	filter_open = "bot"
+	_show_list()
+
+
+func demo_filter_open() -> void:
+	filter_open = "open"
+	_show_list()
