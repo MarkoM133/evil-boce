@@ -92,6 +92,17 @@ const MERGED_LINE_TIME: float = 1.2
 const MERGED_MAX_TIME: float = 6.0
 ## How far a hovered hand card rises.
 const LIFT: float = 56.0
+## At rest the cards you can play now stand this much higher (Marko 2026-11-08, from the mockups).
+const HAND_STAND: float = 48.0
+const HAND_STAND_SPEED: float = 200.0
+## Raised with the rest of the hand, faster, so it arrives with it.
+const HAND_STAND_SPEED_UP: float = 450.0
+## How long the cards take to close up when one leaves, and how long one takes to leave.
+const HAND_SLIDE_TIME: float = 0.25
+const HAND_LEAVE_TIME: float = 0.35
+const HAND_LEAVE_RISE: float = 160.0
+## More cards than this gone at once is not a card played (a replay jumping, a new seat).
+const HAND_LEAVE_MAX: int = 2
 ## Log events that get a banner (the rest only go to the log).
 const BANNER_EVENTS: Array[String] = ["battle", "battle_locked", "battle_tie_break", "ring_out", "ko", "stage_claimed", "triggered",
 	"damage", "deck_damage", "hand_damage", "stage_knocked_off", "combo"]
@@ -145,6 +156,8 @@ var _mulligan_faded_in: int = -1
 ## The starting hand flew in already (it is dealt once; a refresh must not replay it).
 var _hand_dealt: bool = false
 var _hand_sig: String = ""
+## The last hand built was the starting hand: laid out differently, so nothing slides from it.
+var _hand_was_mulligan: bool = false
 var _ribbon: HBoxContainer
 var _rosters: Array[VBoxContainer] = []
 var _kicker: Label
@@ -1990,9 +2003,86 @@ func _process(delta: float) -> void:
 	var target: float = 0.0 if up else HAND_HEIGHT - 110.0
 	_hand_drop = move_toward(_hand_drop, target, delta * 900.0)
 	_hand_box.position.y = size.y - HAND_HEIGHT + 30.0 + _hand_drop
+	_stand_cards(delta, up)
 
 
 # --- hand ------------------------------------------------------------------------
+
+## A card's name in the hand from one rebuild to the next: its seat, its id and which copy it is.
+static func hand_keys(slot: int, hand: PackedStringArray) -> PackedStringArray:
+	var seen: Dictionary[String, int] = {}
+	var out := PackedStringArray()
+	for cid: String in hand:
+		var copy: int = seen.get(cid, 0)
+		seen[cid] = copy + 1
+		out.append("%d|%s#%d" % [slot, cid, copy])
+	return out
+
+
+## Where each card of the hand is now, by `hand_keys`: the next build carries on from there.
+func _hand_snapshot() -> Dictionary[String, Dictionary]:
+	var out: Dictionary[String, Dictionary] = {}
+	if _hand_was_mulligan:
+		return out
+	for n: Node in _hand.get_children():
+		var c := n as Control
+		if c != null and c.has_meta("hand_key"):
+			out[str(c.get_meta("hand_key"))] = {"x": c.position.x, "turn": c.rotation_degrees, "mod": c.modulate,
+				"stand": JsonUtil.as_float(c.get_meta("base_y")) - JsonUtil.as_float(c.get_meta("rest_y"))}
+	return out
+
+
+## A card that is still in the hand goes from where it was to its new place.
+func _hand_slide(card: Control, was: Dictionary) -> void:
+	var x: float = card.position.x
+	var turn: float = card.rotation_degrees
+	var mod: Color = card.modulate
+	var from_mod: Color = was["mod"]
+	var from_x: float = JsonUtil.as_float(was["x"])
+	var from_turn: float = JsonUtil.as_float(was["turn"])
+	if is_equal_approx(x, from_x) and is_equal_approx(turn, from_turn) and mod.is_equal_approx(from_mod):
+		return
+	card.position.x = from_x
+	card.rotation_degrees = from_turn
+	card.modulate = from_mod
+	var t: Tween = card.create_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(card, "position:x", x, HAND_SLIDE_TIME)
+	t.tween_property(card, "rotation_degrees", turn, HAND_SLIDE_TIME)
+	t.tween_property(card, "modulate", mod, HAND_SLIDE_TIME)
+
+
+## A card that just left the hand rises and fades from where it stood.
+func _hand_leave(slot: int, key: String, was: Dictionary) -> void:
+	var cid: String = key.substr(key.find("|") + 1)
+	cid = cid.substr(0, cid.rfind("#"))
+	var ghost: Control = _hand_card(slot, cid, false, false)
+	ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ghost.modulate = Color.WHITE
+	ghost.position = _hand.position + Vector2(JsonUtil.as_float(was["x"]), 16.0 - JsonUtil.as_float(was["stand"]))
+	ghost.rotation_degrees = JsonUtil.as_float(was["turn"])
+	_hand_box.add_child(ghost)
+	var t: Tween = ghost.create_tween().set_parallel(true)
+	t.tween_property(ghost, "position:y", ghost.position.y - HAND_LEAVE_RISE, HAND_LEAVE_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(ghost, "modulate:a", 0.0, HAND_LEAVE_TIME)
+	t.chain().tween_callback(ghost.queue_free)
+
+
+## At rest the cards you can play stand higher; with the hand up they are all level. A card that
+## is lifted under the mouse is left alone: it moves on its own (`_lift`).
+func _stand_cards(delta: float, up: bool) -> void:
+	for n: Node in _hand.get_children():
+		var card := n as Control
+		if card == null or not card.has_meta("base_y") or card.z_index > 0:
+			continue
+		var lift: Tween = card.get_meta("lift") if card.has_meta("lift") else null
+		if lift != null and lift.is_valid():
+			continue
+		var base: float = JsonUtil.as_float(card.get_meta("base_y"))
+		var goal: float = base - (HAND_STAND if JsonUtil.as_bool(card.get_meta("stand", false)) and not up else 0.0)
+		var y: float = move_toward(JsonUtil.as_float(card.get_meta("rest_y")), goal, delta * (HAND_STAND_SPEED_UP if up else HAND_STAND_SPEED))
+		card.set_meta("rest_y", y)
+		card.position.y = y
+
 
 func _refresh_hand() -> void:
 	# A new starting hand (mulligan taken) flies in again.
@@ -2004,8 +2094,10 @@ func _refresh_hand() -> void:
 	if state.phase == GameState.PHASE_MULLIGAN and _hand_dealt and _hand.get_child_count() > 0 \
 			and Time.get_ticks_msec() < _mulligan_ready_at:
 		return
+	var before: Dictionary[String, Dictionary] = _hand_snapshot()
 	_clear(_hand)
 	var mulligan: bool = state.phase == GameState.PHASE_MULLIGAN
+	_hand_was_mulligan = mulligan
 	_hand_title.visible = false
 	var slot: int = hand_slot()
 	if slot < 0 or state.turn == 0 and not mulligan:
@@ -2020,7 +2112,8 @@ func _refresh_hand() -> void:
 	_hand_title.visible = mulligan
 	var my_round: bool = _in_card_round() and state.to_act == slot and state.pending.is_empty()
 	var n: int = p.hand.size()
-	var step: float = minf(176.0 if mulligan else 96.0, (HAND_WIDTH - 40.0) / maxf(float(n), 1.0))
+	var step: float = minf(176.0 if mulligan else 104.0, (HAND_WIDTH - 40.0) / maxf(float(n), 1.0))
+	var keys: PackedStringArray = hand_keys(slot, p.hand)
 	for i: int in n:
 		var cid: String = p.hand[i]
 		var check: Dictionary = _play_check(slot, cid) if my_round else {}
@@ -2028,12 +2121,21 @@ func _refresh_hand() -> void:
 		var card: Control = _hand_card(slot, cid, playable, my_round, str(check.get("why", "")),
 			JsonUtil.as_strings(check.get("heroes", [])), i)
 		var t: float = i - (n - 1) * 0.5
-		card.position = Vector2(_hand.size.x * 0.5 + t * step - CARD_SIZE.x * 0.5, 16.0 + (0.0 if mulligan else t * t * 4.0))
-		card.rotation_degrees = 0.0 if mulligan else t * 5.0
+		card.position = Vector2(_hand.size.x * 0.5 + t * step - CARD_SIZE.x * 0.5, 16.0 + (0.0 if mulligan else t * t * 2.0))
+		card.rotation_degrees = 0.0 if mulligan else t * 3.0
+		var was: Dictionary = before.get(keys[i], {})
+		card.set_meta("hand_key", keys[i])
+		card.set_meta("stand", playable and not mulligan)
+		card.set_meta("base_y", card.position.y)
+		# Carries on from the height it had: a rebuild must not make the hand jump.
+		if not was.is_empty():
+			card.position.y -= JsonUtil.as_float(was["stand"])
 		if mulligan:
 			card.scale = Vector2.ONE * 1.25
 		card.set_meta("rest_y", card.position.y)
 		_hand.add_child(card)
+		if not was.is_empty():
+			_hand_slide(card, was)
 		# The starting hand flies in from below, one card after another, and settles (once).
 		if mulligan and not _hand_dealt:
 			var face: Control = card.get_node_or_null("Face") as Control
@@ -2052,6 +2154,14 @@ func _refresh_hand() -> void:
 		_hand_dealt = true
 	else:
 		_hand_dealt = false
+		var prefix: String = "%d|" % slot
+		var gone: Array[String] = []
+		for key: String in before:
+			if key.begins_with(prefix) and not keys.has(key):
+				gone.append(key)
+		if gone.size() <= HAND_LEAVE_MAX:
+			for key: String in gone:
+				_hand_leave(slot, key, before[key])
 
 
 ## Messages from the engine that still mean "you can play it" (it asks for a choice after).

@@ -2646,6 +2646,24 @@ func demo_damage_second_hit() -> void:
 	hud.refresh()
 
 
+## Screenshot helpers (after demo_battle): a hand of seven with two energy, the cards it can pay
+## standing higher; then the energy gone and one card played.
+func demo_hand_stand() -> void:
+	var p: PlayerState = state.player(0)
+	p.hand = p.deck.slice(0, 7)
+	p.energy = 2
+	# The hand only shows from turn 1.
+	state.turn = maxi(state.turn, 1)
+	hud.refresh()
+
+
+func demo_hand_spent() -> void:
+	var p: PlayerState = state.player(0)
+	p.hand = p.hand.slice(1)
+	p.energy = 0
+	hud.refresh()
+
+
 ## Screenshot helper: the ring-out's cost (1 DMG, or a card from the hand) asked of player 1.
 func demo_ring_out_damage() -> void:
 	_demo = true
