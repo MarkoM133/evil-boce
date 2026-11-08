@@ -4570,44 +4570,49 @@ func _board_stage(st: StageState, slot: int) -> Control:
 	var card: CardDef = engine.catalog.get_card(st.card_id) if known and not st.card_id.is_empty() else null
 	var contested: bool = state.settings.energy_claims() and engine.contested(state, st)
 	var tile := PanelContainer.new()
-	tile.custom_minimum_size = Vector2(96, 64)
-	tile.clip_contents = true
-	var sb: StyleBoxFlat = UiTheme.box(Palette.SURFACE_2, 3, Color(0, 0, 0, 0), 0, 0)
-	sb.set_border_width_all(3 if st.is_claimed() else 2)
-	sb.border_color = Palette.team(state.team_of(st.claimed_by)) if st.is_claimed() else (Palette.DIM if contested else Color(Palette.team(state.team_of(st.owner)), 0.7))
+	tile.custom_minimum_size = Vector2(96, 92)
+	tile.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	var flash: Dictionary = _energy_flash.get(st.id, {})
 	var lit: bool = not flash.is_empty() and Time.get_ticks_msec() < JsonUtil.as_int(flash.get("until", 0))
-	if lit:
-		# Energy just went in: a gold edge (the "+N" chip comes over the art below).
-		sb.set_border_width_all(3)
-		sb.border_color = Palette.GOLD
-		# Room for the edge: the art fills the tile and would cover it.
-		for side: int in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
-			sb.set_content_margin(side, 3)
-	elif not flash.is_empty():
+	if not lit and not flash.is_empty():
 		_energy_flash.erase(st.id)
-	tile.add_theme_stylebox_override("panel", sb)
 	# A plain layer inside: the panel would stretch the band over the art.
 	var inner := Control.new()
 	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tile.add_child(inner)
 	var tex: Texture2D = db.thumb(card.id) if card != null and db != null else null
-	if tex != null:
-		var art := TextureRect.new()
-		art.texture = tex
-		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		art.set_anchors_preset(Control.PRESET_FULL_RECT)
-		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		# Yours but still face down: you know it, the table does not yet.
-		art.modulate = Color(1, 1, 1, 1.0 if st.revealed else 0.45)
-		inner.add_child(art)
-	else:
+	# The tile is its slanted picture, as the hero panels (Marko 2026-11-08, mockup 3), inside the
+	# card's art frame so its dark corners stay out; the name and the energy stand under it. A state
+	# is an edge along the slant: gold when energy just went in, the team's when claimed, grey contested.
+	var pic := HeroSlice.new()
+	pic.art = tex
+	pic.art_region = Rect2(0.115, 0.125, 0.77, 0.37)
+	pic.art_w = 200.0
+	pic.bg = Color(0, 0, 0, 0)
+	pic.art_fallback = Palette.SURFACE_2
+	pic.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	pic.offset_left = 2.0
+	pic.offset_right = -2.0
+	pic.offset_top = 2.0
+	pic.offset_bottom = 58.0
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Yours but still face down: you know it, the table does not yet.
+	if tex != null and not st.revealed:
+		pic.art_tint = Color(1, 1, 1, 0.45)
+	if lit:
+		pic.outline = Palette.GOLD
+	elif st.is_claimed():
+		pic.outline = Palette.team(state.team_of(st.claimed_by))
+	elif contested:
+		pic.outline = Palette.DIM
+		pic.outline_width = 2.0
+	inner.add_child(pic)
+	if tex == null:
 		var q: Label = UiTheme.label("?", 26, Palette.DIM)
 		q.set_anchors_preset(Control.PRESET_FULL_RECT)
 		q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		inner.add_child(q)
+		pic.add_child(q)
 	# The band along the bottom: the name, and the progress.
 	var word: String = "CLAIMED" if st.is_claimed() else ("HIDDEN" if not st.revealed and card != null else (card.name.to_upper() if card != null else ""))
 	var energy: bool = state.settings.energy_claims() and st.placed and not st.is_claimed() and card != null
@@ -4619,7 +4624,7 @@ func _board_stage(st: StageState, slot: int) -> Control:
 		var band := PanelContainer.new()
 		band.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 		band.grow_vertical = Control.GROW_DIRECTION_BEGIN
-		band.add_theme_stylebox_override("panel", UiTheme.box(Color(0.05, 0.045, 0.04, 0.9), 0, Color(0, 0, 0, 0), 3, 1))
+		band.add_theme_stylebox_override("panel", UiTheme.box(Color(0, 0, 0, 0), 0, Color(0, 0, 0, 0), 3, 1))
 		band.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		inner.add_child(band)
 		var rows := VBoxContainer.new()
@@ -4684,7 +4689,7 @@ func _board_stage(st: StageState, slot: int) -> Control:
 	if lit:
 		var gain: UiShape = UiShape.chip("+%d" % JsonUtil.as_int(flash.get("amount", 0)),
 			Palette.team(state.team_of(JsonUtil.as_int(flash.get("player", 0)))), Palette.FG, 12, 18.0, 6.0)
-		gain.position = Vector2(2, 2)
+		gain.position = Vector2(18, 4)
 		gain.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		inner.add_child(gain)
 		# It pops in once; the tiles are rebuilt on every refresh.

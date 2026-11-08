@@ -2670,6 +2670,16 @@ func demo_boards() -> void:
 	hud.refresh()
 
 
+## Screenshot helper: demo_boards with a tile in every state: claimed, energy just in, the other
+## side's face down (a "?").
+func demo_boards_states() -> void:
+	demo_boards()
+	state.stages[0].claimed_by = 0
+	state.stages[5].revealed = false
+	hud._energy_flash[state.stages[1].id] = {"until": Time.get_ticks_msec() + 60000, "start": Time.get_ticks_msec(), "amount": 3, "player": 0}
+	hud.refresh()
+
+
 ## Screenshot helper: the deciding moment before the end screen, as in a match: the last hero
 ## down on the table, the camera on it, the band; the end screen (demo_defeat's) after END_HOLD_TIME
 ## (--frames about 120 shows the moment, 330 the screen).
