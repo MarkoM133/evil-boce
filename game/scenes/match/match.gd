@@ -3441,6 +3441,17 @@ func demo_start_hover() -> void:
 	_set_hover(mine[2].id, true)
 
 
+## Screenshot helper: the mouse on a hero panel (the middle one of player 1) during a turn.
+func demo_panel_hover() -> void:
+	demo_boards()
+	var mine: Array[HeroState] = state.heroes_of(0)
+	for i: int in mine.size():
+		mine[i].zone = HeroState.ZONE_MAP
+		mine[i].hex = Hex.offset_to_axial(7 + i * 4, 15)
+	_sync()
+	_set_hover(mine[1].id, true)
+
+
 ## Screenshot helper: as demo_start_hover, then the camera pans back (as keys W / S do): the
 ## Roll / Stay must stay under the ball.
 func demo_start_hover_pan() -> void:
