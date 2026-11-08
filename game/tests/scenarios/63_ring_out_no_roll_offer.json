@@ -1,0 +1,36 @@
+{
+  "name": "An activated hero rung out by its own roll gets no Roll Phase offer (Marko 2026-11-08: Luffy rolled back in with Gear Second Soru); the player is down to Pass for the turn. The other player's offer still comes. (TA-011 takes 1 less per hit, so the ring-out's 1 DMG lands as 0.)",
+  "steps": [
+    {"setup": {"seed": 1, "decks": [
+      {"heroes": ["TA-011", "TA-002", "TA-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []},
+      {"heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []}
+    ]}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {"initiative": 0}},
+    {"set": {
+      "heroes.p0:TA-011.zone": "map", "heroes.p0:TA-011.hex": [4, 10],
+      "players.p0.hand": [], "players.p0.energy": 5
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-011", "roll": true}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": true}},
+    {"pass_round": true},
+    {"move": {"type": "aim", "player": 0, "dir": [0, 1], "power": 1.0}},
+    {"move": {"type": "aim", "player": 1, "dir": [0, -1], "power": 0.5}},
+    {"offers": true, "roll": {"thrower": "p0:TA-011", "results": [
+      {"ball": "p0:TA-011", "thrown": true, "end_area": 1, "strip_entered": 0, "end_hex": [4, 16]},
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 0, "strip_entered": -1, "end_hex": [4, 3]}
+    ]}},
+    {"expect": {
+      "heroes.p0:TA-011.zone": "strip",
+      "heroes.p0:TA-011.hp": 10,
+      "only_pass": {"$has": 0},
+      "phase": "roll",
+      "pending": {"$size": 1},
+      "pending.0.type": "roll_offer", "pending.0.player": 1
+    }},
+    {"move": {"type": "use_ability", "player": 0, "hero": "p0:TA-011", "card": "TA-011", "index": 1}, "error": "waiting for player 1"},
+    {"move": {"type": "pass", "player": 1}},
+    {"expect": {"phase": "postroll", "heroes.p0:TA-011.zone": "strip", "pending": {"$size": 0}}}
+  ]
+}

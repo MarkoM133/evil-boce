@@ -582,6 +582,9 @@ func _answer_roll_offer(s: GameState, index: int, m: Move) -> String:
 		s.pending.remove_at(index)
 		s.event("roll_offer_declined", {"player": m.player})
 		return ""
+	# The offer was made before the hero went off (its own roll rang it out): Pass only now.
+	if s.only_pass.has(m.player):
+		return "you can only pass this turn"
 	if m.type == Move.USE_ABILITY:
 		var key: String = "%s|%s|%d" % [m.str_arg("hero"), m.str_arg("card"), JsonUtil.as_int(m.data.get("index", 0))]
 		if not JsonUtil.as_strings(d.get("abilities", [])).has(key):
@@ -630,7 +633,9 @@ func _offer_roll_effects(s: GameState) -> void:
 		var h: HeroState = s.active_hero(slot)
 		# Only a hero that rolled gets the offer: one that stayed has nothing to roll again
 		# (Marko 2026-11-02). Roll or Stay is public, so no offer gives nothing away.
-		if p != null and not p.surrendered and h != null and not h.is_ko() and s.choices.get(slot, false):
+		# A player whose activated hero left the map this turn is down to Pass (Marko 2026-11-08: a
+		# ringed-out Luffy rolled back in with Gear Second Soru): no offer, not even its abilities.
+		if p != null and not p.surrendered and h != null and not h.is_ko() and s.choices.get(slot, false) 				and not s.only_pass.has(slot):
 			var abilities := PackedStringArray()
 			for a: Dictionary in fx.usable_abilities(s, slot):
 				abilities.append(str(a["key"]))
