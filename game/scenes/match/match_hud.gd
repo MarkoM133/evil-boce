@@ -73,6 +73,16 @@ const START_BANNER_TIME: float = 2.2
 const BATTLE_BANNER_TIME: float = 1.6
 ## The combo card stays over the screen this long (a click or Enter puts it away sooner).
 const COMBO_SHOW_TIME: float = 2.6
+## The combo window's cards: how tall, and how far the two overlap.
+const COMBO_CARD_H: float = 190.0
+const COMBO_PARTS_OVERLAP: int = -46
+## The two cards going into one: where they wait beside each other (in card widths from the middle),
+## where they come from for a player who did not choose it, how big they get, and how long it takes.
+const COMBO_SIDE: float = 0.75
+const COMBO_SPREAD: float = 1.6
+const COMBO_FLY_SCALE: float = 1.7
+const COMBO_FLY_TIME: float = 0.26
+const COMBO_DASH_TIME: float = 0.2
 ## Half a breath of the edge on a stage energy just went into.
 const ENERGY_PULSE_TIME: float = 0.7
 ## The card beside a choice it asks for: how tall, upright and on its side.
@@ -171,6 +181,9 @@ var _hand_dealt: bool = false
 var _hand_sig: String = ""
 ## The last hand built was the starting hand: laid out differently, so nothing slides from it.
 var _hand_was_mulligan: bool = false
+## The two cards in the combo window, and where they stood when COMBO was pressed.
+var _combo_pics: Array[Control] = []
+var _combo_from: Array[Rect2] = []
 ## The pause menu is up: nothing behind it reacts to the mouse (Marko 2026-11-08).
 var menu_open: bool = false
 ## Which card of the hand the player just played, by position: of two copies the right one leaves.
@@ -527,7 +540,7 @@ func toast(text: String, color: Color = Palette.GOLD, hold: float = 1.5) -> void
 
 ## A slanted band across the screen (BATTLE!, RING-OUT …): in, hold, out. Queued.
 ## `card` (a combo) shows that card big over the screen instead of the band (_combo_show).
-func banner(title: String, color: Color, left: String = "", right: String = "", hold: float = BANNER_TIME, card: String = "") -> void:
+func banner(title: String, color: Color, left: String = "", right: String = "", hold: float = BANNER_TIME, card: String = "", parts: PackedStringArray = PackedStringArray()) -> void:
 	# Banners can be cut down to the big moments, or switched off (Settings → Interface).
 	if GameSettings.banners() == "off":
 		return
@@ -535,7 +548,7 @@ func banner(title: String, color: Color, left: String = "", right: String = "", 
 	# "TURN 3 · PREROLL" showing in turn 5).
 	if title.ends_with(" PHASE"):
 		_banners = _banners.filter(func(q: Dictionary) -> bool: return not str(q["title"]).ends_with(" PHASE"))
-	var b: Dictionary = {"title": title, "color": color, "left": left, "right": right, "hold": hold, "lines": PackedStringArray(), "card": card}
+	var b: Dictionary = {"title": title, "color": color, "left": left, "right": right, "hold": hold, "lines": PackedStringArray(), "card": card, "parts": parts}
 	if _grouping:
 		_group.append(b)
 		return
@@ -1684,8 +1697,8 @@ func _refresh_prompt() -> void:
 		elif str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
 			_roll_offer_prompt(d, who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_COMBO:
-			_prompt.text = "Combo?"
-			_detail.text = "%s: pay the extra energy to turn both cards into the combo, or play %s as it is." % [player_name(who), _card_name(str(d.get("card", "")))]
+			# The window says it all, as for a hit.
+			pass
 		elif str(d.get("type", "")) == RulesEngine.DECISION_STAGE_ENERGY:
 			# The window says it all, as for a hit.
 			pass
@@ -3265,42 +3278,160 @@ func _choose_dialog(d: Dictionary, who: int) -> void:
 		b.custom_minimum_size = Vector2(0, 66)
 
 
-## Combo offer (2026-11-07): the second card of a pair was played; each combo on offer is a button with its
-## extra energy, and the last one plays the card as it is; the (first) combo card shows above them.
+## Combo offer (2026-11-07; Marko 2026-11-08, from the mockups): the second card of a pair was played.
+## The two cards, one over the other, equal the combo, its name and extra energy beside them; with more
+## than one combo on offer the first one shows and each has its button. COMBO sends the two cards off
+## from where they stand here (_combo_merge).
 func _combo_dialog(d: Dictionary, who: int) -> void:
-	_dialog.visible = true
+	_small_dialog(Palette.GOLD)
+	_combo_from = []
 	var cid: String = str(d.get("card", ""))
-	_dialog_box.add_child(UiTheme.label("COMBO", 15, Palette.GOLD))
-	var title: Label = UiTheme.label("Spend more Energy to turn %s and the card before it into a combo?" % _card_name(cid), 30)
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_dialog_box.add_child(title)
-	if local_slots.size() > 1:
-		var sub := Label.new()
-		sub.add_theme_color_override("font_color", Palette.MUTED)
-		sub.text = player_name(who)
-		_dialog_box.add_child(sub)
 	var offers: Array = JsonUtil.as_array(d.get("combos", []))
-	var first_id: String = str(JsonUtil.as_dict(offers[0]).get("id", "")) if not offers.is_empty() else ""
-	var pic_tex: Texture2D = null
-	if db != null and not first_id.is_empty():
-		pic_tex = db.thumb(first_id) if db.thumb(first_id) != null else db.large(first_id)
-	if pic_tex != null:
-		var a: float = float(pic_tex.get_width()) / pic_tex.get_height()
-		var pic := TextureRect.new()
-		pic.texture = pic_tex
-		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		pic.stretch_mode = TextureRect.STRETCH_SCALE
-		pic.custom_minimum_size = Vector2(420, 420 / a)
-		pic.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		pic.material = round_corners(a)
-		_dialog_box.add_child(pic)
+	var first: Dictionary = JsonUtil.as_dict(offers[0]) if not offers.is_empty() else {}
+	var first_id: String = str(first.get("id", ""))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	_dialog_box.add_child(row)
+	var parts := HBoxContainer.new()
+	parts.add_theme_constant_override("separation", COMBO_PARTS_OVERLAP)
+	parts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(parts)
+	_combo_pics = []
+	for id: String in [str(first.get("with", "")), cid]:
+		var pic: Control = _combo_pic(id)
+		if pic != null:
+			parts.add_child(pic)
+			_combo_pics.append(pic)
+	var equals: Label = UiTheme.label("=", 36, Palette.ACCENT)
+	equals.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(equals)
+	var combo_pic: Control = _combo_pic(first_id)
+	if combo_pic != null:
+		row.add_child(combo_pic)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	col.custom_minimum_size.x = 276
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(col)
+	col.add_child(UiTheme.label("COMBO" + ("  ·  %s" % player_name(who).to_upper() if local_slots.size() > 1 else ""), 13, Palette.GOLD))
+	var title: Label = UiTheme.label(_card_name(first_id).to_upper() if offers.size() == 1 else "WHICH COMBO?", 26)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(title)
 	for o: Variant in offers:
 		var c: Dictionary = JsonUtil.as_dict(o)
 		var id: String = str(c.get("id", ""))
-		var extra: int = JsonUtil.as_int(c.get("extra", 0))
-		var b: Button = _option_button("%s   +%d ENERGY   (with %s)" % [_card_name(id).to_upper(), extra, _card_name(str(c.get("with", "")))], func() -> void: choose_pressed.emit(who, id))
+		var text: String = "+%d ENERGY" % JsonUtil.as_int(c.get("extra", 0))
+		if offers.size() > 1:
+			text = "%s  ·  %s" % [_card_name(id).to_upper(), text]
+		var b: Button = _option_button(text, func() -> void:
+			combo_take_off()
+			choose_pressed.emit(who, id))
+		_dialog_box.remove_child(b)
+		col.add_child(b)
 		b.theme_type_variation = &"Gold"
-	_option_button("NO, PLAY %s AS IT IS" % _card_name(cid).to_upper(), func() -> void: choose_pressed.emit(who, ""))
+		b.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.custom_minimum_size = Vector2(0, 48)
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var no: Button = _option_button("PLAY %s AS IT IS" % _card_name(cid).to_upper(), func() -> void: choose_pressed.emit(who, ""))
+	_dialog_box.remove_child(no)
+	# Slanted buttons: these margins make its top corners meet the bottom corners of the one above alike.
+	var inset := MarginContainer.new()
+	inset.add_theme_constant_override("margin_left", -4)
+	inset.add_theme_constant_override("margin_right", 12)
+	col.add_child(inset)
+	inset.add_child(no)
+	no.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	no.add_theme_font_size_override("font_size", 16)
+	no.custom_minimum_size = Vector2(0, 36)
+
+
+func _combo_texture(id: String) -> Texture2D:
+	if db == null or id.is_empty():
+		return null
+	return db.large(id) if db.large(id) != null else db.thumb(id)
+
+
+## A card in the combo window, COMBO_CARD_H tall; a right click shows it big.
+func _combo_pic(id: String) -> Control:
+	var tex: Texture2D = _combo_texture(id)
+	if tex == null:
+		return null
+	var a: float = float(tex.get_width()) / tex.get_height()
+	var pic := TextureRect.new()
+	pic.texture = tex
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_SCALE
+	pic.custom_minimum_size = Vector2(COMBO_CARD_H * a, COMBO_CARD_H)
+	pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pic.material = round_corners(a)
+	pic.mouse_filter = Control.MOUSE_FILTER_STOP
+	pic.gui_input.connect(func(e: InputEvent) -> void: _card_click(e, id))
+	return pic
+
+
+## Where the two cards stand in the window: the merge starts from there.
+func combo_take_off() -> void:
+	_combo_from = []
+	if _combo_pics.size() != 2:
+		return
+	for pic: Control in _combo_pics:
+		if is_instance_valid(pic):
+			_combo_from.append(pic.get_global_rect())
+
+
+## The two cards fly to the middle, side by side, dash into each other and flash; the combo card comes
+## out of the flash (Marko 2026-11-08, from the mockups). They start where they stood in the window for
+## the player who chose it, and at the middle for everyone else.
+func _combo_merge(show: Panel, parts: PackedStringArray, meet: Vector2, dim: ColorRect, t: Tween) -> void:
+	var from: Array[Rect2] = _combo_from
+	_combo_from = []
+	if parts.size() != 2 or _combo_texture(parts[0]) == null or _combo_texture(parts[1]) == null:
+		return
+	var s: float = GameSettings.anim_scale()
+	var flyers: Array[TextureRect] = []
+	for i: int in 2:
+		var tex: Texture2D = _combo_texture(parts[i])
+		var a: float = float(tex.get_width()) / tex.get_height()
+		var sz := Vector2(COMBO_CARD_H * a, COMBO_CARD_H)
+		var rect := Rect2(meet - sz * 0.5 + Vector2(sz.x * COMBO_SPREAD * (-1.0 if i == 0 else 1.0), 0.0), sz)
+		var f := TextureRect.new()
+		f.texture = tex
+		f.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		f.stretch_mode = TextureRect.STRETCH_SCALE
+		f.material = round_corners(a)
+		f.position = from[i].position if from.size() == 2 else rect.position
+		f.size = from[i].size if from.size() == 2 else sz
+		f.pivot_offset = f.size * 0.5
+		f.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		f.modulate.a = 1.0 if from.size() == 2 else 0.0
+		show.add_child(f)
+		flyers.append(f)
+	var flash := ColorRect.new()
+	flash.color = Color(1, 1, 1, 0.75)
+	flash.size = size
+	flash.modulate.a = 0.0
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	show.add_child(flash)
+	t.tween_property(dim, "modulate:a", 0.5, 0.14 * s)
+	for i: int in 2:
+		var f: TextureRect = flyers[i]
+		var side: float = -1.0 if i == 0 else 1.0
+		t.parallel().tween_property(f, "position", meet - f.size * 0.5 + Vector2(f.size.x * COMBO_SIDE * side, 0.0), COMBO_FLY_TIME * s).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(f, "scale", Vector2.ONE * COMBO_FLY_SCALE, COMBO_FLY_TIME * s).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(f, "rotation_degrees", 8.0 * side, COMBO_FLY_TIME * s).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(f, "modulate:a", 1.0, 0.1 * s)
+	t.tween_interval(0.08 * s)
+	# A new step: the ones below run together.
+	t.tween_interval(0.0)
+	for f: TextureRect in flyers:
+		t.parallel().tween_property(f, "position", meet - f.size * 0.5, COMBO_DASH_TIME * s).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		t.parallel().tween_property(f, "rotation_degrees", 0.0, COMBO_DASH_TIME * s).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		t.parallel().tween_property(f, "modulate", Color(4, 4, 4), COMBO_DASH_TIME * s)
+	t.tween_callback(func() -> void:
+		flash.modulate.a = 1.0
+		flash.create_tween().tween_property(flash, "modulate:a", 0.0, 0.22 * s)
+		for f: TextureRect in flyers:
+			f.create_tween().tween_property(f, "modulate:a", 0.0, 0.08 * s))
 
 
 func _option_button(text: String, cb: Callable) -> Button:
@@ -3387,7 +3518,7 @@ func _banner_for(e: Dictionary) -> void:
 		"combo":
 			# The combo card over the screen (_combo_show); a plain band when it has no picture.
 			var combo_id: String = str(e.get("combo", ""))
-			banner("COMBO!", Palette.GOLD, player_name(JsonUtil.as_int(e.get("player", 0))).to_upper(), _card_name(combo_id).to_upper(), COMBO_SHOW_TIME, combo_id)
+			banner("COMBO!", Palette.GOLD, player_name(JsonUtil.as_int(e.get("player", 0))).to_upper(), _card_name(combo_id).to_upper(), COMBO_SHOW_TIME, combo_id, JsonUtil.as_strings(e.get("cards", [])))
 		"battle":
 			# Power is per team: each side's heroes in that battle and their total.
 			var power: Dictionary = JsonUtil.as_dict(e.get("power", {}))
@@ -3718,6 +3849,7 @@ func _combo_show(b: Dictionary) -> bool:
 	pic.self_modulate = Color(2.4, 2.4, 2.4)
 	var hold: float = maxf(0.6, JsonUtil.as_float(b.get("hold", COMBO_SHOW_TIME), COMBO_SHOW_TIME) * GameSettings.anim_scale() - 0.6)
 	var t: Tween = show.create_tween()
+	_combo_merge(show, JsonUtil.as_strings(b.get("parts", [])), holder.position + card_size * 0.5, dim, t)
 	t.tween_property(dim, "modulate:a", 1.0, 0.15)
 	t.parallel().tween_property(holder, "modulate:a", 1.0, 0.12)
 	t.parallel().tween_property(holder, "scale", Vector2.ONE, 0.38).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)

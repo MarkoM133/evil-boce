@@ -2681,6 +2681,28 @@ func demo_choose_option() -> void:
 	hud.refresh()
 
 
+## Screenshot helpers (after demo_battle): the combo window; then COMBO is pressed, as the engine
+## tells it (`demo_combo_other`: seen by the player who did not choose it).
+func demo_combo_offer() -> void:
+	var combo: CardDef = engine.catalog.of_type("Combo")[0]
+	state.pending = [{"type": RulesEngine.DECISION_COMBO, "player": 0, "card": combo.ingredients[1], "hero": "", "cost": 2,
+		"combos": [{"id": combo.id, "extra": combo.extra_cost, "with": combo.ingredients[0]}]}]
+	hud.local_slots = PackedInt32Array([0])
+	hud.refresh()
+
+
+func demo_combo_played() -> void:
+	hud.combo_take_off()
+	demo_combo_other()
+
+
+func demo_combo_other() -> void:
+	var combo: CardDef = engine.catalog.of_type("Combo")[0]
+	state.pending.clear()
+	state.event("combo", {"combo": combo.id, "cards": Array(combo.ingredients), "heroes": ["", ""], "player": 0, "extra": combo.extra_cost})
+	hud.refresh()
+
+
 ## Screenshot helper: the ring-out's cost (1 DMG, or a card from the hand) asked of player 1.
 func demo_ring_out_damage() -> void:
 	_demo = true
