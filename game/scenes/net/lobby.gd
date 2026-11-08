@@ -31,6 +31,10 @@ var _series: Label
 var _join_btn: Button
 var _address_join: Button
 var _recent_box: VBoxContainer
+## Nobody joined yet: the hint shows and the address field moves up under the title.
+var _join_hint: Label
+var _join_gap: Control
+var _address_title: Label
 var _matches_box: VBoxContainer
 ## Where the last JOIN went (remembered with the host's name once it answers).
 var _joining: String = ""
@@ -128,10 +132,13 @@ func _build() -> void:
 	_recent_box = VBoxContainer.new()
 	_recent_box.add_theme_constant_override("separation", 12)
 	join_card.add_child(_recent_box)
-	var join_gap := Control.new()
-	join_gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	join_card.add_child(join_gap)
-	join_card.add_child(UiTheme.label("ANOTHER ADDRESS", 15, Palette.GOLD))
+	_join_hint = _muted("Ask your friend for their address.", 20)
+	join_card.add_child(_join_hint)
+	_join_gap = Control.new()
+	_join_gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	join_card.add_child(_join_gap)
+	_address_title = UiTheme.label("ANOTHER ADDRESS", 15, Palette.GOLD)
+	join_card.add_child(_address_title)
 	var join_row := HBoxContainer.new()
 	join_row.add_theme_constant_override("separation", 10)
 	join_card.add_child(join_row)
@@ -404,10 +411,10 @@ func _fill_matches() -> void:
 	var saved: MatchRecord = ReplayStore.load_current_online()
 	var has_saved: bool = saved != null and saved.frame_count() > 0 and not saved.finished and saved.game_version == _version()
 	var played: Array[Dictionary] = ReplayStore.recent_against_someone(me, 2 if has_saved else 3)
-	_matches_box.visible = has_saved or not played.is_empty()
-	if not _matches_box.visible:
-		return
 	_matches_box.add_child(UiTheme.label("RECENT MATCHES", 15, Palette.GOLD))
+	if not has_saved and played.is_empty():
+		_matches_box.add_child(_muted("Your matches will show here.", 18))
+		return
 	if has_saved:
 		var others := PackedStringArray()
 		for p: Dictionary in saved.players:
@@ -482,6 +489,10 @@ func _fill_recent() -> void:
 	var recent: Array = GameSettings.recent_hosts()
 	_recent_box.visible = not recent.is_empty()
 	_address.text = "" if not recent.is_empty() else GameSettings.last_host()
+	_join_hint.visible = recent.is_empty()
+	_address_title.text = "ANOTHER ADDRESS" if not recent.is_empty() else "THEIR ADDRESS"
+	var card: Node = _join_gap.get_parent()
+	card.move_child(_join_gap, _join_hint.get_index() + 1 if not recent.is_empty() else card.get_child_count() - 1)
 	if recent.is_empty():
 		return
 	_recent_box.add_child(UiTheme.label("RECENT", 15, Palette.GOLD))
