@@ -2672,6 +2672,15 @@ func demo_hand_spent() -> void:
 	hud.refresh()
 
 
+## Screenshot helper (after demo_battle): a card asks player 1 to choose one of two things.
+func demo_choose_option() -> void:
+	state.pending = [{"type": FxRuntime.DECISION_CHOOSE, "player": 0, "kind": "option", "prompt": "Choose one",
+		"options": ["You gain 2 Energy and they lose 2 Energy.", "Your Hero heals 3 HP and an Opponent's Hero takes 3 DMG."],
+		"resume": {"ctx": {"card": "OP1-028"}}}]
+	hud.local_slots = PackedInt32Array([0])
+	hud.refresh()
+
+
 ## Screenshot helper: the ring-out's cost (1 DMG, or a card from the hand) asked of player 1.
 func demo_ring_out_damage() -> void:
 	_demo = true

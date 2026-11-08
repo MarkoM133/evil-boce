@@ -75,6 +75,9 @@ const BATTLE_BANNER_TIME: float = 1.6
 const COMBO_SHOW_TIME: float = 2.6
 ## Half a breath of the edge on a stage energy just went into.
 const ENERGY_PULSE_TIME: float = 0.7
+## The card beside a choice it asks for: how tall, upright and on its side.
+const CHOICE_CARD_H: float = 250.0
+const CHOICE_CARD_H_WIDE: float = 170.0
 ## The battle's balance bar: how far down, and how far it keeps from what stands beside it.
 const TUG_Y: float = 106.0
 const TUG_CLEAR: float = 14.0
@@ -1684,8 +1687,8 @@ func _refresh_prompt() -> void:
 			_prompt.text = "Combo?"
 			_detail.text = "%s: pay the extra energy to turn both cards into the combo, or play %s as it is." % [player_name(who), _card_name(str(d.get("card", "")))]
 		elif str(d.get("type", "")) == RulesEngine.DECISION_STAGE_ENERGY:
-			_prompt.text = "Put your energy into your stages"
-			_detail.text = "%s: − and + in the box share it out, then CONFIRM." % player_name(who)
+			# The window says it all, as for a hit.
+			pass
 		elif str(d.get("type", "")) == RulesEngine.DECISION_DAMAGE:
 			# The box in the middle says it all (Marko 2026-11-08).
 			pass
@@ -2058,6 +2061,9 @@ func _fit_tug() -> void:
 	var right: float = strip.end.x - (last.cut if last != null else 0.0) - TUG_INSET
 	var mid: float = (left + right) * 0.5
 	var room: float = (right - left) * 0.5
+	# What stands beside it, as far as the bar may go: the same gap on both sides, at the bar's slant.
+	var free_left: float = -INF
+	var free_right: float = INF
 	for i: int in 2:
 		for n: Node in _rosters[i].get_children():
 			var row := n as Control
@@ -2066,7 +2072,18 @@ func _fit_tug() -> void:
 			var r: Rect2 = row.get_global_rect()
 			if r.position.y > TUG_Y + BattleTug.HEIGHT or r.end.y < TUG_Y:
 				continue
-			room = minf(room, (mid - r.end.x if i == 0 else r.position.x - mid) - TUG_CLEAR)
+			if i == 0:
+				free_left = maxf(free_left, r.end.x + TUG_CLEAR - BattleTug.CUT * 0.5)
+			else:
+				free_right = minf(free_right, r.position.x - TUG_CLEAR + BattleTug.CUT * 0.5)
+	if free_left > left and free_right < right:
+		# Tight on both sides: halfway between them (Marko 2026-11-08).
+		mid = (free_left + free_right) * 0.5
+		room = (free_right - free_left) * 0.5
+	elif free_left > left:
+		room -= free_left - left
+	elif free_right < right:
+		room -= right - free_right
 	_battle_tug.set_bar_width(2.0 * room)
 	_battle_tug.position.x = mid - _battle_tug.bar_width * 0.5
 
@@ -2748,6 +2765,17 @@ func _refresh_dialog() -> void:
 	_damage_dialog(d, who)
 
 
+## The small window above the hand (Marko 2026-11-08, from the mockups): the board dims under the
+## hand, the line on top says what kind it is, red for a hit, straw for a choice.
+func _small_dialog(top: Color) -> void:
+	_dialog.visible = true
+	_damage_dim.visible = true
+	_dialog_sb.border_color = top
+	_set_dialog_pad(16, 16)
+	# Centred on the room above the hand.
+	_dialog_center.offset_bottom = -110.0
+
+
 func _set_dialog_pad(x: float, y: float) -> void:
 	_dialog_sb.content_margin_left = x
 	_dialog_sb.content_margin_right = x
@@ -2760,12 +2788,7 @@ func _set_dialog_pad(x: float, y: float) -> void:
 ## by clicking them in the hand. The heroes in reach stand on the left, each with its life right under
 ## its picture; one is picked here or on the table, CONFIRM sends it. A ring-out's cost looks the same.
 func _damage_dialog(d: Dictionary, who: int) -> void:
-	_dialog.visible = true
-	_damage_dim.visible = true
-	_dialog_sb.border_color = Palette.ACCENT
-	_set_dialog_pad(16, 16)
-	# Centred on the room above the hand.
-	_dialog_center.offset_bottom = -110.0
+	_small_dialog(Palette.ACCENT)
 	var amount: int = JsonUtil.as_int(d.get("amount", 0))
 	var min_hero: int = JsonUtil.as_int(d.get("min_hero", RulesEngine.hero_share(amount)))
 	var winner: HeroState = state.hero(str(d.get("winner", "")))
@@ -2955,44 +2978,107 @@ func _energy_dialog(d: Dictionary, who: int) -> void:
 	var left: int = energy
 	for id: String in ids:
 		left -= JsonUtil.as_int(energy_split.get(id, 0))
-	_dialog_box.add_child(UiTheme.label("END PHASE · %s" % player_name(who).to_upper(), 15, Palette.GOLD))
-	_dialog_box.add_child(UiTheme.label("%d ENERGY INTO YOUR STAGES" % energy, 36))
-	var sub := Label.new()
-	sub.add_theme_color_override("font_color", Palette.MUTED)
-	sub.text = "Your heroes stand on %d open stages. All of the energy goes in; %d in one stage claims it." % [ids.size(), goal]
-	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sub.custom_minimum_size.x = 420
-	_dialog_box.add_child(sub)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	col.custom_minimum_size.x = 560
+	_dialog_box.add_child(col)
+	col.add_child(UiTheme.label("END PHASE" + ("  ·  %s" % player_name(who).to_upper() if local_slots.size() > 1 else ""), 13, Palette.GOLD))
+	var title: Label = UiTheme.label("%d ENERGY INTO YOUR STAGES" % energy, 28)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(title)
 	for id: String in ids:
 		var st: StageState = state.stage(id)
-		if st == null:
-			continue
-		var have: int = st.progress_of(who)
-		var n: int = JsonUtil.as_int(energy_split.get(id, 0))
-		var after: int = mini(have + n, goal)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		var minus: Button = _step_button("−", func() -> void: _energy_step(id, -1, ids, who))
-		minus.disabled = n <= 0
-		row.add_child(minus)
-		var over: int = have + n - after
-		var line: Label = UiTheme.label("%s   %d → %d / %d%s%s" % [_card_name(st.card_id).to_upper(), have, after, goal,
-			"   CLAIMS IT" if after >= goal else "", ("  (%d LOST)" % over) if over > 0 else ""], 20, Palette.GOLD if after >= goal else Palette.FG)
-		line.custom_minimum_size.x = 330
-		line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(line)
-		var plus: Button = _step_button("+", func() -> void: _energy_step(id, 1, ids, who))
-		plus.disabled = left <= 0 and n >= energy
-		row.add_child(plus)
-		_dialog_box.add_child(row)
+		if st != null:
+			col.add_child(_energy_row(st, who, goal, energy, left, ids))
+	var low := HBoxContainer.new()
+	low.add_theme_constant_override("separation", 12)
+	col.add_child(low)
+	var note: Label = _damage_note("All of it goes in. %d in one stage claims it." % goal, 13, Palette.MUTED)
+	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	note.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	low.add_child(note)
 	var confirm: Button = _option_button("CONFIRM" if left == 0 else "CONFIRM   %d LEFT" % left, func() -> void:
 		var split: Dictionary = {}
 		for id: String in ids:
 			if JsonUtil.as_int(energy_split.get(id, 0)) > 0:
 				split[id] = JsonUtil.as_int(energy_split[id])
 		energy_pressed.emit(who, split))
-	confirm.theme_type_variation = &"Gold"
+	_dialog_box.remove_child(confirm)
+	low.add_child(confirm)
+	confirm.theme_type_variation = &"Primary"
+	confirm.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	confirm.custom_minimum_size = Vector2(190, 48)
+	confirm.add_theme_font_size_override("font_size", 24)
 	confirm.disabled = left != 0
+
+
+## One stage of the energy window: its picture, what it holds with what would go in, and − and +.
+func _energy_row(st: StageState, who: int, goal: int, energy: int, left: int, ids: PackedStringArray) -> HBoxContainer:
+	var id: String = st.id
+	var have: int = st.progress_of(who)
+	var n: int = JsonUtil.as_int(energy_split.get(id, 0))
+	var after: int = mini(have + n, goal)
+	var over: int = have + n - after
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var pic := HeroSlice.new()
+	pic.custom_minimum_size = Vector2(170, 72)
+	pic.art_w = PlayerCard.ALL_PICTURE
+	pic.set_mirrored(false)
+	pic.art = db.thumb(st.card_id) if db != null else null
+	pic.art_region = Rect2(0.115, 0.125, 0.77, 0.37)
+	pic.color_edge = Palette.team(state.team_of(who))
+	pic.content.add_theme_constant_override("margin_left", 10)
+	pic.content.add_theme_constant_override("margin_right", int(HeroSlice.CUT + HeroSlice.EDGE_W) + 5)
+	pic.gui_input.connect(func(e: InputEvent) -> void: _card_click(e, st.card_id))
+	row.add_child(pic)
+	var names := VBoxContainer.new()
+	names.alignment = BoxContainer.ALIGNMENT_END
+	names.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pic.content.add_child(names)
+	var name_l: Label = UiTheme.label(_card_name(st.card_id), 16)
+	name_l.add_theme_color_override("font_outline_color", Color.BLACK)
+	name_l.add_theme_constant_override("outline_size", 6)
+	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD
+	names.add_child(name_l)
+	var mid := VBoxContainer.new()
+	mid.add_theme_constant_override("separation", 2)
+	mid.alignment = BoxContainer.ALIGNMENT_CENTER
+	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(mid)
+	var bar := UiSegments.new()
+	bar.max_value = goal
+	bar.value = after
+	bar.ghost = after - have
+	bar.color = Palette.team(state.team_of(who))
+	bar.lean = 1.5
+	bar.custom_minimum_size = Vector2(0, 12)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mid.add_child(bar)
+	var line: String = "%d  →  %d  /  %d" % [have, after, goal]
+	if after >= goal:
+		line += "   CLAIMS IT"
+	if over > 0:
+		line += "  (%d LOST)" % over
+	mid.add_child(UiTheme.label(line, 20, Palette.GOLD if n > 0 else Palette.MUTED))
+	var steps := HBoxContainer.new()
+	steps.add_theme_constant_override("separation", 6)
+	steps.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(steps)
+	var minus: Button = _step_button("−", func() -> void: _energy_step(id, -1, ids, who))
+	minus.custom_minimum_size = Vector2(40, 40)
+	minus.disabled = n <= 0
+	steps.add_child(minus)
+	var num: Label = UiTheme.label("+%d" % n, 24, Palette.GOLD if n > 0 else Palette.MUTED)
+	num.custom_minimum_size.x = 42
+	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	num.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	steps.add_child(num)
+	var plus: Button = _step_button("+", func() -> void: _energy_step(id, 1, ids, who))
+	plus.custom_minimum_size = Vector2(40, 40)
+	plus.disabled = left <= 0 and n >= energy
+	steps.add_child(plus)
+	return row
 
 
 func _step_button(text: String, cb: Callable) -> Button:
@@ -3127,32 +3213,56 @@ func _choose_dialog(d: Dictionary, who: int) -> void:
 	# Hexes and heroes are picked on the table (`_refresh_choice`).
 	if kind == "hex" or kind == "hero" or (kind == "core" and not choice_cores.is_empty()) or (kind == "card" and not choice_cards.is_empty()):
 		return
-	_dialog.visible = true
+	_small_dialog(Palette.GOLD)
 	var ctx: Dictionary = JsonUtil.as_dict(JsonUtil.as_dict(d.get("resume", {})).get("ctx", {}))
-	_dialog_box.add_child(UiTheme.label(_card_name(str(ctx.get("card", ""))).to_upper(), 15, Palette.GOLD))
-	var title: Label = UiTheme.label(str(d.get("prompt", "Choose")), 36)
+	var source: String = str(ctx.get("card", ""))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	_dialog_box.add_child(row)
+	var tex: Texture2D = db.thumb(source) if db != null and not source.is_empty() else null
+	if tex != null:
+		# The card first (Marko 2026-11-08, from the mockups): what the choice is about is on it.
+		var a: float = float(tex.get_width()) / tex.get_height()
+		var pic := TextureRect.new()
+		pic.texture = tex
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_SCALE
+		var h: float = CHOICE_CARD_H if a < 1.0 else CHOICE_CARD_H_WIDE
+		pic.custom_minimum_size = Vector2(h * a, h)
+		pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		pic.material = round_corners(a)
+		pic.mouse_filter = Control.MOUSE_FILTER_STOP
+		pic.gui_input.connect(func(e: InputEvent) -> void: _card_click(e, source))
+		row.add_child(pic)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	col.custom_minimum_size.x = 340
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(col)
+	col.add_child(UiTheme.label(_card_name(source).to_upper() + ("  ·  %s" % player_name(who).to_upper() if local_slots.size() > 1 else ""), 13, Palette.GOLD))
+	var title: Label = UiTheme.label(str(d.get("prompt", "Choose")).to_upper(), 28)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_dialog_box.add_child(title)
-	if local_slots.size() > 1:
-		var sub := Label.new()
-		sub.add_theme_color_override("font_color", Palette.MUTED)
-		sub.text = player_name(who)
-		_dialog_box.add_child(sub)
+	col.add_child(title)
 	var options: Array = JsonUtil.as_array(d.get("options", []))
 	for i: int in options.size():
 		var o: Variant = options[i]
 		var text: String = str(o)
 		match kind:
 			"hero":
-				var h: HeroState = state.hero(str(o))
-				text = "%s   HP %d" % [hero_name(h).to_upper(), h.hp] if h != null else str(o)
+				var h_opt: HeroState = state.hero(str(o))
+				text = "%s   HP %d" % [hero_name(h_opt).to_upper(), h_opt.hp] if h_opt != null else str(o)
 			"core":
 				var c: CoreState = state.core(str(o))
 				text = "%s CORE AT %s" % ["FACE-UP" if c != null and c.face_up else "FACE-DOWN", str(c.hex) if c != null else "?"]
 			"card":
 				text = _card_name(str(o)).to_upper()
 		var value: Variant = i if kind == "option" else o
-		_option_button(text, func() -> void: choose_pressed.emit(who, value))
+		var b: Button = _option_button(text, func() -> void: choose_pressed.emit(who, value))
+		_dialog_box.remove_child(b)
+		col.add_child(b)
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.add_theme_font_size_override("font_size", 18)
+		b.custom_minimum_size = Vector2(0, 66)
 
 
 ## Combo offer (2026-11-07): the second card of a pair was played; each combo on offer is a button with its
