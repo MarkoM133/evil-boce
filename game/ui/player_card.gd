@@ -794,6 +794,27 @@ func _open_popup(title: String, items: Array[Dictionary], on_pick: Callable, who
 ## Opens the popup as big as what it holds now (it kept the size of the last one: the cores
 ## window opened as big as the stages one, with empty room below and beside).
 func _popup_fitted() -> void:
+	# The first time it opens the content has not been laid out yet, so the window came up too big
+	# (Marko 2026-11-08): size it to the content's minimum, and once more a frame later.
 	_popup.size = Vector2i.ZERO
 	_popup.reset_size()
-	_popup.popup_centered()
+	var wanted: Vector2i = _popup_content_size()
+	_popup.popup_centered(wanted)
+	await get_tree().process_frame
+	if not _popup.visible:
+		return
+	var again: Vector2i = _popup_content_size()
+	if again != _popup.size:
+		_popup.size = again
+		_popup.move_to_center()
+
+
+## The size the popup's content needs now (its panel's margins included).
+func _popup_content_size() -> Vector2i:
+	var sb: StyleBox = _popup.get_theme_stylebox("panel")
+	var pad: Vector2 = Vector2(sb.get_margin(SIDE_LEFT) + sb.get_margin(SIDE_RIGHT), sb.get_margin(SIDE_TOP) + sb.get_margin(SIDE_BOTTOM)) if sb != null else Vector2.ZERO
+	var inner: Vector2 = Vector2.ZERO
+	for c: Node in _popup.get_children():
+		if c is Control:
+			inner = inner.max((c as Control).get_combined_minimum_size())
+	return Vector2i((inner + pad).ceil())
