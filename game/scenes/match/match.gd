@@ -2000,6 +2000,11 @@ func _run_bots(delta: float) -> void:
 # --- input ------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	# The end screen is up: only its buttons (the HUD) and the menu key (Marko 2026-11-08).
+	if state != null and state.is_over() and _replay == null and not _menu.visible:
+		if event is InputEventKey and (event as InputEventKey).pressed and GameSettings.logical_key((event as InputEventKey).keycode) == KEY_ESCAPE:
+			_toggle_menu()
+		return
 	if _menu.visible:
 		if event is InputEventKey and (event as InputEventKey).pressed and GameSettings.logical_key((event as InputEventKey).keycode) == KEY_ESCAPE:
 			_toggle_menu()

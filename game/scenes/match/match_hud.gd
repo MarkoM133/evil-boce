@@ -739,10 +739,13 @@ func _build() -> void:
 	_over = Control.new()
 	_over.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_over.visible = false
+	# The end screen takes every click (Marko 2026-11-08: the table under it still took them).
+	_over.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_over)
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.84)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	_over.add_child(dim)
 	var over_center := CenterContainer.new()
 	over_center.set_anchors_preset(Control.PRESET_FULL_RECT)
