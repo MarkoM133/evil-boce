@@ -8,6 +8,8 @@ extends RefCounted
 const DECISION_DAMAGE: String = "damage"
 ## What a ring-out costs (Marko 2026-11-07): 1 DMG, or a card from the hand instead.
 const RING_OUT_DAMAGE: int = 1
+## The least a hit lands as after damage reduction (Marko and Tarik 2026-11-08).
+const MIN_HIT: int = 1
 const DECISION_RETURN_CORE: String = "return_core"
 ## After the roll: a player with a "Roll Phase:" card or ability may use one (or pass).
 const DECISION_ROLL_OFFER: String = "roll_offer"
@@ -1443,7 +1445,10 @@ func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = fa
 	if h == null or h.is_ko() or amount <= 0:
 		return
 	if not unblockable:
-		amount = maxi(amount + fx.damage_mod(s, h), 0)
+		# Less damage taken never brings a hit under 1 (Marko and Tarik 2026-11-08: Kaido paid 0 for a
+		# ring-out); more damage taken adds as before.
+		var mod: int = fx.damage_mod(s, h)
+		amount = maxi(amount + mod, MIN_HIT if mod < 0 else 0)
 	var info: Dictionary = {"hero": h.id, "amount": maxi(amount, 0), "hp": h.hp}
 	if not by.is_empty():
 		info["by"] = by

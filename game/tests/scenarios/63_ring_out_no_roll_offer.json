@@ -1,5 +1,5 @@
 {
-  "name": "An activated hero rung out by its own roll gets no Roll Phase offer (Marko 2026-11-08: Luffy rolled back in with Gear Second Soru); the player is down to Pass for the turn. The other player's offer still comes. (TA-011 takes 1 less per hit, so the ring-out's 1 DMG lands as 0.)",
+  "name": "An activated hero rung out by its own roll gets no Roll Phase offer (Marko 2026-11-08: Luffy rolled back in with Gear Second Soru); the player is down to Pass for the turn. The other player's offer still comes. (TA-011 takes 1 less per hit, but a hit never lands under 1.)",
   "steps": [
     {"setup": {"seed": 1, "decks": [
       {"heroes": ["TA-011", "TA-002", "TA-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []},
@@ -23,7 +23,7 @@
     ]}},
     {"expect": {
       "heroes.p0:TA-011.zone": "strip",
-      "heroes.p0:TA-011.hp": 10,
+      "heroes.p0:TA-011.hp": 9,
       "only_pass": {"$has": 0},
       "phase": "roll",
       "pending": {"$size": 1},

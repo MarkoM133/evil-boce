@@ -1,0 +1,26 @@
+{
+  "name": "Damage reduction never brings a hit under 1 (Marko and Tarik 2026-11-08): TA-011 takes 1 less per hit, so a 1 DMG ring-out still costs 1 (scenario 65 has a battle hit, 23 an unblockable one).",
+  "steps": [
+    {"setup": {"seed": 1, "decks": [
+      {"heroes": ["TA-011", "TA-002", "TA-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []},
+      {"heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []}
+    ]}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {"initiative": 0}},
+    {"set": {
+      "heroes.p0:TA-011.zone": "map", "heroes.p0:TA-011.hex": [4, 10],
+      "players.p0.hand": []
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-011", "roll": true}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": true}},
+    {"pass_round": true},
+    {"move": {"type": "aim", "player": 0, "dir": [0, 1], "power": 1.0}},
+    {"move": {"type": "aim", "player": 1, "dir": [0, -1], "power": 0.5}},
+    {"roll": {"thrower": "p0:TA-011", "results": [
+      {"ball": "p0:TA-011", "thrown": true, "end_area": 1, "strip_entered": 0, "end_hex": [4, 16]},
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 0, "strip_entered": -1, "end_hex": [4, 3]}
+    ]}},
+    {"expect": {"heroes.p0:TA-011.zone": "strip", "heroes.p0:TA-011.hp": 9}}
+  ]
+}

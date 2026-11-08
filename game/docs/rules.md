@@ -154,6 +154,9 @@ Paths use the JSON form of the state: `players.p0.hand`, `heroes.<id>.hp`, `core
 - Cores off a ringed-out hero are thrown by the game onto random free hexes (not on a
   stage), keeping their face state. Cores off a KO'd hero go to the core owner's inventory
   and come back anywhere free in the owner's own half.
+- Damage reduction (`DAMAGE_MOD` with a negative number) never brings a hit under 1
+  (`RulesEngine.MIN_HIT`; Marko and Tarik 2026-11-08: Kaido's -1 made a ring-out free). Extra
+  damage taken adds as before, and `DAMAGE … TRUE` still skips the modifier. Scenario 64.
 - An activated hero that leaves the map mid-turn (KO or ring-out) leaves its player with Pass
   only until the turn ends (`GameState.only_pass`): no card, no ability, and no Roll Phase
   offer either (Marko 2026-11-08: a ringed-out hero rolled back in with its own ROLL_AGAIN
