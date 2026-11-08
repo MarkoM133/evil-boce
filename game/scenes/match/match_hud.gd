@@ -4588,9 +4588,8 @@ func _board_stage(st: StageState, slot: int) -> Control:
 	var tex: Texture2D = db.thumb(card.id) if card != null and db != null else null
 	# The tile is its slanted picture, as the hero panels (Marko 2026-11-08, mockup 3), inside the
 	# card's art frame so its dark corners stay out; the name and the energy stand under it. A state
-	# is an edge along the slant: breathing in the player's colour when energy just went in, grey
-	# contested; a claimed one has
-	# CLAIMED on the picture in the claimer's colour (Marko 2026-11-08).
+	# is a thin edge along the slant (Marko 2026-11-08): breathing in the player's colour when energy
+	# just went in, the claimer's when claimed (with CLAIMED on the picture), grey contested.
 	var pic := HeroSlice.new()
 	pic.art = tex
 	pic.art_region = Rect2(0.115, 0.125, 0.77, 0.37)
@@ -4606,6 +4605,7 @@ func _board_stage(st: StageState, slot: int) -> Control:
 	# Yours but still face down: you know it, the table does not yet.
 	if tex != null and not st.revealed:
 		pic.art_tint = Color(1, 1, 1, 0.45)
+	pic.outline_width = 1.5
 	if lit:
 		# A slow, calm pulse in the colour of whoever put the energy in (Marko 2026-11-08).
 		var edge: Color = Palette.team(state.team_of(JsonUtil.as_int(flash.get("player", 0)))).lightened(0.15)
@@ -4616,9 +4616,10 @@ func _board_stage(st: StageState, slot: int) -> Control:
 		var pulse: Tween = pic.create_tween().set_loops()
 		pulse.tween_method(breathe, 1.0, 0.4, ENERGY_PULSE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		pulse.tween_method(breathe, 0.4, 1.0, ENERGY_PULSE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	elif contested and not st.is_claimed():
+	elif st.is_claimed():
+		pic.outline = Palette.team(state.team_of(st.claimed_by))
+	elif contested:
 		pic.outline = Palette.DIM
-		pic.outline_width = 2.0
 	inner.add_child(pic)
 	if st.is_claimed():
 		var stamp: UiShape = UiShape.chip("CLAIMED", Palette.team(state.team_of(st.claimed_by)), Palette.FG, 16, 26.0, 9.0)
