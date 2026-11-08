@@ -3308,6 +3308,10 @@ func _combo_dialog(d: Dictionary, who: int) -> void:
 	var combo_pic: Control = _combo_pic(first_id)
 	if combo_pic != null:
 		row.add_child(combo_pic)
+	# The buttons lean towards the card: a little more room than between the cards.
+	var gap := Control.new()
+	gap.custom_minimum_size.x = 6
+	row.add_child(gap)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
 	col.custom_minimum_size.x = 276
