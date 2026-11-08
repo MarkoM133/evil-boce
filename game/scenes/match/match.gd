@@ -629,26 +629,22 @@ func _build_combo_box() -> Control:
 	return box
 
 
-## The two tabs over the pause menu's right side (Marko 2026-11-08, from the mockups): two slanted
-## chips joined, the open one straw with black text, the other dark; a click on it swaps.
+## The two tabs over the pause menu's right side (Marko 2026-11-08, from the mockups): slanted
+## buttons like YOUR DECK and ALL beside them, the open one straw.
 func _menu_tabs(combos_open: bool) -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", -4)
+	row.add_theme_constant_override("separation", 8)
 	for combos: bool in [false, true]:
-		var open: bool = combos == combos_open
-		var tab: UiShape = UiShape.chip("COMBO LIST" if combos else "MATCH LOG",
-			Palette.GOLD if open else Palette.PANEL_SOLID, Color.BLACK if open else Palette.MUTED, 24, 44.0, 18.0)
-		if not open:
-			tab.mouse_filter = Control.MOUSE_FILTER_STOP
-			tab.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-			tab.mouse_entered.connect(func() -> void:
-				tab.label.add_theme_color_override("font_color", Palette.FG))
-			tab.mouse_exited.connect(func() -> void:
-				tab.label.add_theme_color_override("font_color", Palette.MUTED))
-			tab.gui_input.connect(func(e: InputEvent) -> void:
-				if e is InputEventMouseButton and (e as InputEventMouseButton).pressed 						and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-					_show_combos(combos))
-		row.add_child(tab)
+		var b := Button.new()
+		b.text = "COMBO LIST" if combos else "MATCH LOG"
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 24)
+		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		if combos == combos_open:
+			b.theme_type_variation = &"Gold"
+		else:
+			b.pressed.connect(func() -> void: _show_combos(combos))
+		row.add_child(b)
 	return row
 
 
