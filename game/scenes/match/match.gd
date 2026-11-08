@@ -195,6 +195,7 @@ func _ready() -> void:
 			hud.refresh())
 		net_client.match_over.connect(func(summary: Dictionary, record: MatchRecord) -> void:
 			# The host keeps the stats; the guest keeps its own replay (GDD 2).
+			_end_moment()
 			hud.end_summary = summary
 			if record != null:
 				_net_record = record
@@ -986,6 +987,7 @@ func _after_change() -> void:
 		if _filed:
 			return
 		_filed = true
+		_end_moment()
 		_snapshot()
 		if net_role == "":
 			ReplayStore.clear_current()
@@ -1004,6 +1006,52 @@ func _after_change() -> void:
 			ReplayStore.save_current_online(recorder.record)
 		else:
 			ReplayStore.save_current(recorder.record)
+
+
+## The deciding moment before the end screen (Marko 2026-11-08: "I did not know why I won"): the
+## table stays END_HOLD_TIME, the camera on where it was decided (the last hero down, the stage
+## that made three), a band says what happened and who won; a click or Enter skips it.
+func _end_moment() -> void:
+	if hud.end_hold or _replay != null:
+		return
+	hud.end_hold = true
+	var at: Vector3 = Vector3.ZERO
+	var found: bool = false
+	var e: Dictionary = {}
+	for i: int in range(state.log.size() - 1, -1, -1):
+		var t: String = str(state.log[i].get("type", ""))
+		if t == "ko" or t == "stage_claimed":
+			e = state.log[i]
+			break
+	if str(e.get("type", "")) == "ko":
+		var h: HeroState = state.hero(str(e.get("hero", "")))
+		if h != null and _bodies.has(h.id):
+			at = _bodies[h.id].global_position
+			found = true
+	elif str(e.get("type", "")) == "stage_claimed":
+		var st: StageState = state.stage(str(e.get("stage", "")))
+		if st != null and st.placed:
+			at = arena.hex_center(st.center)
+			found = true
+	if found:
+		cam.focus(at, 12.0)
+	var winner: String = hud.player_name(state.winner).to_upper() if state.winner >= 0 else ""
+	var title: String = "DRAW" if state.winner < 0 else ("%s WINS" % winner)
+	var why: String = {"ko": "EVERY HERO OF THE OTHER SIDE IS DOWN", "stages": "THREE STAGES CLAIMED", "stages_energy": "MORE ENERGY IN THE STAGES",
+		"surrender": "SURRENDER"}.get(state.result, "")
+	hud.banner(title, Palette.GOLD if state.winner >= 0 else Palette.SURFACE_2, "", why, MatchHud.END_HOLD_TIME, "")
+	get_tree().create_timer(0.1).timeout.connect(func() -> void: _end_hold_watch())
+
+
+## The end screen comes when the band is gone (held its time, or skipped).
+func _end_hold_watch() -> void:
+	if not is_inside_tree():
+		return
+	if hud.is_announcing():
+		get_tree().create_timer(0.1).timeout.connect(func() -> void: _end_hold_watch())
+		return
+	hud.end_hold = false
+	hud.refresh()
 
 
 ## Puts every node where the state says and redraws the HUD.
@@ -2622,6 +2670,23 @@ func demo_boards() -> void:
 	hud.refresh()
 
 
+## Screenshot helper: the deciding moment before the end screen, as in a match: the last hero
+## down on the table, the camera on it, the band; the end screen (demo_defeat's) after END_HOLD_TIME
+## (--frames about 120 shows the moment, 330 the screen).
+func demo_end_moment() -> void:
+	demo_defeat()
+	var last: HeroState = state.heroes_of(0)[0]
+	last.zone = HeroState.ZONE_MAP
+	last.hex = Hex.offset_to_axial(11, 10)
+	var other: HeroState = state.heroes_of(1)[0]
+	other.zone = HeroState.ZONE_MAP
+	other.hex = Hex.offset_to_axial(12, 10)
+	_sync()
+	last.zone = HeroState.ZONE_KO
+	_end_moment()
+	hud.refresh()
+
+
 ## Screenshot helper: the end screen as if player 1 won on stages (drawn only).
 func demo_victory() -> void:
 	_demo = true
@@ -2629,10 +2694,22 @@ func demo_victory() -> void:
 	state.winner = 0
 	state.result = "stages"
 	state.turn = 9
+	var mine: Array[StageState] = []
+	for st: StageState in state.stages:
+		if st.owner == 0:
+			mine.append(st)
+	for i: int in mini(3, mine.size()):
+		mine[i].placed = true
+		mine[i].revealed = true
+		mine[i].claimed_by = 0
+	state.log.append({"turn": 9, "phase": "end", "type": "stage_claimed", "stage": mine[2].id if mine.size() > 2 else "", "player": 0, "energy": 14})
 	hud.local_slots = PackedInt32Array([0])
 	hud.end_summary = {"battles": 6, "players": [
 		{"slot": 0, "name": state.player(0).name, "stages_claimed": 3, "kos_suffered": 1, "ring_outs_suffered": 0},
-		{"slot": 1, "name": state.player(1).name, "stages_claimed": 1, "kos_suffered": 2, "ring_outs_suffered": 2}]}
+		{"slot": 1, "name": state.player(1).name, "stages_claimed": 1, "kos_suffered": 2, "ring_outs_suffered": 2}],
+		"curve": [{"turn": 1, "hp": {0: 30, 1: 30}, "claimed": []}, {"turn": 2, "hp": {0: 30, 1: 27}, "claimed": []}, {"turn": 3, "hp": {0: 26, 1: 27}, "claimed": [0]},
+			{"turn": 4, "hp": {0: 26, 1: 21}, "claimed": []}, {"turn": 5, "hp": {0: 22, 1: 21}, "claimed": [1]}, {"turn": 6, "hp": {0: 22, 1: 15}, "claimed": [0]},
+			{"turn": 7, "hp": {0: 18, 1: 15}, "claimed": []}, {"turn": 8, "hp": {0: 18, 1: 9}, "claimed": []}, {"turn": 9, "hp": {0: 18, 1: 9}, "claimed": [0]}]}
 	hud.refresh()
 
 
@@ -2646,10 +2723,17 @@ func demo_defeat() -> void:
 	for h: HeroState in state.heroes_of(0):
 		h.hp = 0
 		h.zone = HeroState.ZONE_KO
+	var last: HeroState = state.heroes_of(0)[0]
+	var hitter: HeroState = state.heroes_of(1)[0]
+	state.log.append({"turn": 19, "phase": "battle", "type": "damage", "hero": last.id, "amount": 6, "hp": 0, "by": hitter.id})
+	state.log.append({"turn": 19, "phase": "battle", "type": "ko", "hero": last.id})
 	hud.local_slots = PackedInt32Array([0])
 	hud.end_summary = {"battles": 11, "players": [
 		{"slot": 0, "name": state.player(0).name, "stages_claimed": 1, "kos_suffered": 3, "ring_outs_suffered": 1},
-		{"slot": 1, "name": state.player(1).name, "stages_claimed": 2, "kos_suffered": 1, "ring_outs_suffered": 0}]}
+		{"slot": 1, "name": state.player(1).name, "stages_claimed": 2, "kos_suffered": 1, "ring_outs_suffered": 0}],
+		"curve": [{"turn": 1, "hp": {0: 30, 1: 30}, "claimed": []}, {"turn": 3, "hp": {0: 27, 1: 26}, "claimed": [1]}, {"turn": 5, "hp": {0: 21, 1: 26}, "claimed": []},
+			{"turn": 7, "hp": {0: 15, 1: 22}, "claimed": [0]}, {"turn": 9, "hp": {0: 15, 1: 22}, "claimed": [1]}, {"turn": 11, "hp": {0: 9, 1: 22}, "claimed": []},
+			{"turn": 13, "hp": {0: 9, 1: 22}, "claimed": []}, {"turn": 15, "hp": {0: 4, 1: 22}, "claimed": []}, {"turn": 19, "hp": {0: 0, 1: 22}, "claimed": []}]}
 	hud.refresh()
 
 

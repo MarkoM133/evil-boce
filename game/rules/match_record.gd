@@ -97,6 +97,7 @@ func branch_at(i: int) -> MatchRecord:
 ## What goes into EvilBoce/stats/: enough for the Balance tab, nothing a player has to keep.
 func summary() -> Dictionary:
 	var final: Dictionary = JsonUtil.as_dict(last_frame().get("state", {}))
+	var curve: Array = turn_curve()
 	var log: Array = JsonUtil.as_array(final.get("log", []))
 	var played: Dictionary = {}
 	var kos: Dictionary = {}
@@ -136,6 +137,7 @@ func summary() -> Dictionary:
 			"stages_claimed": JsonUtil.as_int(claims.get(key, 0)),
 		})
 	return {
+		"curve": curve,
 		"format": FORMAT,
 		"game_version": game_version,
 		"cards_version": cards_version,
@@ -148,6 +150,45 @@ func summary() -> Dictionary:
 		"players": slots,
 		"cards_played": played,
 	}
+
+
+## How the match went (the end screen's graph, Marko 2026-11-08): per turn the total HP of each
+## team at the turn's end and the teams that claimed a stage in it: [{turn, hp: {team: hp},
+## claimed: [team]}], from the frames (a turn with no frame of its own is skipped).
+func turn_curve() -> Array:
+	var out: Array = []
+	var claimed_by_turn: Dictionary = {}
+	var final: Dictionary = JsonUtil.as_dict(last_frame().get("state", {}))
+	# players and heroes are dictionaries keyed by id in the state dict.
+	var teams: Dictionary = {}
+	var players_d: Dictionary = JsonUtil.as_dict(final.get("players", {}))
+	for key: Variant in players_d:
+		var pd: Dictionary = JsonUtil.as_dict(players_d[key])
+		teams["p%d" % JsonUtil.as_int(pd.get("slot", 0))] = JsonUtil.as_int(pd.get("team", JsonUtil.as_int(pd.get("slot", 0))))
+	for e: Variant in JsonUtil.as_array(final.get("log", [])):
+		var ev: Dictionary = JsonUtil.as_dict(e)
+		if str(ev.get("type", "")) == "stage_claimed":
+			var t: int = JsonUtil.as_int(ev.get("turn", 0))
+			var team: int = JsonUtil.as_int(teams.get("p%d" % JsonUtil.as_int(ev.get("player", 0)), 0))
+			var list: Array = JsonUtil.as_array(claimed_by_turn.get(t, []))
+			if not list.has(team):
+				list.append(team)
+			claimed_by_turn[t] = list
+	for i: int in frames.size():
+		var f: Dictionary = frames[i]
+		var turn: int = JsonUtil.as_int(f.get("turn", 0))
+		var next_turn: int = JsonUtil.as_int(frames[i + 1].get("turn", 0)) if i + 1 < frames.size() else -1
+		if turn <= 0 or (next_turn == turn):
+			continue
+		var st: Dictionary = JsonUtil.as_dict(f.get("state", {}))
+		var hp: Dictionary = {}
+		var heroes_d: Dictionary = JsonUtil.as_dict(st.get("heroes", {}))
+		for hkey: Variant in heroes_d:
+			var hd: Dictionary = JsonUtil.as_dict(heroes_d[hkey])
+			var team: int = JsonUtil.as_int(teams.get("p%d" % JsonUtil.as_int(hd.get("owner", 0)), 0))
+			hp[team] = JsonUtil.as_int(hp.get(team, 0)) + (JsonUtil.as_int(hd.get("hp", 0)) if str(hd.get("zone", "")) != "ko" else 0)
+		out.append({"turn": turn, "hp": hp, "claimed": JsonUtil.as_array(claimed_by_turn.get(turn, []))})
+	return out
 
 
 static func _owner_of(hero_id: String) -> String:

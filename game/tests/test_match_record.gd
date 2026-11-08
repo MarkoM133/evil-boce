@@ -137,6 +137,15 @@ func test_header_and_summary() -> void:
 	assert_eq(players.size(), 2)
 	assert_true(JsonUtil.as_bool(JsonUtil.as_dict(players[1])["bot"]))
 	assert_eq(JsonUtil.as_dict(s["cards_played"]).size(), 0)
+	# How it went (the end screen's graph, 2026-11-08): one point per turn with each team's HP.
+	var curve: Array = s["curve"]
+	assert_eq(curve.size(), 1, "one turn, one point")
+	var pt: Dictionary = JsonUtil.as_dict(curve[0])
+	assert_eq(JsonUtil.as_int(pt["turn"]), 1)
+	var hp: Dictionary = JsonUtil.as_dict(pt["hp"])
+	assert_true(JsonUtil.as_int(hp.get(0, hp.get("0", 0))) > 0, "team 0 has HP")
+	assert_true(JsonUtil.as_int(hp.get(1, hp.get("1", 0))) > 0, "team 1 has HP")
+	assert_eq(JsonUtil.as_array(pt["claimed"]).size(), 0)
 
 
 func test_store_round_trip() -> void:

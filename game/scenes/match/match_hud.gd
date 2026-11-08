@@ -66,6 +66,8 @@ const START_BANNER_TIME: float = 2.2
 const BATTLE_BANNER_TIME: float = 1.6
 ## The combo card stays over the screen this long (a click or Enter puts it away sooner).
 const COMBO_SHOW_TIME: float = 2.6
+## The table stays this long after the deciding moment before the end screen (a click skips it).
+const END_HOLD_TIME: float = 3.0
 ## The other side's Equipment or Assist stays this long before it flies to its place.
 const POP_TIME: float = 1.3
 ## A merged band stays this much longer per extra line, up to MERGED_MAX_TIME.
@@ -106,6 +108,8 @@ var setup_pick: String = ""
 var intro_dice: bool = false
 ## The match summary (MatchRecord.summary) shown on the end screen; set by the match scene.
 var end_summary: Dictionary = {}
+## The end screen waits while this is set (the table moment, Marko 2026-11-08: "I did not know why I won").
+var end_hold: bool = false
 ## The series line on the end screen ("SERIES 1–0 · GAME 2 NEXT"), set by the match scene.
 var series_text: String = ""
 
@@ -3553,15 +3557,13 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 
 func _refresh_over() -> void:
 	var was: bool = _over.visible
-	_over.visible = state.is_over() and not replay
+	_over.visible = state.is_over() and not replay and not end_hold
 	if not _over.visible:
 		return
 	_clear(_over_box)
 	# A leftover choice under the end screen showed through it (playtest 2026-10-30).
 	if _dialog != null:
 		_dialog.visible = false
-	var reasons: Dictionary = {"ko": "ALL HEROES KO", "stages": "STAGES CLAIMED", "stages_energy": "STAGES TIED · MORE ENERGY", "deckout": "DECK-OUT",
-		"surrender": "SURRENDER", "draw": "DRAW"}
 	var won: bool = state.winner >= 0 and local_slots.size() == 1 and local_slots.has(state.winner)
 	var lost: bool = state.winner >= 0 and local_slots.size() == 1 and not local_slots.has(state.winner)
 	var title: String = "DRAW"
@@ -3571,109 +3573,32 @@ func _refresh_over() -> void:
 		title = "DEFEAT"
 	elif state.winner >= 0:
 		title = "%s WINS" % player_name(state.winner).to_upper()
-	# The title on a band across the screen, as the phase banners (playtest 2026-10-30: the end
-	# screen wanted a redesign): straw for a win, dark red with white letters for a loss (Marko
-	# 2026-11-07, mockup A: the grey DEFEAT read oddly), dark for a draw.
-	var band := PanelContainer.new()
-	var band_col: Color = Palette.GOLD if won else (Color("5a0c08") if lost else Palette.SURFACE_2)
-	var bsb: StyleBoxFlat = UiTheme.slant(band_col, 60, 6)
-	bsb.border_color = Color.BLACK
-	bsb.border_width_bottom = 8
-	bsb.border_width_top = 2
-	band.add_theme_stylebox_override("panel", bsb)
-	band.custom_minimum_size = Vector2(900, 0)
-	band.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_over_box.add_child(band)
-	var main: Label = UiTheme.label(title, 120, Color.BLACK if won else Palette.FG)
-	main.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	if not won:
-		main.add_theme_color_override("font_outline_color", Color.BLACK)
-		main.add_theme_constant_override("outline_size", 14)
-	band.add_child(main)
-	var why: Label = UiTheme.label("%s  ·  TURN %d" % [str(reasons.get(state.result, state.result.to_upper())), state.turn], 20, Palette.GOLD)
-	why.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_over_box.add_child(why)
-	# Both sides with their heroes, the viewer's first; KO'd heroes grey, the winner marked.
-	var sides := HBoxContainer.new()
-	sides.add_theme_constant_override("separation", 48)
-	sides.alignment = BoxContainer.ALIGNMENT_CENTER
-	_over_box.add_child(sides)
-	var order: Array[int] = []
-	for p: PlayerState in state.players:
-		if local_slots.has(p.slot):
-			order.append(p.slot)
-	for p: PlayerState in state.players:
-		if not order.has(p.slot):
-			order.append(p.slot)
-	for slot: int in order:
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 6)
-		sides.add_child(col)
-		var head := HBoxContainer.new()
-		head.add_theme_constant_override("separation", 10)
-		col.add_child(head)
-		head.add_child(UiTheme.label(player_name(slot).to_upper(), 24, Palette.team(state.team_of(slot)).lightened(0.2)))
-		if state.winner >= 0 and state.team_of(slot) == state.team_of(state.winner):
-			var chip: UiShape = UiShape.chip("WINNER", Palette.GOLD, Color.BLACK, 13, 22.0, 9.0)
-			chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			head.add_child(chip)
-		var strips := HBoxContainer.new()
-		strips.add_theme_constant_override("separation", 6)
-		col.add_child(strips)
-		for h: HeroState in state.heroes_of(slot):
-			var s := HeroSlice.new()
-			var card: CardDef = engine.stat_card(h)
-			s.art = db.thumb(card.id) if db != null and card != null else null
-			s.art_region = HeroSlice.region_for(s.art)
-			s.art_fallback = Palette.hero(card.color if card != null else "")
-			s.custom_minimum_size = Vector2(HeroSlice.ART_W + HeroSlice.CUT + 4.0, 64)
-			if h.is_ko():
-				s.art_tint = Color(0.3, 0.3, 0.3)
-				var ko: UiShape = UiShape.chip("KO", Palette.ACCENT_DEEP, Palette.FG, 12, 18.0, 7.0)
-				ko.position = Vector2(10, 40)
-				s.add_child(ko)
-			s.tooltip_text = "%s · %s" % [hero_name(h), "KO" if h.is_ko() else "HP %d" % h.hp]
-			strips.add_child(s)
+	# The end as a story (Marko 2026-11-08, mockup D): the sentence that ended it, both sides at a
+	# glance with their stages, how the match went, the buttons.
+	var head: Label = UiTheme.label(title, 88, Palette.GOLD if won else (Color("e3473f") if lost else Palette.FG))
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.add_theme_color_override("font_outline_color", Color.BLACK)
+	head.add_theme_constant_override("outline_size", 12)
+	_over_box.add_child(head)
+	var story: Label = UiTheme.label(end_sentence(), 24, Palette.FG, false)
+	story.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	story.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	story.custom_minimum_size.x = 900
+	_over_box.add_child(story)
+	var turn_l: Label = UiTheme.label("TURN %d" % state.turn, 16, Palette.MUTED)
+	turn_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_over_box.add_child(turn_l)
+	_over_box.add_child(_end_sides())
+	if not JsonUtil.as_array(end_summary.get("curve", [])).is_empty():
+		_over_box.add_child(_end_curve())
 	if not series_text.is_empty():
 		_over_box.add_child(UiTheme.label(series_text, 26, Palette.GOLD))
-	if not end_summary.is_empty():
-		_over_box.add_child(_stats_table())
 	if rematch_text.is_empty():
 		var wait := Label.new()
 		wait.add_theme_color_override("font_color", Palette.MUTED)
 		wait.text = "The host can take everyone back to the lobby."
 		_over_box.add_child(wait)
-	var buttons := HBoxContainer.new()
-	buttons.add_theme_constant_override("separation", 12)
-	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
-	_over_box.add_child(buttons)
-	if not rematch_text.is_empty():
-		var again := Button.new()
-		again.text = rematch_text.to_upper()
-		again.theme_type_variation = &"Primary"
-		again.add_theme_font_size_override("font_size", 28)
-		again.pressed.connect(func() -> void: rematch_pressed.emit())
-		buttons.add_child(again)
-	if new_match:
-		var fresh := Button.new()
-		fresh.text = "NEW MATCH"
-		fresh.tooltip_text = "Back to the setup: other decks, map or rules"
-		fresh.add_theme_font_size_override("font_size", 22)
-		fresh.pressed.connect(func() -> void: new_match_pressed.emit())
-		buttons.add_child(fresh)
-	var watch := Button.new()
-	watch.text = "WATCH REPLAY"
-	watch.add_theme_font_size_override("font_size", 22)
-	watch.pressed.connect(func() -> void: watch_replay_pressed.emit())
-	buttons.add_child(watch)
-	var back := Button.new()
-	back.text = "MENU"
-	back.add_theme_font_size_override("font_size", 22)
-	back.pressed.connect(func() -> void: menu_pressed.emit())
-	buttons.add_child(back)
-	var balance: Button = WebApp.link("BALANCE", "balance", "Win rates of heroes and cards from every match played.")
-	balance.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	buttons.add_child(balance)
+	_over_box.add_child(_end_buttons())
 	if not was:
 		_over_box.modulate.a = 0.0
 		_over_box.scale = Vector2(1.08, 1.08)
@@ -3682,36 +3607,231 @@ func _refresh_over() -> void:
 		t.tween_property(_over_box, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
-## Per player, from the match summary that also goes to stats/ (GDD 11: the end shows stats).
-func _stats_table() -> Control:
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", UiTheme.box(Color(Palette.PANEL_SOLID, 0.9), 6, Color(0, 0, 0, 0), 28, 14))
-	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var grid := GridContainer.new()
-	var players: Array = JsonUtil.as_array(end_summary.get("players", []))
-	grid.columns = players.size() + 1
-	grid.add_theme_constant_override("h_separation", 40)
-	grid.add_theme_constant_override("v_separation", 6)
-	panel.add_child(grid)
-	grid.add_child(Control.new())
-	for p: Variant in players:
-		var d: Dictionary = JsonUtil.as_dict(p)
-		grid.add_child(UiTheme.label(str(d.get("name", "")).to_upper(), 20, Palette.team(JsonUtil.as_int(d.get("slot", 0)))))
-	for row: Array in [["Stages claimed", "stages_claimed"], ["Heroes KO", "kos_suffered"], ["Ring-outs", "ring_outs_suffered"]]:
-		var l := Label.new()
-		l.text = str(row[0])
-		l.add_theme_color_override("font_color", Palette.MUTED)
-		grid.add_child(l)
-		for p: Variant in players:
-			grid.add_child(UiTheme.label(str(JsonUtil.as_int(JsonUtil.as_dict(p).get(str(row[1]), 0))), 26))
-	var battles := Label.new()
-	battles.text = "Battles"
-	battles.add_theme_color_override("font_color", Palette.MUTED)
-	grid.add_child(battles)
-	grid.add_child(UiTheme.label(str(JsonUtil.as_int(end_summary.get("battles", 0))), 26))
-	for i: int in players.size() - 1:
-		grid.add_child(Control.new())
-	return panel
+## How it ended, in words, from the last events of the log: the hit that knocked the last hero
+## out, the stage claim that made three, a surrender; else the result's name.
+func end_sentence() -> String:
+	var winner: int = state.winner
+	if winner < 0:
+		return "A draw."
+	var w: String = player_name(winner)
+	match state.result:
+		"ko":
+			var ko: Dictionary = _last_event("ko")
+			var hero: HeroState = state.hero(str(ko.get("hero", "")))
+			var hit: Dictionary = _last_event("damage", str(ko.get("hero", "")))
+			var by: HeroState = state.hero(str(hit.get("by", "")))
+			var loser: int = hero.owner if hero != null else engine.other_slot(state, winner)
+			var how: String = ""
+			if hero != null and by != null:
+				# "with <card>" only for a card, not the hitter's own ability card.
+				var card_id: String = str(hit.get("card", ""))
+				var with: String = (" with %s" % _card_name(card_id)) if not card_id.is_empty() and card_id != by.card_id else ""
+				how = "%s hits %s for %d%s: %s is KO" % [hero_name(by), hero_name(hero), JsonUtil.as_int(hit.get("amount", 0)), with, hero_name(hero)]
+			elif hero != null:
+				how = "%s is KO" % hero_name(hero)
+			else:
+				how = "The last hero falls"
+			return "%s, and with that every hero of %s is down. %s wins." % [how, player_name(loser), w]
+		"stages", "stages_energy":
+			var claim: Dictionary = _last_event("stage_claimed")
+			var st: StageState = state.stage(str(claim.get("stage", "")))
+			var names := PackedStringArray()
+			for s2: StageState in state.stages:
+				if s2.is_claimed() and state.team_of(s2.claimed_by) == state.team_of(winner):
+					names.append(_card_name(s2.card_id))
+			var first: String = ""
+			if st != null:
+				var energy: int = JsonUtil.as_int(claim.get("energy", 0))
+				var who: String = player_name(JsonUtil.as_int(claim.get("player", winner)))
+				first = ("%s claims %s with %d Energy" % [who, _card_name(st.card_id), energy]) if energy > 0 else ("%s claims %s" % [who, _card_name(st.card_id)])
+				first += ": the %s stage. " % ["first", "second", "third", "fourth", "fifth"][clampi(names.size() - 1, 0, 4)]
+			if state.result == "stages_energy":
+				return "%sBoth sides reached their stages this turn; %s put more Energy into stages over the match and wins." % [first, w]
+			return "%s%s holds %s." % [first, w, " and ".join([", ".join(names.slice(0, names.size() - 1)), names[names.size() - 1]]) if names.size() > 1 else (names[0] if names.size() == 1 else "the stages")]
+		"surrender":
+			return "%s surrendered. %s wins." % [player_name(engine.other_slot(state, winner)), w]
+	return "%s wins." % w
+
+
+## The last log event of `type` (for `hero`, the last one about that hero), {} when none.
+func _last_event(type: String, hero: String = "") -> Dictionary:
+	for i: int in range(state.log.size() - 1, -1, -1):
+		var e: Dictionary = state.log[i]
+		if str(e.get("type", "")) == type and (hero.is_empty() or str(e.get("hero", "")) == hero):
+			return e
+	return {}
+
+
+## Both sides, the viewer's first: name, stars for the stages claimed, each hero with its HP
+## bar (KO grey); the winner's panel gold edged, the loser's dim.
+func _end_sides() -> Control:
+	var sides := HBoxContainer.new()
+	sides.alignment = BoxContainer.ALIGNMENT_CENTER
+	sides.add_theme_constant_override("separation", 24)
+	var order: Array[int] = []
+	for p: PlayerState in state.players:
+		if local_slots.has(p.slot):
+			order.append(p.slot)
+	for p: PlayerState in state.players:
+		if not order.has(p.slot):
+			order.append(p.slot)
+	for slot: int in order:
+		var is_winner: bool = state.winner >= 0 and state.team_of(slot) == state.team_of(state.winner)
+		var team_col: Color = Palette.team(state.team_of(slot))
+		var panel := PanelContainer.new()
+		var sb: StyleBoxFlat = UiTheme.box(Color(0.08, 0.08, 0.09, 0.96), 0, Color(0, 0, 0, 0), 18, 12)
+		sb.border_color = Palette.GOLD if is_winner else Color(0.25, 0.25, 0.27)
+		sb.set_border_width_all(3 if is_winner else 1)
+		panel.add_theme_stylebox_override("panel", sb)
+		panel.custom_minimum_size = Vector2(400, 0)
+		panel.modulate = Color(1, 1, 1, 1.0 if is_winner or state.winner < 0 else 0.62)
+		sides.add_child(panel)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 6)
+		panel.add_child(col)
+		var head := HBoxContainer.new()
+		head.add_theme_constant_override("separation", 10)
+		col.add_child(head)
+		head.add_child(UiTheme.label(player_name(slot).to_upper(), 24, team_col.lightened(0.2)))
+		var stars := HBoxContainer.new()
+		stars.add_theme_constant_override("separation", 2)
+		stars.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		stars.tooltip_text = "Stages claimed"
+		var claimed: int = engine.claimed_count(state, slot)
+		for i: int in state.settings.stages_to_win:
+			var star: UiShape = UiShape.make(UiShape.Kind.STAR, Palette.GOLD if i < claimed else Color(0, 0, 0, 0), Vector2(18, 18))
+			if i >= claimed:
+				star.outline = Palette.DIM
+				star.outline_width = 1.5
+			stars.add_child(star)
+		head.add_child(stars)
+		for h: HeroState in state.heroes_of(slot):
+			var card: CardDef = engine.stat_card(h)
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 8)
+			col.add_child(row)
+			var s := HeroSlice.new()
+			s.art = db.thumb(card.id) if db != null and card != null else null
+			s.art_region = HeroSlice.region_for(s.art)
+			s.art_fallback = Palette.hero(card.color if card != null else "")
+			s.art_w = 80.0
+			s.custom_minimum_size = Vector2(98, 46)
+			s.color_edge = Palette.hero(card.color if card != null else "")
+			if h.is_ko():
+				s.art_tint = Color(0.3, 0.3, 0.3)
+			s.tooltip_text = "%s · %s" % [hero_name(h), "KO" if h.is_ko() else "HP %d" % h.hp]
+			row.add_child(s)
+			var info := VBoxContainer.new()
+			info.add_theme_constant_override("separation", 2)
+			info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(info)
+			var nl := HBoxContainer.new()
+			nl.add_child(UiTheme.label(hero_name(h), 17))
+			var sp := Control.new()
+			sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			nl.add_child(sp)
+			var max_hp: int = engine.max_hp(state, h)
+			nl.add_child(UiTheme.label("KO" if h.is_ko() else "%d/%d" % [h.hp, max_hp], 13, Palette.ACCENT if h.is_ko() else Palette.MUTED))
+			info.add_child(nl)
+			var bar := UiSegments.new()
+			bar.value = h.hp
+			bar.max_value = maxi(max_hp, 1)
+			bar.color = Palette.HP if not h.is_ko() else Color(0.35, 0.35, 0.35)
+			bar.custom_minimum_size = Vector2(0, 7)
+			info.add_child(bar)
+	return sides
+
+
+## How the match went: each team's total HP by turn as a line in its colour, a star on the turn
+## it claimed a stage (end_summary.curve, MatchRecord.turn_curve).
+func _end_curve() -> Control:
+	var box := PanelContainer.new()
+	box.add_theme_stylebox_override("panel", UiTheme.box(Color(0.08, 0.08, 0.09, 0.96), 0, Color(0.25, 0.25, 0.27), 18, 10))
+	box.custom_minimum_size = Vector2(824, 0)
+	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	box.add_child(col)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 16)
+	col.add_child(head)
+	head.add_child(UiTheme.label("HOW IT WENT", 12, Palette.GOLD))
+	head.add_child(UiTheme.label("TEAM HP BY TURN  ·  ★ STAGE CLAIMED", 11, Palette.MUTED))
+	var plot := Control.new()
+	plot.custom_minimum_size = Vector2(0, 92)
+	var curve: Array = JsonUtil.as_array(end_summary.get("curve", []))
+	plot.draw.connect(func() -> void:
+		var w: float = plot.size.x
+		var h: float = plot.size.y
+		var n: int = curve.size()
+		if n < 1:
+			return
+		var top: float = 1.0
+		for pv: Variant in curve:
+			var hp: Dictionary = JsonUtil.as_dict(JsonUtil.as_dict(pv).get("hp", {}))
+			for k: Variant in hp:
+				top = maxf(top, JsonUtil.as_float(hp[k]))
+		var xs: PackedFloat32Array = PackedFloat32Array()
+		for i: int in n:
+			xs.append((i * w / (n - 1)) if n > 1 else w * 0.5)
+		for t: int in 2:
+			var pts := PackedVector2Array()
+			for i: int in n:
+				var hp: Dictionary = JsonUtil.as_dict(JsonUtil.as_dict(curve[i]).get("hp", {}))
+				var v: float = JsonUtil.as_float(hp.get(t, hp.get(str(t), 0)))
+				pts.append(Vector2(xs[i], h - 8.0 - (h - 16.0) * v / top))
+			if pts.size() > 1:
+				plot.draw_polyline(pts, Palette.team(t), 3.0, true)
+			for i: int in n:
+				for m: Variant in JsonUtil.as_array(JsonUtil.as_dict(curve[i]).get("claimed", [])):
+					if JsonUtil.as_int(m) == t:
+						var p: Vector2 = pts[i]
+						var star := PackedVector2Array()
+						for k: int in 10:
+							var ang: float = -PI * 0.5 + k * PI / 5.0
+							var rr: float = 4.0 if k % 2 == 1 else 9.0
+							star.append(p + Vector2(cos(ang), sin(ang)) * rr)
+						plot.draw_colored_polygon(star, Palette.GOLD)
+		var every: int = maxi(1, ceili(n / 12.0))
+		for i: int in n:
+			if i % every == 0:
+				plot.draw_string(UiTheme.display_heavy(), Vector2(xs[i] - 4.0, h), str(JsonUtil.as_int(JsonUtil.as_dict(curve[i]).get("turn", i + 1))), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Palette.DIM))
+	col.add_child(plot)
+	return box
+
+
+func _end_buttons() -> Control:
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 12)
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	if not rematch_text.is_empty():
+		var again := Button.new()
+		again.text = rematch_text.to_upper()
+		again.theme_type_variation = &"Primary"
+		again.add_theme_font_size_override("font_size", 26)
+		again.pressed.connect(func() -> void: rematch_pressed.emit())
+		buttons.add_child(again)
+	if new_match:
+		var fresh := Button.new()
+		fresh.text = "NEW MATCH"
+		fresh.tooltip_text = "Back to the setup: other decks, map or rules"
+		fresh.add_theme_font_size_override("font_size", 20)
+		fresh.pressed.connect(func() -> void: new_match_pressed.emit())
+		buttons.add_child(fresh)
+	var watch := Button.new()
+	watch.text = "WATCH REPLAY"
+	watch.add_theme_font_size_override("font_size", 20)
+	watch.pressed.connect(func() -> void: watch_replay_pressed.emit())
+	buttons.add_child(watch)
+	var back := Button.new()
+	back.text = "MENU"
+	back.add_theme_font_size_override("font_size", 20)
+	back.pressed.connect(func() -> void: menu_pressed.emit())
+	buttons.add_child(back)
+	var balance: Button = WebApp.link("BALANCE", "balance", "Win rates of heroes and cards from every match played.")
+	balance.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	buttons.add_child(balance)
+	return buttons
 
 
 # --- helpers ------------------------------------------------------------------------
