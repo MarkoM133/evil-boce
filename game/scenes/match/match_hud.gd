@@ -67,6 +67,9 @@ const PILES_X: float = 180.0
 const DECK_PILE_Y: float = -148.0
 const GRAVE_PILE_Y: float = -78.0
 const BANNER_TIME: float = 0.8
+## An ability tab's name: the room it has (the tab less its slanted sides) and the smallest letters.
+const ABILITY_NAME_W: float = 126.0
+const ABILITY_NAME_MIN: int = 12
 ## The setup tray while the other player places: darker, not see-through.
 const TRAY_WAITING := Color(0.42, 0.42, 0.42, 1.0)
 ## Phase call-outs stay a little longer, to be read.
@@ -1592,7 +1595,13 @@ func _ability_tabs(h: HeroState, active: bool, right: bool) -> Control:
 			v.add_child(UiTheme.label(head, 11, fg if can else Palette.MUTED, false))
 		elif e.once and not used:
 			status += "  ·  ONCE PER TURN"
-		var name_l: Label = UiTheme.label(_ability_title(a).to_upper(), 16 if compact else 18, fg)
+		# The whole name, in smaller letters when it must (Marko 2026-11-09: "GOMU GOMU NO G…"); only a
+		# name too long even then is cut.
+		var title: String = _ability_title(a).to_upper()
+		var name_size: int = 16 if compact else 18
+		while name_size > ABILITY_NAME_MIN and UiTheme.display_heavy().get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, name_size).x > ABILITY_NAME_W:
+			name_size -= 1
+		var name_l: Label = UiTheme.label(title, name_size, fg)
 		name_l.clip_text = true
 		name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		v.add_child(name_l)
