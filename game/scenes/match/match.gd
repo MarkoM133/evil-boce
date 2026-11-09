@@ -4111,7 +4111,10 @@ func _ghost_card(card_id: String, hero_id: String) -> void:
 	var t: Tween = card.create_tween().set_parallel(true)
 	t.tween_property(card, "position", rest, 0.45 * GameSettings.anim_scale()).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	t.tween_property(card, "modulate:a", 0.82, 0.3 * GameSettings.anim_scale())
-	if in_battle:
+	# An evolution comes and goes at once, also in a battle (Marko 2026-11-09: it stood over its own
+	# hero for the whole fight; the figure itself already shows it). The other cards pile up as before.
+	var def: CardDef = engine.catalog.get_card(card_id)
+	if in_battle and not (def != null and def.type == "Evolution"):
 		_ghosts.append({"node": card, "hero": hero_id, "battle": state.battle_index, "turn": state.turn})
 		return
 	var out: Tween = card.create_tween()
