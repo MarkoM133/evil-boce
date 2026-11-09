@@ -156,6 +156,8 @@ var db: CardDb
 var local_slots: PackedInt32Array = PackedInt32Array()
 ## Hero highlighted from the table (hover on a ball).
 var hover_hero: String = ""
+## The stage the mouse is on, on the table: its tile in the panel is lit.
+var table_stage: String = ""
 ## A playable card pressed in the hand: {slot, cid, heroes, from}; a drag once it moved
 ## (playtest 2026-10-30: drag a card onto a hero).
 var _drag: Dictionary = {}
@@ -1527,7 +1529,8 @@ func _hero_abilities(h: HeroState) -> Array[Dictionary]:
 ## The others' fold into a small ⚡ with the names on hover. The opponent's never click.
 func _ability_tabs(h: HeroState, active: bool, right: bool) -> Control:
 	var list: Array[Dictionary] = _hero_abilities(h)
-	if list.is_empty():
+	# Nor for a hero that is out (Marko 2026-11-09: the bolt hung by a KO hero).
+	if list.is_empty() or h.is_ko():
 		return null
 	if not active:
 		var names := PackedStringArray()
@@ -5563,6 +5566,9 @@ func _board_stage(st: StageState, slot: int) -> Control:
 		pic.outline = Palette.team(state.team_of(st.claimed_by))
 	elif contested:
 		pic.outline = Palette.DIM
+	if st.id == table_stage:
+		pic.outline = Palette.GOLD
+		pic.outline_width = 3.0
 	inner.add_child(pic)
 	if st.is_claimed():
 		var stamp: UiShape = UiShape.chip("CLAIMED", Palette.team(state.team_of(st.claimed_by)), Palette.FG, 16, 26.0, 9.0)

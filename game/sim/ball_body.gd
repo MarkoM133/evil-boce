@@ -76,6 +76,22 @@ func setup(id: String, wt_: int, world_: BallWorld) -> void:
 	set_wt(wt_)
 
 
+## Out of play (a KO) the ball is nothing to the others: it touches no ball and none touches it.
+## Clearing only the layer is not enough: its mask still names the balls, and the physics engine
+## pairs two bodies when either one's mask names the other (Marko 2026-11-09: a thrown ball
+## stopped dead two hexes on, against a KO hero's ball that was no longer drawn).
+func set_in_play(on: bool) -> void:
+	collision_layer = LAYER_BALLS if on else 0
+	collision_mask = (LAYER_GROUND | LAYER_BALLS) if on else 0
+	if not on:
+		planted = false
+		freeze = true
+
+
+func in_play() -> bool:
+	return collision_layer != 0
+
+
 func radius() -> float:
 	return tuning.radius(wt)
 
@@ -288,6 +304,8 @@ func _on_body_entered(body: Node) -> void:
 		return
 	if body is BallBody:
 		var other := body as BallBody
+		if not other.in_play():
+			return
 		if not _result.collisions.has(other.ball_id):
 			_result.collisions.append(other.ball_id)
 		# A planted ball barely gives: the one that hit it goes on with part of its speed.

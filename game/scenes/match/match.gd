@@ -1159,8 +1159,7 @@ func _sync_hero(h: HeroState) -> void:
 	if h.is_ko():
 		if not _ko_shown.has(h.id):
 			_ko_shown[h.id] = true
-			b.collision_layer = 0
-			b.freeze = true
+			b.set_in_play(false)
 			world.bodies.erase(b)
 			if animate:
 				if h.hp < was:
@@ -1175,7 +1174,7 @@ func _sync_hero(h: HeroState) -> void:
 		# Back from a KO: a replay stepped back over it.
 		_ko_shown.erase(h.id)
 		b.visible = true
-		b.collision_layer = BallBody.LAYER_BALLS
+		b.set_in_play(true)
 		world.bodies.append(b)
 		v.revive()
 	if animate and h.hp < was:
@@ -1631,6 +1630,13 @@ func _refresh_range() -> void:
 	for id: String in ids:
 		var h: HeroState = state.hero(id)
 		if h == null or not h.is_on_map() or _bodies[h.id].motion != BallBody.Motion.RESTING:
+			continue
+		# A ball that has stopped while another still rolls is no longer on the hex the rules have it
+		# on (they move it when the whole roll is over): no range round the place it left (Marko
+		# 2026-11-09: the range stood where the ball had been thrown from).
+		var at: Vector3 = arena.hex_center(h.hex)
+		var ball: Vector3 = _bodies[h.id].global_position
+		if Vector2(ball.x - at.x, ball.z - at.z).length() > BALL_OFF_HEX:
 			continue
 		var rng: int = engine.stat(state, h, "rng")
 		key += "%s:%s:%d;" % [h.id, h.hex, rng]
@@ -2197,6 +2203,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			_setup_hover = arena.hex_at(gp)
 	if event is InputEventMouseMotion and not _sling.is_aiming() and not cam.is_dragging():
 		_set_hover(_hero_under_mouse(), true)
+		# A stage under the mouse lights its tile under the heroes, as the tile lights the stage
+		# (Marko 2026-11-09), face down or not.
+		var over: String = _stage_under_mouse()
+		if over != hud.table_stage:
+			hud.table_stage = over
+			hud.refresh()
 	# Moving the camera by hand leaves the battle camera (it stays where it was moved to).
 	if cam.handle_input(event) and hud.battle_cam:
 		hud.battle_cam = false
@@ -2378,12 +2390,36 @@ func _on_hero_clicked(id: String) -> void:
 		elif h.tie_turns > 0:
 			hud.toast("%s is locked in a tied battle and fights it again this turn." % hud.hero_name(h))
 		return
+	# The auto-pass is about to move the phase on (nothing to play): a click on a ball neither offers
+	# PASS nor zooms in on it (Marko 2026-11-09). With something to play both stay.
+	for slot: int in hud.local_slots:
+		if _auto_passing(slot):
+			return
 	# Preroll, your move: a click on your activated ball offers PASS under it (Marko 2026-11-06).
 	if state.phase == GameState.PHASE_PREROLL and str(state.active.get(h.owner, "")) == id and hud.can_pass(h.owner) and _bodies.has(id):
 		hud.offer_ball_pass(h.owner, cam.camera.unproject_position(_bodies[id].global_position) + Vector2(0, 34))
 		return
 	if h.is_on_map():
 		cam.focus(arena.hex_center(h.hex), 14.0)
+
+
+## True while the auto-pass is about to pass for this player: its move in a card round, nothing to play.
+func _auto_passing(slot: int) -> bool:
+	return GameSettings.auto_pass() and _replay == null and not bots.has(slot) \
+			and state.phase != GameState.PHASE_BATTLE and hud.nothing_to_play(slot)
+
+
+## The placed stage under the mouse, or "".
+func _stage_under_mouse() -> String:
+	var g: Variant = _ground_under_mouse()
+	if g == null or state == null:
+		return ""
+	var gp: Vector3 = g
+	var cell: Vector2i = arena.hex_at(gp)
+	for st: StageState in state.stages:
+		if st.placed and st.footprint().has(cell):
+			return st.id
+	return ""
 
 
 ## Hover from the table or from a hero panel expands the panel and lights the ball and its range.
