@@ -21,12 +21,15 @@ const BALL := Vector2(72, 72)
 const OTHER_DELAY: float = 0.5
 ## Seconds before a local player's balls go by themselves.
 const AUTO_THROW: float = 10.0
+const FOOT_H: float = 56.0
 
 ## Per slot: its two ball panels and labels, its total.
 var _balls: Array[PanelContainer] = []
 var _die_labels: Array[Label] = []
 var _sum_labels: Array[Label] = []
-var _roll_buttons: Array[Button] = []
+## "Click [ROLL] to throw your boće": the button is in the sentence (Marko 2026-11-09), one for
+## whoever throws next at this computer.
+var _ask: HBoxContainer
 var _final: Array[PackedInt32Array] = []
 ## Per slot: time left shaking (> 0), -1 not thrown yet, 0 settled.
 var _rolling: Array[float] = [-1.0, -1.0]
@@ -131,26 +134,39 @@ func setup(seed: int, initiative: int, names: PackedStringArray, colors: Array[C
 		sum.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(sum)
 		_sum_labels.append(sum)
-		var roll := Button.new()
-		roll.text = "ROLL"
-		roll.theme_type_variation = &"Primary"
-		roll.add_theme_font_size_override("font_size", 24)
-		roll.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		roll.visible = _local.has(slot)
-		var s: int = slot
-		roll.pressed.connect(func() -> void: _throw(s))
-		row.add_child(roll)
-		_roll_buttons.append(roll)
 		_rows.append(row)
+	# The sentence and the result share one line's room, so nothing jumps when one replaces the other.
+	var foot := Control.new()
+	foot.custom_minimum_size = Vector2(0, FOOT_H)
+	foot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(foot)
 	_result = UiTheme.label("", 30, Palette.GOLD)
 	_result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(_result)
+	_result.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_result.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	foot.add_child(_result)
+	_ask = HBoxContainer.new()
+	_ask.alignment = BoxContainer.ALIGNMENT_CENTER
+	_ask.add_theme_constant_override("separation", 14)
+	_ask.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_ask.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ask.visible = false
+	foot.add_child(_ask)
+	_ask.add_child(UiTheme.label("Click", 30, Palette.GOLD))
+	var roll := Button.new()
+	roll.text = "ROLL"
+	roll.theme_type_variation = &"Primary"
+	roll.add_theme_font_size_override("font_size", 24)
+	roll.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	roll.focus_mode = Control.FOCUS_NONE
+	roll.pressed.connect(_throw_next)
+	_ask.add_child(roll)
+	_ask.add_child(UiTheme.label("to throw your boće", 30, Palette.GOLD))
 	if _local.is_empty():
-		_result.text = ""
 		_throw(0)
 		_throw(1)
 	else:
-		_result.text = "Click ROLL to throw your boće"
+		_ask.visible = true
 		# Nobody waits for ever (a match with a move timer, a player away): they throw by themselves.
 		get_tree().create_timer(AUTO_THROW).timeout.connect(func() -> void:
 			for slot: int in _local:
@@ -176,7 +192,7 @@ func _throw(slot: int) -> void:
 	if _done or _rolling[slot] != -1.0:
 		return
 	_rolling[slot] = ROLL_TIME * GameSettings.anim_scale()
-	_roll_buttons[slot].visible = false
+	_ask.visible = _next_local() >= 0
 	# Open at once: the numbers run inside.
 	for d: int in 2:
 		_balls[slot * 2 + d].add_theme_stylebox_override("panel", _ball_box(slot, true))
@@ -187,6 +203,20 @@ func _throw(slot: int) -> void:
 	for other: int in 2:
 		if other != slot and not _local.has(other) and _rolling[other] == -1.0:
 			get_tree().create_timer(OTHER_DELAY * GameSettings.anim_scale()).timeout.connect(func() -> void: _throw(other))
+
+
+## The next seat at this computer that has not thrown yet, or -1.
+func _next_local() -> int:
+	for slot: int in _local:
+		if slot < 2 and _rolling[slot] == -1.0:
+			return slot
+	return -1
+
+
+func _throw_next() -> void:
+	var slot: int = _next_local()
+	if slot >= 0:
+		_throw(slot)
 
 
 func _process(delta: float) -> void:
@@ -257,9 +287,8 @@ func _close() -> void:
 func _gui_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton and (event as InputEventMouseButton).pressed):
 		return
-	for slot: int in _local:
-		if slot < 2 and _rolling[slot] == -1.0:
-			_throw(slot)
-			return
+	if _next_local() >= 0:
+		_throw_next()
+		return
 	if _rolling[0] == 0.0 and _rolling[1] == 0.0:
 		_close()

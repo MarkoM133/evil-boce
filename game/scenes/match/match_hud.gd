@@ -65,6 +65,8 @@ const PILES_X: float = 180.0
 const DECK_PILE_Y: float = -148.0
 const GRAVE_PILE_Y: float = -78.0
 const BANNER_TIME: float = 0.8
+## The setup tray while the other player places: darker, not see-through.
+const TRAY_WAITING := Color(0.42, 0.42, 0.42, 1.0)
 ## Phase call-outs stay a little longer, to be read.
 const PHASE_BANNER_TIME: float = 2.2
 ## Start too: every phase is called out long enough to notice (Marko 2026-10-26).
@@ -366,7 +368,8 @@ func refresh() -> void:
 	# The hand first: a freshly dealt starting hand says when its buttons may come.
 	_refresh_hand()
 	_refresh_prompt()
-	_prompt_card.visible = not (_prompt.text.is_empty() and _detail.text.is_empty())
+	# Not behind the starting hand: the hand and its two buttons say it all (Marko 2026-11-09).
+	_prompt_card.visible = not (_prompt.text.is_empty() and _detail.text.is_empty()) and not board_blocked()
 	_refresh_piles()
 	_refresh_dialog()
 	_refresh_over()
@@ -1865,12 +1868,17 @@ func _setup_prompt() -> void:
 	_kicker.text = "SETUP · " + ("STAGES" if stages else "CORES")
 	if not local_slots.has(who):
 		_prompt.text = "%s is placing a %s…" % [player_name(who), "stage" if stages else "core"]
-		# Your own ones stay in the tray, dim and not to be picked, while the other places (online
-		# playtest 2026-11-07: they vanished every time it was the other player's turn).
+		# Your own ones stay in the tray, darker and not to be picked, while the other places (online
+		# playtest 2026-11-07: they vanished every time it was the other player's turn). Darker only:
+		# see-through ones over the table were hard to read (Marko 2026-11-09).
 		if not local_slots.is_empty():
+			# None of them picked or bigger while waiting: all the same size.
+			var pick: String = setup_pick
+			setup_pick = ""
 			_setup_tray(local_slots[0], stages)
+			setup_pick = pick
 			for c: Node in _tray.get_children():
-				(c as CanvasItem).modulate.a = 0.5
+				(c as CanvasItem).modulate = TRAY_WAITING
 				_no_mouse(c)
 		return
 	_prompt.text = "Place a stage" if stages else "Place a core"
@@ -2252,6 +2260,8 @@ func _refresh_mulligan_dim() -> void:
 	if on == _mulligan_dim.visible:
 		return
 	_mulligan_dim.visible = on
+	# MULLIGAN · YOUR MOVE stays in front of the dim, like YOUR STARTING HAND (Marko 2026-11-09).
+	_ribbon.z_index = 1 if on else 0
 	if on:
 		_mulligan_dim.modulate.a = 0.0
 		_mulligan_dim.create_tween().tween_property(_mulligan_dim, "modulate:a", 1.0, MULLIGAN_DIM_TIME * GameSettings.anim_scale())
@@ -4911,8 +4921,9 @@ func _refresh_piles() -> void:
 	var p: PlayerState = state.player(slot) if slot >= 0 else null
 	# Not while who starts is rolled or stages and cores are placed (Marko 2026-11-06): no cards yet.
 	var setup: bool = intro_dice or state.phase == GameState.PHASE_SETUP_STAGES or state.phase == GameState.PHASE_SETUP_CORES
-	_piles.visible = p != null and not setup
-	_grave_spot.visible = p != null and not setup
+	# Nor behind the starting hand (Marko 2026-11-09): nothing to look at there yet.
+	_piles.visible = p != null and not setup and not board_blocked()
+	_grave_spot.visible = p != null and not setup and not board_blocked()
 	if not _piles.visible:
 		return
 	var top: String = p.graveyard[p.graveyard.size() - 1] if not p.graveyard.is_empty() else ""
