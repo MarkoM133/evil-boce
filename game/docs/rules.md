@@ -87,8 +87,9 @@ describes energy claims as the rule since 2026-11-04 (final); Stay stays an opti
 - **Equipment**: on a context hero, at most `equipment_limit` (3), the same card once per
   hero. Its `bonus` (`{"pwr": 1000, "hp": 2}` from the web app) counts while equipped.
 - **Evolution**: on a context hero that is on the map, `hero` name must match, level
-  `evo` must be the next one. Stats come from the evolution card; damage carries over
-  (new max − damage taken). `remove_evolution()` drops HP only down to the new max.
+  `evo` must be the next one. Stats and abilities come from the evolution card alone (the
+  ability of the card under it is off: `FxRuntime.sources` takes `stat_card`, scenario 66);
+  damage carries over (new max − damage taken). `remove_evolution()` drops HP only down to the new max.
 - **Assist**: at most `assist_limit` (3) per player, the same card once; a fourth needs
   `replace` (an assist in play that goes to the graveyard).
 - **Action**: only cards whose whole effect is a `bonus` (e.g. "+2000 Power"); the bonus

@@ -1507,20 +1507,19 @@ func hide_ball_pass() -> void:
 ## ability of that card, for its name).
 func _hero_abilities(h: HeroState) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	var ids: Array[String] = [h.card_id]
-	for e: String in h.evolutions:
-		ids.append(e)
-	for cid: String in ids:
-		var card: CardDef = engine.catalog.get_card(cid)
-		if card == null:
+	# Only the card the hero is now: an evolution replaces the ability of the card under it (GDD 10;
+	# Marko 2026-11-09: an evolved Luffy still showed the base card's ability, which the engine
+	# never offers).
+	var card: CardDef = engine.stat_card(h)
+	if card == null:
+		return out
+	var n: int = 0
+	for i: int in card.effects.size():
+		var e: FxEffect = card.effects[i]
+		if not e.optional or e.cond == "WIN":
 			continue
-		var n: int = 0
-		for i: int in card.effects.size():
-			var e: FxEffect = card.effects[i]
-			if not e.optional or e.cond == "WIN":
-				continue
-			out.append({"card": card, "index": i, "effect": e, "n": n})
-			n += 1
+		out.append({"card": card, "index": i, "effect": e, "n": n})
+		n += 1
 	return out
 
 

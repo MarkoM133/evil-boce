@@ -1,0 +1,24 @@
+{
+  "name": "An evolution replaces the hero's ability (GDD 10, Marko 2026-11-09): once Alpha is Alpha, Awakened, the base card's 'may move' is neither offered nor accepted; with the evolution removed it is back",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 8],
+      "heroes.p1:TB-003.zone": "map", "heroes.p1:TB-003.hex": [8, 2],
+      "players.p0.hand": ["TA-012"], "players.p0.energy": 3,
+      "initiative": 0
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-003", "roll": false}},
+    {"move": {"type": "play_card", "player": 0, "card": "TA-012"}},
+    {"expect": {"heroes.p0:TA-001.evolutions": ["TA-012"]}},
+    {"pass_round": true},
+    {"expect": {"phase": "postroll", "to_act": 0}},
+    {"move": {"type": "use_ability", "player": 0, "hero": "p0:TA-001", "card": "TA-001", "index": 0}, "error": "cannot be used now"},
+    {"set": {"heroes.p0:TA-001.evolutions": []}},
+    {"move": {"type": "use_ability", "player": 0, "hero": "p0:TA-001", "card": "TA-001", "index": 0}},
+    {"expect": {"pending.0.kind": "hex", "abilities_used": ["p0:TA-001|TA-001|0"]}}
+  ]
+}
