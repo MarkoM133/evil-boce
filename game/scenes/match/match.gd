@@ -84,6 +84,8 @@ var _battle_fx: Node3D
 var _battle_fx_key: String = ""
 ## The battle camera (HUD 5): which battle it last flew to, so it flies once per battle.
 var _cam_battle_key: String = ""
+## Seconds left of the pause between the last band and the end screen; -1 before it starts.
+var _end_pause: float = -1.0
 var _marks := ImmediateMesh.new()
 ## Stages someone is trying to claim (Stay): their outline pulses (_process).
 var _claim_marks := ImmediateMesh.new()
@@ -449,6 +451,7 @@ func _build_hud() -> void:
 		_apply(Move.make(Move.SELECT, slot, {"hero": hero_id, "roll": roll})))
 	hud.battle_cam_pressed.connect(_toggle_battle_cam)
 	hud.battle_resolved.connect(_on_battle_resolved)
+	hud.shown_battle_changed.connect(_on_shown_battle_changed)
 	hud.damage_pressed.connect(func(slot: int, target: String, cards: Array) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target, "cards": cards})))
 	hud.energy_pressed.connect(func(slot: int, split: Dictionary) -> void: _apply(Move.make(Move.STAGE_ENERGY, slot, {"split": split})))
 	hud.choose_pressed.connect(func(slot: int, value: Variant) -> void: _apply(Move.make(Move.CHOOSE, slot, {"value": value})))
@@ -1074,7 +1077,10 @@ func _end_moment() -> void:
 	var title: String = "DRAW" if state.winner < 0 else ("%s WINS" % winner)
 	var why: String = {"ko": "EVERY HERO OF THE OTHER SIDE IS DOWN", "stages": "THREE STAGES CLAIMED", "stages_energy": "MORE ENERGY IN THE STAGES",
 		"surrender": "SURRENDER"}.get(state.result, "")
-	hud.banner(title, Palette.GOLD if state.winner >= 0 else Palette.SURFACE_2, "", why, MatchHud.END_HOLD_TIME, "")
+	# After the bands of what decided it (Marko 2026-11-09: "PLAYER 1 WINS" came before STAGE
+	# CLAIMED): this runs before the table is redrawn, their bands are made then.
+	_end_pause = -1.0
+	hud.banner.call_deferred(title, Palette.GOLD if state.winner >= 0 else Palette.SURFACE_2, "", why, MatchHud.END_HOLD_TIME, "")
 	get_tree().create_timer(0.1).timeout.connect(func() -> void: _end_hold_watch())
 
 
@@ -1083,8 +1089,18 @@ func _end_hold_watch() -> void:
 	if not is_inside_tree():
 		return
 	if hud.is_announcing():
+		_end_pause = -1.0
 		get_tree().create_timer(0.1).timeout.connect(func() -> void: _end_hold_watch())
 		return
+	# The bands are gone: the table stays a moment longer (a click or Enter ends it).
+	if _end_pause < 0.0:
+		_end_pause = MatchHud.END_PAUSE_TIME * GameSettings.anim_scale()
+		hud.end_skip = false
+	_end_pause -= 0.1
+	if _end_pause > 0.0 and not hud.end_skip:
+		get_tree().create_timer(0.1).timeout.connect(func() -> void: _end_hold_watch())
+		return
+	_end_pause = -1.0
 	hud.end_hold = false
 	hud.refresh()
 
@@ -1102,6 +1118,8 @@ func _sync() -> void:
 	for h: HeroState in state.heroes:
 		_sync_hero(h)
 	_rebuild_tokens()
+	# The bands first: they say which battle the table still shows (MatchHud.shown_battle).
+	hud.scan_log()
 	# Not "": an empty highlight must still clear the last one (the setup zones stayed lit).
 	_range_key = "-"
 	_draw_marks()
@@ -1528,9 +1546,30 @@ func _outline(cells: Array[Vector2i], color: Color, dashed: bool = false, im: Im
 
 ## The heroes in the battle being fought now, or none.
 func _current_battle() -> PackedStringArray:
+	# The battle whose bands still show stays the one on the table (MatchHud.shown_battle).
+	var held: PackedStringArray = hud.shown_battle_ids()
+	if not held.is_empty():
+		return held
 	if state.phase == GameState.PHASE_BATTLE and state.battle_index >= 0 and state.battle_index < state.battles.size():
 		return JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", []))
 	return PackedStringArray()
+
+
+## Turn and index of the battle on the table (the one _current_battle gives).
+func _battle_key() -> String:
+	var held: Dictionary = hud.shown_battle()
+	if not held.is_empty():
+		return "%d:%d" % [JsonUtil.as_int(held.get("turn", 0)), JsonUtil.as_int(held.get("index", 0))]
+	return "%d:%d" % [state.turn, state.battle_index]
+
+
+func _on_shown_battle_changed() -> void:
+	if state == null:
+		return
+	_range_key = "-"
+	_draw_marks()
+	# The bands already held the camera on the battle just fought: on to the next at once.
+	_update_battle_cam(true)
 
 
 ## Arrows from each hero to the opponents it reaches (range is not mutual, GDD 11).
@@ -1540,7 +1579,11 @@ func _battle_arrows() -> bool:
 	# Battles still to come this phase (thin, faint red).
 	var waiting := PackedStringArray()
 	if not current.is_empty():
-		for i: int in range(state.battle_index + 1, state.battles.size()):
+		var first: int = state.battle_index + 1
+		# While the battle just fought still shows, the one the game is already on is "to come".
+		if not hud.shown_battle().is_empty():
+			first = state.battle_index if state.phase == GameState.PHASE_BATTLE else state.battles.size()
+		for i: int in range(maxi(first, 0), state.battles.size()):
 			waiting.append_array(JsonUtil.as_strings(state.battles[i].get("heroes", [])))
 	for a: HeroState in state.heroes:
 		for b: HeroState in state.heroes:
@@ -3213,7 +3256,7 @@ func _refresh_battle_fx() -> void:
 		var on: HeroState = state.hero(hid)
 		if on != null and on.is_on_map():
 			ids.append(hid)
-	var key: String = "%d:%s" % [state.battle_index, ",".join(ids)]
+	var key: String = "%s:%s" % [_battle_key(), ",".join(ids)]
 	if key == _battle_fx_key:
 		return
 	_battle_fx_key = key
@@ -3333,7 +3376,7 @@ func demo_battle_ko() -> void:
 
 ## As each battle starts the camera flies to it (Settings → Display); when the battles are
 ## over it goes back to the table.
-func _update_battle_cam() -> void:
+func _update_battle_cam(now: bool = false) -> void:
 	var ids: PackedStringArray = _current_battle()
 	if ids.is_empty():
 		if not _cam_battle_key.is_empty():
@@ -3342,14 +3385,14 @@ func _update_battle_cam() -> void:
 				# Stay on the last battle a moment, so its end can be seen, then back to the table.
 				_leave_cam_later()
 		return
-	var key: String = "%d:%d:%s" % [state.turn, state.battle_index, ",".join(ids)]
+	var key: String = "%s:%s" % [_battle_key(), ",".join(ids)]
 	if key == _cam_battle_key:
 		return
 	var from_another: bool = not _cam_battle_key.is_empty()
 	_cam_battle_key = key
 	if GameSettings.battle_cam_auto() and _replay == null:
 		# From one battle to the next: a moment on the one just fought first.
-		if from_another and hud.battle_cam:
+		if from_another and hud.battle_cam and not now:
 			await get_tree().create_timer(1.2).timeout
 			if key != _cam_battle_key:
 				return

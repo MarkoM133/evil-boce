@@ -39,6 +39,8 @@ signal card_played(card_id: String, hero_id: String)
 signal ability_fired(hero_id: String, card_id: String)
 ## The centre is taken by a band (true) or free again (false): the match waits while it is taken.
 signal announcing_changed(busy: bool)
+## The battle the bar, the scale and the table show changed (see shown_battle).
+signal shown_battle_changed
 signal menu_pressed
 ## Leave the match for the main menu (the drop screen).
 signal leave_pressed
@@ -117,7 +119,15 @@ const FOLD_CHEVRON_GAP: float = 8.0
 const ENERGY_GAIN_IN: float = 0.3
 const ENERGY_GAIN_OUT: float = 0.45
 ## The table stays this long after the deciding moment before the end screen (a click skips it).
-const END_HOLD_TIME: float = 3.0
+const END_HOLD_TIME: float = 2.2
+## The table stays this long after the last band, before the end screen (Marko 2026-11-09: the end
+## came as a flash). A click or Enter skips it.
+const END_PAUSE_TIME: float = 2.0
+## A band's words keep this far from the screen's sides, and a long side wraps at this width.
+const BAND_MARGIN: float = 110.0
+const BAND_SIDE_W: float = 340.0
+const BAND_PAD_Y: float = 40.0
+const ENERGY_BANNER_TIME: float = 1.0
 ## The other side's Equipment or Assist stays this long before it flies to its place.
 const POP_TIME: float = 1.3
 ## A merged band stays this much longer per extra line, up to MERGED_MAX_TIME.
@@ -174,6 +184,17 @@ var intro_dice: bool = false
 var end_summary: Dictionary = {}
 ## The end screen waits while this is set (the table moment, Marko 2026-11-08: "I did not know why I won").
 var end_hold: bool = false
+## A click or Enter during the pause after the last band: the end screen comes now.
+var end_skip: bool = false
+## The battle whose bands are being read out by _scan_log: every band made meanwhile carries it.
+var _tagging: Dictionary = {}
+## The band on the screen.
+var _now: Dictionary = {}
+var _shown_key: String = ""
+## The battle bar as last drawn from the state (turn, index, count, side0/1, total0/1).
+var _bar_last: Dictionary = {}
+## "turn|index" of the battle the state was on at the last look at the log, "" outside one.
+var _live_key: String = ""
 ## The series line on the end screen ("SERIES 1–0 · GAME 2 NEXT"), set by the match scene.
 var series_text: String = ""
 
@@ -398,7 +419,10 @@ func _refresh_energy() -> void:
 func _refresh_battle_bar() -> void:
 	for c: Node in _battle_bar.get_children():
 		c.queue_free()
-	var on: bool = state.phase == GameState.PHASE_BATTLE and state.battle_index >= 0 and state.battle_index < state.battles.size()
+	# The battle whose bands still show stays on the bar (shown_battle).
+	var held: Dictionary = shown_battle()
+	var live: bool = state.phase == GameState.PHASE_BATTLE and state.battle_index >= 0 and state.battle_index < state.battles.size()
+	var on: bool = live or not held.is_empty()
 	_battle_bar.visible = on
 	_battle_tug.visible = on
 	for bar: ColorRect in _letterbox:
@@ -406,22 +430,37 @@ func _refresh_battle_bar() -> void:
 	if not on:
 		_tug_key = ""
 		return
-	_battle_bar.add_child(UiShape.chip("BATTLE %d / %d" % [state.battle_index + 1, state.battles.size()], Palette.ACCENT, Palette.FG, 20, 32.0, 16.0))
+	var turn: int = state.turn
+	var index: int = state.battle_index
+	var count: int = state.battles.size()
 	var sides: Array[PackedStringArray] = [PackedStringArray(), PackedStringArray()]
 	# The sum decides the battle (Marko 2026-11-08), of the heroes the engine counts: those on the map.
 	var totals: Array[int] = [0, 0]
-	for hid: String in JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", [])):
-		var h: HeroState = state.hero(hid)
-		if h != null and h.is_on_map():
-			var t: int = clampi(state.team_of(h.owner), 0, 1)
-			var pwr: int = engine.stat(state, h, "pwr")
-			sides[t].append("%s %d" % [hero_name(h).to_upper(), pwr])
-			totals[t] += pwr
+	if live:
+		var ids: PackedStringArray = JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", []))
+		for hid: String in ids:
+			var h: HeroState = state.hero(hid)
+			if h != null and h.is_on_map():
+				var t: int = clampi(state.team_of(h.owner), 0, 1)
+				var pwr: int = engine.stat(state, h, "pwr")
+				sides[t].append("%s %d" % [hero_name(h).to_upper(), pwr])
+				totals[t] += pwr
+		# Remembered also while another battle is held on the bar: it is what its own bands will hold.
+		_bar_last = {"turn": turn, "index": index, "count": count, "heroes": ids,
+			"side0": sides[0], "side1": sides[1], "total0": totals[0], "total1": totals[1]}
+	if not held.is_empty():
+		turn = JsonUtil.as_int(held.get("turn", turn))
+		index = JsonUtil.as_int(held.get("index", index))
+		count = JsonUtil.as_int(held.get("count", count))
+		for t: int in 2:
+			sides[t] = JsonUtil.as_strings(held.get("side%d" % t, []))
+			totals[t] = JsonUtil.as_int(held.get("total%d" % t, 0))
+	_battle_bar.add_child(UiShape.chip("BATTLE %d / %d" % [index + 1, count], Palette.ACCENT, Palette.FG, 20, 32.0, 16.0))
 	for t: int in 2:
 		if t == 1:
 			_battle_bar.add_child(UiShape.chip("VS", Palette.PANEL_SOLID, Palette.MUTED, 16, 32.0, 10.0))
 		_battle_bar.add_child(UiShape.chip("  +  ".join(sides[t]), Palette.PANEL_SOLID, Palette.team(t).lightened(0.25), 16, 32.0, 14.0))
-	var key: String = "%d|%d" % [state.turn, state.battle_index]
+	var key: String = "%d|%d" % [turn, index]
 	if key != _tug_key:
 		_tug_key = key
 		_battle_tug.start(totals[0], totals[1])
@@ -587,12 +626,78 @@ func banner(title: String, color: Color, left: String = "", right: String = "", 
 	if title.ends_with(" PHASE"):
 		_banners = _banners.filter(func(q: Dictionary) -> bool: return not str(q["title"]).ends_with(" PHASE"))
 	var b: Dictionary = {"title": title, "color": color, "left": left, "right": right, "hold": hold, "lines": PackedStringArray(), "card": card, "parts": parts}
+	if not _tagging.is_empty():
+		b["battle"] = _tagging
 	if _grouping:
 		_group.append(b)
 		return
 	_banners.append(b)
 	if not _banner_busy:
 		_next_banner()
+
+
+## The battle the screen is still on (Marko 2026-11-09: BATTLE! and TIE! came when the bar above
+## was already on the next fight): the engine opens the next battle in the same move that decides
+## this one, but the bar, the scale, the camera and the rings stay on this one until its bands
+## have passed. Empty when the state itself is what shows.
+func shown_battle() -> Dictionary:
+	if _now.has("battle"):
+		return JsonUtil.as_dict(_now["battle"])
+	for q: Dictionary in _banners:
+		if q.has("battle"):
+			return JsonUtil.as_dict(q["battle"])
+	return {}
+
+
+func shown_battle_ids() -> PackedStringArray:
+	return JsonUtil.as_strings(shown_battle().get("heroes", []))
+
+
+## New log entries become bands now (the match calls it before it draws the table, so the table
+## already knows which battle the bands keep on the screen). refresh() does the same.
+func scan_log() -> void:
+	if state != null:
+		_scan_log()
+
+
+func _note_shown_battle() -> void:
+	var held: Dictionary = shown_battle()
+	var key: String = "" if held.is_empty() else "%d|%d" % [JsonUtil.as_int(held.get("turn", 0)), JsonUtil.as_int(held.get("index", 0))]
+	if key == _shown_key:
+		return
+	_shown_key = key
+	refresh.call_deferred()
+	shown_battle_changed.emit.call_deferred()
+
+
+## What the bar showed for the battle of log event `e`, with the totals it was decided on.
+func _battle_tag(e: Dictionary) -> Dictionary:
+	var turn: int = JsonUtil.as_int(e.get("turn", state.turn))
+	var index: int = JsonUtil.as_int(e.get("index", 0))
+	var ids: PackedStringArray = JsonUtil.as_strings(e.get("heroes", []))
+	var tag: Dictionary = {}
+	if JsonUtil.as_int(_bar_last.get("turn", -1), -1) == turn and JsonUtil.as_int(_bar_last.get("index", -1), -1) == index:
+		tag = _bar_last.duplicate()
+	else:
+		var sides: Array[PackedStringArray] = [PackedStringArray(), PackedStringArray()]
+		var totals: Array[int] = [0, 0]
+		for hid: String in ids:
+			var x: HeroState = state.hero(hid)
+			if x == null:
+				continue
+			var t: int = clampi(state.team_of(x.owner), 0, 1)
+			var pwr: int = engine.stat(state, x, "pwr")
+			sides[t].append("%s %d" % [hero_name(x).to_upper(), pwr])
+			totals[t] += pwr
+		tag = {"turn": turn, "index": index, "count": maxi(state.battles.size(), index + 1),
+			"side0": sides[0], "side1": sides[1], "total0": totals[0], "total1": totals[1]}
+	tag["heroes"] = ids
+	var power: Dictionary = JsonUtil.as_dict(e.get("power", {}))
+	for k: Variant in power:
+		for t: int in 2:
+			if str(k) == str(t):
+				tag["total%d" % t] = JsonUtil.as_int(power[k])
+	return tag
 
 
 ## True while a band is on the screen or waiting its turn. The match waits for it: bots, clocks,
@@ -651,6 +756,9 @@ static func merge_banners(run: Array[Dictionary]) -> Dictionary:
 		if loudness(run[i]) > loudness(run[best]):
 			best = i
 	var top: Dictionary = run[best].duplicate()
+	for one: Dictionary in run:
+		if not top.has("battle") and one.has("battle"):
+			top["battle"] = one["battle"]
 	var lines := PackedStringArray()
 	var hold: float = 0.0
 	for i: int in run.size():
@@ -1009,20 +1117,24 @@ func _build() -> void:
 
 func _refresh_ribbon() -> void:
 	_clear(_ribbon)
-	var turn_text: String = "TURN %d" % state.turn if state.turn > 0 else ("MULLIGAN" if state.phase == GameState.PHASE_MULLIGAN else "SETUP")
+	# The turn and phase of the battle whose bands still show (shown_battle).
+	var held: Dictionary = shown_battle()
+	var turn_n: int = state.turn if held.is_empty() else JsonUtil.as_int(held.get("turn", state.turn))
+	var phase_now: String = state.phase if held.is_empty() else GameState.PHASE_BATTLE
+	var turn_text: String = "TURN %d" % turn_n if turn_n > 0 else ("MULLIGAN" if state.phase == GameState.PHASE_MULLIGAN else "SETUP")
 	var turn: UiShape = UiShape.chip(turn_text, Palette.ACCENT, Palette.FG, 28, 40.0, 22.0)
-	if state.turn > 0:
+	if turn_n > 0:
 		turn.tooltip_text = "Initiative this turn: %s" % player_name(state.initiative)
 		turn.mouse_filter = Control.MOUSE_FILTER_PASS
 	_ribbon.add_child(turn)
-	if state.turn > 0:
+	if turn_n > 0:
 		var first: UiShape = UiShape.chip("▸ " + player_name(state.initiative).to_upper(),
 			Palette.team(state.team_of(state.initiative)), Palette.FG, 14, 26.0, 12.0)
 		first.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		first.tooltip_text = "Goes first this turn"
 		first.mouse_filter = Control.MOUSE_FILTER_PASS
 		_ribbon.add_child(first)
-		var now: int = RIBBON_PHASES.find(_ribbon_phase(state.phase))
+		var now: int = RIBBON_PHASES.find(_ribbon_phase(phase_now))
 		for i: int in RIBBON_PHASES.size():
 			# Only the current phase in its colour, as the phase chips on the cards (Marko 2026-11-06: the
 			# others in colour drew the eye away from it); the ones to come plain grey, the ones gone darker.
@@ -1647,6 +1759,9 @@ func _pickable(h: HeroState) -> bool:
 
 
 func _in_battle(h: HeroState) -> bool:
+	var held: Dictionary = shown_battle()
+	if not held.is_empty():
+		return JsonUtil.as_strings(held.get("heroes", [])).has(h.id)
 	if state.phase != GameState.PHASE_BATTLE or state.battle_index < 0 or state.battle_index >= state.battles.size():
 		return false
 	return JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", [])).has(h.id)
@@ -2687,11 +2802,14 @@ func _input(event: InputEvent) -> void:
 		return
 	if not _drag.is_empty() and _drag_input(event):
 		return
-	if _banner_busy and ((event is InputEventMouseButton and (event as InputEventMouseButton).pressed
-			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT)
+	var go_on: bool = (event is InputEventMouseButton and (event as InputEventMouseButton).pressed
+			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT) \
 			or (event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo
-			and (event as InputEventKey).keycode in [KEY_ENTER, KEY_KP_ENTER])):
+			and (event as InputEventKey).keycode in [KEY_ENTER, KEY_KP_ENTER])
+	if _banner_busy and go_on:
 		skip_banner()
+	elif end_hold and go_on:
+		end_skip = true
 	# An open big card goes away on any left click (the click does nothing else).
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and not _big_cid.is_empty():
@@ -3556,6 +3674,9 @@ func log_lines() -> PackedStringArray:
 ## New log entries since the last look: banners for the big moments. The first look (and a
 ## replay stepping back) only takes note.
 func _scan_log() -> void:
+	var was: String = _live_key
+	_live_key = "%d|%d" % [state.turn, state.battle_index] if state.phase == GameState.PHASE_BATTLE \
+			and state.battle_index >= 0 and state.battle_index < state.battles.size() else ""
 	var n: int = state.log.size()
 	if _log_seen < 0 or n < _log_seen:
 		_log_seen = n
@@ -3587,14 +3708,24 @@ func _scan_log() -> void:
 			# A stage's bonus is easy to miss on the table: say it.
 			toast(_describe(e))
 	_log_seen = n
-	if not banked.is_empty():
-		_energy_note(banked)
 	# The moment's bands together, merged (a replay jumping ahead shows only the last few).
 	_grouping = true
+	# What a move made during a battle brought belongs to that battle, also when the move closed it
+	# (the hits come after the damage choice, and the same move opens the next battle).
+	if not was.is_empty() and was != _live_key \
+			and was == "%d|%d" % [JsonUtil.as_int(_bar_last.get("turn", -1), -1), JsonUtil.as_int(_bar_last.get("index", -1), -1)]:
+		_tagging = _bar_last.duplicate()
 	for e: Dictionary in fresh.slice(maxi(0, fresh.size() - 8)):
+		if str(e.get("type", "")) == "battle":
+			_tagging = _battle_tag(e)
 		_banner_for(e)
+	# The energy of the End phase is no longer the battle's.
+	_tagging = {}
+	if not banked.is_empty():
+		_energy_note(banked)
 	_grouping = false
 	_push_group()
+	_note_shown_battle()
 
 
 func _banner_for(e: Dictionary) -> void:
@@ -3676,15 +3807,16 @@ func _banner_for(e: Dictionary) -> void:
 				banner(name.to_upper(), Palette.GOLD, _hero_label(str(e.get("hero", ""))).to_upper(), "")
 		"battle_locked":
 			# A tie (GDD 10): nobody is hurt, the heroes stay locked and fight again next turn.
+			# The band says it all (Marko 2026-11-09: the straw line above said the same a second early).
 			banner("TIE!", Palette.GOLD, _heroes_line(e).to_upper(), "SAME POWER · FIGHT AGAIN NEXT TURN", BATTLE_BANNER_TIME)
-			toast("Tie: %s. Nobody takes damage; they stay locked and fight this battle again next turn." % _heroes_line(e))
 		"battle_tie_break":
 			banner("TIE AGAIN!", Palette.ACCENT, _heroes_line(e).to_upper(), "BOTH KNOCKED BACK", BATTLE_BANNER_TIME)
-			toast("Second tie: %s. Both heroes are knocked back towards their own side." % _heroes_line(e))
 
 
 func _next_banner() -> void:
 	if _banners.is_empty():
+		_now = {}
+		_note_shown_battle()
 		if _banner_busy:
 			_banner_busy = false
 			announcing_changed.emit(false)
@@ -3696,6 +3828,8 @@ func _next_banner() -> void:
 		_banner_busy = true
 		announcing_changed.emit(true)
 	var b: Dictionary = _banners.pop_front()
+	_now = b
+	_note_shown_battle()
 	if JsonUtil.as_bool(b.get("pop", false)) and _pop_show(b):
 		return
 	if not str(b.get("card", "")).is_empty() and not JsonUtil.as_bool(b.get("pop", false)) and _combo_show(b):
@@ -3709,10 +3843,6 @@ func _next_banner() -> void:
 	sb.border_color = Color.BLACK
 	sb.set_border_width_all(6)
 	band.add_theme_stylebox_override("panel", sb)
-	var h: float = maxf(100.0, 36.0 + 30.0 * (lines.size() + (0 if str(b["right"]).is_empty() else 1)))
-	band.size = Vector2(w, h)
-	band.pivot_offset = band.size * 0.5
-	band.position = Vector2(-100.0 - w, size.y * 0.5 - h * 0.5)
 	band.rotation_degrees = -3.0
 	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_banner_layer.add_child(band)
@@ -3734,21 +3864,33 @@ func _next_banner() -> void:
 	var side_r: Label = _banner_side(right, fg, false)
 	if not lines.is_empty():
 		side_r.add_theme_font_size_override("font_size", 22)
-		side_r.custom_minimum_size.x = 420
 	row.add_child(side_r)
-	# Everything stays on the screen (Marko 2026-11-02: a long right side ran off it): the
-	# sides wrap first, then the title gets smaller until the row fits.
-	var room: float = size.x - 80.0
+	# Everything stays on the screen, clear of its sides (Marko 2026-11-02: a long right side ran
+	# off it; 2026-11-09: it still stood against the edge): the sides wrap first, then the title
+	# gets smaller until the row fits.
+	var side_l := row.get_child(0) as Label
+	var room: float = size.x - BAND_MARGIN * 2.0
 	if row.get_combined_minimum_size().x > room:
-		for side: Label in [side_r, row.get_child(0) as Label]:
-			if side.get_minimum_size().x > 300.0:
+		for side: Label in [side_r, side_l]:
+			if side.get_minimum_size().x > BAND_SIDE_W:
 				side.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-				side.custom_minimum_size.x = 300.0
+				side.custom_minimum_size.x = BAND_SIDE_W
 				side.add_theme_font_size_override("font_size", 22)
 	var title_size: int = 84
 	while row.get_combined_minimum_size().x > room and title_size > 40:
 		title_size -= 6
 		title.add_theme_font_size_override("font_size", title_size)
+	# As tall as its longest side needs (five discarded cards wrap to as many lines).
+	var h: float = 100.0
+	for side: Label in [side_l, side_r]:
+		if side.text.is_empty():
+			continue
+		var wrap: float = side.custom_minimum_size.x if side.autowrap_mode != TextServer.AUTOWRAP_OFF else -1.0
+		h = maxf(h, side.get_theme_font("font").get_multiline_string_size(side.text, HORIZONTAL_ALIGNMENT_LEFT, wrap,
+			side.get_theme_font_size("font_size")).y + BAND_PAD_Y)
+	band.size = Vector2(w, h)
+	band.pivot_offset = band.size * 0.5
+	band.position = Vector2(-100.0 - w, size.y * 0.5 - h * 0.5)
 	_band = band
 	var t: Tween = band.create_tween()
 	_band_tween = t
@@ -5325,9 +5467,12 @@ func _fold_chevron(open: bool) -> Control:
 ## for a few seconds ("+3 ENERGY INTO ONIGASHIMA · 9/14"), so one stage taking it all without
 ## a split box does not pass unnoticed.
 func _energy_note(events: Array[Dictionary]) -> void:
-	var parts := PackedStringArray()
 	var until: int = Time.get_ticks_msec() + int(ENERGY_FLASH_MS * GameSettings.anim_scale())
-	var who_all: int = -2
+	# What went where, per player in the order they banked.
+	var order := PackedInt32Array()
+	var owners := PackedInt32Array()
+	var amounts := PackedInt32Array()
+	var texts := PackedStringArray()
 	for e: Dictionary in events:
 		var st: StageState = state.stage(str(e.get("stage", "")))
 		var amount: int = JsonUtil.as_int(e.get("amount", 0))
@@ -5335,21 +5480,32 @@ func _energy_note(events: Array[Dictionary]) -> void:
 		var wasted: int = JsonUtil.as_int(e.get("wasted", 0))
 		if st == null or (amount <= 0 and wasted <= 0):
 			continue
-		who_all = who if who_all == -2 or who_all == who else -1
 		_energy_flash[st.id] = {"amount": amount, "player": who, "until": until, "start": Time.get_ticks_msec()}
 		var known: bool = st.revealed or local_slots.has(st.owner)
-		var where: String = _card_name(st.card_id) if known else "a hidden stage"
-		var text: String = "+%d energy into %s · %d/%d" % [amount, where,
+		var text: String = "%s · %d/%d" % [_card_name(st.card_id) if known else "a hidden stage",
 			JsonUtil.as_int(e.get("progress", 0)), JsonUtil.as_int(e.get("goal", 0))]
 		if wasted > 0:
-			text += " (%d lost)" % wasted
-		if not local_slots.has(who):
-			text = "%s %s" % [player_name(who), text]
-		parts.append(text)
-	if parts.is_empty():
+			text += " · %d lost" % wasted
+		if not order.has(who):
+			order.append(who)
+		owners.append(who)
+		amounts.append(amount)
+		texts.append(text)
+	if texts.is_empty():
 		return
-	var color: Color = Palette.GOLD if who_all < 0 else Palette.team(state.team_of(who_all))
-	toast("   ·   ".join(parts), color, 2.6)
+	# A band across the screen, short, in the player's colour (Marko 2026-11-09: the straw line
+	# stood low over the table and was easy to miss). With bands off it is that line still.
+	for who: int in order:
+		var total: int = 0
+		var rows := PackedStringArray()
+		for i: int in texts.size():
+			if owners[i] == who:
+				total += amounts[i]
+				rows.append(texts[i].to_upper())
+		if GameSettings.banners() == "off":
+			toast("%s +%d energy into %s" % [player_name(who), total, "   ·   ".join(rows)], Palette.team(state.team_of(who)), 2.6)
+		else:
+			banner("+%d ENERGY" % total, Palette.team(state.team_of(who)), player_name(who).to_upper(), "\n".join(rows), ENERGY_BANNER_TIME)
 	# The tiles light up now and go back to normal by themselves.
 	refresh.call_deferred()
 	get_tree().create_timer(ENERGY_FLASH_MS * GameSettings.anim_scale() / 1000.0 + 0.05).timeout.connect(func() -> void:

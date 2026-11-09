@@ -40,3 +40,18 @@ func test_ko_over_blows_and_more_lines_are_counted() -> void:
 func test_single_band_stays_itself() -> void:
 	var one: Dictionary = _b("RING-OUT", "", "SHANKS")
 	assert_eq(Hud.merge_banners([one]), one)
+
+
+## The battle a band belongs to (the bar above stays on it while the band shows) survives a merge,
+## whichever band names the merged one.
+func test_merged_band_keeps_its_battle() -> void:
+	var hit: Dictionary = _b("A TAKES 1 DAMAGE", "", "HP 4")
+	hit["battle"] = {"turn": 3, "index": 1}
+	var m: Dictionary = Hud.merge_banners([hit, _b("KO", "", "SHANKS")])
+	assert_eq(str(m["title"]), "KO")
+	assert_eq(JsonUtil.as_int(JsonUtil.as_dict(m["battle"]).get("index", -1)), 1)
+
+
+func test_energy_band_reads_as_one_line_when_merged() -> void:
+	assert_eq(Hud.line_of(_b("+6 ENERGY", "PLAYER 1", "EGGHEAD · 14/14 · 2 LOST\nDRUM ISLAND · 3/14")),
+		"+6 ENERGY · PLAYER 1 · EGGHEAD · 14/14 · 2 LOST DRUM ISLAND · 3/14")
