@@ -4684,6 +4684,12 @@ func _mulligan_button(text: String, cb: Callable, kind: StringName) -> Button:
 	b.focus_mode = Control.FOCUS_NONE
 	if kind != &"":
 		b.theme_type_variation = kind
+	else:
+		# Over the dimmed table a plain dark button was lost (Marko 2026-11-09): lighter, with an edge.
+		var sb: StyleBoxFlat = UiTheme.slant(Color("34312d"), 26, 10)
+		sb.set_border_width_all(2)
+		sb.border_color = Color(Palette.FG, 0.6)
+		b.add_theme_stylebox_override("normal", sb)
 	b.add_theme_font_size_override("font_size", 24)
 	b.custom_minimum_size = Vector2(220, 52)
 	b.pressed.connect(cb)

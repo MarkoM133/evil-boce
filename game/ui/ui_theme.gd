@@ -194,10 +194,12 @@ static func _build() -> Theme:
 	t.set_stylebox("normal", "MenuItem", plain)
 	t.set_stylebox("disabled", "MenuItem", plain)
 	t.set_stylebox("hover", "MenuItem", hover)
-	t.set_stylebox("pressed", "MenuItem", slant(Palette.GOLD, 26, 2))
-	t.set_stylebox("hover_pressed", "MenuItem", slant(Palette.GOLD.lightened(0.15), 26, 2))
-	t.set_color("font_pressed_color", "MenuItem", Color.BLACK)
-	t.set_color("font_hover_pressed_color", "MenuItem", Color.BLACK)
+	# Pressed is the red bar and white words it has under the mouse (Marko 2026-11-09): its focus
+	# box is that same bar and is drawn on top, so any other colour here only shows in the words.
+	t.set_stylebox("pressed", "MenuItem", hover)
+	t.set_stylebox("hover_pressed", "MenuItem", hover)
+	t.set_color("font_pressed_color", "MenuItem", Color.WHITE)
+	t.set_color("font_hover_pressed_color", "MenuItem", Color.WHITE)
 	t.set_stylebox("focus", "MenuItem", hover)
 
 	# Check boxes: no button frame.
