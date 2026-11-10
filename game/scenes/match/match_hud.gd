@@ -5283,7 +5283,10 @@ func _side_board(slot: int, right: bool) -> Control:
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.content.add_child(col)
 	# The slice is a plain control: it takes its height from what is inside.
-	var fit := func() -> void: box.custom_minimum_size.y = box.content.get_combined_minimum_size().y
+	# The box may be gone by the deferred call: a second refresh in the same frame rebuilds the column.
+	var fit := func() -> void:
+		if is_instance_valid(box):
+			box.custom_minimum_size.y = box.content.get_combined_minimum_size().y
 	box.content.minimum_size_changed.connect(fit)
 	fit.call_deferred()
 	var open: bool = GameSettings.stage_strip(local_slots.has(slot))
