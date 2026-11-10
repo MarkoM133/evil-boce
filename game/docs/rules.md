@@ -39,7 +39,7 @@ engine is shaped and which gaps it had to fill on its own (see **Assumptions**).
 when every player has passed in a row; playing a card hands the turn to the next player and
 resets the passes.
 
-## Energy claims (`MatchSettings.stage_claim = "energy"`, the default)
+## Energy claims (`MatchSettings.stage_claim = "energy"`; the default until 2026-11-10, now an option)
 
 From Marko (2026-11-02); the default of Standard and every mode since 2026-11-02, with the
 Stay claims still offered in the rules panel. `MatchSettings.new()` keeps Stay, which the
@@ -74,10 +74,12 @@ describes energy claims as the rule since 2026-11-04 (final); Stay stays an opti
 - 2v2 is left for later (`pitanja.md`). For now only the player's own heroes count, and a
   teammate's hero does not contest.
 
-### The shared ring (`stage_claim = "ring"`, on trial since 2026-11-10)
+### The shared ring (`stage_claim = "ring"`, Standard's rule since 2026-11-10)
 
-An option beside energy claims, not the default and not in the GDD: Marko and Tarik try it before
-deciding. Everything above holds (`energy_claims()` is true for it too) except how energy goes in
+The default of Standard and every mode since 2026-11-10 (Marko), with separate energy and Stay
+still offered in the rules panel; in the GDD as the rule, marked as still to be played by hand.
+Rules saved before that day follow, since only what differs from Standard is stored. Everything
+above holds (`energy_claims()` is true for it too) except how energy goes in
 (`_put_energy_ring`):
 
 - A stage has one ring of `stage_goal` places for both sides; `ring_free` is what is empty.

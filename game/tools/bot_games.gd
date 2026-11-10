@@ -6,7 +6,7 @@ extends SceneTree
 ## Random decks from the shared folder's cards (`--fixtures`: the test fixtures). Reports, over
 ## all games: hero damage taken and from what (battle, wall, trap, card), cards discarded for
 ## battle hits, KOs, how the matches ended, turns, cards played and the energy they took; with
-## energy claims (the default, goal `--goal`; `--claim=stay` the old rule) also the energy put into stages,
+## energy claims (the shared ring is the default, goal `--goal`; `--claim=energy` each side its own, `--claim=stay` the first rule) also the energy put into stages,
 ## heroes knocked off a stage and the energy that cost, contested stages. The same seed gives the
 ## same maps and decks whatever the rules, so runs compare game by game. Nothing is saved.
 
@@ -22,7 +22,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var opts: Dictionary[String, String] = {"games": "20", "seed": "1", "level": "hard", "max-turns": "60", "fixtures": "0",
-		"claim": MatchSettings.CLAIM_ENERGY, "goal": "14"}
+		"claim": MatchSettings.CLAIM_RING, "goal": "14"}
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--") and arg.contains("="):
 			opts[arg.substr(2, arg.find("=") - 2)] = arg.substr(arg.find("=") + 1)

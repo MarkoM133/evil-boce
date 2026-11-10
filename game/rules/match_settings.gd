@@ -48,8 +48,9 @@ var stage_goal: int = 14
 
 const CLAIM_STAY: String = "stay"
 const CLAIM_ENERGY: String = "energy"
-## The shared ring (Marko and Tarik 2026-11-10, on trial): energy claims with one ring of `stage_goal`
-## places per stage for both sides. Energy fills the empty places first; once none is left, each
+## The shared ring (Marko and Tarik 2026-11-10; Standard's rule since that day, until they have
+## played it and say otherwise): energy claims with one ring of `stage_goal` places per stage for
+## both sides. Energy fills the empty places first; once none is left, each
 ## energy turns one of the other side's places into yours. The whole ring claims the stage.
 const CLAIM_RING: String = "ring"
 
@@ -71,7 +72,8 @@ static func standard() -> MatchSettings:
 	var s := MatchSettings.new()
 	s.map_size = 23
 	s.knockback = "physics"
-	s.stage_claim = CLAIM_ENERGY
+	# The shared ring is the rule since 2026-11-10 (Marko); separate energy and Stay are options.
+	s.stage_claim = CLAIM_RING
 	return s
 
 

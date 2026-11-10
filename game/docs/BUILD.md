@@ -45,7 +45,7 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
 - **Bot games** (headless, engine only: grid knockback and the analytic roll of `test_bot.gd`; random
   decks from the shared folder, `--fixtures` for the test cards). Counts hero damage by source, hand
   cards discarded for hits, KOs, how the matches ended, turns, cards played per turn and the energy
-  they took, for weighing a rule change. Energy claims are the default (`--goal=14`; `--claim=stay`
+  they took, for weighing a rule change. The shared ring is the default (`--goal=14`; `--claim=energy` each side its own; `--claim=stay`
   plays the old Stay claims); it also counts the energy put into stages, heroes knocked off a stage and what that cost, and
   contested stages. The same seed gives the same maps and decks under any rules:
   `godot_console --headless --path game -s res://tools/bot_games.gd -- --games=20 --seed=1 [--level=easy] [--claim=stay|ring] [--goal=10]`
