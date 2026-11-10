@@ -48,11 +48,20 @@ var stage_goal: int = 14
 
 const CLAIM_STAY: String = "stay"
 const CLAIM_ENERGY: String = "energy"
+## The shared ring (Marko and Tarik 2026-11-10, on trial): energy claims with one ring of `stage_goal`
+## places per stage for both sides. Energy fills the empty places first; once none is left, each
+## energy turns one of the other side's places into yours. The whole ring claims the stage.
+const CLAIM_RING: String = "ring"
 
 
 ## True with the energy variant of stage claims.
 func energy_claims() -> bool:
-	return stage_claim == CLAIM_ENERGY
+	return stage_claim == CLAIM_ENERGY or stage_claim == CLAIM_RING
+
+
+## True with the shared ring (CLAIM_RING), a kind of energy claim.
+func shared_ring() -> bool:
+	return stage_claim == CLAIM_RING
 
 
 ## The Standard mode (GDD 13). `new()` keeps the cards as printed, which the scenario tests use.

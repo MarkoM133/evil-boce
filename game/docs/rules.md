@@ -73,6 +73,22 @@ describes energy claims as the rule since 2026-11-04 (final); Stay stays an opti
   energy over the goal is lost; the goal is 14 unless set.
 - 2v2 is left for later (`pitanja.md`). For now only the player's own heroes count, and a
   teammate's hero does not contest.
+
+### The shared ring (`stage_claim = "ring"`, on trial since 2026-11-10)
+
+An option beside energy claims, not the default and not in the GDD: Marko and Tarik try it before
+deciding. Everything above holds (`energy_claims()` is true for it too) except how energy goes in
+(`_put_energy_ring`):
+
+- A stage has one ring of `stage_goal` places for both sides; `ring_free` is what is empty.
+- Energy fills the empty places first. With none left, each energy turns one place of another team
+  into the player's own (from whoever holds the most; event `stage_energy` carries `taken`).
+- A team holding the whole ring claims the stage (`stage_energy_of_team`); what is left over is lost.
+- Knocked off stays: half the player's energy there goes, and those places are empty again.
+- Decided by Tarik (2026-11-10): energy left on a stage does not fade; a knock-off empties, it does
+  not hand places to the other side; the goal stays 14; a place taken counts as energy invested for
+  the tie-break; in 2v2 the ring is per team. Cards that touch claims are still to be gone through.
+- Scenarios 67 and 68. Compare with `tools/bot_games.gd --claim=ring`.
 - The move timer's safe move puts it all into the stage with the most energy already in it.
 - **Tie-break** (Marko 2026-11-04): when every winning side reaches its stages in the same End phase, the side that put more energy into stages over the whole match wins (`PlayerState.energy_invested`: everything banked into stages, over the goal and later lost included; result `stages_energy`, event `tie_broken {by, totals, winner_team}`); equal totals, or a win by KO at the same time, stay a draw. With Stay claims a simultaneous win stays a draw.
 

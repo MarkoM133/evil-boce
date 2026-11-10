@@ -48,7 +48,7 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
   they took, for weighing a rule change. Energy claims are the default (`--goal=14`; `--claim=stay`
   plays the old Stay claims); it also counts the energy put into stages, heroes knocked off a stage and what that cost, and
   contested stages. The same seed gives the same maps and decks under any rules:
-  `godot_console --headless --path game -s res://tools/bot_games.gd -- --games=20 --seed=1 [--level=easy] [--claim=stay] [--goal=10]`
+  `godot_console --headless --path game -s res://tools/bot_games.gd -- --games=20 --seed=1 [--level=easy] [--claim=stay|ring] [--goal=10]`
 - **Soak** (headless; Hard bots play both sides of the real match scene in every mode and
   it prints results, errors and stalls; exit code 1 on any problem):
   `godot_console --headless --fixed-fps 60 --path game -s res://tools/soak.gd -- --games=3`

@@ -1758,9 +1758,65 @@ func contested(s: GameState, st: StageState) -> bool:
 	return teams.size() >= 2
 
 
+## The energy in `st` of every player on `team` (the shared ring is per team).
+func stage_energy_of_team(s: GameState, st: StageState, team: int) -> int:
+	var total: int = 0
+	for slot: int in st.progress:
+		if s.team_of(slot) == team:
+			total += st.progress[slot]
+	return total
+
+
+## The shared ring's empty places in `st`.
+func ring_free(s: GameState, st: StageState) -> int:
+	var total: int = 0
+	for slot: int in st.progress:
+		total += st.progress[slot]
+	return maxi(s.settings.stage_goal - total, 0)
+
+
+## The shared ring (CLAIM_RING): `n` energy of `slot` into `st`. It fills the empty places first;
+## with none left, each energy turns one place of another team into this player's (from whoever
+## holds the most, the lower slot on a tie). What is left when the ring is all its team's is lost.
+func _put_energy_ring(s: GameState, slot: int, st: StageState, n: int) -> void:
+	var goal: int = s.settings.stage_goal
+	var team: int = s.team_of(slot)
+	var filled: int = mini(n, ring_free(s, st))
+	var left: int = n - filled
+	var taken: int = 0
+	while left > 0:
+		var from: int = -1
+		var slots: Array = st.progress.keys()
+		slots.sort()
+		for other: int in slots:
+			if s.team_of(other) != team and st.progress[other] > 0 and (from < 0 or st.progress[other] > st.progress[from]):
+				from = other
+		if from < 0:
+			break
+		var part: int = mini(left, st.progress[from])
+		st.progress[from] -= part
+		taken += part
+		left -= part
+	st.progress[slot] = st.progress_of(slot) + filled + taken
+	var p: PlayerState = s.player(slot)
+	if p != null:
+		# Everything put in counts for the tie-break, places taken too (Tarik 2026-11-10).
+		p.energy_invested += n
+	var info: Dictionary = {"player": slot, "stage": st.id, "amount": filled + taken,
+		"progress": stage_energy_of_team(s, st, team), "goal": goal}
+	if taken > 0:
+		info["taken"] = taken
+	if left > 0:
+		info["wasted"] = left
+	s.event("stage_energy", info)
+
+
 ## `n` energy of `slot` into `st`, up to the goal (more is lost).
 func _put_energy(s: GameState, slot: int, st: StageState, n: int) -> void:
 	if st == null or n <= 0:
+		return
+	if s.settings.shared_ring():
+		_put_energy_ring(s, slot, st, n)
 		return
 	var goal: int = s.settings.stage_goal
 	var have: int = st.progress_of(slot)
@@ -1784,7 +1840,9 @@ func _claim_by_energy(s: GameState) -> void:
 		var slots: Array = st.progress.keys()
 		slots.sort()
 		for slot: int in slots:
-			if st.progress[slot] < s.settings.stage_goal:
+			# The shared ring is claimed by a team holding all of it.
+			var have: int = stage_energy_of_team(s, st, s.team_of(slot)) if s.settings.shared_ring() else st.progress[slot]
+			if have < s.settings.stage_goal or st.progress[slot] <= 0:
 				continue
 			if _claim_blocked(s, slot, st):
 				s.event("claim_blocked", {"stage": st.id, "player": slot})

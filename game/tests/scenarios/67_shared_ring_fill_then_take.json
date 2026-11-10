@@ -1,0 +1,53 @@
+{
+  "name": "Shared ring (on trial, Marko and Tarik 2026-11-10): energy fills the empty places first, then turns the other side's places into yours; the whole ring claims the stage and what is left over is lost",
+  "steps": [
+    {"setup": {"seed": 1, "settings": {"stage_claim": "ring", "stage_goal": 6}, "decks": [
+      {"name": "A", "heroes": ["TA-001", "TA-002", "TA-003"], "cards": {"TX-010": 40},
+       "stages": ["TS-001"], "cores": []},
+      {"name": "B", "heroes": ["TB-001", "TB-002", "TB-003"], "cards": {"TX-010": 40},
+       "stages": ["TS-006"], "cores": []}
+    ]}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {
+      "stages.stage:p0:1.center": [4, 8], "stages.stage:p0:1.placed": true, "stages.stage:p0:1.revealed": true,
+      "stages.stage:p0:1.progress": {"0": 2, "1": 3},
+      "stages.stage:p1:1.placed": false,
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [5, 8],
+      "heroes.p1:TB-001.zone": "map", "heroes.p1:TB-001.hex": [7, 2]
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {
+      "turn": 2, "phase": "start",
+      "stages.stage:p0:1.progress.0": 3,
+      "stages.stage:p0:1.progress.1": 3,
+      "stages.stage:p0:1.claimed_by": -1
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {
+      "turn": 3, "phase": "start",
+      "stages.stage:p0:1.progress.0": 5,
+      "stages.stage:p0:1.progress.1": 1,
+      "stages.stage:p0:1.claimed_by": -1,
+      "log": {"$has": {"type": "stage_energy", "player": 0, "stage": "stage:p0:1", "amount": 2, "taken": 2, "progress": 5, "goal": 6}}
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": false}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": false}},
+    {"pass_round": true},
+    {"pass_round": true},
+    {"expect": {
+      "turn": 4, "phase": "start",
+      "stages.stage:p0:1.progress.0": 6,
+      "stages.stage:p0:1.progress.1": 0,
+      "stages.stage:p0:1.claimed_by": 0,
+      "players.p0.energy_invested": 6,
+      "log": {"$has": {"type": "stage_energy", "player": 0, "stage": "stage:p0:1", "amount": 1, "taken": 1, "wasted": 2, "progress": 6, "goal": 6}}
+    }}
+  ]
+}

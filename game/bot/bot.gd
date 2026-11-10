@@ -124,8 +124,19 @@ func _energy_value(engine: RulesEngine, s: GameState, p: PlayerState) -> float:
 	for st: StageState in s.stages:
 		if not st.is_claimed():
 			v += st.progress_of(p.slot) / goal * 30.0 * HELD
-	if p.energy > 0 and not engine.energy_stages(s, p.slot).is_empty():
+	var open: Array[StageState] = engine.energy_stages(s, p.slot) if p.energy > 0 else ([] as Array[StageState])
+	if not open.is_empty():
 		v += p.energy / goal * 30.0 * BANKED
+		if s.settings.shared_ring():
+			# The shared ring: what of that energy would take the other side's places is worth those too.
+			var most: int = 0
+			for st: StageState in open:
+				var theirs: int = 0
+				for slot: int in st.progress:
+					if s.team_of(slot) != p.team:
+						theirs += st.progress[slot]
+				most = maxi(most, clampi(p.energy - engine.ring_free(s, st), 0, theirs))
+			v += most / goal * 30.0 * HELD
 	return v
 
 
@@ -585,6 +596,13 @@ func _score_path(engine: RulesEngine, s: GameState, h: HeroState, path: PackedVe
 				else:
 					# Standing on it stops the other side's energy going in.
 					v += st.progress_of(o.owner) / goal * 15.0
+			if s.settings.shared_ring():
+				# The shared ring: the other side's places there can be taken.
+				var theirs: int = 0
+				for slot: int in st.progress:
+					if s.team_of(slot) != s.team_of(h.owner):
+						theirs += st.progress[slot]
+				v += theirs / goal * 10.0
 	var my_rng: int = engine.stat(s, h, "rng")
 	var my_pwr: int = engine.stat(s, h, "pwr")
 	var near: int = 999

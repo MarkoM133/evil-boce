@@ -2,7 +2,7 @@ extends SceneTree
 ## Bot-against-bot matches through the rules engine alone (no scene, no physics: grid knockback
 ## and the analytic roll of tests/test_bot.gd), counting how a rule change shifts the game.
 ## godot_console --headless --path game -s res://tools/bot_games.gd -- [--games=20] [--seed=1]
-##     [--level=hard] [--max-turns=60] [--fixtures] [--claim=stay|energy] [--goal=14]
+##     [--level=hard] [--max-turns=60] [--fixtures] [--claim=stay|energy|ring] [--goal=14]
 ## Random decks from the shared folder's cards (`--fixtures`: the test fixtures). Reports, over
 ## all games: hero damage taken and from what (battle, wall, trap, card), cards discarded for
 ## battle hits, KOs, how the matches ended, turns, cards played and the energy they took; with
@@ -50,15 +50,18 @@ func _run() -> void:
 		"hand_cards": 0, "deck_cards": 0, "hits": 0, "hits_with_cards": 0, "all_on_hero": 0, "kos": 0, "ring_outs": 0,
 		"turns": 0, "finished": 0, "results": {}, "stuck": 0,
 		"cards_played": 0, "energy_cards": 0, "energy_banked": 0, "energy_wasted": 0, "knocked_off": 0, "knocked_off_lost": 0,
-		"progress_lost": 0, "contested": 0, "claims": 0,
+		"progress_lost": 0, "contested": 0, "claims": 0, "energy_taken": 0, "turn_list": [],
 	}
 	var lines := PackedStringArray()
 	for g: int in games:
 		var r: Dictionary = _game(catalog, level, int(opts["max-turns"]), claim, goal)
 		for k: String in ["hero_dmg", "battle_hero_dmg", "wall_dmg", "trap_dmg", "card_dmg", "hand_cards", "deck_cards", "hits", "hits_with_cards", "all_on_hero", "kos", "ring_outs", "turns",
 			"cards_played", "energy_cards", "energy_banked", "energy_wasted", "knocked_off", "knocked_off_lost", "progress_lost",
-			"contested", "claims"]:
+			"contested", "claims", "energy_taken"]:
 			totals[k] = JsonUtil.as_int(totals[k]) + JsonUtil.as_int(r[k])
+		if not str(r["result"]).is_empty():
+			var tl: Array = totals["turn_list"]
+			tl.append(JsonUtil.as_int(r["turns"]))
 		if str(r["result"]).is_empty():
 			totals["stuck"] = JsonUtil.as_int(totals["stuck"]) + 1
 		else:
@@ -74,10 +77,18 @@ func _run() -> void:
 	var n: int = maxi(games, 1)
 	print("")
 	print("%d games, %s vs %s, seed %s, %s cards, stage claims: %s" % [games, Bot.level_name(level), Bot.level_name(level), opts["seed"],
-		"fixture" if opts["fixtures"] == "1" else "shared-folder", ("energy, goal %d" % goal) if claim == MatchSettings.CLAIM_ENERGY else claim])
+		"fixture" if opts["fixtures"] == "1" else "shared-folder", ("%s, goal %d" % [claim, goal]) if claim != MatchSettings.CLAIM_STAY else claim])
 	var results: Dictionary = totals["results"]
 	print("finished %d (%s)%s" % [totals["finished"], _results_line(results), (", unfinished %d" % JsonUtil.as_int(totals["stuck"])) if JsonUtil.as_int(totals["stuck"]) > 0 else ""])
 	print("turns: %.1f per game" % (float(JsonUtil.as_int(totals["turns"])) / n))
+	var tl_all: Array = totals["turn_list"]
+	if not tl_all.is_empty():
+		tl_all.sort()
+		var sum_t: int = 0
+		for x: Variant in tl_all:
+			sum_t += JsonUtil.as_int(x)
+		print("finished games: %.1f turns on average, median %d, shortest %d, longest %d" % [float(sum_t) / tl_all.size(),
+			JsonUtil.as_int(tl_all[tl_all.size() / 2]), JsonUtil.as_int(tl_all[0]), JsonUtil.as_int(tl_all[tl_all.size() - 1])])
 	print("battle hits: %d; with cards from the hand %d, all on the hero %d" % [totals["hits"], totals["hits_with_cards"], totals["all_on_hero"]])
 	print("hero damage: %d in all (%.1f per game): battle %d, wall %d, trap %d, cards %d" % [totals["hero_dmg"], float(JsonUtil.as_int(totals["hero_dmg"])) / n,
 		totals["battle_hero_dmg"], totals["wall_dmg"], totals["trap_dmg"], totals["card_dmg"]])
@@ -89,7 +100,9 @@ func _run() -> void:
 	print("cards played: %d (%.2f per turn, both players); energy spent on cards and abilities: %d (%.2f per turn)" % [
 		totals["cards_played"], JsonUtil.as_int(totals["cards_played"]) / turns_all, totals["energy_cards"], JsonUtil.as_int(totals["energy_cards"]) / turns_all])
 	print("stages claimed: %d (%.1f per game)" % [totals["claims"], float(JsonUtil.as_int(totals["claims"])) / n])
-	if claim == MatchSettings.CLAIM_ENERGY:
+	if claim != MatchSettings.CLAIM_STAY:
+		if claim == MatchSettings.CLAIM_RING:
+			print("places taken from the other side: %d (%.1f per game)" % [totals["energy_taken"], float(JsonUtil.as_int(totals["energy_taken"])) / n])
 		print("energy into stages: %d (%.1f per game, %.2f per turn); over the goal and lost: %d" % [totals["energy_banked"],
 			float(JsonUtil.as_int(totals["energy_banked"])) / n, JsonUtil.as_int(totals["energy_banked"]) / turns_all, totals["energy_wasted"]])
 		print("knocked off a stage by the other side: %d (%d of them with energy in it), energy lost: %d" % [totals["knocked_off"],
@@ -162,7 +175,7 @@ func _game(catalog: CardCatalog, level: Bot.Level, max_turns: int, claim: String
 		"hand_cards": 0, "deck_cards": 0, "hits": 0, "hits_with_cards": 0, "all_on_hero": 0, "kos": 0, "ring_outs": 0,
 		"turns": s.turn, "result": s.result if s.is_over() else "", "winner": s.winner,
 		"cards_played": cards_played, "energy_cards": energy_cards, "energy_banked": 0, "energy_wasted": 0,
-		"knocked_off": 0, "knocked_off_lost": 0, "progress_lost": 0, "contested": 0, "claims": 0,
+		"knocked_off": 0, "knocked_off_lost": 0, "progress_lost": 0, "contested": 0, "claims": 0, "energy_taken": 0,
 	}
 	# A battle hit is one damage event by a hero in the Battle phase, plus any hand_damage right before it.
 	var pending_cards: int = 0
@@ -201,6 +214,7 @@ func _game(catalog: CardCatalog, level: Bot.Level, max_turns: int, claim: String
 			"stage_energy":
 				r["energy_banked"] = JsonUtil.as_int(r["energy_banked"]) + amount
 				r["energy_wasted"] = JsonUtil.as_int(r["energy_wasted"]) + JsonUtil.as_int(e.get("wasted", 0))
+				r["energy_taken"] = JsonUtil.as_int(r["energy_taken"]) + JsonUtil.as_int(e.get("taken", 0))
 			"stage_knocked_off":
 				var lost: int = JsonUtil.as_int(e.get("lost", 0))
 				r["knocked_off"] = JsonUtil.as_int(r["knocked_off"]) + 1
