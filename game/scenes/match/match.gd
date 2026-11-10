@@ -87,6 +87,17 @@ var _cam_battle_key: String = ""
 ## Seconds left of the pause between the last band and the end screen; -1 before it starts.
 var _end_pause: float = -1.0
 var _marks := ImmediateMesh.new()
+## The energy in each open stage, drawn round its edge (_update_gauges): what shows now, per stage
+## id and team, moving towards what the state holds.
+var _gauges := ImmediateMesh.new()
+var _gauge_shown: Dictionary[String, PackedFloat32Array] = {}
+var _gauge_key: String = ""
+## Energy the edge fills (or drains) in a second.
+const GAUGE_SPEED: float = 11.0
+## The edge's track and its colour, as wide as this; how far outside the stage's own outline it runs.
+const GAUGE_TRACK_W: float = 0.5
+const GAUGE_FILL_W: float = 0.36
+const GAUGE_GROW: float = 1.14
 ## Stages someone is trying to claim (Stay): their outline pulses (_process).
 var _claim_marks := ImmediateMesh.new()
 var _claim_mat: StandardMaterial3D
@@ -275,6 +286,10 @@ func _ready() -> void:
 	marks_mi.mesh = _marks
 	marks_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(marks_mi)
+	var gauge_mi := MeshInstance3D.new()
+	gauge_mi.mesh = _gauges
+	gauge_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(gauge_mi)
 	_claim_mat = MeshKit.unshaded(Color.WHITE)
 	var claim_mi := MeshInstance3D.new()
 	claim_mi.mesh = _claim_marks
@@ -1885,8 +1900,122 @@ func _watch_balls(delta: float) -> void:
 			_sync_hero(h)
 
 
+## A stage's outer edge as a path from its top, clockwise on the screen (`cw`) or the other way: the
+## two ends of every edge, in order.
+func _stage_ring(st: StageState, cw: bool) -> PackedVector2Array:
+	var c2: Vector2 = arena.map.to_world(st.center)
+	var cells: Array[Vector2i] = st.footprint()
+	var edges: Array[Dictionary] = []
+	for a: Vector2i in cells:
+		var w2: Vector2 = arena.map.to_world(a)
+		for i: int in 6:
+			if cells.has(a + Hex.DIRECTIONS[i]):
+				continue
+			var p0: Vector2 = w2 + Hex.corner(i - 1, tuning.hex_size) * GAUGE_GROW
+			var p1: Vector2 = w2 + Hex.corner(i, tuning.hex_size) * GAUGE_GROW
+			if ((p0 - c2).cross(p1 - c2) > 0.0) != cw:
+				var swap_p: Vector2 = p0
+				p0 = p1
+				p1 = swap_p
+			var mid: Vector2 = (p0 + p1) * 0.5 - c2
+			var ang: float = atan2(mid.x, -mid.y)
+			edges.append({"p0": p0, "p1": p1, "key": fposmod(ang if cw else -ang, TAU)})
+	edges.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return JsonUtil.as_float(x["key"]) < JsonUtil.as_float(y["key"]))
+	var pts := PackedVector2Array()
+	for e: Dictionary in edges:
+		var p0: Vector2 = e["p0"]
+		var p1: Vector2 = e["p1"]
+		pts.append(p0)
+		pts.append(p1)
+	return pts
+
+
+func _gauge_rib(a: Vector2, b: Vector2, y: float, width: float, color: Color) -> void:
+	if a.distance_to(b) < 0.005:
+		return
+	MeshKit.ribbon(_gauges, PackedVector3Array([Vector3(a.x, y, a.y), Vector3(b.x, y, b.y)]), width, color)
+
+
+## The energy in every open, face-up stage as its edge filling in the teams' colours (Marko
+## 2026-11-10, mockups T3 and K2): it shows on the table what the tile under the heroes says, and
+## stays readable with heroes standing all over the stage.
+## Energy claims: each team has half the edge, blue from the top down the left, red down the right;
+## a full half is the goal. The shared ring: one ring both fill from the top, blue to the left and
+## red to the right; the whole ring is the goal, and the two never overlap.
+## The edge moves to a new amount instead of jumping (in, taken or knocked off). Not drawn while a
+## battle is fought: red there means the battle.
+func _update_gauges(delta: float) -> void:
+	if state == null:
+		return
+	var on: bool = state.settings.energy_claims() and _current_battle().is_empty()
+	var goal: float = float(maxi(state.settings.stage_goal, 1))
+	var key: String = "%s|%s|%d" % [str(on), state.settings.stage_claim, int(goal)]
+	var moving: bool = false
+	var open: Array[StageState] = []
+	for st: StageState in state.stages:
+		if not on or not st.placed or not st.revealed or st.is_claimed():
+			_gauge_shown.erase(st.id)
+			continue
+		var want := PackedFloat32Array([0.0, 0.0])
+		for slot: int in st.progress:
+			want[clampi(state.team_of(slot), 0, 1)] += float(st.progress[slot])
+		# A stage seen for the first time (a loaded match, a replay jumping) starts where it is.
+		var shown: PackedFloat32Array = _gauge_shown.get(st.id, want)
+		for t: int in 2:
+			if not is_equal_approx(shown[t], want[t]):
+				shown[t] = move_toward(shown[t], want[t], GAUGE_SPEED * delta)
+				moving = true
+		_gauge_shown[st.id] = shown
+		if shown[0] > 0.0 or shown[1] > 0.0:
+			open.append(st)
+			key += "|%s:%s" % [st.id, str(st.center)]
+	if not moving:
+		for st: StageState in open:
+			key += ":%.2f:%.2f" % [_gauge_shown[st.id][0], _gauge_shown[st.id][1]]
+		if key == _gauge_key:
+			return
+	_gauge_key = "" if moving else key
+	_gauges.clear_surfaces()
+	if open.is_empty():
+		return
+	var track := Color(0.05, 0.05, 0.05, 0.9)
+	var ring: bool = state.settings.shared_ring()
+	_gauges.surface_begin(Mesh.PRIMITIVE_TRIANGLES, _line_mat)
+	for st: StageState in open:
+		var shown: PackedFloat32Array = _gauge_shown[st.id]
+		if ring:
+			var path: PackedVector2Array = _stage_ring(st, false)
+			var n: int = path.size() / 2
+			var lit_b: float = shown[0] / goal * n
+			var lit_r: float = shown[1] / goal * n
+			for k: int in n:
+				var p0: Vector2 = path[k * 2]
+				var p1: Vector2 = path[k * 2 + 1]
+				_gauge_rib(p0, p1, 0.05, GAUGE_TRACK_W, track)
+				var blue_end: float = clampf(lit_b - k, 0.0, 1.0)
+				var red_start: float = maxf(1.0 - clampf(lit_r - (n - 1 - k), 0.0, 1.0), blue_end)
+				if blue_end > 0.0:
+					_gauge_rib(p0, p0.lerp(p1, blue_end), 0.07, GAUGE_FILL_W, Palette.team(0).lightened(0.15))
+				if red_start < 1.0:
+					_gauge_rib(p0.lerp(p1, red_start), p1, 0.07, GAUGE_FILL_W, Palette.team(1).lightened(0.15))
+		else:
+			for t: int in 2:
+				var path: PackedVector2Array = _stage_ring(st, t == 1)
+				var n: int = path.size() / 4
+				var lit: float = shown[t] / goal * n
+				for k: int in n:
+					var p0: Vector2 = path[k * 2]
+					var p1: Vector2 = path[k * 2 + 1]
+					_gauge_rib(p0, p1, 0.05, GAUGE_TRACK_W, track)
+					var part: float = clampf(lit - k, 0.0, 1.0)
+					if part > 0.0:
+						_gauge_rib(p0, p0.lerp(p1, part), 0.07, GAUGE_FILL_W, Palette.team(t).lightened(0.15))
+	_gauges.surface_end()
+
+
 func _process(delta: float) -> void:
 	_watch_balls(delta)
+	_update_gauges(delta)
 	_ping_tick -= delta
 	if _ping_tick <= 0.0 and net_role != "" and _replay == null:
 		_ping_tick = 1.0
