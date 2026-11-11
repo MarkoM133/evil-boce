@@ -60,6 +60,14 @@ func test_display_defaults() -> void:
 	assert_almost_eq(GameSettings.volume("Music"), 0.8, 0.001)
 
 
+func test_effects_start_on_and_switch_off() -> void:
+	for e: String in GameSettings.EFFECTS:
+		assert_true(GameSettings.effect(e), e + " is on by default")
+	GameSettings.set_value("effects", "bochet", false)
+	assert_false(GameSettings.effect("bochet"))
+	assert_true(GameSettings.effect("slow_mo"), "one switch at a time")
+
+
 func test_match_rules_start_as_standard() -> void:
 	assert_eq(GameSettings.match_rules("local").to_dict(), MatchSettings.standard().to_dict())
 

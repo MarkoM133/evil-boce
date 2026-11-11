@@ -476,6 +476,16 @@ func _build_table() -> void:
 	add_child(body)
 
 
+## The table under the map far below and dark: Evil Bochet holds the map up over the dark (Marko
+## 2026-11-11). Only its picture moves; the ground a ball lands on off the map stays where it is.
+func sink_table() -> void:
+	var table := get_node_or_null("Table") as MeshInstance3D
+	if table == null:
+		return
+	table.position.y -= 14.0
+	table.material_override = MeshKit.unshaded(Color("0a0807"), false)
+
+
 ## Frictionless, and absorbent so balls never bounce off the ground.
 static func _ground_material() -> PhysicsMaterial:
 	var m := PhysicsMaterial.new()

@@ -108,6 +108,8 @@ var _views: Dictionary[String, BallView] = {}
 var _core_tokens: Dictionary[String, Node3D] = {}
 var _hovered: String = ""
 var _range_key: String = ""
+## Evil Bochet under the table, or null (_build_bochet).
+var _bochet: Bochet
 ## The heroes of the battle whose balls are off their hexes, as last drawn (_watch_battle_marks).
 var _away_key: String = ""
 ## Hexes of the stage or core hovered in the HUD strip (marked like a footprint).
@@ -303,6 +305,7 @@ func _ready() -> void:
 
 	_build_balls()
 	_build_hud()
+	_build_bochet()
 	if net_role == "host" and net_host.paused:
 		# A carried-on match waits for the others, paused (NetHost.resume_match).
 		_on_net_pause(true, net_host.paused_by, str(net_host.seat(net_host.paused_by).get("name", "")))
@@ -396,6 +399,28 @@ func _hero_def(card_id: String) -> HeroDef:
 		if d.id == card_id:
 			return d
 	return null
+
+
+## Evil Bochet holding the table, for whoever watches at this screen and on their side (Settings → Quality
+## and effects). Without its model in the data folder, or switched off, the table keeps its slab.
+func _build_bochet() -> void:
+	if not GameSettings.effect("bochet"):
+		return
+	_bochet = Bochet.make(db.data_dir(), arena, cam, cam.is_flipped())
+	if _bochet == null:
+		return
+	add_child(_bochet)
+	arena.sink_table()
+	cam.frame_table(arena.extent(), Bochet.VIEW_NEAR_BIAS, Bochet.VIEW_ZOOM)
+
+
+## Seconds left on the move timer of a player at this screen, INF when none runs (Bochet drums on the edge).
+func _local_clock_left() -> float:
+	var left: float = INF
+	for slot: int in _clocks:
+		if hud.local_slots.has(slot) and not bots.has(slot):
+			left = minf(left, JsonUtil.as_float(_clocks[slot]["left"]))
+	return left
 
 
 ## Where a hero waits on its start strip: its own spot along the strip.
@@ -1299,7 +1324,8 @@ func _hit_stop() -> void:
 
 ## Slow motion while the first ball of a roll goes over the edge.
 func _slow_mo() -> void:
-	if _slowed or not GameSettings.effect("slow_mo"):
+	# With Bochet holding the table there is none: his hands take the ball (Marko 2026-11-11).
+	if _slowed or not GameSettings.effect("slow_mo") or _bochet != null:
 		return
 	_slowed = true
 	Engine.time_scale = 0.3
@@ -2074,9 +2100,16 @@ func _process(delta: float) -> void:
 	_pulse_t += delta
 	if _claim_mat != null:
 		_claim_mat.albedo_color = Color(1, 1, 1, 0.35 + 0.65 * (0.5 + 0.5 * sin(_pulse_t * 5.0)))
+	if _bochet != null:
+		_bochet.tick(delta, state, _bodies, _local_clock_left())
 	for id: String in _views:
-		# Balls ride over hills (the physics stays flat; see ArenaWorld.push_at).
-		_views[id].position.y = arena.height_at(_bodies[id].global_position)
+		# Balls ride over hills (the physics stays flat; see ArenaWorld.push_at). Off the table, with
+		# Bochet there, the picture drops into the dark (Bochet.drop).
+		var dy: float = 0.0
+		if _bochet != null:
+			dy = _bochet.drop(id, _bodies[id].global_position, delta)
+			_views[id].visible = not _bochet.dropped(id)
+		_views[id].position.y = arena.height_at(_bodies[id].global_position) + dy
 	if _replay != null:
 		_run_playback(delta)
 		return

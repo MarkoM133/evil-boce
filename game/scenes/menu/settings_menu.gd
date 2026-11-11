@@ -203,8 +203,10 @@ func _build_graphics(col: VBoxContainer) -> void:
 	q.item_selected.connect(func(i: int) -> void: _store("display", "quality", GameSettings.QUALITIES[i]))
 	var hs := _option(col, "Hit-stop", ["Off", "On  ·  a blink of freeze when damage lands"], 1 if GameSettings.effect("hit_stop") else 0)
 	hs.item_selected.connect(func(i: int) -> void: _store("effects", "hit_stop", i == 1))
-	var sm := _option(col, "Slow motion", ["Off", "On  ·  when a ball goes over the edge"], 1 if GameSettings.effect("slow_mo") else 0)
+	var sm := _option(col, "Slow motion", ["Off", "On  ·  when a ball goes over the edge, without Evil Bochet"], 1 if GameSettings.effect("slow_mo") else 0)
 	sm.item_selected.connect(func(i: int) -> void: _store("effects", "slow_mo", i == 1))
+	var bo := _option(col, "Evil Bochet", ["Off  ·  the table stands on its slab", "On  ·  a monster holds the table"], 1 if GameSettings.effect("bochet") else 0)
+	bo.item_selected.connect(func(i: int) -> void: _store("effects", "bochet", i == 1))
 
 
 func _build_sound(col: VBoxContainer) -> void:

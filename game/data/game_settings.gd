@@ -225,8 +225,9 @@ static func set_value(section: String, key_: String, value: Variant) -> void:
 	save()
 
 
-## Hit-stop and slow motion (GDD 11 juice); both on unless switched off in Settings.
-const EFFECTS: Array[String] = ["hit_stop", "slow_mo"]
+## Hit-stop and slow motion (GDD 11 juice), and Evil Bochet holding the table (Bochet); all on unless
+## switched off in Settings.
+const EFFECTS: Array[String] = ["hit_stop", "slow_mo", "bochet"]
 
 
 static func effect(name: String) -> bool:

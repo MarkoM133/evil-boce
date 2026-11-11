@@ -67,6 +67,11 @@ func set_flipped(on: bool) -> void:
 	reset_view(true)
 
 
+## The home view is from the red side.
+func is_flipped() -> bool:
+	return _home_flipped
+
+
 func reset_view(instant: bool = false) -> void:
 	target = _home_target
 	yaw = PI if _home_flipped else 0.0
