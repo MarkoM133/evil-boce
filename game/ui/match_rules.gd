@@ -17,6 +17,14 @@ const MAP_INFO: Dictionary[int, Array] = {
 	27: ["GIANT", "The widest table: long throws, slow to close in."],
 	MatchSettings.MAP_RANDOM: ["ANY", "Drawn when the match starts. Chaos plays this way."],
 }
+## The rules shown big at the top of MATCH RULES (Marko 2026-11-11, M1): the ones a Standard match really changes.
+const MAIN_RULES: Array[String] = ["stage_claim", "stage_goal", "stages_to_win", "timer_seconds"]
+## Rules of the modes not offered now (MatchSettings.LOCKED_MODES): shown only when changed (a remembered custom).
+const HIDDEN_RULES: Array[String] = ["series_wins", "deck_size"]
+## A shorter line for the hovered rule where the full one is too long for the foot.
+const SHORT_WHAT: Dictionary[String, String] = {
+	"stage_claim": "How a stage is claimed. Shared ring: one ring of places for both sides; your energy fills it, then takes the other side's. Separate: each side fills its own. Stay: the first rule (two Stays in a row, two heroes, or the battle there).",
+}
 ## The panel: columns of [section, rows]; a row is [setting, name, what it does, the values offered].
 const COLUMNS: Array = [
 	[
@@ -58,8 +66,6 @@ var _map_tile: PanelContainer
 var _map_box: StyleBoxFlat
 var _map_preview: MapPreview
 var _map_question: Label
-var _mode_row: HBoxContainer
-var _mode_line: Label
 var _map_size: Label
 var _map_word: Label
 var _rules_tile: PanelContainer
@@ -69,7 +75,9 @@ var _rules_line: Label
 var _rules_changes: Label
 var _rules_btn: Button
 var _layer: CanvasLayer
-var _rules_body: HBoxContainer
+var _rules_body: VBoxContainer
+## MORE RULES is open (M1).
+var _rules_more: bool = false
 var _rules_foot: Label
 
 
@@ -438,121 +446,177 @@ func _map_choice(n: int) -> Control:
 ## Every rule in two columns, each with ‹ value › (only the value for a guest).
 func open_rules() -> void:
 	var col: VBoxContainer = _overlay("Match rules",
-		"Everything a match can change. Straw values differ from Standard." if editable else "The host sets these. Straw values differ from Standard.", 1180.0)
-	# The modes (GDD 13) as presets: one click sets every rule and the map.
-	_mode_row = HBoxContainer.new()
-	_mode_row.add_theme_constant_override("separation", 8)
-	col.add_child(_mode_row)
-	_mode_line = Label.new()
-	_mode_line.add_theme_color_override("font_color", Palette.MUTED)
-	_mode_line.add_theme_font_size_override("font_size", 14)
-	col.add_child(_mode_line)
+		"Standard, or change what you like. Straw values differ from Standard." if editable else "The host sets these. Straw values differ from Standard.", 1020.0)
 	# The rules scroll when the screen is too short for them (Marko 2026-11-02: cut off below).
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(scroll)
-	_rules_body = HBoxContainer.new()
-	_rules_body.add_theme_constant_override("separation", 40)
+	_rules_body = VBoxContainer.new()
+	_rules_body.add_theme_constant_override("separation", 12)
 	_rules_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_rules_body)
 	var fit := func() -> void:
-		var room: float = get_viewport().get_visible_rect().size.y - 330.0
+		var room: float = get_viewport().get_visible_rect().size.y - 300.0
 		scroll.custom_minimum_size.y = minf(_rules_body.get_combined_minimum_size().y, maxf(room, 200.0))
 	_rules_body.minimum_size_changed.connect(fit)
 	fit.call_deferred()
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 12)
 	col.add_child(foot)
-	_rules_foot = UiTheme.label("", 18, Palette.MUTED)
+	# What the hovered rule does, in one place (M1); else how far the rules are from Standard.
+	_rules_foot = Label.new()
+	_rules_foot.add_theme_font_size_override("font_size", 15)
+	_rules_foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_rules_foot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rules_foot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_rules_foot.custom_minimum_size = Vector2(0, 44)
 	foot.add_child(_rules_foot)
+	if editable:
+		var reset := Button.new()
+		reset.text = "BACK TO STANDARD"
+		reset.theme_type_variation = &"Ghost"
+		reset.add_theme_font_size_override("font_size", 16)
+		reset.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		reset.pressed.connect(func() -> void:
+			var map: int = settings.map_size
+			settings = MatchSettings.preset("standard")
+			settings.map_size = map
+			_changed())
+		foot.add_child(reset)
 	var done := Button.new()
 	done.text = "DONE" if editable else "CLOSE"
 	done.theme_type_variation = &"Primary"
 	done.add_theme_font_size_override("font_size", 24)
-	done.custom_minimum_size = Vector2(180, 0)
+	done.custom_minimum_size = Vector2(160, 0)
 	done.pressed.connect(_close)
 	foot.add_child(done)
 	_fill_rules()
 
 
+## The rules as chosen (Marko 2026-11-11, M1): the four a Standard match really changes as big tiles, the rest
+## folded under MORE RULES, and what a rule does only for the hovered one, at the bottom.
 func _fill_rules() -> void:
-	for c: Node in _mode_row.get_children():
-		c.queue_free()
-	_mode_row.add_child(UiTheme.label("MODE", 15, Palette.GOLD))
-	for name: String in MatchSettings.MODES:
-		if name == "custom" and settings.mode != "custom":
-			continue
-		var b := Button.new()
-		b.text = name.to_upper()
-		b.add_theme_font_size_override("font_size", 18)
-		b.theme_type_variation = &"Gold" if name == settings.mode else &""
-		var locked: bool = MatchSettings.LOCKED_MODES.has(name)
-		b.disabled = not editable or name == "custom" or locked
-		b.tooltip_text = MatchSettings.LOCKED_LINE if locked else str(MatchSettings.MODE_LINES.get(name, ""))
-		if locked:
-			b.modulate = Color(1, 1, 1, 0.45)
-		b.pressed.connect(func() -> void:
-			settings = MatchSettings.preset(name)
-			_changed())
-		_mode_row.add_child(b)
-	_mode_line.text = str(MatchSettings.MODE_LINES.get(settings.mode, ""))
 	for c: Node in _rules_body.get_children():
 		c.queue_free()
-	for column: Array in COLUMNS:
-		var colv := VBoxContainer.new()
-		colv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		colv.add_theme_constant_override("separation", 10)
-		_rules_body.add_child(colv)
-		for section: Array in column:
-			var head: Label = UiTheme.label(str(section[0]), 15, Palette.GOLD)
-			colv.add_child(head)
-			for r: Array in section[1]:
-				colv.add_child(_rule_row(r))
-			var gap := Control.new()
-			gap.custom_minimum_size = Vector2(0, 8)
-			colv.add_child(gap)
+	var rows: Dictionary = _rules_by_key()
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 12)
+	_rules_body.add_child(grid)
+	for key: String in MAIN_RULES:
+		grid.add_child(_rule_tile(key, JsonUtil.as_array(rows[key])))
+	var rest: Array[String] = []
+	var rest_changed: int = 0
+	for key: String in rows:
+		if MAIN_RULES.has(key) or (HIDDEN_RULES.has(key) and settings.get(key) == standard_value(key)):
+			continue
+		rest.append(key)
+		if settings.get(key) != standard_value(key):
+			rest_changed += 1
+	var more := Button.new()
+	more.text = ("MORE RULES  ▴" if _rules_more else "MORE RULES  ▾  ·  %d more" % rest.size()) \
+		+ ("  ·  %d changed" % rest_changed if rest_changed > 0 else "")
+	more.theme_type_variation = &"Ghost"
+	more.add_theme_font_size_override("font_size", 18)
+	more.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	more.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	if rest_changed > 0:
+		more.add_theme_color_override("font_color", Palette.GOLD)
+	more.pressed.connect(func() -> void:
+		_rules_more = not _rules_more
+		_fill_rules())
+	_rules_body.add_child(more)
+	if _rules_more:
+		var small := GridContainer.new()
+		small.columns = 2
+		small.add_theme_constant_override("h_separation", 40)
+		small.add_theme_constant_override("v_separation", 4)
+		_rules_body.add_child(small)
+		for key: String in rest:
+			small.add_child(_rule_line(key, JsonUtil.as_array(rows[key])))
+	_rules_summary()
+
+
+## The foot's line when no rule is hovered: Standard, or how many rules differ from it.
+func _rules_summary() -> void:
+	if _rules_foot == null or not is_instance_valid(_rules_foot):
+		return
 	var diff: PackedStringArray = changes()
-	_rules_foot.text = settings.mode.to_upper() + ("  ·  %d CHANGED FROM STANDARD" % diff.size() if not diff.is_empty() else "")
+	_rules_foot.text = "STANDARD  ·  hover a rule to read what it does" if diff.is_empty() \
+		else "%d CHANGED FROM STANDARD  ·  %s" % [diff.size(), ", ".join(diff)]
 	_rules_foot.add_theme_color_override("font_color", Palette.MUTED if diff.is_empty() else Palette.GOLD)
 
 
-func _rule_row(r: Array) -> Control:
-	var key: String = r[0]
+## Every rule of COLUMNS by its setting: [setting, name, what it does, values].
+static func _rules_by_key() -> Dictionary:
+	var out: Dictionary = {}
+	for column: Array in COLUMNS:
+		for section: Array in column:
+			for row: Array in section[1]:
+				out[str(row[0])] = row
+	return out
+
+
+## A big tile: the rule's name over its value, the arrows either side.
+func _rule_tile(key: String, r: Array) -> Control:
+	var tile := PanelContainer.new()
+	tile.add_theme_stylebox_override("panel", UiTheme.box(Color(1, 1, 1, 0.04), 0, Color(0, 0, 0, 0), 18, 14))
+	tile.custom_minimum_size = Vector2(470, 0)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	tile.add_child(v)
+	v.add_child(UiTheme.label(str(r[1]).to_upper(), 22))
+	v.add_child(_rule_value(key, r, 30, 300.0))
+	_rule_hover(tile, key, r)
+	return tile
+
+
+## A small line: the name, then the value with its arrows.
+func _rule_line(key: String, r: Array) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var name_l: Label = UiTheme.label(str(r[1]).to_upper(), 18)
+	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(name_l)
+	row.add_child(_rule_value(key, r, 20, 170.0 if key == "manual_setup" else 110.0))
+	_rule_hover(row, key, r)
+	return row
+
+
+func _rule_value(key: String, r: Array, size: int, width: float) -> HBoxContainer:
 	var values: Array = r[3]
 	var now: Variant = settings.get(key)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	var texts := VBoxContainer.new()
-	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	texts.add_theme_constant_override("separation", 0)
-	row.add_child(texts)
-	texts.add_child(UiTheme.label(str(r[1]).to_upper(), 20))
-	var info := Label.new()
-	info.text = str(r[2])
-	info.add_theme_color_override("font_color", Palette.MUTED)
-	info.add_theme_font_size_override("font_size", 13)
-	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	texts.add_child(info)
 	var std: Variant = standard_value(key)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
 	var step := func(d: int) -> void:
 		var i: int = values.find(settings.get(key))
 		settings.set(key, values[posmod((i if i >= 0 else 0) + d, values.size())])
 		_changed()
 	if editable:
-		row.add_child(_arrow("‹", func() -> void: step.call(-1)))
-	var val: Label = UiTheme.label(value_text(key, now), 22, Palette.GOLD if now != std else Palette.FG)
-	val.custom_minimum_size = Vector2(170 if key == "manual_setup" else 110, 0)
+		h.add_child(_arrow("‹", func() -> void: step.call(-1)))
+	var val: Label = UiTheme.label(value_text(key, now), size, Palette.GOLD if now != std else Palette.FG)
+	val.custom_minimum_size = Vector2(width, 0)
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	val.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	val.tooltip_text = "Standard: " + value_text(key, std).to_lower()
 	val.mouse_filter = Control.MOUSE_FILTER_PASS
-	row.add_child(val)
+	h.add_child(val)
 	if editable:
-		row.add_child(_arrow("›", func() -> void: step.call(1)))
-	return row
+		h.add_child(_arrow("›", func() -> void: step.call(1)))
+	return h
+
+
+func _rule_hover(c: Control, key: String, r: Array) -> void:
+	c.mouse_filter = Control.MOUSE_FILTER_PASS
+	c.mouse_entered.connect(func() -> void:
+		if _rules_foot != null and is_instance_valid(_rules_foot):
+			_rules_foot.text = str(SHORT_WHAT.get(key, r[2]))
+			_rules_foot.add_theme_color_override("font_color", Palette.FG))
+	c.mouse_exited.connect(_rules_summary)
 
 
 func _arrow(text: String, on_press: Callable) -> Button:
