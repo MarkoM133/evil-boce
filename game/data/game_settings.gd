@@ -282,6 +282,8 @@ static func apply(tree: SceneTree, force: bool = false) -> void:
 			DisplayServer.window_set_size(size)
 			DisplayServer.window_set_position(screen.position + (screen.size - size) / 2)
 	tree.root.content_scale_factor = ui_scale()
+	# The game's own cursor, for this window's size.
+	GameCursor.install(tree)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync() else DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = max_fps()
 	match quality():

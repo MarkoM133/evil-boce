@@ -111,6 +111,7 @@ var _bodies: Dictionary[String, BallBody] = {}
 var _views: Dictionary[String, BallView] = {}
 var _core_tokens: Dictionary[String, Node3D] = {}
 var _hovered: String = ""
+var _cursor_shape: Input.CursorShape = Input.CURSOR_ARROW
 var _range_key: String = ""
 ## Evil Bochet under the table, or null (_build_bochet).
 var _bochet: Bochet
@@ -1439,6 +1440,20 @@ func _slow_mo() -> void:
 
 func _exit_tree() -> void:
 	Engine.time_scale = 1.0
+	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+
+
+## The cursor over the table (item 19, C1): the diamond while a throw is aimed, the red arrow over a
+## ball, else the straw one. Over the HUD each control says its own.
+func _update_cursor() -> void:
+	var shape: Input.CursorShape = Input.CURSOR_ARROW
+	if _sling.is_aiming():
+		shape = Input.CURSOR_CROSS
+	elif not _hovered.is_empty() and _replay == null:
+		shape = Input.CURSOR_POINTING_HAND
+	if shape != _cursor_shape:
+		_cursor_shape = shape
+		Input.set_default_cursor_shape(shape)
 
 
 # --- tokens and marks ----------------------------------------------------------
@@ -2197,6 +2212,7 @@ func _process(delta: float) -> void:
 			_views[id].roll(step - b.global_position)
 			b.global_position = step
 	cam.keys_on = not _menu.visible and not hud.board_blocked()
+	_update_cursor()
 	if _sling.is_aiming():
 		_sling.update(cam.camera, get_viewport().get_mouse_position(), get_viewport().get_visible_rect().size.y)
 	_refresh_range()
