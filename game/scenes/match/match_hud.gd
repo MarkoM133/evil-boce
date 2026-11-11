@@ -651,6 +651,23 @@ func shown_battle() -> Dictionary:
 	for q: Dictionary in _banners:
 		if q.has("battle"):
 			return JsonUtil.as_dict(q["battle"])
+	return _end_battle()
+
+
+## The battle a match ended in (the last KO, a surrender while it was fought), kept on the screen
+## until the end screen comes: its bar, its panels, its figures and rings stay as they were, and
+## no range comes back under the band that says who won (Marko 2026-11-11). Empty when the match
+## ended otherwise, or is not over.
+func _end_battle() -> Dictionary:
+	if state == null or not state.is_over() or not end_hold or _bar_last.is_empty():
+		return {}
+	for i: int in range(state.log.size() - 1, -1, -1):
+		var e: Dictionary = state.log[i]
+		if str(e.get("type", "")) != "match_end":
+			continue
+		if str(e.get("phase", "")) == GameState.PHASE_BATTLE and JsonUtil.as_int(e.get("turn", -1), -1) == JsonUtil.as_int(_bar_last.get("turn", -2), -2):
+			return _bar_last
+		break
 	return {}
 
 

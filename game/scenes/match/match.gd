@@ -108,6 +108,8 @@ var _views: Dictionary[String, BallView] = {}
 var _core_tokens: Dictionary[String, Node3D] = {}
 var _hovered: String = ""
 var _range_key: String = ""
+## The heroes of the battle whose balls are off their hexes, as last drawn (_watch_battle_marks).
+var _away_key: String = ""
 ## Hexes of the stage or core hovered in the HUD strip (marked like a footprint).
 var _board_marks: Array[Vector2i] = []
 var _launching: bool = false
@@ -1071,9 +1073,14 @@ func _end_moment() -> void:
 	var at: Vector3 = Vector3.ZERO
 	var found: bool = false
 	var e: Dictionary = {}
+	# Only what ended the match: the KO that left a side without heroes, the claim that made the
+	# stages. A match won on energy, drawn or given up has no such place (it used to send the
+	# camera to the last KO or claim of the whole match, turns old and maybe the other side's).
+	var decided: String = {"ko": "ko", "stages": "stage_claimed"}.get(state.result, "")
 	for i: int in range(state.log.size() - 1, -1, -1):
-		var t: String = str(state.log[i].get("type", ""))
-		if t == "ko" or t == "stage_claimed":
+		if decided.is_empty():
+			break
+		if str(state.log[i].get("type", "")) == decided:
 			e = state.log[i]
 			break
 	if str(e.get("type", "")) == "ko":
@@ -1086,7 +1093,9 @@ func _end_moment() -> void:
 		if st != null and st.placed:
 			at = arena.hex_center(st.center)
 			found = true
-	if found:
+	# The battle camera is already on the fight it ended in: it stays (Marko 2026-11-11: the screen
+	# jolted there and back before the band).
+	if found and not hud.battle_cam:
 		cam.focus(at, 12.0)
 	var winner: String = hud.player_name(state.winner).to_upper() if state.winner >= 0 else ""
 	var title: String = "DRAW" if state.winner < 0 else ("%s WINS" % winner)
@@ -1235,6 +1244,9 @@ func _shows_figure(h: HeroState) -> bool:
 		for b: Dictionary in state.battles:
 			if JsonUtil.as_strings(b.get("heroes", [])).has(h.id):
 				return true
+	# The battle the match ended in stays on the table while the end is told (MatchHud.shown_battle).
+	if state.is_over() and hud.shown_battle_ids().has(h.id):
+		return true
 	return false
 
 
@@ -1603,6 +1615,9 @@ func _battle_arrows() -> bool:
 		for b: HeroState in state.heroes:
 			if a == b or state.same_team(a, b) or not engine.in_range(state, a, b):
 				continue
+			# No arrow from or to a place a ball has left (_ball_away).
+			if _ball_away(a) or _ball_away(b):
+				continue
 			var hot: bool = current.has(a.id) and current.has(b.id)
 			var later: bool = waiting.has(a.id) and waiting.has(b.id)
 			# During a battle only battles get arrows: the one now thick red, the next ones faint.
@@ -1626,6 +1641,34 @@ func _battle_arrows() -> bool:
 	return drew
 
 
+## True while a hero's ball is not on the hex the rules have it on: it is moving, or it has stopped
+## somewhere else while another still rolls (the rules move it when the whole roll is over). What
+## is drawn round a hero's hex (range, battle ring, arrows) is not drawn then (Marko 2026-11-09:
+## the range stood where the ball had been thrown from).
+func _ball_away(h: HeroState) -> bool:
+	if not _bodies.has(h.id):
+		return false
+	var body: BallBody = _bodies[h.id]
+	if body.motion != BallBody.Motion.RESTING:
+		return true
+	var at: Vector3 = arena.hex_center(h.hex)
+	return Vector2(body.global_position.x - at.x, body.global_position.z - at.z).length() > BALL_OFF_HEX
+
+
+## The battle's rings and arrows follow _ball_away as the balls move: checked every frame, drawn
+## again only when a ball of the battle has left its hex or is back on one.
+func _watch_battle_marks() -> void:
+	var key: String = ""
+	for hid: String in _current_battle():
+		var h: HeroState = state.hero(hid)
+		if h != null and h.is_on_map() and _ball_away(h):
+			key += hid + ";"
+	if key == _away_key:
+		return
+	_away_key = key
+	_draw_marks()
+
+
 ## Range of the activated heroes always, of the hovered one too, and the legal hexes while a
 ## core waits to be put back.
 func _refresh_range() -> void:
@@ -1644,14 +1687,8 @@ func _refresh_range() -> void:
 				ids.append(hud.shown_active(slot))
 	for id: String in ids:
 		var h: HeroState = state.hero(id)
-		if h == null or not h.is_on_map() or _bodies[h.id].motion != BallBody.Motion.RESTING:
-			continue
-		# A ball that has stopped while another still rolls is no longer on the hex the rules have it
-		# on (they move it when the whole roll is over): no range round the place it left (Marko
-		# 2026-11-09: the range stood where the ball had been thrown from).
-		var at: Vector3 = arena.hex_center(h.hex)
-		var ball: Vector3 = _bodies[h.id].global_position
-		if Vector2(ball.x - at.x, ball.z - at.z).length() > BALL_OFF_HEX:
+		# No range round a place the ball has left (_ball_away).
+		if h == null or not h.is_on_map() or _ball_away(h):
 			continue
 		var rng: int = engine.stat(state, h, "rng")
 		key += "%s:%s:%d;" % [h.id, h.hex, rng]
@@ -2033,6 +2070,7 @@ func _process(delta: float) -> void:
 	if _sling.is_aiming():
 		_sling.update(cam.camera, get_viewport().get_mouse_position(), get_viewport().get_visible_rect().size.y)
 	_refresh_range()
+	_watch_battle_marks()
 	_pulse_t += delta
 	if _claim_mat != null:
 		_claim_mat.albedo_color = Color(1, 1, 1, 0.35 + 0.65 * (0.5 + 0.5 * sin(_pulse_t * 5.0)))
@@ -3416,10 +3454,12 @@ func demo_targeting_dupe() -> void:
 func _refresh_battle_fx() -> void:
 	# Only heroes still on the map: a KO or a ring-out mid-battle takes its ring away at once
 	# (playtest 2026-11-06: the ring kept breathing where the ball had burst).
+	# Nor a hero whose ball is not on its hex: knocked back, it flies and the rules move it only
+	# when it has stopped (the ring breathed on where it had stood; review 2026-11-09).
 	var ids := PackedStringArray()
 	for hid: String in _current_battle():
 		var on: HeroState = state.hero(hid)
-		if on != null and on.is_on_map():
+		if on != null and on.is_on_map() and not _ball_away(on):
 			ids.append(hid)
 	var key: String = "%s:%s" % [_battle_key(), ",".join(ids)]
 	if key == _battle_fx_key:
@@ -3542,6 +3582,9 @@ func demo_battle_ko() -> void:
 ## As each battle starts the camera flies to it (Settings → Display); when the battles are
 ## over it goes back to the table.
 func _update_battle_cam(now: bool = false) -> void:
+	# The match is over: the camera stays where the end is told from (_end_moment).
+	if state.is_over():
+		return
 	var ids: PackedStringArray = _current_battle()
 	if ids.is_empty():
 		if not _cam_battle_key.is_empty():
@@ -3643,7 +3686,7 @@ func demo_reveal() -> void:
 func _leave_cam_later() -> void:
 	var t: SceneTreeTimer = get_tree().create_timer(BATTLE_CAM_HOLD * GameSettings.anim_scale())
 	await t.timeout
-	if _current_battle().is_empty() and hud.battle_cam:
+	if _current_battle().is_empty() and hud.battle_cam and not state.is_over():
 		hud.battle_cam = false
 		cam.reset_view()
 		hud.refresh()
