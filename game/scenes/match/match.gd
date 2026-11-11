@@ -170,6 +170,12 @@ var _combo_list: VBoxContainer
 var _combo_toggle: HBoxContainer
 ## The combo list shows every combo, not only the ones this screen's deck can make.
 var _combo_all: bool = false
+## The pause menu's RULES tab: its box, the sections' buttons, the text, the sections and the open one.
+var _rules_box: Control
+var _rules_toc: VBoxContainer
+var _rules_text: RichTextLabel
+var _rules: Array[Dictionary] = []
+var _rule_open: int = 0
 ## Setup: the stage or core the local player places next ("" = the first one left) and the
 ## hex under the mouse, for the preview.
 var _setup_pick: String = ""
@@ -659,11 +665,8 @@ func _build_menu_overlay() -> Control:
 	log_box.add_theme_constant_override("separation", 10)
 	root.add_child(log_box)
 	_menu_log_box = log_box
-	# Tabs MATCH LOG and COMBO LIST when there are combos (Marko 2026-11-07), else just the heading.
-	if engine.catalog.of_type("Combo").is_empty():
-		log_box.add_child(UiTheme.label("MATCH LOG", 26, Palette.GOLD))
-	else:
-		log_box.add_child(_menu_tabs(false))
+	# Tabs MATCH LOG, COMBO LIST when there are combos (Marko 2026-11-07) and RULES (2026-11-11, G1).
+	log_box.add_child(_menu_tabs("log"))
 	_menu_log = PanelContainer.new()
 	_menu_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_menu_log.add_theme_stylebox_override("panel", UiTheme.box(Color(Palette.PANEL_SOLID, 0.9), 0, Color(0, 0, 0, 0), 22, 16))
@@ -688,6 +691,8 @@ func _build_menu_overlay() -> Control:
 	scroll.add_child(log_text)
 	_combo_box = _build_combo_box()
 	root.add_child(_combo_box)
+	_rules_box = _build_rules_box()
+	root.add_child(_rules_box)
 	return root
 
 
@@ -704,7 +709,7 @@ func _build_combo_box() -> Control:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 10)
 	box.add_child(head)
-	var tabs: HBoxContainer = _menu_tabs(true)
+	var tabs: HBoxContainer = _menu_tabs("combos")
 	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(tabs)
 	_combo_toggle = HBoxContainer.new()
@@ -733,33 +738,110 @@ func _build_combo_box() -> Control:
 	return box
 
 
-## The two tabs over the pause menu's right side (Marko 2026-11-08, from the mockups): slanted
-## buttons like YOUR DECK and ALL beside them, the open one straw.
-func _menu_tabs(combos_open: bool) -> HBoxContainer:
+## The tabs over the pause menu's right side (Marko 2026-11-08, from the mockups): slanted buttons like YOUR
+## DECK and ALL beside them, the open one straw. COMBO LIST only when there are combos.
+func _menu_tabs(open: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	for combos: bool in [false, true]:
+	var tabs: Array[String] = ["log"]
+	if not engine.catalog.of_type("Combo").is_empty():
+		tabs.append("combos")
+	tabs.append("rules")
+	for tab: String in tabs:
 		var b := Button.new()
-		b.text = "COMBO LIST" if combos else "MATCH LOG"
+		b.text = {"log": "MATCH LOG", "combos": "COMBO LIST", "rules": "RULES"}[tab]
 		b.focus_mode = Control.FOCUS_NONE
 		b.add_theme_font_size_override("font_size", 24)
 		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		if combos == combos_open:
+		if tab == open:
 			b.theme_type_variation = &"Gold"
 		else:
-			b.pressed.connect(func() -> void: _show_combos(combos))
+			b.pressed.connect(func() -> void: _show_tab(tab))
 		row.add_child(b)
 	return row
 
 
-## The right side shows the combo list (true) or the match log.
-func _show_combos(on: bool) -> void:
+## The right side shows the match log ("log"), the combo list ("combos") or the rules ("rules").
+func _show_tab(tab: String) -> void:
 	if _combo_box == null:
 		return
-	_combo_box.visible = on
-	_menu_log_box.visible = not on
-	if on:
+	_menu_log_box.visible = tab == "log"
+	_combo_box.visible = tab == "combos"
+	_rules_box.visible = tab == "rules"
+	if tab == "combos":
 		_fill_combos()
+	elif tab == "rules":
+		_fill_rules()
+
+
+## The players' rules (Marko 2026-11-11, G1): the sections on the left, the open one on the right. The text is
+## data/rules/rules.md in the shared folder, the same file as Card Studio's Rules page (RulesText).
+func _build_rules_box() -> Control:
+	var box := VBoxContainer.new()
+	box.anchor_left = 0.42
+	box.anchor_right = 0.96
+	box.anchor_top = 0.1
+	box.anchor_bottom = 0.9
+	box.add_theme_constant_override("separation", 10)
+	box.visible = false
+	box.add_child(_menu_tabs("rules"))
+	var row := HBoxContainer.new()
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 14)
+	box.add_child(row)
+	var toc_scroll := ScrollContainer.new()
+	toc_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	toc_scroll.custom_minimum_size.x = 210
+	row.add_child(toc_scroll)
+	_rules_toc = VBoxContainer.new()
+	_rules_toc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_rules_toc.add_theme_constant_override("separation", 2)
+	toc_scroll.add_child(_rules_toc)
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", UiTheme.box(Color(Palette.PANEL_SOLID, 0.9), 0, Color(0, 0, 0, 0), 22, 18))
+	row.add_child(panel)
+	_rules_text = RichTextLabel.new()
+	_rules_text.bbcode_enabled = true
+	_rules_text.scroll_active = true
+	_rules_text.selection_enabled = true
+	_rules_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_rules_text.add_theme_color_override("default_color", Color("d8d3cb"))
+	_rules_text.add_theme_font_override("normal_font", UiTheme.body_font())
+	_rules_text.add_theme_font_override("bold_font", UiTheme.body_semibold())
+	for kind: String in ["normal_font_size", "bold_font_size", "italics_font_size"]:
+		_rules_text.add_theme_font_size_override(kind, 16)
+	_rules_text.add_theme_constant_override("line_separation", 6)
+	panel.add_child(_rules_text)
+	return box
+
+
+## Read when the tab opens, so a change in the shared folder shows without restarting the match.
+func _fill_rules() -> void:
+	_rules = RulesText.sections(RulesText.read(db.data_dir()))
+	MatchHud._clear(_rules_toc)
+	if _rules.is_empty():
+		_rules_text.text = "No rules in the shared folder yet (data/%s)." % RulesText.PATH
+		return
+	for k: int in _rules.size():
+		var b := Button.new()
+		b.text = str(_rules[k]["title"])
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 17)
+		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		var at: int = k
+		b.pressed.connect(func() -> void: _show_rule(at))
+		_rules_toc.add_child(b)
+	_show_rule(clampi(_rule_open, 0, _rules.size() - 1))
+
+
+func _show_rule(k: int) -> void:
+	_rule_open = k
+	for j: int in _rules_toc.get_child_count():
+		(_rules_toc.get_child(j) as Button).theme_type_variation = &"Gold" if j == k else &""
+	_rules_text.text = RulesText.page(_rules[k])
+	_rules_text.scroll_to_line(0)
 
 
 func _fill_combos() -> void:
@@ -908,7 +990,7 @@ func _toggle_menu() -> void:
 		var phase: String = MatchHud._ribbon_phase(state.phase).to_upper()
 		_menu_info.text = ("TURN %d  ·  %s PHASE" % [state.turn, phase]) if state.turn > 0 else "SETUP"
 		_fill_menu_log()
-		_show_combos(false)
+		_show_tab("log")
 		_menu_first.grab_focus.call_deferred()
 
 
@@ -3545,7 +3627,15 @@ func demo_combo_list() -> void:
 	_demo = true
 	_combo_all = true
 	_toggle_menu()
-	_show_combos(true)
+	_show_tab("combos")
+
+
+## Screenshot helper: the pause menu with the rules open on Battle.
+func demo_rules() -> void:
+	_demo = true
+	_rule_open = 7
+	_toggle_menu()
+	_show_tab("rules")
 
 
 ## Screenshot helper: one band, named by `--banner=<name>` on the command line (see BUILD.md).
