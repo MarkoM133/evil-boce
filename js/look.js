@@ -9,11 +9,10 @@ export function heroDefaultColor(card) {
   return BALL_COLORS[card.color] ?? '#b8ab98';
 }
 
-// Boje kuglice kako ih igra čita: ballColor / ballColor2, inače stara TTS polja bakuganColor / bakuganColor2,
-// inače boja heroja i zadani akcent. accent = null znači zadani akcent.
+// Boje kuglice kako ih igra čita: ballColor / ballColor2, inače boja heroja i zadani akcent. accent = null znači zadani akcent.
 export function ballColors(card) {
   return {
-    body: card.ballColor ?? card.bakuganColor ?? heroDefaultColor(card),
-    accent: card.ballColor2 ?? card.bakuganColor2 ?? null,
+    body: card.ballColor ?? heroDefaultColor(card),
+    accent: card.ballColor2 ?? null,
   };
 }

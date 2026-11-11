@@ -57,8 +57,6 @@ Evil Boce/
 - **Effect:** tekst karte, kako ga igra čita, što ne razumije i prijedlog `fx` (jezik efekata: `game/docs/fx-keywords.md`). **Confirm** sprema `fx` u kartu; prazan `fx` znači da igra čita tekst sama. Filter **Needs fx** pokazuje karte koje igra ne razumije, a nemaju potvrđen fx; **Check fx** one kojima se tekst promijenio nakon fx-a. Podatke daje izvještaj igre `data/fx-proposals.json`; nakon Objave ga osvježi: `godot_console --headless --path game -s res://tools/fx_proposals.gd`.
 - **Look:** boja kuglice heroja (tijelo i akcent, u bojama igre), težina (WT) i figurina (sprite).
 
-TTS mod je otpisan i njegov kod je obrisan (10/2026); igra je u `game/`.
-
 ## Testovi
 
 ```

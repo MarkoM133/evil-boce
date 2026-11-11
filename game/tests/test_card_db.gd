@@ -6,7 +6,7 @@ const SAMPLE: String = """{
     {"id": "OP1-001", "name": "Luffy", "type": "Hero", "color": "Cyan", "wt": 2,
      "stats": {"hp": 8, "rng": 4}, "sprite": "sprites/OP1-001.png"},
     {"id": "OP1-005", "name": "Kaido", "type": "Hero", "color": "Blue", "wt": 3.0,
-     "stats": {"hp": 12, "rng": 3}, "bakuganColor": "#123456", "bakuganColor2": "#761976"},
+     "stats": {"hp": 12, "rng": 3}, "ballColor": "#123456", "ballColor2": "#761976"},
     {"id": "OP1-009", "name": "Observation Haki", "type": "Action"},
     {"id": "OP1-099", "name": "Gone", "type": "Hero", "deleted": true}
   ]

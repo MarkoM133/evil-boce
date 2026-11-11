@@ -28,8 +28,8 @@ static func from_card(card: Dictionary, data_dir: String) -> HeroDef:
 	var stats: Dictionary = JsonUtil.as_dict(card.get("stats", {}))
 	h.rng = JsonUtil.as_int(stats.get("rng", 3), 3)
 	h.hp = JsonUtil.as_int(stats.get("hp", 10), 10)
-	h.ball_color = _color(card.get("ballColor", card.get("bakuganColor", "")), Palette.hero(h.color_name))
-	h.ball_accent = _color(card.get("ballColor2", card.get("bakuganColor2", "")), Palette.DEFAULT_ACCENT)
+	h.ball_color = _color(card.get("ballColor", ""), Palette.hero(h.color_name))
+	h.ball_accent = _color(card.get("ballColor2", ""), Palette.DEFAULT_ACCENT)
 	var sprite: String = str(card.get("sprite", ""))
 	if not sprite.is_empty():
 		h.sprite_path = data_dir.path_join(sprite)

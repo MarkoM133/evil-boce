@@ -1638,7 +1638,7 @@ function colorRow(label, get, set, special, rows) {
 }
 
 // Kartica Look: kuglica u igri (gornja polovica u boji tijela, donja u akcentu; tim je prsten ispod) i težina
-// za heroje, figurina (sprite) za heroje i evolucije. Spremanje boje makne stara TTS polja bakuganColor*.
+// za heroje, figurina (sprite) za heroje i evolucije.
 function lookPane(c, edits, form) {
   const parts = [];
   if (c.type === 'Hero') {
@@ -1651,9 +1651,9 @@ function lookPane(c, edits, form) {
       for (const sync of rows) sync();
     };
     const side = edits ? h('div', { class: 'bk-side' },
-      colorRow('Body', () => body, v => { body = v; edits.ballColor = v; edits.bakuganColor = undefined; paint(); },
+      colorRow('Body', () => body, v => { body = v; edits.ballColor = v; paint(); },
         { label: 'Hero color', value: () => heroDefaultColor(c), active: () => body === heroDefaultColor(c) }, rows),
-      colorRow('Accent', () => accent, v => { accent = v; edits.ballColor2 = v ?? undefined; edits.bakuganColor2 = undefined; paint(); },
+      colorRow('Accent', () => accent, v => { accent = v; edits.ballColor2 = v ?? undefined; paint(); },
         { label: 'Default', value: () => null, active: () => accent === null }, rows),
       h('label', { class: 'field' }, h('span', {}, 'Weight (WT)'), h('input', { type: 'number', min: 1, step: 1, value: c.wt ?? '',
         oninput: e => { if (e.target.value === '') delete edits.wt; else edits.wt = Number(e.target.value); } })),

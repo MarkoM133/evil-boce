@@ -8,13 +8,12 @@ export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats
 // Za igru: fx (efekt karte za igru), fxStatus ('ok' | 'check' | ''), terrain (Stage; iz retka "Terrain:" ili ručno),
 // aliases (Hero): druga imena po kojima ga prvi tag karte prepoznaje (pravilo prvog taga, js/tags.js),
 // , npr. figures/OP1-001.glb), ballColor i ballColor2 (kuglica: tijelo i akcent), heroSfx.
-// bakugan* su stara TTS polja: ostaju u starim zapisima (igra ih čita kao zadanu boju kuglice), app ih više ne nudi.
-export const APP_FIELDS = ['wt', 'aliases', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fx', 'fxStatus', 'fxRead', 'terrain', 'figure', 'ballColor', 'ballColor2', 'heroSfx', 'deleted'];
+export const APP_FIELDS = ['wt', 'aliases', 'fx', 'fxStatus', 'fxRead', 'terrain', 'figure', 'ballColor', 'ballColor2', 'heroSfx', 'deleted'];
 // Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
 // fxStatus je samo oznaka za pregled, pa ni on ne diže verziju.
 // fxRead: čitanje parsera igre koje je čovjek potvrdio (karta bez ručnog fx-a); samo oznaka, kao fxStatus.
-export const LOOK_FIELDS = ['bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'fxStatus', 'fxRead', 'figure', 'ballColor', 'ballColor2', 'heroSfx'];
-const FIELD_ORDER = ['id', 'name', 'type', 'color', 'bonusColors', 'cost', 'extraCost', 'ingredients', 'introducedIn', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'fxRead', 'landscape', 'bakugan', 'bakuganShape', 'bakuganColor', 'bakuganColor2', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
+export const LOOK_FIELDS = ['fxStatus', 'fxRead', 'figure', 'ballColor', 'ballColor2', 'heroSfx'];
+const FIELD_ORDER = ['id', 'name', 'type', 'color', 'bonusColors', 'cost', 'extraCost', 'ingredients', 'introducedIn', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'fxRead', 'landscape', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
 
@@ -544,7 +543,7 @@ export function appendChangelog(log, entry) {
   return { entries: [...log.entries.filter(e => e.version !== entry.version), merged].sort((a, b) => a.version - b.version) };
 }
 
-// Stari zapisi (do v4) imaju izgled u fields ('bakuganShape') ili kao sprite: true.
+// Stari zapisi (do v4) imaju izgled u fields ('ballColor') ili kao sprite: true.
 const lookOf = c => union(union(c.look, (c.fields ?? []).filter(f => LOOK_FIELDS.includes(f))), c.sprite ? ['sprite'] : []);
 const gameFieldsOf = c => (c.fields ?? []).filter(f => !LOOK_FIELDS.includes(f));
 const isGameChange = c => c.kind !== 'changed' || c.image || gameFieldsOf(c).length > 0;
@@ -565,7 +564,7 @@ export function changesSince(log, since) {
 }
 
 // Kratak opis promjene karte: "values, slika", "nova", "maknuta", "izgled: boja kuglice, sprite".
-const FIELD_LABELS = { ballColor: 'ball color', ballColor2: 'ball accent color', bakuganShape: 'bakugan shape', bakuganColor: 'bakugan color', bakuganColor2: 'bakugan accent color', bakugan: 'bakugan', sprite: 'sprite' };
+const FIELD_LABELS = { ballColor: 'ball color', ballColor2: 'ball accent color', sprite: 'sprite' };
 
 export function describeChange(c) {
   const kind = { new: 'new', deleted: 'deleted', restored: 'restored' }[c.kind];
