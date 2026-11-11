@@ -108,6 +108,11 @@ func _build_game(col: VBoxContainer) -> void:
 	open_web.pressed.connect(func() -> void: WebApp.open())
 	row.add_child(open_web)
 	_hint(col, "GitHub Pages works for everyone; the local server is http://localhost:5100/ while it runs. Empty goes back to Pages.")
+	var dc := _option(col, "Discord status", ["Shown  ·  friends see the match you play", "Off"], 0 if GameSettings.discord() else 1)
+	dc.item_selected.connect(func(i: int) -> void:
+		_store("online", "discord", i == 0)
+		if i == 0:
+			DiscordPresence.refresh())
 
 	_header(col, "IN A MATCH")
 	var ap := _option(col, "Auto-pass", ["On", "Off"], 0 if GameSettings.auto_pass() else 1)

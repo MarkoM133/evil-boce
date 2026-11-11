@@ -170,6 +170,9 @@ var _combo_list: VBoxContainer
 var _combo_toggle: HBoxContainer
 ## The combo list shows every combo, not only the ones this screen's deck can make.
 var _combo_all: bool = false
+## Discord: when this match began, and the bot's level it plays (_update_presence).
+var _presence_since: int = 0
+var _presence_bot: String = "easy"
 ## The pause menu's RULES tab: its box, the sections' buttons, the text, the sections and the open one.
 var _rules_box: Control
 var _rules_toc: VBoxContainer
@@ -203,6 +206,7 @@ func _ready() -> void:
 	var seed_: int = JsonUtil.as_int(_config.get("seed", 1), 1)
 	var bot_slots: Array = JsonUtil.as_array(_config.get("bots", []))
 	var bot_level: String = str(_config.get("bot_level", "easy"))
+	_presence_bot = bot_level
 	# Every match is recorded (replay, save, stats); a resumed or watched one uses the cards as
 	# they were when it was played.
 	var resume_from: MatchRecord = _config.get("resume", null)
@@ -1027,9 +1031,36 @@ func _fill_menu_log() -> void:
 
 ## Back to the main menu; an online match closes its link first.
 func _leave() -> void:
+	DiscordPresence.menu()
 	await _snapshot()
 	_close_net()
 	get_tree().change_scene_to_file(MENU_SCENE)
+
+
+## What Discord shows during the match (DiscordPresence, review item 32): the mode and against whom, then the turn
+## and the stages each side holds, with the time played.
+func _update_presence() -> void:
+	if state == null or hud == null:
+		return
+	if _presence_since == 0:
+		_presence_since = int(Time.get_unix_time_from_system())
+	var mode: String = {"standard": "Standard", "fast": "Fast", "chaos": "Chaos", "bo3": "Best of 3", "draft": "Draft"}.get(state.settings.mode, "Custom")
+	var who: String = "local, two players"
+	if _replay != null:
+		who = "watching a replay"
+	elif hud.spectating:
+		who = "watching an online match"
+	elif net_role != "":
+		who = "online"
+	elif not bots.is_empty():
+		who = "vs Bot (%s)" % _presence_bot.capitalize()
+	var line: String = "Setting up"
+	if state.is_over():
+		line = "Match over"
+	elif state.turn > 0:
+		var me: int = hud.local_slots[0] if not hud.local_slots.is_empty() else 0
+		line = "Turn %d  ·  stages %d–%d" % [state.turn, engine.claimed_count(state, me), engine.claimed_count(state, engine.other_slot(state, me))]
+	DiscordPresence.show("%s  ·  %s" % [mode, who], line, _presence_since)
 
 
 ## A picture of the table (no HUD) for the main menu's Play tile; not while watching a replay.
@@ -1322,6 +1353,7 @@ func _end_hold_watch() -> void:
 
 ## Puts every node where the state says and redraws the HUD.
 func _sync() -> void:
+	_update_presence()
 	world.terrain = engine.terrain(state)
 	arena.set_terrain(world.terrain)
 	_refresh_terrain_fx()

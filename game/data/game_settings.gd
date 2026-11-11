@@ -269,6 +269,11 @@ static func key_name(k: Key) -> String:
 ## Window, frame rate, sound and quality; the window only on the first call (start-up) or when
 ## `force` is set (the Settings screen), so going back to the menu does not move it.
 static func apply(tree: SceneTree, force: bool = false) -> void:
+	# Discord: "In the menu" when the game starts; nothing (the helper gone) once it is switched off.
+	if discord():
+		DiscordPresence.menu(true)
+	else:
+		DiscordPresence.stop()
 	if force or not _display_applied:
 		_display_applied = true
 		if fullscreen():
@@ -407,6 +412,11 @@ static func splash() -> bool:
 
 
 ## A small frames-per-second counter in the corner of a match.
+## Discord shows what you play ("Playing Evil Boće", the match and the turn); Settings → Discord status.
+static func discord() -> bool:
+	return JsonUtil.as_bool(_config().get_value("online", "discord", true))
+
+
 static func show_fps() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "fps", false))
 
