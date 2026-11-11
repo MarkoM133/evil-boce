@@ -2074,6 +2074,7 @@ func _throw_all() -> void:
 func _launch_knockbacks() -> void:
 	_launching = true
 	_knocking = true
+	_follow_knockback()
 	hud.rolling = true
 	hud.refresh()
 	for k: Dictionary in state.pending_knockbacks:
@@ -3945,6 +3946,55 @@ func _update_battle_cam(now: bool = false) -> void:
 			if key != _cam_battle_key:
 				return
 		_frame_battle(ids)
+		hud.refresh()
+
+
+## A knockback out of a battle (item 30 step 2, C; Marko 2026-11-11: always follow, the C key and the next battle
+## bring the battle camera back): the battle camera keeps the battle's balls in the frame while the knocked one
+## flies, widening as it must; if it goes over the edge it stays there while Evil Bochet's hand takes it, then goes
+## to the whole table for the way back.
+func _follow_knockback() -> void:
+	var ids: PackedStringArray = _current_battle()
+	if not hud.battle_cam or _replay != null or ids.is_empty():
+		return
+	var knocked: Array[String] = []
+	for k: Dictionary in state.pending_knockbacks:
+		knocked.append(str(k.get("hero", "")))
+	var caught: String = ""
+	while caught.is_empty():
+		await get_tree().process_frame
+		# The player took the camera, or the match moved on.
+		if not hud.battle_cam or state.is_over() or not is_inside_tree():
+			return
+		for id: String in knocked:
+			if _bochet != null and _bochet.catching(id):
+				caught = id
+		if not caught.is_empty():
+			break
+		if not _runner.is_running() and not _launching:
+			# It stopped on the table: the battle camera stays where it is.
+			return
+		var points: Array[Vector3] = []
+		for id: String in ids:
+			if _bodies.has(id) and arena.area_at(_bodies[id].global_position) != BallWorld.Area.VOID:
+				points.append(_bodies[id].global_position)
+		if points.is_empty():
+			continue
+		var mid := Vector3.ZERO
+		for q: Vector3 in points:
+			mid += q
+		mid /= points.size()
+		var spread: float = 0.0
+		for q: Vector3 in points:
+			spread = maxf(spread, Vector2(q.x - mid.x, q.z - mid.z).length())
+		cam.focus(mid, clampf(spread * 2.0 + 10.0, 12.0, 34.0))
+		cam.target.y = 1.0
+	# Close while the hand has it at the edge; then the whole table, to see it brought back.
+	while _bochet != null and _bochet.catching(caught) and hud.battle_cam:
+		await get_tree().process_frame
+	if hud.battle_cam and not state.is_over():
+		hud.battle_cam = false
+		cam.reset_view()
 		hud.refresh()
 
 

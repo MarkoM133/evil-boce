@@ -458,6 +458,11 @@ func _area(global: Vector3) -> BallWorld.Area:
 	return _arena.area_at(_arena.to_local(global))
 
 
+## Whether a hand is taking that ball at the edge right now (it has not gone under the table yet).
+func catching(id: String) -> bool:
+	return _held.has(id) and _held[id].stage == Stage.CATCHING
+
+
 ## Whether he can take a knocked-out hero's ball down a hole now (he is on the table, it is not in a hand).
 func can_take(id: String) -> bool:
 	return _shown and not _entering and not _left and not _held.has(id) and _bodies.has(id)
