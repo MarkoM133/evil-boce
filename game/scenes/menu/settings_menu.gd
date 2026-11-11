@@ -214,40 +214,31 @@ func _build_interface(col: VBoxContainer) -> void:
 			near = i
 	var ui := _option(col, "Interface size", scales, near)
 	ui.item_selected.connect(func(i: int) -> void: _store("display", "ui_scale", GameSettings.UI_SCALES[i]))
-	var layout := _option(col, "Main menu", ["Side strip", "Cinema"], GameSettings.MENU_LAYOUTS.find(GameSettings.menu_layout()))
-	layout.item_selected.connect(func(i: int) -> void: _store("display", "menu_layout", GameSettings.MENU_LAYOUTS[i]))
-	var fill := _option(col, "Cinema middle", ["Logo only", "Last match, what's new", "Table with balls"], GameSettings.CINEMA_FILLS.find(GameSettings.cinema_fill()))
-	fill.item_selected.connect(func(i: int) -> void: _store("display", "cinema_fill", GameSettings.CINEMA_FILLS[i]))
+	# The layout and, with Cinema, what fills its middle, in one (Marko 2026-11-11).
+	var menus: Array[String] = ["Side strip", "Cinema, logo only", "Cinema, last match and what's new", "Cinema, table with balls"]
+	var menu_at: int = 0 if GameSettings.menu_layout() == "strip" else 1 + maxi(0, GameSettings.CINEMA_FILLS.find(GameSettings.cinema_fill()))
+	var layout := _option(col, "Main menu", menus, menu_at)
+	layout.item_selected.connect(func(i: int) -> void:
+		_store("display", "menu_layout", "strip" if i == 0 else "cinema")
+		if i > 0:
+			_store("display", "cinema_fill", GameSettings.CINEMA_FILLS[i - 1]))
 	var splash := _option(col, "Splash at start", ["Shown", "Skipped"], 0 if GameSettings.splash() else 1)
 	splash.item_selected.connect(func(i: int) -> void: _store("display", "splash", i == 0))
+	var cur := _option(col, "Cursor", ["Game  ·  the slanted arrow, red over what can be clicked", "System  ·  the plain Windows arrow"], 0 if GameSettings.game_cursor() else 1)
+	cur.item_selected.connect(func(i: int) -> void: _store("display", "game_cursor", i == 0))
 
+	# Beams, words over the table and the stage boxes are switched in a match (keys B, T and G) and kept from
+	# there; their keys are on the Keys tab (Marko 2026-11-11: not twice).
 	_header(col, "ON THE TABLE")
-	var beams := _option(col, "Beams on heroes", ["On", "Off"], 0 if GameSettings.beams() else 1)
-	beams.item_selected.connect(func(i: int) -> void: _store("display", "beams", i == 0))
-	_hint(col, "The light over the heroes a card or a pick points at; the rings always show. Key B switches it in a match.")
-	var words := _option(col, "Words over the table", ["Shown", "Hidden"], 0 if GameSettings.table_text() else 1)
-	words.item_selected.connect(func(i: int) -> void: _store("display", "table_text", i == 0))
-	_hint(col, "TIED · FIGHT AGAIN, STAYED 1 TURN and the like over the heroes and stages. Key T switches it in a match.")
-	var strip := _option(col, "Stage and core boxes", ["Open", "Folded"], 0 if GameSettings.stage_strip() else 1)
-	strip.item_selected.connect(func(i: int) -> void:
-		_store("display", "stage_strip", i == 0)
-		_store("display", "stage_strip_other", i == 0))
-	_hint(col, "Each side's stages and cores in a box under its heroes. Key G, or a click on the box's header, folds and opens them in a match.")
 	var rng := _option(col, "Range circles", ["Activated heroes always, others on hover", "Only on hover"],
 		GameSettings.RANGE_MODES.find(GameSettings.range_mode()))
 	rng.item_selected.connect(func(i: int) -> void: _store("display", "range", GameSettings.RANGE_MODES[i]))
-
-	_header(col, "TEXT AND BANNERS")
 	var tips := _option(col, "Card text on hover", ["Shown", "Off"], 0 if GameSettings.hover_text() else 1)
 	tips.item_selected.connect(func(i: int) -> void: _store("display", "hover_text", i == 0))
 	_hint(col, "Right click or Alt still shows any card big.")
 	var ban := _option(col, "Banners", ["All, phases too", "Big moments only", "Off"],
 		GameSettings.BANNER_MODES.find(GameSettings.banners()))
 	ban.item_selected.connect(func(i: int) -> void: _store("display", "banners", GameSettings.BANNER_MODES[i]))
-	var fps := _option(col, "FPS counter", ["Off", "On"], 1 if GameSettings.show_fps() else 0)
-	fps.item_selected.connect(func(i: int) -> void: _store("display", "fps", i == 1))
-	var cur := _option(col, "Cursor", ["Game  ·  the slanted arrow, red over what can be clicked", "System  ·  the plain Windows arrow"], 0 if GameSettings.game_cursor() else 1)
-	cur.item_selected.connect(func(i: int) -> void: _store("display", "game_cursor", i == 0))
 
 
 func _build_graphics(col: VBoxContainer) -> void:
@@ -259,26 +250,37 @@ func _build_graphics(col: VBoxContainer) -> void:
 		sizes.append("%d × %d" % [r.x, r.y])
 	var res := _option(col, "Window size", sizes, maxi(0, GameSettings.RESOLUTIONS.find(GameSettings.resolution())))
 	res.item_selected.connect(func(i: int) -> void: _store("display", "resolution", GameSettings.RESOLUTIONS[i]))
-	var vsync := _option(col, "VSync", ["Off", "On"], 1 if GameSettings.vsync() else 0)
-	vsync.item_selected.connect(func(i: int) -> void: _store("display", "vsync", i == 1))
-	var fps_names: Array[String] = []
+	# VSync and the frame limit in one (Marko 2026-11-11): VSync, or a limit, or none.
+	var rates: Array[String] = ["VSync (the monitor's rate)"]
+	var limits: Array[int] = []
 	for f: int in GameSettings.FPS_LIMITS:
-		fps_names.append("No limit" if f == 0 else "%d" % f)
-	var fps := _option(col, "Frame limit", fps_names, maxi(0, GameSettings.FPS_LIMITS.find(GameSettings.max_fps())))
-	fps.item_selected.connect(func(i: int) -> void: _store("display", "max_fps", GameSettings.FPS_LIMITS[i]))
+		if f > 0:
+			rates.append("%d" % f)
+			limits.append(f)
+	rates.append("No limit")
+	limits.append(0)
+	var rate_at: int = 0 if GameSettings.vsync() else 1 + maxi(0, limits.find(GameSettings.max_fps()))
+	var rate := _option(col, "Frame rate", rates, rate_at)
+	rate.item_selected.connect(func(i: int) -> void:
+		GameSettings.set_value("display", "max_fps", 0 if i == 0 else limits[i - 1])
+		_store("display", "vsync", i == 0))
+	var fps := _option(col, "FPS counter", ["Off", "On"], 1 if GameSettings.show_fps() else 0)
+	fps.item_selected.connect(func(i: int) -> void: _store("display", "fps", i == 1))
 
 	_header(col, "QUALITY AND EFFECTS")
 	var q := _option(col, "Quality", ["Low  ·  no shadows, faster", "Medium", "High  ·  softer shadows"],
 			GameSettings.QUALITIES.find(GameSettings.quality()))
 	q.item_selected.connect(func(i: int) -> void: _store("display", "quality", GameSettings.QUALITIES[i]))
-	var hs := _option(col, "Hit-stop", ["Off", "On  ·  a blink of freeze when damage lands"], 1 if GameSettings.effect("hit_stop") else 0)
-	hs.item_selected.connect(func(i: int) -> void: _store("effects", "hit_stop", i == 1))
-	var sm := _option(col, "Slow motion", ["Off", "On  ·  a ball over the edge (without Evil Bochet), his claws on a fallen hero"], 1 if GameSettings.effect("slow_mo") else 0)
-	sm.item_selected.connect(func(i: int) -> void: _store("effects", "slow_mo", i == 1))
+	# Hit-stop, slow motion and camera shake in one (Marko 2026-11-11).
+	var impact_at: int = 0 if GameSettings.effect("shake") else (1 if GameSettings.effect("hit_stop") or GameSettings.effect("slow_mo") else 2)
+	var impact := _option(col, "Impact effects", ["All", "No shake", "Off"], impact_at)
+	impact.item_selected.connect(func(i: int) -> void:
+		GameSettings.set_value("effects", "hit_stop", i < 2)
+		GameSettings.set_value("effects", "slow_mo", i < 2)
+		_store("effects", "shake", i == 0))
+	_hint(col, "All: a blink of freeze when damage lands, slow motion on a ball over the edge (without Evil Bochet) and on his claws taking a fallen hero, and the view jolting on a KO and when he grabs a ball. No shake: the same without the jolt.")
 	var bo := _option(col, "Evil Bochet", ["Off  ·  the table stands on its slab", "On  ·  a monster holds the table"], 1 if GameSettings.effect("bochet") else 0)
 	bo.item_selected.connect(func(i: int) -> void: _store("effects", "bochet", i == 1))
-	var sh := _option(col, "Camera shake", ["Off", "On  ·  the view jolts on a KO and when Evil Bochet grabs a ball"], 1 if GameSettings.effect("shake") else 0)
-	sh.item_selected.connect(func(i: int) -> void: _store("effects", "shake", i == 1))
 
 
 func _build_sound(col: VBoxContainer) -> void:
