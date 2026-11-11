@@ -1,7 +1,9 @@
 extends Control
 ## Settings (GDD 7), in tabs: Game (shared folder, name, how a match plays), Interface (what the
 ## screen shows), Graphics, Sound, Keys. Every change is saved and applied at once; the data
-## folder is checked as it is typed.
+## folder is checked as it is typed. Laid out as chosen (Marko 2026-11-11, S2): the tabs a column on the left, a
+## choice of two or three a row of buttons (a drop-down only for long lists), and what a setting does in one line
+## at the bottom for the hovered one. Sound is greyed out while the game has no sound.
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const KEY_LABELS: Dictionary[String, String] = {"pass": "Pass / end the round", "menu": "Menu / cancel",
@@ -23,20 +25,74 @@ var _key_buttons: Dictionary[String, Button] = {}
 var _binding: String = ""
 var _browse: FileDialog
 var _pages: Array[VBoxContainer] = []
-var _tab_chips: HBoxContainer
+var _nav: VBoxContainer
+## The line at the bottom: what the hovered setting does.
+var _foot: Label
+## The row the next _hint belongs to (null after a heading).
+var _last_row: HBoxContainer
+
+## A choice of a few values as buttons side by side (or a drop-down for a long list); `item_selected` as
+## OptionButton has it, so every setting connects the same way.
+class Choice extends HBoxContainer:
+	signal item_selected(index: int)
+	var _buttons: Array[Button] = []
+
+	func setup(items: Array[String], selected: int) -> void:
+		add_theme_constant_override("separation", 6)
+		size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if items.size() > 3:
+			var o := OptionButton.new()
+			for it: String in items:
+				o.add_item(it)
+			o.select(selected)
+			o.custom_minimum_size = Vector2(240, 0)
+			o.item_selected.connect(func(i: int) -> void: item_selected.emit(i))
+			add_child(o)
+			return
+		for i: int in items.size():
+			var b := Button.new()
+			b.text = items[i].to_upper()
+			b.focus_mode = Control.FOCUS_NONE
+			b.add_theme_font_size_override("font_size", 17)
+			b.custom_minimum_size = Vector2(130, 0)
+			var at: int = i
+			b.pressed.connect(func() -> void:
+				_mark(at)
+				item_selected.emit(at))
+			add_child(b)
+			_buttons.append(b)
+		_mark(selected)
+
+	func _mark(i: int) -> void:
+		for k: int in _buttons.size():
+			_buttons[k].theme_type_variation = &"Gold" if k == i else &""
 
 
 func _ready() -> void:
 	var frame: Dictionary = MenuScreen.build(self, CardDb.load_from(GameSettings.data_path()), "Settings",
-		"Saved at once; display changes apply straight away.", _back, 820.0)
+		"Saved at once; display changes apply straight away.", _back, 1060.0)
 	var content: VBoxContainer = frame["content"]
-	_tab_chips = HBoxContainer.new()
-	_tab_chips.add_theme_constant_override("separation", 6)
-	content.add_child(_tab_chips)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	content.add_child(row)
+	_nav = VBoxContainer.new()
+	_nav.add_theme_constant_override("separation", 6)
+	_nav.custom_minimum_size.x = 210
+	row.add_child(_nav)
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation", 10)
+	row.add_child(right)
 	for t: String in TABS:
-		var page: VBoxContainer = MenuScreen.card(content, 26)
+		var page: VBoxContainer = MenuScreen.card(right, 26, true)
 		page.add_theme_constant_override("separation", 8)
 		_pages.append(page)
+	_foot = Label.new()
+	_foot.theme_type_variation = &"Muted"
+	_foot.add_theme_font_size_override("font_size", 15)
+	_foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_foot.custom_minimum_size = Vector2(0, 44)
+	right.add_child(_foot)
 	_build_game(_pages[0])
 	_build_interface(_pages[1])
 	_build_graphics(_pages[2])
@@ -47,24 +103,31 @@ func _ready() -> void:
 	_check_data()
 
 
-## Shows tab `i` (and only its card); the chips mark which one.
+## Shows tab `i` (and only its card); the column on the left marks which one. Sound is greyed out while the
+## game has no sound (Marko 2026-11-11).
 func _show_tab(i: int) -> void:
+	if TABS[i] == "SOUND":
+		i = 0
 	_last_tab = i
 	for k: int in _pages.size():
 		(_pages[k].get_parent() as Control).visible = k == i
-	for c: Node in _tab_chips.get_children():
+	_foot.text = "Hover a setting to read what it does."
+	for c: Node in _nav.get_children():
 		c.queue_free()
 	for k: int in TABS.size():
-		var on: bool = k == i
-		var chip: UiShape = UiShape.chip(TABS[k], Palette.ACCENT if on else Palette.PANEL_SOLID,
-			Palette.FG if on else Palette.MUTED, 18, 36.0, 18.0)
-		chip.mouse_filter = Control.MOUSE_FILTER_STOP
-		chip.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		var b := Button.new()
+		b.text = TABS[k]
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 26)
+		b.theme_type_variation = &"Primary" if k == i else &""
+		if TABS[k] == "SOUND":
+			b.disabled = true
+			b.tooltip_text = "No sound in the game yet."
+			b.modulate = Color(1, 1, 1, 0.4)
 		var idx: int = k
-		chip.gui_input.connect(func(e: InputEvent) -> void:
-			if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-				_show_tab(idx))
-		_tab_chips.add_child(chip)
+		b.pressed.connect(func() -> void: _show_tab(idx))
+		_nav.add_child(b)
 
 
 func _build_game(col: VBoxContainer) -> void:
@@ -183,6 +246,8 @@ func _build_interface(col: VBoxContainer) -> void:
 	ban.item_selected.connect(func(i: int) -> void: _store("display", "banners", GameSettings.BANNER_MODES[i]))
 	var fps := _option(col, "FPS counter", ["Off", "On"], 1 if GameSettings.show_fps() else 0)
 	fps.item_selected.connect(func(i: int) -> void: _store("display", "fps", i == 1))
+	var cur := _option(col, "Cursor", ["Game  ·  the slanted arrow, red over what can be clicked", "System  ·  the plain Windows arrow"], 0 if GameSettings.game_cursor() else 1)
+	cur.item_selected.connect(func(i: int) -> void: _store("display", "game_cursor", i == 0))
 
 
 func _build_graphics(col: VBoxContainer) -> void:
@@ -212,6 +277,8 @@ func _build_graphics(col: VBoxContainer) -> void:
 	sm.item_selected.connect(func(i: int) -> void: _store("effects", "slow_mo", i == 1))
 	var bo := _option(col, "Evil Bochet", ["Off  ·  the table stands on its slab", "On  ·  a monster holds the table"], 1 if GameSettings.effect("bochet") else 0)
 	bo.item_selected.connect(func(i: int) -> void: _store("effects", "bochet", i == 1))
+	var sh := _option(col, "Camera shake", ["Off", "On  ·  the view jolts on a KO and when Evil Bochet grabs a ball"], 1 if GameSettings.effect("shake") else 0)
+	sh.item_selected.connect(func(i: int) -> void: _store("effects", "shake", i == 1))
 
 
 func _build_sound(col: VBoxContainer) -> void:
@@ -243,7 +310,12 @@ func _build_keys(col: VBoxContainer) -> void:
 	_hint(col, "Drag a ball back to aim, release to throw; right click cancels. Wheel zooms, drag the table to move the camera, right drag turns it, Home resets it. Right click on a card or a hero shows its card big.")
 
 
+## What the setting just above does: shown at the bottom while it is hovered; text with no row to go with (under a
+## heading) stays on the page.
 func _hint(parent: Control, text: String) -> void:
+	if _last_row != null and not _last_row.has_meta("hint"):
+		_last_row.set_meta("hint", text)
+		return
 	var note := Label.new()
 	note.theme_type_variation = &"Muted"
 	note.text = text
@@ -253,6 +325,7 @@ func _hint(parent: Control, text: String) -> void:
 
 
 func _header(parent: Control, text: String) -> void:
+	_last_row = null
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 6)
 	parent.add_child(gap)
@@ -265,19 +338,33 @@ func _row(parent: Control, label: String) -> HBoxContainer:
 	parent.add_child(row)
 	var l := Label.new()
 	l.text = label
-	l.custom_minimum_size = Vector2(170, 0)
+	l.custom_minimum_size = Vector2(230, 0)
 	row.add_child(l)
+	_last_row = row
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.mouse_entered.connect(func() -> void:
+		if row.has_meta("hint"):
+			_foot.text = str(row.get_meta("hint")))
 	return row
 
 
-func _option(parent: Control, label: String, items: Array[String], selected: int) -> OptionButton:
-	var o := OptionButton.new()
+## A setting: its name and the choice. An item "On  ·  what it does" is a button ON, and what it does goes to the
+## setting's line at the bottom.
+func _option(parent: Control, label: String, items: Array[String], selected: int) -> Choice:
+	var names: Array[String] = []
+	var notes := PackedStringArray()
 	for it: String in items:
-		o.add_item(it)
-	o.select(selected)
-	o.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_row(parent, label).add_child(o)
-	return o
+		var parts: PackedStringArray = it.split("  ·  ", true, 1)
+		names.append(parts[0] if items.size() <= 3 else it)
+		if items.size() <= 3 and parts.size() > 1:
+			notes.append("%s: %s" % [parts[0], parts[1]])
+	var c := Choice.new()
+	c.setup(names, selected)
+	var row: HBoxContainer = _row(parent, label)
+	row.add_child(c)
+	if not notes.is_empty():
+		row.set_meta("hint", ". ".join(notes) + ".")
+	return c
 
 
 func _volume(parent: Control, bus: String) -> void:

@@ -161,6 +161,8 @@ func _process(delta: float) -> void:
 
 ## A short jolt of the view, fading out over `time` seconds (a KO on the table).
 func shake(amp: float = 0.35, time: float = 0.28) -> void:
+	if not GameSettings.effect("shake"):
+		return
 	_shake_amp = amp
 	_shake_time = time
 	_shake_t = time

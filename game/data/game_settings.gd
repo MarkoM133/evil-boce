@@ -227,7 +227,7 @@ static func set_value(section: String, key_: String, value: Variant) -> void:
 
 ## Hit-stop and slow motion (GDD 11 juice), and Evil Bochet holding the table (Bochet); all on unless
 ## switched off in Settings.
-const EFFECTS: Array[String] = ["hit_stop", "slow_mo", "bochet"]
+const EFFECTS: Array[String] = ["hit_stop", "slow_mo", "bochet", "shake"]
 
 
 static func effect(name: String) -> bool:
@@ -415,6 +415,11 @@ static func splash() -> bool:
 ## Discord shows what you play ("Playing Evil Boće", the match and the turn); Settings → Discord status.
 static func discord() -> bool:
 	return JsonUtil.as_bool(_config().get_value("online", "discord", true))
+
+
+## The game's own cursor (C1), or the system's (Settings → Interface → Cursor).
+static func game_cursor() -> bool:
+	return JsonUtil.as_bool(_config().get_value("display", "game_cursor", true))
 
 
 static func show_fps() -> bool:

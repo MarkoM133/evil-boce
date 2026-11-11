@@ -23,6 +23,13 @@ static var _hooked: bool = false
 static func install(tree: SceneTree) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
+	# The system arrow when it is asked for (Settings → Interface → Cursor).
+	if not GameSettings.game_cursor():
+		if _scale > 0.0:
+			_scale = 0.0
+			for shape: Input.CursorShape in [Input.CURSOR_ARROW, Input.CURSOR_POINTING_HAND, Input.CURSOR_CROSS]:
+				Input.set_custom_mouse_cursor(null, shape)
+		return
 	var k: float = scale_for(DisplayServer.window_get_size().y)
 	if absf(k - _scale) > 0.01:
 		_scale = k
