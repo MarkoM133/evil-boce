@@ -84,6 +84,13 @@ const BATTLE_BANNER_TIME: float = 1.6
 const COMBO_SHOW_TIME: float = 2.6
 ## The KO announcement (_ko_show): about this long on the screen; it waits at most KO_WAIT_MOST seconds
 ## for Evil Bochet's claws, and with him the right card is dragged off KO_DRAG_GAP after the left (KO6).
+## Stat colours (item 25, B3b, Marko and Tarik 2026-11-09): up or down, for good, this phase, this turn.
+const BONUS_LASTING_UP := Color("3ddc68")
+const BONUS_PHASE_UP := Color("35d9d0")
+const BONUS_TURN_UP := Color("4aa3ff")
+const BONUS_LASTING_DOWN := Color("ff4a4a")
+const BONUS_PHASE_DOWN := Color("ffd23f")
+const BONUS_TURN_DOWN := Color("ff8a2a")
 const KO_SHOW_TIME: float = 2.4
 const KO_WAIT_MOST: float = 3.0
 const KO_DRAG_GAP: float = 0.16
@@ -1337,7 +1344,9 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	s.color_edge = hero_color
 	if ko:
 		s.art_tint = Color(0.35, 0.35, 0.35)
-		s.modulate.a = 0.6
+		# The panel fades, its KNOCKED OUT stamp stays bright.
+		s.self_modulate.a = 0.6
+		s.content.modulate.a = 0.6
 	if active:
 		# Every panel is full width now (playtest 2026-10-30); the activated one stands out by a
 		# thick gold edge and a warm ground instead of sticking out.
@@ -1367,6 +1376,14 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 			_hover_cid = "")
 	if card != null:
 		s.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
+	var slice_h: float = s.custom_minimum_size.y
+	if ko:
+		# KO (item 28, K3, Marko 2026-11-09): a slanted red KNOCKED OUT stamp over the middle of the panel.
+		_panel_stamp(s, "KNOCKED OUT", 24, -7.0, Vector2(ROSTER_WIDTH * 0.5, slice_h * 0.5))
+	elif h.statuses.has("no_claim"):
+		# Can't claim (Marko 2026-11-09, C3 big, no turns): NO CLAIM over the portrait, a little past it.
+		var px: float = (HeroSlice.ART_W + HeroSlice.CUT) * 0.5
+		_panel_stamp(s, "NO CLAIM", 21, -12.0, Vector2(ROSTER_WIDTH - px if right else px, slice_h * 0.5))
 
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 5)
@@ -1439,11 +1456,8 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	extra.add_theme_font_size_override("font_size", 12)
 	extra.clip_text = true
 	extra.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# Statuses show as chips under the panel (_effect_chips).
-	if ko:
-		extra.text = "Knocked out"
-		extra.add_theme_color_override("font_color", Palette.MUTED)
-	elif not h.equipment.is_empty():
+	# Statuses show as chips under the panel (_effect_chips); a KO is the stamp over the panel.
+	if not ko and not h.equipment.is_empty():
 		# Equipment as mini cards after the core slots, empty slots dashed (Marko 2026-10-26):
 		# hover = its text, right click = the big card.
 		var gap := Control.new()
@@ -1496,18 +1510,48 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	return out
 
 
-## PWR DMG RNG KB as they stand now. Green up, red down against the card, whatever moved it:
-## cores, equipment, effects (playtest 2026-10-30: Sandai Kitetsu's +3 DMG stayed white).
+## PWR DMG RNG KB as they stand now, each in the colour of what moved it (item 25, B3b, Marko and
+## Tarik 2026-11-09): up or down, and for how long; white when nothing did.
 func _stats_bbcode(h: HeroState, right: bool) -> String:
 	var parts := PackedStringArray()
 	for key: String in ["pwr", "dmg", "rng", "kb"]:
 		var value: int = engine.stat(state, h, key)
 		var text: String = "%s %d" % [key.to_upper(), value]
-		var by: int = value - engine.base_stat(state, h, key)
-		if by != 0:
-			text = "[color=#%s]%s[/color]" % [(Palette.HP if by > 0 else Palette.ACCENT).to_html(false), text]
+		var phase: int = JsonUtil.as_int(h.phase_bonus.get(key, 0))
+		var turn: int = JsonUtil.as_int(h.turn_bonus.get(key, 0))
+		var lasting: int = value - engine.base_stat(state, h, key) - phase - turn
+		var tint: Color = stat_tint(phase, turn, lasting)
+		if tint.a > 0.0:
+			text = "[color=#%s]%s[/color]" % [tint.to_html(false), text]
 		parts.append(text)
 	return ("[right]%s[/right]" if right else "%s") % "   ".join(parts)
+
+
+## The colour of a stat moved by a bonus for this phase, this turn, or for good (B3b): the shortest one
+## says it (phase, then turn, then lasting), its sign whether up or down. Clear when nothing moved it.
+static func stat_tint(phase: int, turn: int, lasting: int) -> Color:
+	if phase != 0:
+		return BONUS_PHASE_UP if phase > 0 else BONUS_PHASE_DOWN
+	if turn != 0:
+		return BONUS_TURN_UP if turn > 0 else BONUS_TURN_DOWN
+	if lasting != 0:
+		return BONUS_LASTING_UP if lasting > 0 else BONUS_LASTING_DOWN
+	return Color(0, 0, 0, 0)
+
+
+## A slanted stamp over a hero's panel (KNOCKED OUT, NO CLAIM): red, white words, a black rim, centred on `at`.
+func _panel_stamp(s: Control, text: String, font_size: int, degrees: float, at: Vector2) -> void:
+	var stamp: UiShape = UiShape.chip(text, Palette.ACCENT, Palette.FG, font_size, font_size * 1.6, font_size * 0.5)
+	# The other side's panels are laid out right to left, which would mirror where it stands.
+	stamp.layout_direction = Control.LAYOUT_DIRECTION_LTR
+	stamp.outline = Color.BLACK
+	stamp.outline_width = 3.0
+	stamp.size = stamp.custom_minimum_size
+	stamp.pivot_offset = stamp.size * 0.5
+	stamp.rotation_degrees = degrees
+	stamp.position = at - stamp.size * 0.5
+	stamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.add_child(stamp)
 
 
 ## A hero panel under the mouse opens with its stats, as hovering its ball does (Marko 2026-11-06).
@@ -1728,18 +1772,15 @@ func _ability_title(a: Dictionary) -> String:
 	return name if not name.is_empty() else "%s ability" % e.when.capitalize()
 
 
-## What lasts on a hero now, as chips under its panel: bonuses for the phase or the turn
-## (green up, red down) and statuses with their turns. Null when nothing does.
+## What lasts on a hero now, as chips under its panel: statuses with their turns. Null when nothing
+## does. Bonuses for the phase or the turn are the colour of the stat instead (item 25, B3b), and
+## "can't claim" is the NO CLAIM stamp on the portrait.
 func _effect_chips(h: HeroState, right: bool) -> Control:
 	var items: Array[Array] = []
-	for pair: Array in [[h.phase_bonus, "THIS PHASE"], [h.turn_bonus, "THIS TURN"]]:
-		var bonus: Dictionary = pair[0]
-		for k: Variant in bonus:
-			var v: int = JsonUtil.as_int(bonus[k])
-			if v != 0:
-				items.append(["%+d %s · %s" % [v, str(k).to_upper(), pair[1]], Palette.HP if v > 0 else Palette.ACCENT])
-	var names: Dictionary = {"immune_kb": "IMMUNE TO KB", "stun": "STUNNED", "hold_hit": "NO HIT, DOUBLE KB", "no_claim": "CAN'T CLAIM"}
+	var names: Dictionary = {"immune_kb": "IMMUNE TO KB", "stun": "STUNNED", "hold_hit": "NO HIT, DOUBLE KB"}
 	for k: String in h.statuses:
+		if k == "no_claim":
+			continue
 		var turns: int = h.statuses[k]
 		var label: String = str(names.get(k, k.to_upper()))
 		items.append([label if turns < 0 else "%s · %d TURN%s" % [label, turns, "" if turns == 1 else "S"], Palette.GOLD])
@@ -1787,8 +1828,9 @@ func _core_slot(core_id: String, hero_color: Color, small: bool = false) -> Cont
 
 
 func _hero_tag(h: HeroState, active: bool, pickable: bool, in_battle: bool) -> UiShape:
+	# A KO is the stamp over the panel (item 28): no tag beside the HP.
 	if h.is_ko():
-		return UiShape.chip("KO", Palette.ACCENT_DEEP, Palette.FG, 13, 20.0, 8.0)
+		return null
 	if in_battle:
 		return UiShape.chip("BATTLE", Palette.ACCENT, Palette.FG, 13, 20.0, 8.0)
 	if active:

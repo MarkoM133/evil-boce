@@ -36,6 +36,17 @@ func test_ko_announcements_gather_after_the_blows() -> void:
 	assert_eq(Hud.gather_kos([hit_a]).size(), 1, "nothing to gather")
 
 
+## A stat's colour says up or down and how long (B3b): the shortest bonus on it decides.
+func test_a_stat_takes_the_colour_of_its_shortest_bonus() -> void:
+	assert_eq(Hud.stat_tint(0, 0, 0).a, 0.0, "nothing moved it: no colour")
+	assert_eq(Hud.stat_tint(0, 0, 2), Hud.BONUS_LASTING_UP)
+	assert_eq(Hud.stat_tint(0, 0, -1), Hud.BONUS_LASTING_DOWN)
+	assert_eq(Hud.stat_tint(0, 1000, 0), Hud.BONUS_TURN_UP)
+	assert_eq(Hud.stat_tint(0, -1, 0), Hud.BONUS_TURN_DOWN)
+	assert_eq(Hud.stat_tint(-1, 2, 3), Hud.BONUS_PHASE_DOWN, "this phase before this turn and for good")
+	assert_eq(Hud.stat_tint(0, 1, -2), Hud.BONUS_TURN_UP, "this turn before for good")
+
+
 func test_winner_names_the_merged_band() -> void:
 	var run: Array[Dictionary] = [_b("SHANKS TAKES 3 DAMAGE", "", "HP 0", 1.6), _b("GIORNO WINS THE FIGHT!", "", "", 2.0),
 		_b("KO", "", "SHANKS"), _b("STAGE CLAIMED", "MARKO", "DRESSROSA")]
