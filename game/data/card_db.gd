@@ -3,7 +3,6 @@ extends RefCounted
 ## Reads cards.json and images straight from the shared data folder. Loaded when a match or
 ## the sandbox starts, kept until it ends.
 
-const PLACEHOLDER_TERRAIN: String = "res://data/placeholders/stage_terrain.json"
 const PLACEHOLDER_FX: String = "res://data/placeholders/card_fx.json"
 
 var root_dir: String = ""
@@ -14,7 +13,7 @@ var thumbs: Dictionary[String, String] = {}
 var heroes: Array[HeroDef] = []
 ## Card id -> its standee sprite (heroes and evolutions that have one).
 var sprite_paths: Dictionary[String, String] = {}
-## Rules-side view of the same cards (placeholder cores and terrain applied).
+## Rules-side view of the same cards (placeholder fx applied).
 var catalog: CardCatalog = CardCatalog.new()
 var error: String = ""
 
@@ -49,8 +48,6 @@ func parse(text: String) -> void:
 	var doc: Dictionary = json.data
 	version = JsonUtil.as_int(doc.get("version", 0))
 	catalog = CardCatalog.from_doc(doc)
-	if FileAccess.file_exists(PLACEHOLDER_TERRAIN):
-		catalog.apply_terrain_overrides(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(PLACEHOLDER_TERRAIN))))
 	if FileAccess.file_exists(PLACEHOLDER_FX):
 		catalog.apply_fx_overrides(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(PLACEHOLDER_FX))))
 	# The traits a first tag may name (GDD 10, 2026-10-26), edited in the web app.

@@ -87,15 +87,6 @@ func hero_named(name: String) -> CardDef:
 	return null
 
 
-## Placeholder terrain for stage cards that have no `Terrain:` line yet: {"Stage-001": "Ice"}.
-func apply_terrain_overrides(d: Dictionary) -> void:
-	for k: Variant in d:
-		var card: CardDef = get_card(str(k))
-		if card != null and card.type == "Stage" and card.terrain == Terrain.Type.NONE \
-				and not CardDef.has_terrain_line(card.text):
-			card.terrain = Terrain.parse(str(d[k]))
-
-
 ## Placeholder fx for cards that have no hand-written `fx` yet: {"JO1-004": "END ...: ..."}.
 func apply_fx_overrides(d: Dictionary) -> void:
 	for k: Variant in d:
