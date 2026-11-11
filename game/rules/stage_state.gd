@@ -10,6 +10,9 @@ var center: Vector2i = Vector2i.ZERO
 var revealed: bool = false
 ## Slot that claimed it, or -1.
 var claimed_by: int = -1
+## The heroes of the claiming side that stood on it when it was claimed (their logos fly on its flag);
+## empty when none did (a claim held back and made later).
+var claimed_heroes: PackedStringArray = PackedStringArray()
 ## The activated hero that chose Stay on this stage last turn, and that turn: a second Stay in
 ## a row by the same hero claims it (GDD 6).
 var stay_hero: String = ""
@@ -48,6 +51,7 @@ func to_dict() -> Dictionary:
 		"center": Hex.to_json(center),
 		"revealed": revealed,
 		"claimed_by": claimed_by,
+		"claimed_heroes": Array(claimed_heroes),
 		"stay_hero": stay_hero,
 		"stay_turn": stay_turn,
 		"terrain_until_turn": terrain_until_turn,
@@ -73,6 +77,7 @@ static func from_dict(d: Dictionary) -> StageState:
 	s.revealed = JsonUtil.as_bool(d.get("revealed", false))
 	s.wind_dir = JsonUtil.as_int(d.get("wind_dir", -1), -1)
 	s.claimed_by = JsonUtil.as_int(d.get("claimed_by", -1), -1)
+	s.claimed_heroes = JsonUtil.as_strings(d.get("claimed_heroes", []))
 	s.stay_hero = str(d.get("stay_hero", ""))
 	s.stay_turn = JsonUtil.as_int(d.get("stay_turn", -1), -1)
 	s.terrain_until_turn = JsonUtil.as_int(d.get("terrain_until_turn", -1), -1)

@@ -57,6 +57,10 @@ describes energy claims as the rule since 2026-11-04 (final); Stay stays an opti
 - Progress is per player and per stage (`StageState.progress`, slot -> energy). Reaching the
   goal claims the stage at once (event `stage_claimed` with `energy`); energy over the goal is
   lost (`stage_energy.wasted`).
+- A claimed stage remembers who took it: `StageState.claimed_heroes`, the heroes of the claiming
+  side standing on it at the claim (also `heroes` in the `stage_claimed` event; empty when none
+  stood there, as with a claim that was held back). Only the picture uses it: the logos on the
+  stage's flag (scenario 70).
 - Knocked off (`begin_move` / `end_move`): a hero that leaves an unclaimed stage through the
   other side's doing costs its player half the energy in that stage, rounded down (event
   `stage_knocked_off {hero, stage, player, lost, progress, goal, by_team}`). Leaving by its own

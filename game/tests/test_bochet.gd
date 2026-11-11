@@ -90,3 +90,13 @@ func test_the_eyes_are_seen_from_their_own_side_not_through_the_table() -> void:
 	assert_true(Bochet.eyes_seen(at, Vector3(0, 40, 50), EXT), "from behind them, over the near edge")
 	assert_false(Bochet.eyes_seen(at, Vector3(0, 40, -50), EXT), "from the far side the table is in the way")
 	assert_false(Bochet.eyes_seen(Vector3(0, Bochet.EYES_DOWN, EXT.y - 2.0), Vector3(0, 40, 50), EXT), "never under the table")
+
+
+## The flag on a claimed stage (StageFlag): as wide as its logos need, plain without any.
+func test_a_stage_flag_is_as_wide_as_its_logos() -> void:
+	assert_eq(StageFlag.cloth_width(0), StageFlag.CLOTH_BARE)
+	assert_almost_eq(StageFlag.cloth_width(1), StageFlag.CLOTH_EDGE + StageFlag.CLOTH_PER_LOGO, 0.001)
+	assert_true(StageFlag.cloth_width(2) > StageFlag.cloth_width(1))
+	var tex: Texture2D = StageFlag.cloth_texture(Color.BLUE, [], StageFlag.CLOTH_BARE)
+	assert_eq(tex.get_height(), 256)
+	assert_eq(tex.get_image().get_pixel(10, 10), Color.BLUE, "a plain cloth in the team's colour")

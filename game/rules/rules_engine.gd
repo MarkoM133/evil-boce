@@ -1701,8 +1701,18 @@ func _check_claims(s: GameState) -> void:
 			claimer = -1
 		if claimer >= 0:
 			st.claimed_by = claimer
+			st.claimed_heroes = _claimers_on(s, st, claimer)
 			st.terrain_until_turn = s.turn + 1
-			s.event("stage_claimed", {"stage": st.id, "player": claimer})
+			s.event("stage_claimed", {"stage": st.id, "player": claimer, "heroes": Array(st.claimed_heroes)})
+
+
+## The heroes of the side of `slot` that stand on a stage: who took it, for its flag.
+func _claimers_on(s: GameState, st: StageState, slot: int) -> PackedStringArray:
+	var out := PackedStringArray()
+	for h: HeroState in s.heroes_on_stage(st):
+		if s.team_of(h.owner) == s.team_of(slot):
+			out.append(h.id)
+	return out
 
 
 # =====================================================================================
@@ -1851,8 +1861,9 @@ func _claim_by_energy(s: GameState) -> void:
 				s.event("claim_blocked", {"stage": st.id, "player": slot})
 				continue
 			st.claimed_by = slot
+			st.claimed_heroes = _claimers_on(s, st, slot)
 			st.terrain_until_turn = s.turn + 1
-			s.event("stage_claimed", {"stage": st.id, "player": slot, "energy": st.progress[slot]})
+			s.event("stage_claimed", {"stage": st.id, "player": slot, "energy": st.progress[slot], "heroes": Array(st.claimed_heroes)})
 			break
 
 

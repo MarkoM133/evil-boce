@@ -114,6 +114,11 @@ var _bodies: Dictionary[String, BallBody] = {}
 var _views: Dictionary[String, BallView] = {}
 var _core_tokens: Dictionary[String, Node3D] = {}
 var _hovered: String = ""
+## The flags of claimed stages by stage id (_sync_flags), and whether the table has been drawn once (a
+## stage already claimed then has its flag up, it does not rise).
+var _flag_root: Node3D
+var _flags: Dictionary[String, StageFlag] = {}
+var _flags_drawn: bool = false
 var _cursor_shape: Input.CursorShape = Input.CURSOR_ARROW
 var _range_key: String = ""
 ## Evil Bochet under the table, or null (_build_bochet).
@@ -1498,28 +1503,51 @@ func _rebuild_tokens() -> void:
 			_tokens.add_child(body)
 	# A tied, locked pair: shackles on the ground and dimmed balls (_lock_links, _refresh_targets),
 	# no words over the table (Marko 2026-11-02).
+	_sync_flags()
+	# A stage someone stayed on, or has energy in, says so in the HUD box and by its edge
+	# (_draw_marks), not in words over the table (Marko 2026-11-02).
+
+
+## The flags of the claimed stages (StageFlag; item 21, G4). They stay from one redraw to the next, so
+## that they go on waving; a stage claimed in front of the viewer raises its flag.
+func _sync_flags() -> void:
+	if _flag_root == null:
+		_flag_root = Node3D.new()
+		_flag_root.name = "Flags"
+		add_child(_flag_root)
+	var seen: Dictionary[String, bool] = {}
 	for st: StageState in state.stages:
-		if st.is_claimed():
-			var flag := MeshInstance3D.new()
-			var pole := CylinderMesh.new()
-			pole.top_radius = 0.06
-			pole.bottom_radius = 0.06
-			pole.height = 2.6
-			flag.mesh = pole
-			var team_col: Color = Palette.team(state.team_of(st.claimed_by))
-			flag.material_override = MeshKit.unshaded(Color("e8e2d6"), false)
-			flag.position = arena.hex_center(st.center) + Vector3(0, 1.3, 0)
-			_tokens.add_child(flag)
-			# The banner on the pole, in the claimer's colour.
-			var cloth := MeshInstance3D.new()
-			var box := BoxMesh.new()
-			box.size = Vector3(1.1, 0.7, 0.05)
-			cloth.mesh = box
-			cloth.material_override = MeshKit.unshaded(team_col, false)
-			cloth.position = flag.position + Vector3(0.58, 0.85, 0)
-			_tokens.add_child(cloth)
-		# A stage someone stayed on, or has energy in, says so in the HUD box and by its edge
-		# (_draw_marks), not in words over the table (Marko 2026-11-02).
+		if not st.is_claimed() or not st.placed:
+			continue
+		seen[st.id] = true
+		var key: String = "%d|%s|%s" % [st.claimed_by, ",".join(st.claimed_heroes), st.center]
+		var old: StageFlag = _flags.get(st.id)
+		if old != null and old.key == key:
+			continue
+		if old != null:
+			old.queue_free()
+		# The logo of each different hero that took it (two of one crew fly one).
+		var logos: Array[Texture2D] = []
+		for hid: String in st.claimed_heroes:
+			var h: HeroState = state.hero(hid)
+			var logo: Texture2D = db.hero_emblem(_hero_def(h.card_id)) if h != null else null
+			if logo != null and not logos.has(logo):
+				logos.append(logo)
+		var flag: StageFlag = StageFlag.make(Palette.team(state.team_of(st.claimed_by)), logos)
+		flag.key = key
+		# On the stage's back edge as this viewer sees it, the cloth to their right.
+		var flipped: bool = cam.is_flipped()
+		flag.position = arena.hex_center(st.center) + Vector3(0, 0, StageFlag.BACK if flipped else -StageFlag.BACK)
+		flag.rotation.y = PI if flipped else 0.0
+		_flag_root.add_child(flag)
+		_flags[st.id] = flag
+		if old == null and _flags_drawn and not _quiet:
+			flag.rise()
+	for id: String in _flags.keys():
+		if not seen.has(id):
+			_flags[id].queue_free()
+			_flags.erase(id)
+	_flags_drawn = true
 
 
 ## A revealed stage's card art laid on its hexes, faded, cut to their shape: the stage reads as
