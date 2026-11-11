@@ -63,6 +63,16 @@ func test_energy_fills_the_ring_then_takes_then_is_lost() -> void:
 	assert_eq([d["fill"], d["take"], d["after"], d["over"]], [4, 0, 14, 2])
 
 
+## Which end gets a moment on the end screen (item 31) and which stays in words.
+func test_end_moment_kinds() -> void:
+	assert_eq(Hud.end_moment_kind("stages", 0, false), "stages")
+	assert_eq(Hud.end_moment_kind("ko", 1, false), "ko")
+	assert_eq(Hud.end_moment_kind("surrender", 0, false), "surrender")
+	assert_eq(Hud.end_moment_kind("stages_energy", 0, true), "energy")
+	assert_eq(Hud.end_moment_kind("draw", -1, true), "energy", "the same energy")
+	assert_eq(Hud.end_moment_kind("draw", -1, false), "", "two wins at once: words")
+
+
 func test_winner_names_the_merged_band() -> void:
 	var run: Array[Dictionary] = [_b("SHANKS TAKES 3 DAMAGE", "", "HP 0", 1.6), _b("GIORNO WINS THE FIGHT!", "", "", 2.0),
 		_b("KO", "", "SHANKS"), _b("STAGE CLAIMED", "MARKO", "DRESSROSA")]

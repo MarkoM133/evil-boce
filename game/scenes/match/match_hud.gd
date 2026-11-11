@@ -5126,8 +5126,9 @@ func _refresh_over() -> void:
 	head.add_theme_color_override("font_outline_color", Color.BLACK)
 	head.add_theme_constant_override("outline_size", 12)
 	_over_box.add_child(head)
-	# Won on stages or by KO the end is told as a moment (item 31, S1 and K2, Marko 2026-11-10); else in words.
-	if state.winner >= 0 and (state.result == "stages" or state.result == "ko"):
+	# The end told as a moment (item 31): S1 stages and K2 KO (Marko 2026-11-10), E1 more energy, D1 the same
+	# energy and W2 a surrender (2026-11-11); a draw of two wins at once stays in words.
+	if not end_moment_kind(state.result, state.winner, not _last_event("tie_broken").is_empty()).is_empty():
 		_end_anim(was)
 	else:
 		var story: Label = UiTheme.label(end_sentence(), 24, Palette.FG, false)
@@ -5169,13 +5170,32 @@ func _end_anim(redraw: bool) -> void:
 	var box := Control.new()
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	area.add_child(box)
-	var t: Tween = _end_anim_stages(box, state.winner) if state.result == "stages" else _end_anim_ko(box, state.winner)
+	var t: Tween = null
+	match end_moment_kind(state.result, state.winner, not _last_event("tie_broken").is_empty()):
+		"stages":
+			t = _end_anim_stages(box, state.winner)
+		"ko":
+			t = _end_anim_ko(box, state.winner)
+		"energy":
+			t = _end_anim_energy(box)
+		"surrender":
+			t = _end_anim_give_up(box, state.winner)
 	if t == null:
 		return
 	_end_anim_tween = t
 	t.finished.connect(func() -> void: _end_anim_done = true)
 	if redraw or _end_anim_done:
 		finish_end_anim()
+
+
+## Which moment tells the end (item 31), or "" for words: the result, the winner (-1 a draw), and whether
+## the energy put into stages decided it (a tie_broken event).
+static func end_moment_kind(result: String, winner: int, energy_count: bool) -> String:
+	if winner >= 0 and (result == "stages" or result == "ko" or result == "surrender"):
+		return result
+	if result == "stages_energy" or (result == "draw" and energy_count):
+		return "energy"
+	return ""
 
 
 ## The end screen's moment, at its end now.
@@ -5487,12 +5507,165 @@ func _end_anim_ko(box: Control, winner: int) -> Tween:
 	return t
 
 
+## The two sides of the end screen's moments: the viewer's first.
+func _end_side_slot(side: int) -> int:
+	var me: int = local_slots[0] if not local_slots.is_empty() else 0
+	return me if side == 0 else engine.other_slot(state, me)
+
+
+## E1 and D1 (Marko 2026-11-11): both sides reached their stages in the same End phase. Their claimed
+## stages come in from the sides; under each, the energy it put into stages over the match counts up, both
+## at the same pace, so the smaller one stops first; the bigger one strikes gold and the other side goes
+## grey ("MORE ENERGY INTO STAGES · 61 TO 54"), or both stop together ("THE SAME ENERGY · NOBODY WINS").
+func _end_anim_energy(box: Control) -> Tween:
+	var totals: Dictionary = JsonUtil.as_dict(_last_event("tie_broken").get("totals", {}))
+	var teams: Array[int] = [state.team_of(_end_side_slot(0)), state.team_of(_end_side_slot(1))]
+	var vals: Array[int] = [JsonUtil.as_int(totals.get(str(teams[0]), 0)), JsonUtil.as_int(totals.get(str(teams[1]), 0))]
+	var top: int = maxi(vals[0], vals[1])
+	var n_claimed: int = 0
+	var head: Label = _end_label(box, "", 17, Palette.GOLD, 2.0)
+	head.modulate.a = 0.0
+	var groups: Array[Control] = []
+	var gx: Array[float] = []
+	var names: Array[Label] = []
+	for side: int in 2:
+		var g := Control.new()
+		g.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(g)
+		var sts: Array[StageState] = []
+		for st: StageState in state.stages:
+			if st.is_claimed() and state.team_of(st.claimed_by) == teams[side]:
+				sts.append(st)
+		n_claimed = maxi(n_claimed, sts.size())
+		var sz := Vector2(128, 44)
+		var w: float = sz.x * sts.size() + 8.0 * maxi(sts.size() - 1, 0)
+		for i: int in sts.size():
+			var p: HeroSlice = _end_stage_pic(sts[i], sz, teams[side])
+			p.position = Vector2(i * (sz.x + 8.0), 0)
+			g.add_child(p)
+		var cx: float = 225.0 if side == 0 else 675.0
+		gx.append(cx - w * 0.5)
+		g.position = Vector2(gx[side] + (-560.0 if side == 0 else 560.0), 34.0)
+		var who: Label = _end_label(g, player_name(_end_side_slot(side)).to_upper(), 14, Palette.team(clampi(teams[side], 0, 1)).lightened(0.3), -22.0, 0.0, maxf(w, 1.0))
+		who.modulate.a = 0.0
+		names.append(who)
+		groups.append(g)
+	head.text = "BOTH SIDES CLAIMED %d STAGES  ·  TURN %d" % [n_claimed, state.turn]
+	var nums: Array[Label] = []
+	for side: int in 2:
+		var l: Label = _end_label(box, "0", 48, Palette.FG, 86.0, 0.0 if side == 0 else 450.0, 450.0)
+		l.add_theme_color_override("font_outline_color", Color.BLACK)
+		l.add_theme_constant_override("outline_size", 9)
+		l.pivot_offset = l.size * 0.5
+		l.modulate.a = 0.0
+		nums.append(l)
+	var cap: Label = _end_label(box, "ENERGY PUT INTO STAGES THIS MATCH", 13, Palette.MUTED, 146.0)
+	cap.modulate.a = 0.0
+	var t: Tween = box.create_tween()
+	t.tween_interval(0.4)
+	t.tween_property(groups[0], "position:x", gx[0], 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(groups[1], "position:x", gx[1], 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_callback(_end_impact.bind(box))
+	t.tween_property(head, "modulate:a", 1.0, 0.15)
+	t.parallel().tween_property(names[0], "modulate:a", 1.0, 0.15)
+	t.parallel().tween_property(names[1], "modulate:a", 1.0, 0.15)
+	t.tween_interval(0.7)
+	t.tween_property(nums[0], "modulate:a", 1.0, 0.12)
+	t.parallel().tween_property(nums[1], "modulate:a", 1.0, 0.12)
+	t.parallel().tween_property(cap, "modulate:a", 1.0, 0.2)
+	t.tween_method(func(v: float) -> void:
+		for side: int in 2:
+			nums[side].text = str(roundi(minf(v, float(vals[side])))), 0.0, float(top), 1.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	t.tween_interval(0.3)
+	if vals[0] == vals[1]:
+		t.tween_callback(func() -> void:
+			head.text = "THE SAME ENERGY  ·  %d EACH  ·  NOBODY WINS" % top
+			_end_impact(box))
+		t.tween_property(nums[0], "scale", Vector2.ONE * 1.25, 0.08)
+		t.parallel().tween_property(nums[1], "scale", Vector2.ONE * 1.25, 0.08)
+		t.tween_property(nums[0], "scale", Vector2.ONE, 0.14)
+		t.parallel().tween_property(nums[1], "scale", Vector2.ONE, 0.14)
+		return t
+	var wi: int = 0 if vals[0] > vals[1] else 1
+	var li: int = 1 - wi
+	t.tween_callback(func() -> void:
+		head.text = "MORE ENERGY INTO STAGES  ·  %d TO %d" % [vals[wi], vals[li]]
+		nums[wi].add_theme_color_override("font_color", Palette.GOLD)
+		_end_impact(box))
+	t.tween_property(nums[wi], "scale", Vector2.ONE * 1.3, 0.08)
+	t.tween_property(nums[wi], "scale", Vector2.ONE, 0.14)
+	t.parallel().tween_property(groups[li], "modulate", Color(0.42, 0.42, 0.42, 1.0), 0.3)
+	t.parallel().tween_property(nums[li], "modulate", Color(0.5, 0.5, 0.5, 1.0), 0.3)
+	return t
+
+
+## W2 (Marko 2026-11-11): the side that gave up stands in the middle ("<PLAYER> GIVES UP"); its heroes go
+## grey one by one and lean, then drop ("<PLAYER> SURRENDERED"), and the winners take their place.
+func _end_anim_give_up(box: Control, winner: int) -> Tween:
+	var loser: int = engine.other_slot(state, winner)
+	var face := Vector2(124, 76)
+	var gap: float = 8.0
+	var y: float = 44.0
+	var grey := Color(0.45, 0.45, 0.45, 1.0)
+	var lose_faces: Array[HeroSlice] = []
+	var lg := Control.new()
+	lg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(lg)
+	for hero: HeroState in state.heroes_of(loser):
+		var f: HeroSlice = _end_face(hero, face)
+		f.position = Vector2(lose_faces.size() * (face.x + gap), 0)
+		if hero.is_ko():
+			f.modulate = grey
+		lg.add_child(f)
+		lose_faces.append(f)
+	var lw: float = face.x * lose_faces.size() + gap * maxi(lose_faces.size() - 1, 0)
+	lg.position = Vector2(450.0 - lw * 0.5, y)
+	lg.modulate.a = 0.0
+	var wg := Control.new()
+	wg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(wg)
+	var count: int = 0
+	for hero: HeroState in state.heroes_of(winner):
+		var f: HeroSlice = _end_face(hero, face)
+		f.position = Vector2(count * (face.x + gap), 0)
+		if hero.is_ko():
+			f.modulate = grey
+		wg.add_child(f)
+		count += 1
+	var ww: float = face.x * count + gap * maxi(count - 1, 0)
+	wg.position = Vector2(-ww - 80.0, y)
+	wg.modulate.a = 0.0
+	var head: Label = _end_label(box, "%s GIVES UP  ·  TURN %d" % [player_name(loser).to_upper(), state.turn], 17, Palette.GOLD, 4.0)
+	head.modulate.a = 0.0
+	var t: Tween = box.create_tween()
+	t.tween_interval(0.4)
+	t.tween_property(lg, "modulate:a", 1.0, 0.2)
+	t.parallel().tween_property(head, "modulate:a", 1.0, 0.2)
+	t.tween_interval(0.5)
+	for i: int in lose_faces.size():
+		var f: HeroSlice = lose_faces[i]
+		t.tween_property(f, "modulate", grey, 0.16)
+		t.parallel().tween_property(f, "rotation", 0.12 if i % 2 == 0 else -0.1, 0.16)
+		t.tween_interval(0.12)
+	t.tween_interval(0.35)
+	t.tween_callback(func() -> void: head.text = "%s SURRENDERED  ·  TURN %d" % [player_name(loser).to_upper(), state.turn])
+	for i: int in lose_faces.size():
+		var f: HeroSlice = lose_faces[i]
+		t.parallel().tween_property(f, "position:y", 150.0, 0.45).set_delay(0.06 * i).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		t.parallel().tween_property(f, "modulate:a", 0.0, 0.45).set_delay(0.06 * i)
+	t.tween_property(wg, "position:x", 450.0 - ww * 0.5, 0.36).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(wg, "modulate:a", 1.0, 0.2)
+	return t
+
+
 ## How it ended, in words, from the last events of the log: the hit that knocked the last hero
 ## out, the stage claim that made three, a surrender; else the result's name.
 func end_sentence() -> String:
 	var winner: int = state.winner
 	if winner < 0:
-		return "A draw."
+		if not _last_event("tie_broken").is_empty():
+			return "Both sides reached their stages this turn with the same Energy put into stages over the match. Nobody wins."
+		return "Both sides won in the same moment. Nobody wins."
 	var w: String = player_name(winner)
 	match state.result:
 		"ko":
