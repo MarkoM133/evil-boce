@@ -2308,6 +2308,7 @@ func _process(delta: float) -> void:
 	if _claim_mat != null:
 		_claim_mat.albedo_color = Color(1, 1, 1, 0.35 + 0.65 * (0.5 + 0.5 * sin(_pulse_t * 5.0)))
 	if _bochet != null:
+		_bochet.set_cover(hud.hand_cover())
 		_bochet.tick(delta, state, _bodies, _views, _local_clock_left())
 		# A KO hole with no announcement to start it (bands off, the KO that ends the match): when the
 		# bands of its moment are gone.

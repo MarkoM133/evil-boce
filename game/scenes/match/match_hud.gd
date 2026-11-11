@@ -226,6 +226,23 @@ var _end_anim_tween: Tween
 var _end_anim_done: bool = false
 ## What the end screen was built from, so that it is not built again for nothing.
 var _over_key: String = ""
+## For recordings: the mouse where a script puts it, in place of the real one (x under 0: the real one).
+var demo_mouse := Vector2(-1, -1)
+
+
+## Where the cards in hand cover the screen while the hand is up, empty while it is down (Evil Bochet's
+## eyes get out from behind them).
+func hand_cover() -> Rect2:
+	if _hand == null or _hand_drop > 30.0 or not _hand_box.visible:
+		return Rect2()
+	var out := Rect2()
+	for n: Node in _hand.get_children():
+		var c := n as Control
+		if c == null or not c.visible:
+			continue
+		var r: Rect2 = c.get_global_rect()
+		out = r if out.size == Vector2.ZERO else out.merge(r)
+	return out
 
 ## How far the hand is lowered (0 = up); it drops when the mouse is over the table (GDD 11).
 var _hand_drop: float = 0.0
@@ -2332,7 +2349,8 @@ func _process(delta: float) -> void:
 		return
 	# Up while the mouse is near the bottom of the screen (or a hero is being picked for a
 	# card, or a card effect asks for a card from it), else only the tops of the cards show.
-	var up: bool = (not menu_open and get_local_mouse_position().y > size.y - HAND_HEIGHT - 40.0 and state.phase != GameState.PHASE_START) or is_targeting() or (not choice_cards.is_empty() and choice_slot == hand_slot()) or damage_picking(hand_slot())
+	var mouse_at: Vector2 = demo_mouse if demo_mouse.x >= 0.0 else get_local_mouse_position()
+	var up: bool = (not menu_open and mouse_at.y > size.y - HAND_HEIGHT - 40.0 and state.phase != GameState.PHASE_START) or is_targeting() or (not choice_cards.is_empty() and choice_slot == hand_slot()) or damage_picking(hand_slot())
 	if _aim_line != null and (is_targeting() or _aim_line.get_meta("drawn", false)):
 		_aim_line.set_meta("drawn", is_targeting())
 		_aim_line.queue_redraw()

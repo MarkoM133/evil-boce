@@ -107,6 +107,12 @@ const KO_SLOW_SCALE: float = 0.35
 const KO_SLOW_TIME: float = 0.4
 ## Leaving at the end of a match, this much slower than the hands let go during it (Marko 2026-11-11: R4).
 const LEAVE_SLOW: float = 1.55
+## The eyes and the cards in hand (_drive_dodge): covered this long they go aside, clear this long they
+## come back; they keep this many pixels off the cards and this far from the corners of the table.
+const DODGE_AFTER: float = 0.3
+const DODGE_BACK: float = 0.5
+const DODGE_GAP: float = 6.0
+const DODGE_CORNER: float = 2.5
 
 enum Stage { CATCHING, UNDER, BACK, KO }
 
@@ -312,6 +318,22 @@ var slow_ko: bool = true
 var _slowing: bool = false
 ## Gone at the end of the match (leave): nothing more happens.
 var _left: bool = false
+## The eyes out of the way of the cards in hand (Marko 2026-11-11, mockup A): where the raised cards cover
+## the screen (set_cover), how far along the near edge the eyes have slid aside and where they are going,
+## the hand they made room for, and for how long they have been covered or clear.
+var _cover := Rect2()
+var _dodge_x: float = 0.0
+var _dodge_want: float = 0.0
+var _cover_used := Rect2()
+var _covered_for: float = 0.0
+var _clear_for: float = 0.0
+## The side they go to the next time (-1 left, 1 right); 0 picks one by chance.
+var dodge_side: float = 0.0
+
+
+## Where the cards in hand cover the screen now, empty while the hand is down (from the match, each frame).
+func set_cover(r: Rect2) -> void:
+	_cover = r
 
 
 ## Bochet for this table, seen from the red seat or the blue one; null when its model is not in the data
@@ -362,6 +384,7 @@ func tick(delta: float, state: GameState, bodies: Dictionary[String, BallBody], 
 	for c: Claw in _claws:
 		_pose_claw(c)
 	_place_eyes(delta)
+	_drive_dodge(delta)
 	_drive_eyes(delta, state, bodies)
 	if _entering or _left:
 		return
@@ -1550,7 +1573,7 @@ func _pinch_in(held: Held, target: Vector3, lift: float) -> Vector3:
 	# (Worked out where the hand is, down in the dark: it must not show anywhere while the eyes step aside.)
 	var place: Vector3 = target - _tips_offset(c)
 	var hover: Vector3 = place + Vector3(0, lift, 0)
-	if e > 0.0 and absf(target.x - face_x) < EYES_ASIDE:
+	if e > 0.0 and _eyes_near(target.x):
 		_aside(target.x)
 		held.set_meta("aside", true)
 		# The eyes first, then the hand: it comes up where they were.
@@ -1769,7 +1792,7 @@ func _pick_up(id: String, from: Vector3, target: Vector3, hp0: int) -> void:
 			_let_go(h)
 	held.hand = h
 	_cam.shake(0.3, 0.35)
-	if ef > 0.0 and absf(from.x - face_x) < EYES_ASIDE:
+	if ef > 0.0 and _eyes_near(from.x):
 		_aside(from.x)
 		held.set_meta("aside", true)
 	await get_tree().create_timer(0.5).timeout
@@ -2265,8 +2288,9 @@ func _place_eyes(delta: float) -> void:
 	if view == null:
 		return
 	var from: Vector3 = to_local(view.global_position)
+	var fx: float = face_x + _dodge_x
 	var want: float = eyes_out(from)
-	while want < EYES_FURTHEST and not eyes_seen(Vector3(face_x, EYES_DOWN, _ext.y + want), from, _ext):
+	while want < EYES_FURTHEST and not eyes_seen(Vector3(fx, EYES_DOWN, _ext.y + want), from, _ext):
 		want += 0.2
 	var now: float = _eyes.position.z - _ext.y
 	if not _eyes_placed or want > now:
@@ -2274,11 +2298,106 @@ func _place_eyes(delta: float) -> void:
 	else:
 		now = lerpf(now, want, clampf(delta * 10.0, 0.0, 1.0))
 	_eyes_placed = true
-	_eyes.position = Vector3(face_x, EYES_DOWN + face_dy, _ext.y + now)
+	_eyes.position = Vector3(fx, EYES_DOWN + face_dy, _ext.y + now)
 	var to: Vector3 = from - _eyes.position
 	_eyes.rotation.y = atan2(to.x, to.z)
 	_lids.rotation.x = -atan2(to.y, Vector2(to.x, to.z).length())
 	_jaw.rotation.x = _lids.rotation.x
+
+
+## The eyes get out from behind the cards in hand (Marko 2026-11-11, mockup A): once the raised cards have
+## covered them for DODGE_AFTER seconds both eyes slide aside along the near edge until they are clear,
+## sometimes to the left of the cards, sometimes to the right, and watch the cards from there; DODGE_BACK
+## seconds after the cards are down they come back. Not on the move with every twitch of the mouse over
+## the hand, and not while a hand of his or his mouth needs the face somewhere (those go first).
+func _drive_dodge(delta: float) -> void:
+	if not _eyes.visible or _left or _aside_n > 0 or _mouth.visible or _hand_at_edge():
+		_dodge_want = 0.0
+		_covered_for = 0.0
+		_dodge_x = lerpf(_dodge_x, 0.0, clampf(delta * 7.0, 0.0, 1.0))
+		return
+	var covered: bool = false
+	if _cover.size.x > 0.0:
+		for r: Rect2 in _eye_rects(-_dodge_x):
+			if r.intersects(_cover.grow(DODGE_GAP)):
+				covered = true
+	if covered:
+		_covered_for += delta
+		_clear_for = 0.0
+	else:
+		_clear_for += delta
+		_covered_for = 0.0
+	# The place is worked out once, when they go (or when the hand changes), not again on the way there.
+	var hand_changed: bool = absf(_cover.position.x - _cover_used.position.x) > 8.0 or absf(_cover.size.x - _cover_used.size.x) > 8.0
+	if _covered_for >= DODGE_AFTER and (_dodge_want == 0.0 or hand_changed):
+		_dodge_want = _dodge_offset()
+		_cover_used = _cover
+	elif _clear_for >= DODGE_BACK:
+		_dodge_want = 0.0
+	_dodge_x = lerpf(_dodge_x, _dodge_want, clampf(delta * 7.0, 0.0, 1.0))
+
+
+## A hand of his is bringing a ball back (up at a start zone, where the eyes would slide to).
+func _hand_at_edge() -> bool:
+	for held: Held in _held.values():
+		if held.stage == Stage.BACK:
+			return true
+	return false
+
+
+## Whether the eyes are within EYES_ASIDE of x along the near edge: where they belong, or where they have
+## slid to from the cards.
+func _eyes_near(x: float) -> bool:
+	return absf(x - face_x) < EYES_ASIDE or absf(x - face_x - _dodge_x) < EYES_ASIDE
+
+
+## How far along the edge the eyes go to be clear of the cards: to the side they are on already, else to
+## one picked by chance (or dodge_side); to the other when that one has no room before the corner of the
+## table; with room on neither, as far as they may on the first.
+func _dodge_offset() -> float:
+	var most: float = _ext.x - DODGE_CORNER
+	var side: float = signf(_dodge_want)
+	if side == 0.0:
+		side = dodge_side if dodge_side != 0.0 else (1.0 if randf() < 0.5 else -1.0)
+		dodge_side = 0.0
+	for sgn: float in [side, -side]:
+		for n: int in range(1, 90):
+			var d: float = sgn * n * 0.4
+			if absf(face_x + d) > most:
+				break
+			var clear: bool = true
+			for r: Rect2 in _eye_rects(d - _dodge_x):
+				if r.intersects(_cover.grow(DODGE_GAP)):
+					clear = false
+			if clear:
+				return d
+	return side * most - face_x
+
+
+## The two eyes on the screen if they were `shift` further along the near edge than they are.
+func _eye_rects(shift: float) -> Array[Rect2]:
+	var out: Array[Rect2] = []
+	var view: Camera3D = get_viewport().get_camera_3d()
+	if view == null:
+		return out
+	var move: Vector3 = global_transform.basis * Vector3(shift, 0, 0)
+	var tilt := Basis(Vector3.RIGHT, _lids.rotation.x)
+	for e: float in [-1.0, 1.0]:
+		var r := Rect2()
+		var first: bool = true
+		for i: int in 8:
+			var a: float = TAU * i / 8.0
+			var p: Vector3 = _eyes.global_transform * (tilt * Vector3(e * 1.45 + cos(a) * 1.35, 0.1 + sin(a) * 1.35, 0)) + move
+			if view.is_position_behind(p):
+				continue
+			var s: Vector2 = view.unproject_position(p)
+			if first:
+				r = Rect2(s, Vector2.ZERO)
+				first = false
+			else:
+				r = r.expand(s)
+		out.append(r)
+	return out
 
 
 ## How far out from the near edge the eyes would stand for a camera at `from` (in Bochet's own space):
@@ -2339,6 +2458,9 @@ func _drive_eyes(delta: float, state: GameState, bodies: Dictionary[String, Ball
 			var wb: BallBody = bodies[id]
 			if wb.visible:
 				want = _look_at(wb.global_position)
+	if not busy and absf(_dodge_x) > 0.5:
+		# Aside, they watch the cards they made room for.
+		want = Vector2(-signf(_dodge_x) * 0.36, -0.22)
 	_look = _look.lerp(want, clampf(delta * 9.0, 0.0, 1.0))
 	if squint > 0.01:
 		_look = _look.lerp(Vector2(0, -0.3), squint * 0.6)
