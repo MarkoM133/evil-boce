@@ -86,6 +86,9 @@ var _target_fx: Node3D
 ## Red rings under the heroes of the battle being fought (HUD 4), and for which battle.
 var _battle_fx: Node3D
 var _battle_fx_key: String = ""
+## The battles the Battle phase would form now (_battle_groups), worked out again when the table changes.
+var _preview: Array[Dictionary] = []
+var _preview_key: String = ""
 ## The battle camera (HUD 5): which battle it last flew to, so it flies once per battle.
 var _cam_battle_key: String = ""
 ## Seconds left of the pause between the last band and the end screen; -1 before it starts.
@@ -1685,6 +1688,19 @@ func _draw_marks() -> void:
 		if st.is_claimed() and not fighting:
 			_fill(st.footprint(), Color(Palette.team(state.team_of(st.claimed_by)), 0.32))
 			any = true
+	# Each battle's zone, as soon as the balls lie in range and for as long as it is to come or fought
+	# (item 17, Marko 2026-11-09/10): a red edge round its heroes, faint for one still to come.
+	for g: Dictionary in _battle_groups():
+		var zone: Array[Vector2i] = []
+		for hid: String in JsonUtil.as_strings(g["ids"]):
+			var h: HeroState = state.hero(hid)
+			if h == null or not h.is_on_map() or _ball_away(h):
+				continue
+			for a: Vector2i in state.footprint(h):
+				for z: Vector2i in Hex.spiral(a, 1):
+					if not zone.has(z):
+						zone.append(z)
+		any = _outline(zone, Color(Palette.ACCENT, 1.0 if JsonUtil.as_bool(g["now"]) else 0.45)) or any
 	if state.phase == GameState.PHASE_BATTLE or state.phase == GameState.PHASE_POSTROLL:
 		any = _battle_arrows() or any
 	any = _lock_links() or any
@@ -1723,6 +1739,48 @@ func _current_battle() -> PackedStringArray:
 		return held
 	if state.phase == GameState.PHASE_BATTLE and state.battle_index >= 0 and state.battle_index < state.battles.size():
 		return JsonUtil.as_strings(state.battles[state.battle_index].get("heroes", []))
+	return PackedStringArray()
+
+
+## The battles on the table: {ids, now}. In the Battle phase the one fought now (now) and those still to
+## come; before it, once the balls of the turn lie still, the battles the Battle phase would form if it
+## began now (the rules' own way of forming them, on a copy of the state), all of them `now`.
+func _battle_groups() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var current: PackedStringArray = _current_battle()
+	if not current.is_empty():
+		out.append({"ids": current, "now": true})
+		var first: int = state.battle_index + 1
+		if not hud.shown_battle().is_empty():
+			first = state.battle_index if state.phase == GameState.PHASE_BATTLE else state.battles.size()
+		for i: int in range(maxi(first, 0), state.battles.size()):
+			var b: Dictionary = state.battles[i]
+			if not JsonUtil.as_bool(b.get("resolved", false)):
+				out.append({"ids": JsonUtil.as_strings(b.get("heroes", [])), "now": false})
+		return out
+	var before: bool = state.phase == GameState.PHASE_POSTROLL \
+			or (state.phase == GameState.PHASE_ROLL and state.rolled and not _runner.is_running() and not _launching)
+	if not before:
+		return out
+	var key: String = "%d|%s|%d" % [state.turn, state.phase, state.log.size()]
+	for h: HeroState in state.heroes:
+		key += "|%s%s" % [h.hex, h.zone]
+	if key != _preview_key:
+		_preview_key = key
+		var copy: GameState = GameState.from_dict(state.to_dict())
+		engine._find_battles(copy)
+		_preview = []
+		for b: Dictionary in copy.battles:
+			_preview.append({"ids": JsonUtil.as_strings(b.get("heroes", [])), "now": true})
+	return _preview.duplicate()
+
+
+## The battle group a hero is in now (its ids), or none.
+func _group_of(hero_id: String) -> PackedStringArray:
+	for g: Dictionary in _battle_groups():
+		var ids: PackedStringArray = JsonUtil.as_strings(g["ids"])
+		if ids.has(hero_id):
+			return ids
 	return PackedStringArray()
 
 
@@ -1839,8 +1897,9 @@ func _refresh_range() -> void:
 		key += "%s:%s:%d;" % [h.id, h.hex, rng]
 		cells.append_array(arena.map.range_cells(h.hex, h.big, rng))
 		marked.append_array(state.footprint(h))
-	# No range circles while a battle is fought: red means the battle.
-	if not _current_battle().is_empty():
+	# No range circles while a battle is fought (red means the battle), but a ball under the mouse shows
+	# whom it reaches itself (item 17, S1 with range, Marko 2026-11-10).
+	if not _current_battle().is_empty() and _hovered.is_empty():
 		cells.clear()
 		marked.clear()
 		key = "battle"
@@ -2751,6 +2810,7 @@ func _set_hover(id: String, refresh_hud: bool) -> void:
 	if id == _hovered:
 		return
 	_hovered = id
+	_refresh_battle_fx()
 	_update_ball_choice()
 	if hud.is_targeting() or not hud.choice_heroes.is_empty() or not hud.damage_heroes.is_empty():
 		_refresh_target_fx()
@@ -3609,12 +3669,14 @@ func demo_targeting_dupe() -> void:
 
 ## A red ring that breathes under each hero of the battle being fought.
 func _refresh_battle_fx() -> void:
+	# The rings come with the mouse (item 17, S1, Marko 2026-11-09/10): on a ball of a battle, every
+	# ball of that battle, each in its own team's colour; the zone says the rest.
 	# Only heroes still on the map: a KO or a ring-out mid-battle takes its ring away at once
 	# (playtest 2026-11-06: the ring kept breathing where the ball had burst).
 	# Nor a hero whose ball is not on its hex: knocked back, it flies and the rules move it only
 	# when it has stopped (the ring breathed on where it had stood; review 2026-11-09).
 	var ids := PackedStringArray()
-	for hid: String in _current_battle():
+	for hid: String in (_group_of(_hovered) if not _hovered.is_empty() else PackedStringArray()):
 		var on: HeroState = state.hero(hid)
 		if on != null and on.is_on_map() and not _ball_away(on):
 			ids.append(hid)
@@ -3631,6 +3693,7 @@ func _refresh_battle_fx() -> void:
 		var root := Node3D.new()
 		root.position = arena.hex_center(h.hex)
 		var r: float = _bodies[hid].radius() + 0.35
+		var team: Color = Palette.team(state.team_of(h.owner))
 		for k: int in 2:
 			var ring := MeshInstance3D.new()
 			var torus := TorusMesh.new()
@@ -3640,7 +3703,7 @@ func _refresh_battle_fx() -> void:
 			ring.scale = Vector3(1, 0.15, 1)
 			ring.position.y = 0.05
 			ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			ring.material_override = MeshKit.unshaded(Color(Palette.ACCENT, 1.0 if k == 0 else 0.6), false)
+			ring.material_override = MeshKit.unshaded(Color(team, 1.0 if k == 0 else 0.6), false)
 			root.add_child(ring)
 		_battle_fx.add_child(root)
 		var t: Tween = root.create_tween().set_loops()
