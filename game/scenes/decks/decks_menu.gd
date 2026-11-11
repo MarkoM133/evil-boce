@@ -2,7 +2,8 @@ extends Control
 ## Decks (GDD 7; Marko 2026-11-08, from the mockups): every saved deck (the shared folder's, from
 ## the web app's deck builder, and the ones imported here) as a row with its heroes on the left,
 ## the chosen one on the right as real cards. With no deck at all, the two ways to get one.
-## A pasted deck code is imported onto this computer; deleting works for those only.
+## A pasted deck code is imported into the shared folder (decks/, as the web app writes one); only the older imports kept
+## on this computer can be deleted here, the shared ones in Card Studio.
 
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const TYPE_ORDER: Array[String] = ["Evolution", "Action", "Equipment", "Assist"]
@@ -509,12 +510,18 @@ func _import() -> void:
 	var heroes: PackedStringArray = d["heroes"]
 	var cards: Dictionary = d["cards"]
 	var version: int = JsonUtil.as_int(d["version"])
-	var replaced: bool = DeckStore.local_exists(deck_name)
-	if DeckStore.save_local(deck_name, heroes, cards, version).is_empty():
-		_status.text = "Could not save the deck."
-		return
+	# Into the shared folder, so Card Studio and the other player have it too (GDD 7); on this computer only
+	# when the folder cannot be written.
+	var replaced: bool = false
+	var where: String = ""
+	if DeckStore.save_shared(db.root_dir, deck_name, heroes, cards, version).is_empty():
+		replaced = DeckStore.local_exists(deck_name)
+		if DeckStore.save_local(deck_name, heroes, cards, version).is_empty():
+			_status.text = "Could not save the deck."
+			return
+		where = " The shared folder could not be written, so it stays on this computer."
 	var problems: PackedStringArray = DeckCode.check(db.catalog, heroes, cards)
-	var said: String = "%s %s.%s" % [deck_name, "replaced" if replaced else "imported",
+	var said: String = "%s %s.%s%s" % [deck_name, "replaced" if replaced else "imported", where,
 		"" if problems.is_empty() else " It breaks the deck rules, so Play will not take it as it is."]
 	if version > db.version:
 		said += " Built with cards v%d, you have v%d: sync the shared folder." % [version, db.version]
