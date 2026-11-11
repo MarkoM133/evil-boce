@@ -41,10 +41,10 @@ resets the passes.
 
 ## Energy claims (`MatchSettings.stage_claim = "energy"`; the default until 2026-11-10, now an option)
 
-From Marko (2026-11-02); the default of Standard and every mode since 2026-11-02, with the
-Stay claims still offered in the rules panel. `MatchSettings.new()` keeps Stay, which the
-scenario tests use. `stage_goal` (default 14) is the energy a stage needs. The GDD still
-describes energy claims as the rule since 2026-11-04 (final); Stay stays an option.
+From Marko (2026-11-02); the default of Standard and every mode from 2026-11-02 until the shared ring
+took over on 2026-11-10 (below). It stays an option (Separate in the rules panel), as do the Stay
+claims. `MatchSettings.new()` keeps Stay, which the scenario tests use. `stage_goal` (default 14) is
+the energy a stage needs.
 
 - No Stay claim and no battle claim. Energy is as always: +1 a turn up to `max_energy`, and
   what is left at the end of the turn does not carry over.
@@ -114,9 +114,8 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
   damage carries over (new max − damage taken). `remove_evolution()` drops HP only down to the new max.
 - **Assist**: at most `assist_limit` (3) per player, the same card once; a fourth needs
   `replace` (an assist in play that goes to the graveyard).
-- **Action**: only cards whose whole effect is a `bonus` (e.g. "+2000 Power"); the bonus
-  lasts until the end of the phase (`HeroState.phase_bonus`). Anything else is refused with
-  "not ready" until step 2c (parser + fx).
+- **Action**: plays its bonus (lasting until the end of the phase, `HeroState.phase_bonus`) and its fx
+  effects (docs/fx-keywords.md); a card with neither is refused ("card effects are not ready yet").
 - `RulesEngine.stat()` = card (or top evolution) + equipment bonuses + bonuses of the cores in
   the hero's slots (`CardDef.bonus` of a Core; a Debuff core is a trap for whoever picks it
   up) + phase and turn bonuses + passive fx, never below 0. `DeckCode` decodes, encodes and checks deck codes exactly like the web app.
@@ -247,6 +246,7 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    damage on the first hero offered, the gentlest choice). The match scene keeps the clocks locally and as the host;
    guests only show them. `timer_seconds` 0 = off.
    `deck_size` below the deck's cards (the Fast mode, GDD 13) plays the first that many of the
+   shuffled deck: a random draw with the same copies and limits.
 9c. (2026-10-26) Knockback mode `knockback`: "physics" (the game, 2026-10-26: every
    knockback is a real hit; the word on the cards stays Knockback) or "grid" (hex by hex, as
    above: the engine on its own, as in the scenario tests; not offered in MATCH RULES). A physics knockback is not applied by the
@@ -255,7 +255,7 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    (hit along the hex direction, power = steps / full-power hexes of the WT) and brings the
    `RollOutcome` to `apply_knockback`. The outcome lands every moved ball as a roll does
    (cores, stages, ring-outs); the balls and walls it hit are counted (`knockback.hits`) but cost
-   nothing (Marko 2026-11-07: no wall damage any more; a ring-out costs 1 DMG, see below). The
+   nothing (Marko 2026-11-07: no wall damage any more; a ring-out costs 1 DMG, see below).
 9d. (2026-10-26) `series_wins` > 1 is a series (`MatchSeries`, not a rule: the scene and the host
    keep it); `first_initiative` names who starts (the last loser), -1 draws lots as before.
    A seat may bring a sideboard (up to 10 cards its heroes may take, each under its limit;
@@ -273,6 +273,7 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    the hero's current card (the last evolution, else the base). `_play` refuses the others
    ("only for X", "Requires T"); equipment whose tag the hero no longer fits falls into the
    graveyard when an evolution comes or goes (`_drop_unfit_equipment`). A record carries the
+   trait list it played by. `{Sword}` effects count equipment cards, never a hero's trait.
 9g. (2026-11-01) Colorless cards: `color: "None"` passes the colour check in `deck_verdict`
    and `_play` (the first tag still counts), and `bonusColors` on the card drive the fx
    `BONUS` / `INSTEAD` effects and `OWN_COST` (docs/fx-keywords.md). The Draft counts a
@@ -280,25 +281,25 @@ Things the GDD does not spell out; each is one line to confirm or veto.
 g. (2026-10-26) A grid knockback stopped by a wall or a hero just stops (no damage since
    2026-11-07). A Wind stage draws its direction (`StageState.wind_dir`, one of six) when it is
    revealed; `terrain()` blows that way and the state and the replay keep it.
-10. `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
+10. (confirmed 2026-11-11) `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
-11. A hero in the start zone can be activated at any time, and a stunned or locked hero
+11. (confirmed 2026-11-11) A hero in the start zone can be activated at any time, and a stunned or locked hero
    cannot; `select ""` is only legal when nothing can be activated.
-12. (2026-10-26) A hero in its start zone reaches no hex (`reaches_hex` false, as `in_range`):
+12. (2026-10-26, confirmed 2026-11-11) A hero in its start zone reaches no hex (`reaches_hex` false, as `in_range`):
    a [Range] effect from there has no target. An Action whose first effect has nothing to work
    on (no hex for a wall, no core or hero in reach) is not played: it stays in the hand, costs
    nothing, and the hand shows why (`_play_blocker`).
-13. (2026-10-26) A face-down stage turns face up whenever a hero stops on it: a roll, a
+13. (2026-10-26, confirmed 2026-11-11) A face-down stage turns face up whenever a hero stops on it: a roll, a
    knockback, an effect's move or a swap (`RulesEngine.arrive`).
-14. (2026-10-30, playtest) A hero's optional ability ("may", Once Per Turn or not) is used only
+14. (2026-10-30, playtest; confirmed 2026-11-11) A hero's optional ability ("may", Once Per Turn or not) is used only
    by a hero that acts: the activated hero, or in the Battle phase a hero in the battle being
    fought. Between battles nobody plays cards. A Battle Phase effect aimed at a hero picks among
    that battle's heroes; Remove Evolution only offers heroes with one.
-15. (2026-10-30, playtest) A [Range] effect that names the opponent rather than a hero
+15. (2026-10-30, playtest; confirmed 2026-11-11) A [Range] effect that names the opponent rather than a hero
    (`NO_CLAIM OPP`, `COST OPP`, `CHOOSE OPP`) needs an enemy hero in range. A chosen branch is
    checked in full before its first step runs, so a choice never half happens. FREE_PLAY offers
    only cards that could really go on the hero (`free_play_error`).
-16. (2026-10-30, playtest) Battle members: the seed (or the locked group) and the enemies in
+16. (2026-10-30, playtest; confirmed 2026-11-11) Battle members: the seed (or the locked group) and the enemies in
    range with it are the starters; then every hero in range with a starter of the other team
    joins, the seed's allies too (`_joiners`). (Marko 2026-11-06, playtest: the opponent's
    activated Zoro stood next to Luffy, a joiner, and was left out.) Then **one chain step**: every
