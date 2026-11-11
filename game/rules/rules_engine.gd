@@ -1258,9 +1258,12 @@ func _drop_dead_targets(s: GameState) -> void:
 			continue
 		var alive: Array = []
 		var gone: Array = []
+		# A ring-out's own cost waits for a hero that is on its strip by then (Marko 2026-11-11: with two
+		# heroes ringed out by one roll the second choice went as a hit with nobody left); only a KO ends it.
+		var ring_out: bool = JsonUtil.as_bool(d.get("ring_out", false))
 		for id: String in JsonUtil.as_strings(d.get("targets", [])):
 			var h: HeroState = s.hero(id)
-			if h != null and h.is_on_map():
+			if h != null and (h.is_on_map() or (ring_out and not h.is_ko())):
 				alive.append(id)
 			else:
 				gone.append(id)

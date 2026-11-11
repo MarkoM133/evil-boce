@@ -1,0 +1,42 @@
+{
+  "name": "Two heroes ringed out by one roll each pay for it (Marko 2026-11-11: after the first choice the second vanished, its hero off the map being taken for a hit with nobody left): the second choice still waits, and a card pays for it as well as the hero does.",
+  "steps": [
+    {"setup": {"seed": 1}},
+    {"move": {"type": "mulligan", "player": 0, "keep": true}},
+    {"move": {"type": "mulligan", "player": 1, "keep": true}},
+    {"set": {"initiative": 0}},
+    {"set": {
+      "heroes.p0:TA-001.zone": "map", "heroes.p0:TA-001.hex": [4, 10],
+      "heroes.p1:TB-001.zone": "map", "heroes.p1:TB-001.hex": [4, 5],
+      "players.p0.hand": ["TX-010"],
+      "players.p1.hand": ["TX-010", "TX-011"]
+    }},
+    {"move": {"type": "select", "player": 0, "hero": "p0:TA-001", "roll": true}},
+    {"move": {"type": "select", "player": 1, "hero": "p1:TB-001", "roll": true}},
+    {"pass_round": true},
+    {"move": {"type": "aim", "player": 0, "dir": [0, 1], "power": 1.0}},
+    {"move": {"type": "aim", "player": 1, "dir": [0, -1], "power": 1.0}},
+    {"roll": {"thrower": "p0:TA-001", "results": [
+      {"ball": "p0:TA-001", "thrown": true, "end_area": 1, "strip_entered": 0, "end_hex": [4, 16]},
+      {"ball": "p1:TB-001", "thrown": true, "end_area": 1, "strip_entered": 1, "end_hex": [4, 0]}
+    ]}},
+    {"expect": {
+      "heroes.p0:TA-001.zone": "strip", "heroes.p1:TB-001.zone": "strip",
+      "pending": {"$size": 2},
+      "pending.0.ring_out": true, "pending.0.player": 0, "pending.0.targets": ["p0:TA-001"],
+      "pending.1.ring_out": true, "pending.1.player": 1, "pending.1.targets": ["p1:TB-001"]
+    }},
+    {"move": {"type": "damage_to", "player": 0, "target": "p0:TA-001"}},
+    {"expect": {
+      "heroes.p0:TA-001.hp": 9,
+      "pending": {"$size": 1},
+      "pending.0.ring_out": true, "pending.0.player": 1, "pending.0.targets": ["p1:TB-001"]
+    }},
+    {"move": {"type": "damage_to", "player": 1, "target": "p1:TB-001", "cards": ["TX-011"]}},
+    {"expect": {
+      "heroes.p1:TB-001.hp": 10,
+      "players.p1.hand": ["TX-010"], "players.p1.graveyard": ["TX-011"],
+      "pending": {"$size": 0}
+    }}
+  ]
+}

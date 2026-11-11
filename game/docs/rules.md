@@ -199,7 +199,9 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    no cards in the hand it all lands on the hero. The deck never takes damage and there is no
    deck-out win any more (an empty deck only means no draw). A hit that knocks the hero out takes
    it out of the hits still waiting; a hit with nobody left to take it is wasted (`hit_wasted
-   {hero, targets}`; online playtest 2026-11-07). Scenario 60. Damage from cards ("take 3 DMG")
+   {hero, targets}`; online playtest 2026-11-07). Scenario 60. A ring-out's own cost is not such a
+   hit: its hero is on its strip by then, and the choice waits until it is made or the hero is
+   knocked out (two ring-outs in one roll both pay, scenario 69). Damage from cards ("take 3 DMG")
    is not a battle hit and goes where the card says. Event `hand_damage` {player, cards, amount,
    hand, by}; `deck_damage` / `deck_out` / result `deckout` live on only in old replays.
 2. **Battle order:** (confirmed 2026-10-26) locked (tied) groups first, then the battle with the initiative player's
