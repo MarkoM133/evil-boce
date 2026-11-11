@@ -81,6 +81,10 @@ static func standard() -> MatchSettings:
 ## name travels with the settings (lobby, record) and the map is not part of it: a preset
 ## brings its map, changing the map afterwards keeps the name.
 const MODES: Array[String] = ["standard", "fast", "chaos", "bo3", "draft", "custom"]
+## Modes shown but not offered for now (Marko 2026-11-11): Standard is the one being made; the others come back one
+## by one (docs/private/backlog.md).
+const LOCKED_MODES: Array[String] = ["fast", "chaos", "bo3", "draft"]
+const LOCKED_LINE: String = "Not yet: this mode comes back later. Standard is the one being made now."
 const MODE_LINES: Dictionary[String, String] = {
 	"standard": "A 23 × 23 map, three stages to win, stages claimed with energy, no timer.",
 	"fast": "30 seconds a move, 20 cards, two stages to win, a 17 × 17 map.",

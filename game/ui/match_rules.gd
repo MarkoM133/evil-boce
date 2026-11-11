@@ -74,6 +74,9 @@ var _rules_foot: Label
 
 
 func setup(s: MatchSettings, can_edit: bool) -> void:
+	# Remembered rules of a mode that is not offered now go back to Standard.
+	if can_edit and MatchSettings.LOCKED_MODES.has(s.mode):
+		s = MatchSettings.preset("standard")
 	settings = s
 	editable = can_edit
 	if _map_tile == null:
@@ -243,8 +246,12 @@ func _refresh() -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.add_theme_font_size_override("font_size", 17)
 		b.theme_type_variation = &"Gold" if name == settings.mode else &""
-		b.disabled = not editable
-		b.tooltip_text = str(MatchSettings.MODE_LINES.get(name, ""))
+		var locked: bool = MatchSettings.LOCKED_MODES.has(name)
+		b.disabled = not editable or locked
+		b.tooltip_text = MatchSettings.LOCKED_LINE if locked else str(MatchSettings.MODE_LINES.get(name, ""))
+		if locked:
+			b.modulate = Color(1, 1, 1, 0.45)
+			b.mouse_filter = Control.MOUSE_FILTER_STOP
 		b.pressed.connect(func() -> void:
 			settings = MatchSettings.preset(name)
 			_changed())
@@ -482,8 +489,11 @@ func _fill_rules() -> void:
 		b.text = name.to_upper()
 		b.add_theme_font_size_override("font_size", 18)
 		b.theme_type_variation = &"Gold" if name == settings.mode else &""
-		b.disabled = not editable or name == "custom"
-		b.tooltip_text = str(MatchSettings.MODE_LINES.get(name, ""))
+		var locked: bool = MatchSettings.LOCKED_MODES.has(name)
+		b.disabled = not editable or name == "custom" or locked
+		b.tooltip_text = MatchSettings.LOCKED_LINE if locked else str(MatchSettings.MODE_LINES.get(name, ""))
+		if locked:
+			b.modulate = Color(1, 1, 1, 0.45)
 		b.pressed.connect(func() -> void:
 			settings = MatchSettings.preset(name)
 			_changed())
