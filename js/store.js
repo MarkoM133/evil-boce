@@ -2,6 +2,7 @@
 // Oba imaju isto sučelje za bazu karata, slike i deckove; uvoz i Objava postoje samo u folderu.
 import { emptyDb, emptyChangelog, normalizeDb, thumbName, CHANGELOG_PATH } from './importer.js';
 import * as fs from './fsdir.js';
+import { RULES_PATH } from './rules.js';
 
 export class ConflictError extends Error {
   constructor(current) {
@@ -70,6 +71,11 @@ export function serverStore(info) {
       const r = await fetch(FX_PROPOSALS_PATH, { cache: 'no-store' });
       return r.ok ? r.json() : null;
     },
+    // The players' rules (Rules page); null when the folder has none.
+    async readRules() {
+      const r = await fetch(RULES_PATH, { cache: 'no-store' }).catch(() => null);
+      return r?.ok ? r.text() : null;
+    },
     async readTraits() {
       const r = await fetch(TRAITS_PATH, { cache: 'no-store' }).catch(() => null);
       return r?.ok ? r.json() : emptyTraits();
@@ -134,6 +140,9 @@ export function folderStore(root) {
     },
     async readFxProposals() {
       return readJson(FX_PROPOSALS_PATH);
+    },
+    async readRules() {
+      return (await fs.readText(root, RULES_PATH)) || null;
     },
     async readTraits() {
       return (await readJson(TRAITS_PATH)) ?? emptyTraits();

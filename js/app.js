@@ -10,6 +10,7 @@ import { aggregate, filterMatches, ranked, cardsVersions, RESULTS } from './stat
 import * as fs from './fsdir.js';
 import { createEditor, EDIT_TYPES, PAGES as EDITOR_PAGE_IDS } from './editor.js';
 import { isCombo } from './combo.js';
+import { renderRules } from './rules.js';
 
 const DB_PATH = 'data/cards.json';
 
@@ -550,7 +551,7 @@ function render() {
 // ---------- adresa: svaki pogled ima svoj #/…, pa gesta ili tipka Natrag vraća korak unatrag ----------
 
 // history nije u izborniku: otvara se klikom na verziju u zaglavlju ili u detalju karte.
-const TAB_SLUG = { import: 'import', browse: 'browse', combos: 'combos', editor: 'editor', decks: 'decks', balance: 'balance', traits: 'traits', coverage: 'coverage', tools: 'tools', history: 'history' };
+const TAB_SLUG = { import: 'import', browse: 'browse', combos: 'combos', rules: 'rules', editor: 'editor', decks: 'decks', balance: 'balance', traits: 'traits', coverage: 'coverage', tools: 'tools', history: 'history' };
 const SLUG_TAB = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]));
 // Stare hrvatske adrese (#/uvoz, #/pregled, #/deckovi/novi) i dalje rade.
 const OLD_SLUG_TAB = { uvoz: 'import', pregled: 'browse', deckovi: 'decks' };
@@ -847,6 +848,8 @@ const NAV = [
   // Combos (2026-11-07): the combo list, for the phone beside a match too.
   ['browse', 'Cards', [['browse', 'Cards'], ['combos', 'Combos']]],
   ['decks', 'Decks'],
+  // Rules (2026-11-11): the players' rules from the shared folder, for the phone beside a match too.
+  ['rules', 'Rules'],
   ['balance', 'Balance', [['balance', 'Balance'], ['coverage', 'Coverage']]],
   ['-'],
   ['editor', 'Card editor', EDITOR_PAGES],
@@ -895,7 +898,7 @@ function signedIn() {
 }
 
 function renderMain() {
-  const view = { import: renderImport, browse: renderBrowse, combos: renderCombos, editor: () => cardEditor.render(), decks: renderDecks, balance: renderBalance, traits: renderTraits, coverage: renderCoverage, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
+  const view = { import: renderImport, browse: renderBrowse, combos: renderCombos, rules: () => renderRules({ h, state }), editor: () => cardEditor.render(), decks: renderDecks, balance: renderBalance, traits: renderTraits, coverage: renderCoverage, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
