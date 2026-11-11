@@ -1,6 +1,7 @@
 extends GutTest
 ## Evil Bochet (Bochet): where a hand holds its edge when things lie near it, when a hand drums on the
-## edge, and where the eyes stand so that the camera sees them past the table.
+## edge, when a ball it brings back waits over its spot, and where the eyes stand so that the camera sees
+## them past the table.
 
 ## Half a table: 14 across, 20 along (strips included).
 const EXT := Vector2(14.0, 20.0)
@@ -46,6 +47,19 @@ func test_a_hand_drums_only_while_the_clock_runs_low() -> void:
 	assert_eq(Bochet.drum_every(4.0), 0.9)
 	assert_eq(Bochet.drum_every(1.5), 0.45, "twice as often at the end")
 	assert_eq(Bochet.drum_every(0.0), 0.0, "time is up")
+
+
+func test_a_ball_is_held_over_its_spot_while_its_ring_out_is_being_paid() -> void:
+	var s := GameState.new()
+	s.pending = [{"type": RulesEngine.DECISION_DAMAGE, "player": 0, "by": "ring_out", "amount": 1,
+		"targets": ["p0:h1"], "ring_out": true}]
+	assert_true(Bochet.ring_pending(s, "p0:h1"))
+	assert_false(Bochet.ring_pending(s, "p0:h2"), "another ball is not waiting")
+	s.pending = [{"type": RulesEngine.DECISION_DAMAGE, "player": 0, "by": "battle", "amount": 1,
+		"targets": ["p0:h1"], "ring_out": false}]
+	assert_false(Bochet.ring_pending(s, "p0:h1"), "damage from a battle is not the ring-out's")
+	s.pending = []
+	assert_false(Bochet.ring_pending(s, "p0:h1"))
 
 
 func test_the_eyes_stand_further_out_as_the_view_turns_away() -> void:

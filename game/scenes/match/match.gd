@@ -386,7 +386,11 @@ func _build_balls() -> void:
 		b.add_child(v)
 		_balls.add_child(b)
 		b.place(_strip_spot(h))
-		b.moved.connect(v.roll)
+		var id: String = h.id
+		b.moved.connect(func(d: Vector3) -> void:
+			# A ball in Evil Bochet's hand does not roll there.
+			if _bochet == null or not _bochet.holds(id):
+				v.roll(d))
 		v.settle()
 		_bodies[h.id] = b
 		_views[h.id] = v
@@ -410,6 +414,11 @@ func _build_bochet() -> void:
 	if _bochet == null:
 		return
 	add_child(_bochet)
+	# A ball its ring-out knocked out goes into the dark with him, and is gone when he has taken it.
+	_bochet.kept.connect(func(id: String) -> void:
+		var h: HeroState = state.hero(id)
+		if h != null and h.is_ko() and _bodies.has(id):
+			_bodies[id].visible = false)
 	arena.sink_table()
 	cam.frame_table(arena.extent(), Bochet.VIEW_NEAR_BIAS, Bochet.VIEW_ZOOM)
 
@@ -1208,9 +1217,16 @@ func _sync_hero(h: HeroState) -> void:
 	if h.is_ko():
 		if not _ko_shown.has(h.id):
 			_ko_shown[h.id] = true
+			# Knocked out by its ring-out as it went over the edge: Evil Bochet catches it and keeps it.
+			if _bochet != null and animate and arena.area_at(b.global_position) == BallWorld.Area.VOID:
+				_bochet.taken_off(h.id, b.global_position, state, was)
 			b.set_in_play(false)
 			world.bodies.erase(b)
-			if animate:
+			if _bochet != null and _bochet.keep(h.id):
+				# In Evil Bochet's hand: he takes it into the dark, no shattering (Bochet.kept hides it).
+				if not animate:
+					b.visible = false
+			elif animate:
 				if h.hp < was:
 					v.hit(was - h.hp)
 				v.ko()
@@ -1226,20 +1242,28 @@ func _sync_hero(h: HeroState) -> void:
 		b.set_in_play(true)
 		world.bodies.append(b)
 		v.revive()
-	if animate and h.hp < was:
-		v.hit(was - h.hp)
-		_hit_stop()
-	elif animate and h.hp > was:
-		v.float_text("+%d" % (h.hp - was), Palette.HEAL)
 	var target: Vector3 = arena.hex_center(h.hex) if h.is_on_map() else _strip_spot(h)
 	var here := Vector3(b.global_position.x, 0, b.global_position.z)
 	if here.distance_to(target) > 0.05:
 		if h.is_on_map() and arena.area_at(b.global_position) == BallWorld.Area.MAP:
 			_slide(b, target, v)
 		else:
+			var lay: Vector3 = b.global_position
 			v.close_now()
 			b.place(target)
 			v.settle()
+			# Its ring-out: Evil Bochet catches it where it went over the edge, or picks it up where it
+			# stopped in a start zone; the ball itself is on its spot already.
+			if _bochet != null and animate and not h.is_on_map():
+				_bochet.taken_off(h.id, lay, state, was)
+			_place_view(h.id)
+	var held: bool = _bochet != null and _bochet.holds(h.id)
+	if animate and h.hp < was and not held:
+		# (A ball in Evil Bochet's hand he squeezes instead, with the number: Bochet._hold_wait.)
+		v.hit(was - h.hp)
+		_hit_stop()
+	elif animate and h.hp > was:
+		v.float_text("+%d" % (h.hp - was), Palette.HEAL)
 	if _sliding.has(h.id):
 		return
 	var open: bool = _shows_figure(h)
@@ -1311,6 +1335,18 @@ func _slide(b: BallBody, target: Vector3, v: BallView) -> void:
 		var h: HeroState = state.hero(b.ball_id) if state != null else null
 		if v != null and h != null and _shows_figure(h) and not v.is_open():
 			v.open())
+
+
+## A ball's picture rides over hills on its ball (the physics stays flat; see ArenaWorld.push_at), or is
+## where Evil Bochet holds it (caught off the table, or on its way back to its spot).
+func _place_view(id: String) -> void:
+	var v: BallView = _views[id]
+	if _bochet != null and _bochet.holds(id):
+		v.global_position = _bochet.held_at(id)
+		v.visible = _bochet.held_shown(id)
+		return
+	v.position = Vector3(0, arena.height_at(_bodies[id].global_position), 0)
+	v.visible = true
 
 
 ## Hit-stop: the world freezes for a blink when damage lands (Settings → Effects).
@@ -2101,15 +2137,9 @@ func _process(delta: float) -> void:
 	if _claim_mat != null:
 		_claim_mat.albedo_color = Color(1, 1, 1, 0.35 + 0.65 * (0.5 + 0.5 * sin(_pulse_t * 5.0)))
 	if _bochet != null:
-		_bochet.tick(delta, state, _bodies, _local_clock_left())
+		_bochet.tick(delta, state, _bodies, _views, _local_clock_left())
 	for id: String in _views:
-		# Balls ride over hills (the physics stays flat; see ArenaWorld.push_at). Off the table, with
-		# Bochet there, the picture drops into the dark (Bochet.drop).
-		var dy: float = 0.0
-		if _bochet != null:
-			dy = _bochet.drop(id, _bodies[id].global_position, delta)
-			_views[id].visible = not _bochet.dropped(id)
-		_views[id].position.y = arena.height_at(_bodies[id].global_position) + dy
+		_place_view(id)
 	if _replay != null:
 		_run_playback(delta)
 		return
@@ -2152,6 +2182,9 @@ func _show_frame(i: int, animate: bool) -> void:
 	# Not "": an empty highlight must still clear the last one (the setup zones stayed lit).
 	_range_key = "-"
 	_quiet = not animate or to != from + 1
+	if _quiet and _bochet != null:
+		# A jump: Evil Bochet lets go of every ball at once (the state says where they are).
+		_bochet.reset()
 	_sync()
 	_quiet = false
 	_replay_bar.show_frame(_frame, _replay.frame_count(), state.turn, state.phase)

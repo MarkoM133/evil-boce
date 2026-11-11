@@ -7,11 +7,23 @@ extends Node3D
 ## turned to the camera and out from the table as far as it takes to see them both, and watch the ball that
 ## rolls or the hero whose turn it is. Before the first turn it is not there; when the first turn begins
 ## its eyes open and its hands come up out of the dark onto the edges. A move timer under five seconds
-## makes a hand drum on the edge. For now a ball that leaves the table drops into the dark.
+## makes a hand drum on the edge.
 ##
-## It belongs to the viewer: drawn on their side, it changes nothing the rules or the physics see. It is
-## built for the blue seat (the near edge at +z) and the whole node turns half round for a viewer on red.
+## A ball that leaves the table is caught: by the hand that holds that edge, which rolls back into an open
+## palm under the edge; two that leave close together land in one palm; with both hands busy a third drops
+## into the dark; elsewhere a hand comes up from below; over the near end the mouth takes it. When the
+## balls have stopped, the hand of the start zone brings each one back, palm down, the ball in its gathered
+## fingertips, and holds it over its spot while its player chooses what the ring-out costs (damage is a
+## squeeze and a shake). A ball the ring-out knocks out it keeps, and narrows its eyes. A ball that stops in
+## a start zone is picked up where it stopped and carried to its spot.
+##
+## It belongs to the viewer: drawn on their side, it changes nothing the rules or the physics see. It moves
+## only the pictures of the balls (BallView); the balls themselves are where the rules put them. It is built
+## for the blue seat (the near edge at +z) and the whole node turns half round for a viewer on red.
 ## Settings → Quality and effects switches it off; then the table keeps its slab (Arena.sink_table).
+
+## A ball its ring-out knocked out has gone into the dark with it: the match hides it now.
+signal kept(id: String)
 
 ## The hand model (made in Blender: four fingers, 20 bones, its colours in the vertices), in the shared data
 ## folder (CardDb.data_dir).
@@ -26,6 +38,8 @@ const IRIS := Color("fff2a8")
 const PUPIL := Color("140a05")
 const LID := Color("0b0908")
 const BROW := Color("4a2d8a")
+const MOUTH := Color("2a0509")
+const TOOTH := Color("f3efe7")
 
 ## The four finger proxies along the edge, this far apart.
 const FINGER_GAP: float = 1.12
@@ -53,12 +67,28 @@ const EYES_DOWN: float = -1.5
 const EYES_NEAR: float = 1.5
 const EYES_TURNED: float = 3.5
 const EYES_FURTHEST: float = 8.0
+## A hand coming up within EYES_ASIDE of the eyes, along the near edge, has them step EYES_ASIDE_TO aside.
+const EYES_ASIDE: float = 5.6
+const EYES_ASIDE_TO: float = 6.0
 ## A move timer under DRUM_FROM seconds makes a hand drum on the edge, under DRUM_FAST twice as often.
 const DRUM_FROM: float = 5.0
 const DRUM_FAST: float = 2.0
-## A ball off the table drops DROP_DEPTH into the dark in DROP_TIME seconds, and is gone from sight.
-const DROP_DEPTH: float = 11.0
-const DROP_TIME: float = 0.75
+## The catching palm waits this far out from where the ball leaves and this far below the table top.
+const CATCH_REACH: float = 2.4
+const CATCH_DOWN: float = -0.3
+## The hand that holds an edge catches a ball that leaves within this distance of it along the edge; further
+## off a hand comes up from below.
+const CATCH_ALONG: float = 9.0
+## A second ball that leaves within this distance of the first lands in the same open palm.
+const JOIN_ALONG: float = 2.4
+## The returning hand's fingertips in its own space: where it holds the ball.
+const TIPS := Vector3(-3.3, -1.8, 0)
+## Over its spot the returning hand holds the ball this high while its player chooses (Marko 2026-11-10).
+const HOLD_LIFT: float = 1.5
+## How far the fingers of a catching palm turn in towards each other in a pinch.
+const PINCH_SPLAY: float = 0.22
+
+enum Stage { CATCHING, UNDER, BACK }
 
 ## Faceted and rim-lit, coloured by the model's vertices; whatever hangs below the table fades into the dark.
 const SKIN_SHADER: String = """shader_type spatial;
@@ -108,6 +138,9 @@ class Hand extends Node3D:
 	var hang: float = 0.0
 	## With hang: the fingers stand straight up, the hand flat against the table's side.
 	var straight: float = 0.0
+	## Rolled back over the wrist into an open palm under the edge (1), and that palm closed (close 1).
+	var lean: float = 0.0
+	var close: float = 0.0
 	## Where along the edge it holds, and where it would rather hold.
 	var at_z: float = 0.0
 	var home_z: float = 0.0
@@ -117,8 +150,65 @@ class Hand extends Node3D:
 	var hanging: bool = false
 	## Let go of the edge, down in the dark.
 	var sunk: bool = false
+	## Taken off its edge to catch or bring back a ball: it comes back when that is done.
+	var off: bool = false
+	## A ball comes at its edge: its fingers are up ("up"), and it may be leaning back for it already.
+	var gate: String = ""
+	var leaning: bool = false
+	var lean_from_z: float = 0.0
+	var lean_tween: Tween
+	## The balls in its palm, and whether that palm is still open for one more.
+	var holding: Array = []
+	var open_for: bool = false
+	var joiners: int = 0
 	## What is moving it now (Bochet._tw), so that a jump (a replay going back) can stop it all.
 	var tweens: Array[Tween] = []
+
+
+## A hand that comes up from below to catch a ball, or brings one back: palm up, or (palm_down) the hand of
+## the start zone with the ball in its gathered fingertips.
+class Claw extends Node3D:
+	## Four proxies: rotation.z -0.7 open, 0.36 closed (Bochet._grip).
+	var prox: Array[Node3D] = []
+	var spin: Node3D
+	var lean: Node3D
+	var un: Node3D
+	var flip: Node3D
+	var tips: Node3D
+	var skel: Skeleton3D
+	## The fingertips together round what they hold (1), squeezing (more).
+	var pinch: float = 0.0
+	var palm_down: bool = false
+	## Palm down: the fingers out flat, and the arm upright.
+	var flat: float = 0.0
+	var up: float = 0.0
+
+
+## A ball whose picture Bochet has: being caught, under the table, or on its way back.
+class Held extends RefCounted:
+	var id: String = ""
+	## Where the picture is, in Bochet's space, and whether it shows.
+	var pos := Vector3.ZERO
+	var shown: bool = true
+	var stage: int = 0
+	## Where it left the table, and where it is held.
+	var at := Vector3.ZERO
+	var hold := Vector3.ZERO
+	## The edge hand it took, and the hand that brings it back.
+	var hand: Hand
+	var claw: Claw
+	## Over its spot: where the hand hovers with it, and where it comes up from outside the edge.
+	var hover := Vector3.ZERO
+	var low := Vector3.ZERO
+	## The ball keeps to the fingertips (Bochet._follow).
+	var follow: Tween
+	## Its ring-out knocked it out: it does not go back.
+	var gone: bool = false
+	## Its hit points when it left the table: less when it is set down is a squeeze (Bochet._hold_wait).
+	var hp0: int = 0
+	## Where the rules put the ball itself back (INF until they have): thrown on from there, the picture is
+	## its own again.
+	var spot := Vector3.INF
 
 
 var _arena: Arena
@@ -128,8 +218,11 @@ var _skin_mat: ShaderMaterial
 ## Half the table's size (x across, z along).
 var _ext := Vector2.ZERO
 var _hands: Array[Hand] = []
+var _claws: Array[Claw] = []
 var _eyes: Node3D
 var _lids: Node3D
+var _jaw: Node3D
+var _mouth: Node3D
 var _irises: Array[Node3D] = []
 var _pupils: Array[Node3D] = []
 ## On the table (from the first turn on), and still on its way up.
@@ -138,15 +231,30 @@ var _entering: bool = false
 var _ticked: bool = false
 var _entry: Tween
 var _drum_wait: float = 0.0
-## The eyes: where they look (in their own plane), how wide the pupils are, the blink, and shut (1).
+## The eyes: where they look (in their own plane), how wide the pupils are, the blink, shut (1), narrowed (1).
 var _look := Vector2(0, 0.18)
 var _wide: float = 0.22
 var _blink_in: float = 1.7
 var _blink: float = 0.0
 var closed: float = 1.0
+var squint: float = 0.0
 var _eyes_placed: bool = false
-## Balls off the table, dropping into the dark: id -> seconds since they left it.
-var _drops: Dictionary[String, float] = {}
+## The face aside along the near edge, and lifted (the mouth); how many hands have it aside now.
+var face_x: float = 0.0
+var face_dy: float = 0.0
+var _aside_n: int = 0
+## The match's state and balls, as of this frame.
+var _state: GameState
+var _bodies: Dictionary[String, BallBody] = {}
+var _views: Dictionary[String, BallView] = {}
+## Balls whose pictures it has.
+var _held: Dictionary[String, Held] = {}
+## Bringing balls back now.
+var _returning: bool = false
+## Bumped when it is all reset (_snap): animations under way stop at their next step.
+var _gen: int = 0
+## Its own tweens (the balls' pictures, the face), so that _snap can stop them.
+var _tweens: Array[Tween] = []
 
 
 ## Bochet for this table, seen from the red seat or the blue one; null when its model is not in the data
@@ -175,9 +283,12 @@ func _ready() -> void:
 	_snap(false)
 
 
-## Every frame, from the match: the state, the balls, and the seconds left on a move timer of a player at
-## this screen (INF when none runs).
-func tick(delta: float, state: GameState, bodies: Dictionary[String, BallBody], clock_left: float) -> void:
+## Every frame, from the match: the state, the balls and their pictures, and the seconds left on a move
+## timer of a player at this screen (INF when none runs).
+func tick(delta: float, state: GameState, bodies: Dictionary[String, BallBody], views: Dictionary[String, BallView], clock_left: float) -> void:
+	_state = state
+	_bodies = bodies
+	_views = views
 	var want: bool = state.turn >= 1
 	if want != _shown:
 		# The first turn beginning in front of the viewer brings it up; a match carried on, a replay jumping
@@ -191,13 +302,80 @@ func tick(delta: float, state: GameState, bodies: Dictionary[String, BallBody], 
 		return
 	for h: Hand in _hands:
 		_pose(h)
+	for c: Claw in _claws:
+		_pose_claw(c)
 	_place_eyes(delta)
 	_drive_eyes(delta, state, bodies)
 	if _entering:
 		return
+	_watch()
 	for h: Hand in _hands:
-		_keep_clear(h, state, bodies)
+		if not h.off:
+			_gate(h)
+			_keep_clear(h, state, bodies)
 	_drum(delta, clock_left)
+	_bring_back()
+
+
+## Whether it has this ball's picture now, where that is, and whether it shows.
+func holds(id: String) -> bool:
+	return _held.has(id)
+
+
+func held_at(id: String) -> Vector3:
+	return to_global(_held[id].pos)
+
+
+func held_shown(id: String) -> bool:
+	return _held[id].shown
+
+
+## The ring-out knocked out a ball it has: it keeps it, and says so (kept) when it has taken it into the
+## dark. False when it does not have that ball.
+func keep(id: String) -> bool:
+	if not _held.has(id):
+		return false
+	_held[id].gone = true
+	return true
+
+
+## The rules have just taken a ball off the table (its ring-out) and put the ball itself on its start spot;
+## `from` is where it was, `hp` its hit points before. Gone over the edge, its picture is caught there (a
+## ball that leaves the table alone ends its roll at once, so the rules have it back before it is seen
+## off the table); stopped in a start zone, it is picked up where it lay. False when Bochet leaves it be.
+func taken_off(id: String, from: Vector3, state: GameState, hp: int) -> bool:
+	if not _shown or _entering or _held.has(id) or not _bodies.has(id):
+		return false
+	_state = state
+	var loc: Vector3 = to_local(from)
+	match _area(from):
+		BallWorld.Area.VOID:
+			_catch(id, loc, _bodies[id].radius(), hp)
+			return true
+		BallWorld.Area.STRIP:
+			var target: Vector3 = to_local(_bodies[id].global_position)
+			if Vector2(loc.x - target.x, loc.z - target.z).length() < 0.3:
+				return false
+			_pick_up(id, loc, target, hp)
+			return true
+	return false
+
+
+## The match jumped (a replay going to another frame): every ball's picture is its own again at once, and
+## those it was keeping are gone now (kept).
+func reset() -> void:
+	var gone: Array[String] = []
+	for held: Held in _held.values():
+		if held.gone:
+			gone.append(held.id)
+	_snap(_shown)
+	for id: String in gone:
+		kept.emit(id)
+
+
+## Where on the table a point is: the map, a start strip, or off it all.
+func _area(global: Vector3) -> BallWorld.Area:
+	return _arena.area_at(_arena.to_local(global))
 
 
 # --- the hands -------------------------------------------------------------------------------------
@@ -290,27 +468,30 @@ static func bone(skel: Skeleton3D, bone_name: String, angle: float, axis: Vector
 	skel.set_bone_pose_rotation(i, q)
 
 
-## The hand over its edge, its claws on the table, each finger lifted or swung as its proxy is; or off the
-## top towards holding the rim from outside (hang).
+## The hand over its edge, its claws on the table, each finger lifted or swung as its proxy is; rolled back
+## over the wrist into an open palm under the edge (lean), that palm closed (close); or off the top towards
+## holding the rim from outside (hang).
 func _pose(h: Hand) -> void:
 	if h.skel == null:
 		return
 	if h.hang > 0.001:
 		_pose_hang(h)
 		return
-	h.pitch.rotation.x = 0.0
-	h.turn.position = Vector3(0.3, 1.15, 0)
-	bone(h.skel, "arm1", 1.15)
-	bone(h.skel, "arm2", 0.25)
+	var lean: float = h.lean
+	h.pitch.rotation.x = PI * lean
+	# The wrist comes in to the edge and down below the table top as the hand rolls back.
+	h.turn.position = Vector3(lerpf(0.3, -2.3, lean), lerpf(1.15, -1.25, lean), 0)
+	bone(h.skel, "arm1", lerpf(1.15, -1.1, lean))
+	bone(h.skel, "arm2", lerpf(0.25, -0.2, lean))
 	for k: int in 4:
 		var fin: Node3D = h.fingers[k]
 		var tip := fin.get_child(0) as Node3D
 		var lift: float = clampf(maxf(-h.side * tip.rotation.z / 0.85, fin.position.y / 0.9 * 0.6), 0.0, 1.0)
 		var rel: float = fin.position.z - (k - 1.5) * FINGER_GAP - h.body.position.z
 		var i: int = 3 - k
-		bone(h.skel, "f%d_1" % i, 0.12 + 0.8 * lift, Vector3.RIGHT, atan(rel / 2.6))
-		bone(h.skel, "f%d_2" % i, -0.45 + 0.3 * lift)
-		bone(h.skel, "f%d_3" % i, -0.45 + 0.25 * lift)
+		bone(h.skel, "f%d_1" % i, lerpf(0.12 + 0.8 * lift, lerpf(0.2, -0.5, h.close), lean), Vector3.RIGHT, atan(rel / 2.6) * (1.0 - lean))
+		bone(h.skel, "f%d_2" % i, lerpf(-0.45 + 0.3 * lift, lerpf(-0.2, -0.8, h.close), lean))
+		bone(h.skel, "f%d_3" % i, lerpf(-0.45 + 0.25 * lift, lerpf(-0.2, -0.75, h.close), lean))
 
 
 ## Holding the rim from outside: the hand upright against the table's side, palm to it, only the claws
@@ -328,13 +509,26 @@ func _pose_hang(h: Hand) -> void:
 		bone(h.skel, "f%d_3" % i, lerpf(-0.45, lerpf(-0.65, 0.0, stf), k))
 
 
+func _hand(side: float) -> Hand:
+	return _hands[1] if side > 0.0 else _hands[0]
+
+
+func _hands_off() -> int:
+	var n: int = 0
+	for h: Hand in _hands:
+		if h.off:
+			n += 1
+	return n
+
+
 ## Each hand keeps off whatever lies under it (Marko 2026-11-10/11): to the nearest free stretch of its
 ## edge within the walk, finger by finger, never walking past a ball. With no room on top it holds the rim
 ## from outside, its claws over the edge, where no ball lies by the rim for them to touch; along the outside
 ## to room on top when it comes free, and back up there. With no such place on the rim either it lets go
 ## of the edge into the dark, and comes back up the way it came at the start when there is room again.
+## A ball still rolling is not in the way: the hand waits for it (_gate).
 func _keep_clear(h: Hand, state: GameState, bodies: Dictionary[String, BallBody]) -> void:
-	if h.busy:
+	if h.busy or h.gate != "":
 		return
 	var lo: float = _ext.y * WALK_FROM
 	var hi: float = _ext.y * WALK_TO
@@ -416,12 +610,18 @@ static func path_clear(a: float, b: float, blocks: PackedFloat32Array, clear: fl
 	return true
 
 
+## A ball that lies still on the table, its picture where it is.
+func _lying(b: BallBody) -> bool:
+	return b.visible and b.in_play() and b.motion != BallBody.Motion.MOVING and b.motion != BallBody.Motion.OUT \
+			and not _held.has(b.ball_id)
+
+
 ## Where along a hand's edge lies a ball the claws over the rim would touch.
 func _rim_balls(side: float, bodies: Dictionary[String, BallBody]) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	var edge: float = side * _ext.x
 	for b: BallBody in bodies.values():
-		if not b.visible or not b.in_play() or b.motion == BallBody.Motion.OUT:
+		if not _lying(b):
 			continue
 		var p: Vector3 = to_local(b.global_position)
 		if absf(p.x - edge) < RIM_REACH:
@@ -429,13 +629,13 @@ func _rim_balls(side: float, bodies: Dictionary[String, BallBody]) -> PackedFloa
 	return out
 
 
-## Where along a hand's edge (its z) lies something it must not rest on: balls in play on the table, the
+## Where along a hand's edge (its z) lies something it must not rest on: balls lying on the table, the
 ## hexes of placed stages, cores on the field, all within NEAR_EDGE of that edge.
 func _blocks(side: float, state: GameState, bodies: Dictionary[String, BallBody]) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	var edge: float = side * _ext.x
 	for b: BallBody in bodies.values():
-		if not b.visible or not b.in_play() or b.motion == BallBody.Motion.OUT:
+		if not _lying(b):
 			continue
 		var p: Vector3 = to_local(b.global_position)
 		if absf(p.x - edge) < NEAR_EDGE and absf(p.z) < _ext.y - STRIP_MARGIN:
@@ -505,6 +705,22 @@ func _tw(h: Hand, node: Node) -> Tween:
 	return t
 
 
+## A tween of its own (a ball's picture, the face) that _snap can stop.
+func _btw() -> Tween:
+	_tweens = _tweens.filter(func(t: Tween) -> bool: return t.is_valid())
+	var t: Tween = create_tween()
+	_tweens.append(t)
+	return t
+
+
+## Everything that moves a hand now, stopped.
+func _stop(h: Hand) -> void:
+	for t: Tween in h.tweens:
+		if t.is_valid():
+			t.kill()
+	h.tweens.clear()
+
+
 ## The whole hand along its edge at once, out of sight.
 func _shift(h: Hand, z: float) -> void:
 	var dz: float = z - h.at_z
@@ -567,6 +783,32 @@ func _come_back(h: Hand, z: float, on_top: bool) -> void:
 		h.busy = false)
 
 
+## A hand that was taken off its edge, down in the dark and ready to come back up (_keep_clear brings it):
+## out of its catching pose, and where it was along the edge before the catch moved it.
+func _rest_hand(h: Hand) -> void:
+	_stop(h)
+	h.off = false
+	h.open_for = false
+	h.holding.clear()
+	h.joiners = 0
+	h.leaning = false
+	h.gate = ""
+	h.lean = 0.0
+	h.close = 0.0
+	h.body.position.z = h.lean_from_z
+	h.at_z = h.home_z + h.body.position.z
+	for k: int in h.fingers.size():
+		var fin: Node3D = h.fingers[k]
+		fin.position = Vector3(0, 0, (k - 1.5) * FINGER_GAP + h.body.position.z)
+		(fin.get_child(0) as Node3D).rotation.z = 0.0
+	h.position.y = BELOW
+	h.hang = 1.0
+	h.straight = 1.0
+	h.hanging = true
+	h.sunk = true
+	h.busy = false
+
+
 ## The move timer under DRUM_FROM seconds: the viewer's right hand drums on the edge (Marko 2026-11-11).
 func _drum(delta: float, clock_left: float) -> void:
 	_drum_wait -= delta
@@ -574,7 +816,7 @@ func _drum(delta: float, clock_left: float) -> void:
 	if every <= 0.0 or _drum_wait > 0.0:
 		return
 	var h: Hand = _hands[1]
-	if h.busy or h.hang > 0.01:
+	if h.busy or h.off or h.gate != "" or h.hang > 0.01:
 		return
 	_drum_wait = every
 	h.busy = true
@@ -599,28 +841,918 @@ static func drum_every(left: float) -> float:
 	return 0.45 if left <= DRUM_FAST else 0.9
 
 
+# --- a ball coming at an edge --------------------------------------------------------------------------
+
+## The hand on top of an edge watches a ball that rolls at it: its fingers go up; when the ball is about
+## to leave, it starts to roll back towards where the ball will go; if nothing leaves after all, the
+## fingers come down and it rolls back over its fingers.
+func _gate(h: Hand) -> void:
+	if h.hanging or h.sunk:
+		return
+	if h.gate == "":
+		if h.busy:
+			return
+		for b: BallBody in _bodies.values():
+			if not b.visible or b.motion != BallBody.Motion.MOVING or _held.has(b.ball_id):
+				continue
+			var p: Vector3 = to_local(b.global_position)
+			var v: Vector3 = _local_velocity(b)
+			if absf(p.x - h.side * _ext.x) < 5.0 and absf(p.z - h.at_z) < 3.2 and v.x * h.side > 2.0:
+				h.gate = "up"
+				_fingers(h, true)
+				return
+		return
+	if not _any_moving():
+		# Nothing left the table after all: fingers down again, and out of the lean.
+		h.gate = ""
+		_fingers(h, false)
+		if h.leaning:
+			_unlean(h)
+		return
+	if h.leaning:
+		return
+	for b: BallBody in _bodies.values():
+		if not b.visible or b.motion != BallBody.Motion.MOVING or _held.has(b.ball_id):
+			continue
+		var p: Vector3 = to_local(b.global_position)
+		var v: Vector3 = _local_velocity(b)
+		var d: float = absf(p.x - h.side * _ext.x)
+		var vx: float = v.x * h.side
+		if d < 2.4 and vx > 4.0:
+			_prelean(h, p.z + v.z * (d / vx))
+			return
+
+
+func _local_velocity(b: BallBody) -> Vector3:
+	return global_transform.basis.inverse() * b.linear_velocity
+
+
+func _any_moving() -> bool:
+	for b: BallBody in _bodies.values():
+		if b.visible and b.motion == BallBody.Motion.MOVING and not _held.has(b.ball_id):
+			return true
+	return false
+
+
+## The fingers up (a ball is coming) or down again, one after the other.
+func _fingers(h: Hand, up: bool) -> void:
+	for i: int in h.fingers.size():
+		var fin: Node3D = h.fingers[i]
+		var tip := fin.get_child(0) as Node3D
+		var t: Tween = _tw(h, fin)
+		t.tween_interval((0.035 if up else 0.075) * i)
+		if up:
+			t.tween_property(tip, "rotation:z", -h.side * 0.85, 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			t.parallel().tween_property(fin, "position:y", 0.9, 0.08)
+		else:
+			t.tween_property(tip, "rotation:z", 0.0, 0.05).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			t.parallel().tween_property(fin, "position:y", 0.0, 0.05)
+
+
+## Before the ball has left: the hand starts to roll back and reaches along to where the ball is going.
+func _prelean(h: Hand, to_z: float) -> void:
+	h.leaning = true
+	h.lean_from_z = h.body.position.z
+	if h.lean_tween != null and h.lean_tween.is_valid():
+		h.lean_tween.kill()
+	var t: Tween = _tw(h, h)
+	t.tween_property(h, "lean", 1.0, 0.26).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.parallel().tween_property(h.body, "position:z", to_z - h.position.z, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	h.lean_tween = t
+
+
+func _unlean(h: Hand) -> void:
+	h.leaning = false
+	if h.lean_tween != null and h.lean_tween.is_valid():
+		h.lean_tween.kill()
+	var t: Tween = _tw(h, h)
+	t.tween_property(h, "lean", 0.0, 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.parallel().tween_property(h.body, "position:z", h.lean_from_z, 0.3)
+	h.lean_tween = t
+
+
+# --- catching ------------------------------------------------------------------------------------------
+
+## Every ball off the table (and so off the rules' map and strips) while the others still roll is caught.
+func _watch() -> void:
+	for id: String in _bodies:
+		var b: BallBody = _bodies[id]
+		if _held.has(id):
+			_watch_held(_held[id], b)
+			continue
+		if not b.visible or not b.in_play():
+			continue
+		if _area(b.global_position) == BallWorld.Area.VOID:
+			var hero: HeroState = _state.hero(id)
+			_catch(id, to_local(b.global_position), b.radius(), hero.hp if hero != null else 0)
+
+
+## A ball whose picture it has: where the rules put the ball itself back; thrown on from there before it
+## was brought back, its picture is its own again at once.
+func _watch_held(held: Held, b: BallBody) -> void:
+	if held.stage == Stage.CATCHING or _area(b.global_position) == BallWorld.Area.VOID:
+		return
+	var p: Vector3 = to_local(b.global_position)
+	if held.spot == Vector3.INF:
+		held.spot = p
+	elif Vector2(p.x - held.spot.x, p.z - held.spot.z).length() > 0.5:
+		_release(held.id)
+
+
+## A ball has just left the table (Marko 2026-11-10): the hand that holds that edge, its palm open below
+## the edge (_catch_lean); a second one by the first into the same palm (_join); with both hands busy into
+## the dark (_fall_past); over the near end into the mouth (_catch_mouth); elsewhere a hand from below.
+func _catch(id: String, at: Vector3, radius: float, hp0: int) -> void:
+	var held := Held.new()
+	held.id = id
+	# Where it left the table, at the height it rolled at (the ball itself may be falling already).
+	held.at = Vector3(at.x, radius, at.z)
+	held.pos = held.at
+	held.stage = Stage.CATCHING
+	held.hp0 = hp0
+	_held[id] = held
+	var side: float = 1.0 if at.x >= 0.0 else -1.0
+	var short_end: bool = absf(at.z) > _ext.y - 0.3 and absf(at.x) < _ext.x - 0.3
+	held.hold = Vector3(at.x + CATCH_REACH * side, CATCH_DOWN, at.z)
+	if short_end:
+		held.hold = Vector3(at.x, CATCH_DOWN, at.z + CATCH_REACH * signf(at.z))
+	if short_end and at.z > 0.0:
+		_catch_mouth(held)
+		return
+	var own: Hand = _hand(side)
+	if not short_end and own.off and own.open_for and own.holding.size() == 1:
+		var first: Held = own.holding[0]
+		if absf(at.z - first.hold.z) < JOIN_ALONG:
+			_join(held, own)
+			return
+	if _hands_off() >= 2:
+		_fall_past(held)
+		return
+	if not short_end and not own.off and not own.hanging and not own.sunk and absf(at.z - (own.position.z + own.body.position.z)) < CATCH_ALONG:
+		_catch_lean(held, own)
+		return
+	_catch_below(held, side, short_end)
+
+
+## The ball's picture falls from where it is to `to` in `secs`.
+func _fall(held: Held, to: Vector3, secs: float) -> Tween:
+	var t: Tween = _btw()
+	t.tween_property(held, "pos:x", to.x, secs)
+	t.parallel().tween_property(held, "pos:z", to.z, secs)
+	t.parallel().tween_property(held, "pos:y", to.y, secs).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	return t
+
+
+## The hand that holds this edge rolls back over its wrist into an open palm just under the edge (it may be
+## halfway there already, _prelean) and the ball falls into it; it closes on what it holds and takes it
+## under the table (Marko 2026-11-10).
+func _catch_lean(held: Held, h: Hand) -> void:
+	var gen: int = _gen
+	h.off = true
+	h.gate = ""
+	# Whatever it was doing (walking, its fingers going up), it is catching now.
+	_stop(h)
+	if not h.leaning:
+		h.lean_from_z = h.body.position.z
+	h.leaning = false
+	h.busy = true
+	_cam.shake(0.3 if _hands_off() == 1 else 0.7, 0.35)
+	h.holding = [held]
+	h.open_for = true
+	h.joiners = 0
+	held.hand = h
+	var dz: float = held.at.z - (h.position.z + h.body.position.z)
+	var t: Tween = _tw(h, h)
+	t.tween_property(h, "lean", 1.0, 0.2 * (1.0 - h.lean) + 0.02).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(h.body, "position:z", h.body.position.z + dz, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await _fall(held, held.hold, 0.42).finished
+	if gen != _gen:
+		return
+	await get_tree().create_timer(0.1).timeout
+	while h.joiners > 0:
+		await get_tree().process_frame
+		if gen != _gen:
+			return
+	if gen != _gen:
+		return
+	h.open_for = false
+	var t2: Tween = _tw(h, h)
+	t2.tween_property(h, "close", 1.0, 0.1)
+	t2.tween_interval(0.3)
+	t2.tween_property(h, "position:y", -10.0, 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	for hv: Variant in h.holding:
+		var hb: Held = hv
+		t2.parallel().tween_property(hb, "pos", hb.hold + Vector3(0, -10, 0), 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await t2.finished
+	if gen != _gen:
+		return
+	for hv: Variant in h.holding:
+		var hb: Held = hv
+		_under(hb, _spare(hb.hold))
+
+
+## A second ball into a palm that is still open for the first: the hand shifts to sit under both.
+func _join(held: Held, h: Hand) -> void:
+	var gen: int = _gen
+	var first: Held = h.holding[0]
+	var z2: float = held.hold.z
+	if absf(z2 - first.hold.z) < 1.3:
+		# The same hex: side by side in the palm.
+		z2 = first.hold.z + (1.3 if held.hold.z >= first.hold.z else -1.3)
+	held.hold = Vector3(first.hold.x, first.hold.y, z2)
+	held.hand = h
+	h.holding.append(held)
+	h.joiners += 1
+	_tw(h, h.body).tween_property(h.body, "position:z", (first.hold.z + z2) * 0.5 - h.position.z, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await _fall(held, held.hold, 0.42).finished
+	if gen != _gen:
+		return
+	h.joiners -= 1
+
+
+## No hand left for this one (K8): it goes on over the edge and drops into the dark; a hand brings it back
+## after the others.
+func _fall_past(held: Held) -> void:
+	var gen: int = _gen
+	var out: Vector3 = held.hold - held.at
+	out.y = 0.0
+	out = out.normalized()
+	var t: Tween = _btw()
+	t.tween_property(held, "pos:x", held.at.x + out.x * 4.5, 0.75)
+	t.parallel().tween_property(held, "pos:z", held.at.z + out.z * 4.5, 0.75)
+	t.parallel().tween_property(held, "pos:y", -11.0, 0.75).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await t.finished
+	if gen != _gen:
+		return
+	_under(held, _spare(held.hold))
+
+
+## Away from the hand that holds that edge (the far half, a far end, or that hand busy): the hand of that
+## side, or the other one, lets go of its edge, and a hand comes up from below, palm up, under the ball.
+func _catch_below(held: Held, side: float, short_end: bool) -> void:
+	var gen: int = _gen
+	var g: Hand = _hand(side) if not _hand(side).off else _hand(-side)
+	if not g.off:
+		g.off = true
+		g.gate = ""
+		_stop(g)
+		g.lean_from_z = g.body.position.z
+		# (A hand already down in the dark, with no room on its edge, just stays there.)
+		if not g.sunk or g.position.y > BELOW + 0.5:
+			_let_go(g)
+		if _hands_off() == 1:
+			_cam.shake(0.3, 0.35)
+		else:
+			_cam.shake(0.7, 0.7)
+	held.hand = g
+	await get_tree().create_timer(0.24).timeout
+	if gen != _gen:
+		return
+	var psi: float = (PI if side > 0.0 else 0.0)
+	if short_end:
+		psi = PI * 0.5 if held.at.z > 0.0 else -PI * 0.5
+	var c: Claw = _make_claw(psi)
+	held.claw = c
+	var palm: Vector3 = held.hold - Vector3(0, 0.95, 0)
+	c.position = palm + Vector3(0, -3.0, 0)
+	# Up along the table's side with its fingers raised, then back onto its wrist, palm up.
+	c.lean.rotation.z = -1.5
+	var t: Tween = _btw()
+	t.tween_property(c, "position", palm, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(c.lean, "rotation:z", 0.0, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(held, "pos", held.hold, 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_callback(_grip.bind(c, true, 0.1))
+	t.tween_interval(0.3)
+	t.tween_property(c, "position", palm + Vector3(0, -10, 0), 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(held, "pos", held.hold + Vector3(0, -10, 0), 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await t.finished
+	if gen != _gen:
+		return
+	_under(held, c)
+
+
+## Over the near end, by the face (K10): the face slides under the ball and comes up a little, the mouth
+## opens before the ball arrives, the ball drops in, the mouth snaps shut and is gone, a small gulp.
+func _catch_mouth(held: Held) -> void:
+	var gen: int = _gen
+	var up_dy: float = -0.85 - EYES_DOWN
+	# Where the mouth will be: down the face's plane, which leans back as the lids do.
+	var tilt: float = -_lids.rotation.x
+	var up := Vector3(held.at.x, -0.85, _eyes.position.z)
+	var into: Vector3 = up + Basis(Vector3.UP, _eyes.rotation.y) * Vector3(0, -1.25 * cos(tilt), 1.25 * sin(tilt))
+	_mouth.visible = true
+	var t: Tween = _btw()
+	t.tween_property(self, "face_x", held.at.x, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(self, "face_dy", up_dy, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(_mouth, "scale:y", 1.0, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(held, "pos:x", into.x, 0.26).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(held, "pos:z", into.z, 0.26).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(held, "pos:y", into.y, 0.42).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_property(_mouth, "scale:y", 0.02, 0.07)
+	await t.finished
+	if gen != _gen:
+		return
+	_mouth.visible = false
+	held.shown = false
+	_cam.shake(0.25, 0.2)
+	var gulp: Tween = _btw()
+	gulp.tween_property(self, "face_dy", up_dy - 0.35, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	gulp.tween_property(self, "face_dy", up_dy, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	gulp.tween_interval(0.14)
+	gulp.tween_property(self, "face_x", 0.0, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	gulp.parallel().tween_property(self, "face_dy", 0.0, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	_under(held, _spare(held.at + Vector3(0, 0, 3.0)))
+
+
+## Caught: under the table and out of sight, with the hand that will bring it back.
+func _under(held: Held, c: Claw) -> void:
+	held.shown = false
+	held.stage = Stage.UNDER
+	held.claw = c
+
+
+## Out of sight under the table, a hand that will bring a ball back.
+func _spare(at: Vector3) -> Claw:
+	var c: Claw = _make_claw(0.0)
+	c.position = Vector3(at.x, -12.0, at.z)
+	for px: Node3D in c.prox:
+		px.rotation.z = 0.36
+	return c
+
+
+# --- the catching and returning hand ---------------------------------------------------------------------
+
+## The hand palm up with its fingers away from the table: before `psi` its fingers point -x and its wrist
+## is 2.0 towards +x; its lean node turns the whole hand about the wrist (-1.5 fingers up, 0 lying back).
+func _make_claw(psi: float) -> Claw:
+	var c := Claw.new()
+	for k: int in 4:
+		var px := Node3D.new()
+		px.rotation.z = -0.7
+		c.add_child(px)
+		c.prox.append(px)
+	var mirror := Node3D.new()
+	c.add_child(mirror)
+	c.spin = Node3D.new()
+	c.spin.rotation.y = psi
+	mirror.add_child(c.spin)
+	c.lean = Node3D.new()
+	c.lean.position = Vector3(2.0, 0, 0)
+	c.spin.add_child(c.lean)
+	c.un = Node3D.new()
+	c.un.position = Vector3(-2.0, 0, 0)
+	c.lean.add_child(c.un)
+	var turn := Node3D.new()
+	turn.rotation.y = PI * 0.5
+	c.un.add_child(turn)
+	c.flip = Node3D.new()
+	c.flip.rotation.z = PI
+	turn.add_child(c.flip)
+	var model: Node3D = _model()
+	model.position = Vector3(0, 0, -0.7)
+	c.flip.add_child(model)
+	var skels: Array[Node] = []
+	_find(model, "Skeleton3D", skels)
+	if not skels.is_empty():
+		c.skel = skels[0] as Skeleton3D
+	add_child(c)
+	_claws.append(c)
+	_pose_claw(c)
+	return c
+
+
+func _free_claw(c: Claw) -> void:
+	if c == null:
+		return
+	_claws.erase(c)
+	c.queue_free()
+
+
+## The fingers: open to closed as the proxies are, and pinch brings the four fingertips together round
+## what is held in front of them; palm down they stay nearly straight and point at one spot, a cone (the
+## start zone's pinch, Marko 2026-11-10), and flat spreads them out.
+func _pose_claw(c: Claw) -> void:
+	if c.skel == null:
+		return
+	var g: float = clampf(inverse_lerp(-0.7, 0.36, c.prox[0].rotation.z), 0.0, 1.0)
+	var pin: float = c.pinch
+	bone(c.skel, "arm1", lerpf(1.1, 0.15, c.up) if c.palm_down else -1.1)
+	bone(c.skel, "arm2", 0.2 if c.palm_down else -0.2)
+	for i: int in 4:
+		if c.palm_down:
+			bone(c.skel, "f%d_1" % i, lerpf(lerpf(0.35, -0.25, pin), 0.05, c.flat), Vector3.RIGHT, (i - 1.5) * lerpf(lerpf(0.04, 0.4, pin), 0.03, c.flat))
+			bone(c.skel, "f%d_2" % i, lerpf(lerpf(-0.1, -0.15, pin), 0.0, c.flat))
+			bone(c.skel, "f%d_3" % i, lerpf(-0.2, 0.0, c.flat))
+			continue
+		var conv: float = (i - 1.5) * PINCH_SPLAY * pin
+		bone(c.skel, "f%d_1" % i, lerpf(lerpf(0.2, -0.5, g), -0.12, pin), Vector3.RIGHT, conv)
+		bone(c.skel, "f%d_2" % i, lerpf(lerpf(-0.2, -0.8, g), -0.3, pin))
+		bone(c.skel, "f%d_3" % i, lerpf(lerpf(-0.2, -0.75, g), -0.45, pin))
+
+
+## The fingers close (or open) in `secs`.
+func _grip(c: Claw, closed_: bool, secs: float) -> void:
+	for px: Node3D in c.prox:
+		var t: Tween = _btw()
+		t.tween_property(px, "rotation:z", 0.36 if closed_ else -0.7, secs)
+
+
+## The hand of the start zone (Marko 2026-11-11: the same hand wherever a ball is brought back): palm down,
+## its fingertips gathered where TIPS is.
+func _palm_down(c: Claw, e: float) -> void:
+	c.spin.rotation.y = -e * PI * 0.5
+	c.flip.rotation.z = 0.0
+	c.palm_down = true
+	c.lean.rotation.z = 0.12
+	c.pinch = 1.0
+	c.flat = 0.0
+	c.up = 0.0
+	if c.tips == null:
+		c.tips = Node3D.new()
+		c.tips.position = TIPS
+		c.un.add_child(c.tips)
+	_pose_claw(c)
+
+
+## Where the fingertips are from the hand's own place (the hand is Bochet's child, not turned).
+func _tips_offset(c: Claw) -> Vector3:
+	return to_local(c.tips.global_position) - c.position
+
+
+## The ball's picture keeps to the fingertips in the same frame as the hand moves: a tween made after the
+## hand's own, which also sets the picture directly (the match sets it before the tweens run).
+func _follow(held: Held, c: Claw) -> void:
+	if held.follow != null and held.follow.is_valid():
+		held.follow.kill()
+	var t: Tween = _btw()
+	t.tween_method(_follow_step.bind(held, c), 0.0, 1.0, 600.0)
+	held.follow = t
+
+
+func _follow_step(_v: float, held: Held, c: Claw) -> void:
+	if not is_instance_valid(c) or c.tips == null:
+		return
+	held.pos = to_local(c.tips.global_position)
+	if _views.has(held.id) and is_instance_valid(_views[held.id]):
+		_views[held.id].global_position = c.tips.global_position
+
+
+func _unfollow(held: Held) -> void:
+	if held.follow != null and held.follow.is_valid():
+		held.follow.kill()
+	held.follow = null
+
+
+## One move without a stop: up beside the table first, and over its edge only once the ball is above the top.
+func _pinch_path(k: float, c: Claw, low: Vector3, hover: Vector3) -> void:
+	var up: float = 1.0 - pow(1.0 - k, 3.0)
+	var over: float = smoothstep(0.5, 1.0, k)
+	c.position = Vector3(hover.x, lerpf(low.y, hover.y, up), lerpf(low.z, hover.z, over))
+
+
+# --- bringing back -------------------------------------------------------------------------------------
+
+## When every catch is done and nothing rolls, and the rules have put the balls back on their strips, the
+## hands bring them back, two at a time (both hands); a ball its ring-out knocked out stays in the dark.
+func _bring_back() -> void:
+	if _returning or _held.is_empty() or _any_moving():
+		return
+	var ready: Array[Held] = []
+	for held: Held in _held.values():
+		if held.stage == Stage.CATCHING:
+			return
+		if held.stage != Stage.UNDER:
+			continue
+		var h: HeroState = _state.hero(held.id)
+		if h == null or not _bodies.has(held.id):
+			continue
+		if _area(_bodies[held.id].global_position) == BallWorld.Area.VOID and not h.is_ko():
+			# The rules have not put it back yet (the roll is not over for them).
+			continue
+		if h.is_on_map():
+			# Back on the map by some other way: nothing to bring back.
+			_release(held.id)
+			continue
+		ready.append(held)
+	if not ready.is_empty():
+		_return_batch(ready)
+
+
+func _return_batch(ready: Array[Held]) -> void:
+	var gen: int = _gen
+	_returning = true
+	await get_tree().create_timer(0.3).timeout
+	if gen != _gen:
+		return
+	var gone: Array[Held] = []
+	for held: Held in ready:
+		var h: HeroState = _state.hero(held.id)
+		if held.gone or (h != null and h.is_ko()):
+			gone.append(held)
+	if not gone.is_empty():
+		_keep_sign()
+	for held: Held in gone:
+		_keep_it(held)
+	var n: int = 0
+	for held: Held in ready:
+		if gone.has(held):
+			continue
+		if n > 0 and n % 2 == 0:
+			await get_tree().create_timer(1.15).timeout
+			if gen != _gen:
+				return
+		n += 1
+		if _held.get(held.id) == held:
+			_return_one(held)
+	while true:
+		var busy: bool = false
+		for held: Held in _held.values():
+			if held.stage == Stage.BACK:
+				busy = true
+		if not busy:
+			break
+		await get_tree().process_frame
+		if gen != _gen:
+			return
+	await get_tree().create_timer(1.5).timeout
+	if gen != _gen:
+		return
+	_returning = false
+	_hands_home()
+
+
+## The hands a catch took off their edges come back up, those no ball still needs.
+func _hands_home() -> void:
+	for h: Hand in _hands:
+		if not h.off:
+			continue
+		var used: bool = false
+		for held: Held in _held.values():
+			if held.hand == h:
+				used = true
+		if not used:
+			_rest_hand(h)
+
+
+## Up at the ball's start zone with the ball, set down on its spot, and away; held over the spot while its
+## player chooses what the ring-out costs.
+func _return_one(held: Held) -> void:
+	var gen: int = _gen
+	held.stage = Stage.BACK
+	var target: Vector3 = to_local(_bodies[held.id].global_position)
+	var place: Vector3 = await _pinch_in(held, target, HOLD_LIFT)
+	if gen != _gen or _held.get(held.id) != held:
+		return
+	await _hold_wait(held)
+	if gen != _gen or _held.get(held.id) != held:
+		return
+	var hero: HeroState = _state.hero(held.id)
+	if held.gone or (hero != null and hero.is_ko()):
+		await _take_down(held)
+		return
+	await _pinch_out(held, target, place)
+
+
+## The start zone's hand, the ball in its fingertips: up outside the edge of the ball's start zone and over
+## it to `lift` above the spot (Marko 2026-11-11). Returns where the hand is when the ball is on its spot.
+func _pinch_in(held: Held, target: Vector3, lift: float) -> Vector3:
+	var gen: int = _gen
+	var c: Claw = held.claw
+	if c == null:
+		c = _spare(target)
+		held.claw = c
+	var e: float = 1.0 if target.z >= 0.0 else -1.0
+	_palm_down(c, e)
+	# (Worked out where the hand is, down in the dark: it must not show anywhere while the eyes step aside.)
+	var place: Vector3 = target - _tips_offset(c)
+	var hover: Vector3 = place + Vector3(0, lift, 0)
+	if e > 0.0 and absf(target.x - face_x) < EYES_ASIDE:
+		_aside(target.x)
+		held.set_meta("aside", true)
+		# The eyes first, then the hand: it comes up where they were.
+		await get_tree().create_timer(0.2).timeout
+		if gen != _gen:
+			return place
+	# Beside the table the ball is clear of its side by more than its own half.
+	var out: float = maxf(_ext.y + 1.3 - absf(target.z), 0.0)
+	var low := Vector3(hover.x, hover.y - 6.5, hover.z + e * out)
+	held.hover = hover
+	held.low = low
+	c.position = low
+	held.pos = to_local(c.tips.global_position)
+	# The ball shows once the fingers that hold it are out of the dark: it must not hang there alone.
+	held.shown = false
+	var t: Tween = _btw()
+	t.tween_method(_pinch_path.bind(c, low, hover), 0.0, 1.0, 0.5)
+	t.parallel().tween_callback(func() -> void: held.shown = true).set_delay(0.06)
+	_follow(held, c)
+	await t.finished
+	return place
+
+
+## Down onto the spot, let go, and away the chosen way (Marko 2026-11-11): back into the upright flat hand
+## outside the edge and straight down, without a stop.
+func _pinch_out(held: Held, target: Vector3, place: Vector3) -> void:
+	var gen: int = _gen
+	var c: Claw = held.claw
+	var e: float = 1.0 if target.z >= 0.0 else -1.0
+	var stand := Vector3(place.x, -1.9, e * (_ext.y + 0.8))
+	var t: Tween = _btw()
+	t.tween_property(c, "position", place, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_callback(_set_down.bind(held, target))
+	t.tween_property(c, "pinch", 0.0, 0.1)
+	t.tween_callback(_ring.bind(Vector3(target.x, 0.1, target.z)))
+	t.tween_property(c.lean, "rotation:z", -1.5, 0.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(c, "flat", 1.0, 0.17)
+	t.parallel().tween_property(c, "up", 1.0, 0.25)
+	t.parallel().tween_property(c, "position", stand, 0.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	t.tween_property(c, "position", stand + Vector3(0, -8.0, 0), 0.25).set_trans(Tween.TRANS_LINEAR)
+	_follow(held, c)
+	await t.finished
+	if gen != _gen:
+		return
+	if held.has_meta("aside"):
+		# The hand is gone: the eyes come back.
+		_aside_end()
+	_free_claw(c)
+
+
+## On its spot: the picture is the ball's own again.
+func _set_down(held: Held, _target: Vector3) -> void:
+	_unfollow(held)
+	if _held.get(held.id) == held:
+		_held.erase(held.id)
+
+
+## Held over its spot until the cost of the ring-out is settled, swaying a little (Marko 2026-11-10); damage
+## is a squeeze with the number, a faint white blink (W3) and a hard shake.
+func _hold_wait(held: Held) -> void:
+	var gen: int = _gen
+	var c: Claw = held.claw
+	var clock: float = 0.0
+	while ring_pending(_state, held.id):
+		clock += get_process_delta_time()
+		c.position = held.hover + Vector3(sin(clock * 2.6) * 0.1, sin(clock * 4.2) * 0.12, 0)
+		await get_tree().process_frame
+		if gen != _gen or _held.get(held.id) != held:
+			return
+	c.position = held.hover
+	var hero: HeroState = _state.hero(held.id)
+	if hero == null or hero.hp >= held.hp0 or not _views.has(held.id):
+		return
+	var bv: BallView = _views[held.id]
+	var s0: Vector3 = bv.scale
+	bv.float_text("-%d" % (held.hp0 - hero.hp), BallView.HIT_TINT)
+	held.hp0 = hero.hp
+	_cam.shake(0.3, 0.5)
+	var q: Tween = _btw()
+	q.tween_property(c, "pinch", 1.35, 0.09)
+	q.parallel().tween_property(bv, "scale", Vector3(s0.x * 0.8, s0.y * 1.16, s0.z * 0.8), 0.09)
+	q.tween_callback(bv.flash_faint)
+	q.tween_interval(0.12)
+	for i: int in 7:
+		var amp: float = 0.6 * (1.0 - i / 9.0)
+		var sx: float = amp if i % 2 == 0 else -amp
+		q.tween_property(c, "position", held.hover + Vector3(sx, 0.22 if i % 2 == 0 else -0.12, 0), 0.07).set_trans(Tween.TRANS_SINE)
+	q.tween_property(c, "position", held.hover, 0.08)
+	q.tween_property(c, "pinch", 1.0, 0.1)
+	q.parallel().tween_property(bv, "scale", s0, 0.1)
+	q.tween_interval(0.15)
+	_follow(held, c)
+	await q.finished
+
+
+## Its ring-out knocked it out (KO7, Marko 2026-11-10): the hand takes it back down into the dark and does
+## not bring it back; the eyes narrow.
+func _take_down(held: Held) -> void:
+	var gen: int = _gen
+	var c: Claw = held.claw
+	var t: Tween = _btw()
+	t.tween_method(_pinch_path.bind(c, held.low, held.hover), 1.0, 0.0, 0.45)
+	_follow(held, c)
+	await t.finished
+	if gen != _gen:
+		return
+	_keep_sign()
+	_keep_it(held)
+
+
+## Kept in the dark for good: the match hides the ball.
+func _keep_it(held: Held) -> void:
+	_unfollow(held)
+	held.shown = false
+	if held.has_meta("aside"):
+		_aside_end()
+	_free_claw(held.claw)
+	held.claw = null
+	if _held.get(held.id) == held:
+		_held.erase(held.id)
+	kept.emit(held.id)
+
+
+## The small sign: the eyes narrow and the face bobs in a short chuckle.
+func _keep_sign() -> void:
+	var t: Tween = _btw()
+	t.tween_interval(0.25)
+	t.tween_property(self, "squint", 1.0, 0.18)
+	for i: int in 3:
+		t.tween_property(self, "face_dy", face_dy + 0.18, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.tween_property(self, "face_dy", face_dy, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_interval(0.55)
+	t.tween_property(self, "squint", 0.0, 0.2)
+
+
+## Its picture is the ball's own again, at once (thrown again while held, or the state jumped).
+func _release(id: String) -> void:
+	if not _held.has(id):
+		return
+	var held: Held = _held[id]
+	_unfollow(held)
+	if held.has_meta("aside"):
+		_aside_end()
+	_free_claw(held.claw)
+	_held.erase(id)
+	if held.hand != null:
+		held.hand.holding.erase(held)
+	_hands_home()
+
+
+## Whether the player is still to choose what this ball's ring-out costs (damage, or a card instead).
+static func ring_pending(state: GameState, hero_id: String) -> bool:
+	for d: Dictionary in state.pending:
+		if str(d.get("type", "")) == RulesEngine.DECISION_DAMAGE and JsonUtil.as_bool(d.get("ring_out", false)) \
+				and JsonUtil.as_strings(d.get("targets", [])).has(hero_id):
+			return true
+	return false
+
+
+## A gold ring that spreads and fades where a ball has been set down.
+func _ring(at: Vector3) -> void:
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.5
+	torus.outer_radius = 0.62
+	ring.mesh = torus
+	ring.material_override = MeshKit.unshaded(Palette.GOLD, false)
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(ring)
+	ring.position = at
+	var rt: Tween = ring.create_tween().set_parallel(true)
+	rt.tween_property(ring, "scale", Vector3.ONE * 3.0, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	rt.tween_property(ring, "transparency", 1.0, 0.4)
+	rt.chain().tween_callback(ring.queue_free)
+
+
+## The face steps aside along the near edge for a hand that comes up by it, and back when none is there.
+func _aside(x: float) -> void:
+	_aside_n += 1
+	var t: Tween = _btw()
+	t.tween_property(self, "face_x", x + EYES_ASIDE_TO, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+func _aside_end() -> void:
+	_aside_n = maxi(0, _aside_n - 1)
+	if _aside_n == 0:
+		var t: Tween = _btw()
+		t.tween_property(self, "face_x", 0.0, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+
+
+# --- a ball that stops in a start zone ---------------------------------------------------------------------
+
+## A ball that stopped in a start zone (Marko 2026-11-10/11): the hand of that side lets go of its edge, the
+## start zone's hand comes over the edge palm down, gathers its fingers on the ball where it lies, carries it
+## to its spot and holds it there while its player chooses; from the other side's zone it takes it back over
+## that edge into the dark and brings it up at its own.
+func _pick_up(id: String, from: Vector3, target: Vector3, hp0: int) -> void:
+	var gen: int = _gen
+	var held := Held.new()
+	held.id = id
+	held.pos = from
+	held.at = from
+	held.stage = Stage.BACK
+	held.spot = target
+	held.hp0 = hp0
+	_held[id] = held
+	var ef: float = 1.0 if from.z >= 0.0 else -1.0
+	var side: float = 1.0 if from.x >= 0.0 else -1.0
+	var h: Hand = _hand(side)
+	if not h.off:
+		h.off = true
+		h.gate = ""
+		_stop(h)
+		h.lean_from_z = h.body.position.z
+		if not h.sunk or h.position.y > BELOW + 0.5:
+			_let_go(h)
+	held.hand = h
+	_cam.shake(0.3, 0.35)
+	if ef > 0.0 and absf(from.x - face_x) < EYES_ASIDE:
+		_aside(from.x)
+		held.set_meta("aside", true)
+	await get_tree().create_timer(0.5).timeout
+	if gen != _gen or _held.get(id) != held:
+		return
+	var c: Claw = _make_claw(0.0)
+	held.claw = c
+	_palm_down(c, ef)
+	c.pinch = 0.0
+	var off: Vector3 = _tips_offset(c)
+	var pick: Vector3 = from - off
+	var up := Vector3(0, HOLD_LIFT, 0)
+	c.position = pick + Vector3(0, -5.5, ef * 2.4)
+	var t: Tween = _btw()
+	t.tween_property(c, "position", pick + Vector3(0, 0.9, 0), 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(c, "position", pick, 0.1)
+	t.tween_property(c, "pinch", 1.0, 0.1)
+	t.tween_callback(_follow.bind(held, c))
+	t.tween_interval(0.1)
+	t.tween_property(c, "position", pick + up, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await t.finished
+	if gen != _gen or _held.get(id) != held:
+		return
+	var place: Vector3 = target - off
+	if (from.z >= 0.0) != (target.z >= 0.0):
+		# Back over the edge it came over, and down into the dark with the ball: the way in, run backwards.
+		var top: Vector3 = pick + up
+		var out: float = maxf(_ext.y + 1.3 - absf(from.z), 0.0)
+		var low := Vector3(top.x, top.y - 6.5, top.z + ef * out)
+		var d: Tween = _btw()
+		d.tween_method(_pinch_path.bind(c, low, top), 1.0, 0.0, 0.45)
+		_follow(held, c)
+		await d.finished
+		if gen != _gen or _held.get(id) != held:
+			return
+		held.shown = false
+		_unfollow(held)
+		if held.has_meta("aside"):
+			held.remove_meta("aside")
+			_aside_end()
+		await get_tree().create_timer(0.3).timeout
+		if gen != _gen or _held.get(id) != held:
+			return
+		place = await _pinch_in(held, target, HOLD_LIFT)
+		if gen != _gen or _held.get(id) != held:
+			return
+	else:
+		held.hover = place + up
+		held.low = Vector3(held.hover.x, held.hover.y - 6.5, held.hover.z + ef * maxf(_ext.y + 1.3 - absf(target.z), 0.0))
+		var carry: Tween = _btw()
+		carry.tween_property(c, "position", held.hover, 0.36).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		_follow(held, c)
+		await carry.finished
+		if gen != _gen or _held.get(id) != held:
+			return
+	await _hold_wait(held)
+	if gen != _gen or _held.get(id) != held:
+		return
+	var hero: HeroState = _state.hero(id)
+	if held.gone or (hero != null and hero.is_ko()):
+		await _take_down(held)
+	else:
+		await _pinch_out(held, target, place)
+	if gen != _gen:
+		return
+	_hands_home()
+
+
 # --- coming up ----------------------------------------------------------------------------------------
 
 ## At once: on the edges with its eyes open (shown), or out of sight below the table with its eyes shut.
+## Every ball's picture is its own again.
 func _snap(shown: bool) -> void:
+	_gen += 1
 	if _entry != null and _entry.is_valid():
 		_entry.kill()
+	for t: Tween in _tweens:
+		if t.is_valid():
+			t.kill()
+	_tweens.clear()
+	for c: Claw in _claws:
+		c.queue_free()
+	_claws.clear()
+	_held.clear()
+	_returning = false
 	_shown = shown
 	_entering = false
 	closed = 0.0 if shown else 1.0
+	squint = 0.0
+	face_x = 0.0
+	face_dy = 0.0
+	_aside_n = 0
 	_eyes.visible = shown
+	_mouth.visible = false
+	_mouth.scale.y = 0.02
 	_eyes_placed = false
 	for h: Hand in _hands:
-		for t: Tween in h.tweens:
-			if t.is_valid():
-				t.kill()
-		h.tweens.clear()
+		_stop(h)
 		h.position = Vector3(h.side * _ext.x, 0.0 if shown else BELOW, _ext.y * HOME)
 		h.hang = 0.0 if shown else 1.0
 		h.straight = 0.0 if shown else 1.0
+		h.lean = 0.0
+		h.close = 0.0
 		h.home_z = h.position.z
 		h.at_z = h.home_z
 		h.body.position.z = 0.0
+		h.lean_from_z = 0.0
 		for k: int in h.fingers.size():
 			var fin: Node3D = h.fingers[k]
 			fin.position = Vector3(0, 0, (k - 1.5) * FINGER_GAP)
@@ -628,6 +1760,12 @@ func _snap(shown: bool) -> void:
 		h.busy = false
 		h.hanging = not shown
 		h.sunk = not shown
+		h.off = false
+		h.gate = ""
+		h.leaning = false
+		h.holding.clear()
+		h.open_for = false
+		h.joiners = 0
 		h.visible = shown
 		_pose(h)
 
@@ -670,7 +1808,7 @@ func _raise_hands() -> void:
 
 ## Two flat round eyes in a plane that leans back (the lids node, which also squashes to blink), each with
 ## an iris and a slit pupil that slide inside it, a slanted lid across the top, lower towards the middle,
-## and a thin brow under the lid (the O8 eyes).
+## and a thin brow under the lid (the O8 eyes); under them a mouth, shut and gone until a ball comes by.
 func _make_eyes() -> Node3D:
 	var root := Node3D.new()
 	root.name = "Eyes"
@@ -696,6 +1834,27 @@ func _make_eyes() -> Node3D:
 		_flat(eye, lid, LID, 0.06)
 		_flat(eye, PackedVector2Array([Vector2(-1.25 * e, lo - slope * 1.25 - 0.09), Vector2(1.25 * e, lo + slope * 1.25 - 0.09),
 			Vector2(1.25 * e, lo + slope * 1.25 + 0.05), Vector2(-1.25 * e, lo - slope * 1.25 + 0.05)]), BROW, 0.07)
+	# The mouth (K10): a dark lens with a row of teeth above and below, in the same plane as the eyes.
+	_jaw = Node3D.new()
+	_jaw.rotation.x = -0.95
+	root.add_child(_jaw)
+	_mouth = Node3D.new()
+	_mouth.position = Vector3(0, -1.25, 0)
+	_jaw.add_child(_mouth)
+	var half: float = 2.9
+	var depth: float = 1.0
+	_flat(_mouth, lens(Vector2(-half - 0.3, 0), Vector2(half + 0.3, 0), depth + 0.22, 12), Color(EYE, 0.2), -0.03)
+	_flat(_mouth, lens(Vector2(-half, 0), Vector2(half, 0), depth, 12), MOUTH, 0.0)
+	for i: int in 7:
+		var x: float = (i - 3) * 0.74
+		var edge: float = depth * sin(PI * (x + half) / (half * 2.0))
+		_flat(_mouth, PackedVector2Array([Vector2(x - 0.3, edge), Vector2(x + 0.3, edge), Vector2(x, edge - 0.58)]), TOOTH, 0.03)
+		if i < 6:
+			var xl: float = x + 0.37
+			var el: float = depth * sin(PI * (xl + half) / (half * 2.0))
+			_flat(_mouth, PackedVector2Array([Vector2(xl - 0.28, -el), Vector2(xl + 0.28, -el), Vector2(xl, -el + 0.5)]), TOOTH, 0.03)
+	_mouth.scale.y = 0.02
+	_mouth.visible = false
 	return root
 
 
@@ -751,14 +1910,15 @@ static func _arc(a: Vector2, b: Vector2, depth: float, n: int) -> PackedVector2A
 
 ## A2 (Marko 2026-11-11): the eyes stay by the viewer's seat and turn to the camera, and stand out from the
 ## edge as far as it takes for the camera to see both eyes and the mouth's place whole past the table:
-## close from the home view, further out as the view turns away. Out at once, back in eased.
+## close from the home view, further out as the view turns away. Out at once, back in eased. Aside along
+## the edge (face_x) and lifted (face_dy) as the mouth and the hands need.
 func _place_eyes(delta: float) -> void:
 	var view: Camera3D = get_viewport().get_camera_3d()
 	if view == null:
 		return
 	var from: Vector3 = to_local(view.global_position)
 	var want: float = eyes_out(from)
-	while want < EYES_FURTHEST and not eyes_seen(Vector3(_eyes.position.x, EYES_DOWN, _ext.y + want), from, _ext):
+	while want < EYES_FURTHEST and not eyes_seen(Vector3(face_x, EYES_DOWN, _ext.y + want), from, _ext):
 		want += 0.2
 	var now: float = _eyes.position.z - _ext.y
 	if not _eyes_placed or want > now:
@@ -766,10 +1926,11 @@ func _place_eyes(delta: float) -> void:
 	else:
 		now = lerpf(now, want, clampf(delta * 10.0, 0.0, 1.0))
 	_eyes_placed = true
-	_eyes.position = Vector3(_eyes.position.x, EYES_DOWN, _ext.y + now)
+	_eyes.position = Vector3(face_x, EYES_DOWN + face_dy, _ext.y + now)
 	var to: Vector3 = from - _eyes.position
 	_eyes.rotation.y = atan2(to.x, to.z)
 	_lids.rotation.x = -atan2(to.y, Vector2(to.x, to.z).length())
+	_jaw.rotation.x = _lids.rotation.x
 
 
 ## How far out from the near edge the eyes would stand for a camera at `from` (in Bochet's own space):
@@ -808,16 +1969,22 @@ static func _over_table(pt: Vector3, from: Vector3, ext: Vector2) -> bool:
 	return absf(hit.x) < ext.x + 0.3 and absf(hit.z) < ext.y + 0.3
 
 
-## Where the eyes look: at a ball that rolls (pupils wide), else at the ball of the hero whose turn it is;
-## and they blink now and then.
+## Where the eyes look: at a ball being caught or one that rolls (pupils wide), else at the ball of the
+## hero whose turn it is; they blink now and then, and narrow (squint) at a ball they keep, looking down.
 func _drive_eyes(delta: float, state: GameState, bodies: Dictionary[String, BallBody]) -> void:
 	var want := Vector2(0, 0.18)
 	var busy: bool = false
-	for b: BallBody in bodies.values():
-		if b.visible and b.motion == BallBody.Motion.MOVING:
-			want = _look_at(b.global_position)
+	for held: Held in _held.values():
+		if held.stage == Stage.CATCHING:
+			want = _look_at(to_global(held.pos))
 			busy = true
 			break
+	if not busy:
+		for b: BallBody in bodies.values():
+			if b.visible and b.motion == BallBody.Motion.MOVING and not _held.has(b.ball_id):
+				want = _look_at(b.global_position)
+				busy = true
+				break
 	if not busy:
 		var id: String = str(state.active.get(state.to_act, ""))
 		if bodies.has(id):
@@ -825,6 +1992,8 @@ func _drive_eyes(delta: float, state: GameState, bodies: Dictionary[String, Ball
 			if wb.visible:
 				want = _look_at(wb.global_position)
 	_look = _look.lerp(want, clampf(delta * 9.0, 0.0, 1.0))
+	if squint > 0.01:
+		_look = _look.lerp(Vector2(0, -0.3), squint * 0.6)
 	_wide = lerpf(_wide, 0.5 if busy else 0.22, clampf(delta * 8.0, 0.0, 1.0))
 	_blink_in -= delta
 	if _blink_in <= 0.0:
@@ -832,7 +2001,7 @@ func _drive_eyes(delta: float, state: GameState, bodies: Dictionary[String, Ball
 		_blink = 0.2
 	_blink = maxf(0.0, _blink - delta)
 	var shut: float = 1.0 - absf(_blink - 0.1) / 0.1 if _blink > 0.0 else 0.0
-	_lids.scale.y = lerpf(1.0, 0.06, shut) * lerpf(1.0, 0.05, closed)
+	_lids.scale.y = lerpf(1.0, 0.06, shut) * lerpf(1.0, 0.4, squint) * lerpf(1.0, 0.05, closed)
 	for i: int in _irises.size():
 		_irises[i].position = Vector3(_look.x * 0.8, _look.y * 0.8, 0.02)
 		_pupils[i].position = Vector3(_look.x, _look.y, 0.04)
@@ -844,24 +2013,3 @@ func _look_at(p: Vector3) -> Vector2:
 	var loc: Vector3 = _eyes.global_transform.affine_inverse() * p
 	var d := Vector2(loc.x, -loc.z)
 	return d.normalized() * 0.4 * clampf(d.length() / 6.0, 0.0, 1.0)
-
-
-# --- balls off the table ------------------------------------------------------------------------------
-
-## How far a ball's picture has dropped into the dark under the table (0 or less): off the table it falls
-## DROP_DEPTH in DROP_TIME; back on the table (the rules put it on its strip) it is there at once. Only the
-## picture: the ball itself lies where the physics has it.
-func drop(id: String, pos: Vector3, delta: float) -> float:
-	if _arena.area_at(_arena.to_local(pos)) != BallWorld.Area.VOID:
-		_drops.erase(id)
-		return 0.0
-	var t: float = _drops.get(id, 0.0)
-	t = minf(t + delta, DROP_TIME)
-	_drops[id] = t
-	return -DROP_DEPTH * (t / DROP_TIME) * (t / DROP_TIME)
-
-
-## A ball that has dropped all the way: no longer to be seen.
-func dropped(id: String) -> bool:
-	var t: float = _drops.get(id, 0.0)
-	return t >= DROP_TIME

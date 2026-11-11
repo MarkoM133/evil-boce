@@ -276,6 +276,24 @@ func hit(amount: int) -> void:
 		float_text("-%d" % amount, HIT_TINT)
 
 
+## A faint white blink of the whole shell: Evil Bochet squeezes a ball he holds (W3, Marko 2026-11-10;
+## not the red of hit(): the ball must not flare up in his hand).
+func flash_faint() -> void:
+	for m: StandardMaterial3D in [_top_mat, _bottom_mat]:
+		var was: Color = m.emission
+		var was_on: bool = m.emission_enabled
+		m.emission_enabled = true
+		m.emission = Color.WHITE
+		m.emission_energy_multiplier = 0.0
+		var t: Tween = create_tween()
+		t.tween_property(m, "emission_energy_multiplier", 0.5, 0.05)
+		t.tween_property(m, "emission_energy_multiplier", 0.1, 0.09)
+		t.tween_property(m, "emission_energy_multiplier", 0.0, 0.14)
+		t.tween_callback(func() -> void:
+			m.emission = was
+			m.emission_enabled = was_on)
+
+
 ## A number or word that rises from the ball and fades (damage, "RING-OUT", heals).
 func float_text(text: String, color: Color) -> void:
 	var l := Label3D.new()
