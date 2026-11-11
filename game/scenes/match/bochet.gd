@@ -87,8 +87,28 @@ const TIPS := Vector3(-3.3, -1.8, 0)
 const HOLD_LIFT: float = 1.5
 ## How far the fingers of a catching palm turn in towards each other in a pinch.
 const PINCH_SPLAY: float = 0.22
+## The KO hole (KO4–KO6, Marko 2026-11-10): its rim and the dark in it, and the fingers that come up out
+## of it (four round the ball, no palm or arm), faceted like the hands.
+const HOLE_RIM := Color("5a37a8")
+const HOLE_DARK := Color("040203")
+const KO_SKIN := Color("1f1535")
+const KO_NAIL := Color("e9dcbd")
+const KO_NAIL_RIM := Color("ffd9a0")
+## A finger of the KO hand, piece by piece: lengths, how far each piece keeps from the ball (its thick
+## end), and the open pose (the finger's lean, then the bend at each joint), narrow and as wide as the hole
+## has room for.
+const WRAP_LENS: Array[float] = [0.8, 0.65, 0.45, 0.5, 0.475]
+const WRAP_THICK: Array[float] = [0.47, 0.42, 0.37, 0.29, 0.14]
+const WRAP_OPEN: Array[float] = [-0.22, 0.35, 0.4, 0.3, 0.18]
+const WRAP_WIDE: Array[float] = [-0.4, 0.16, 0.22, 0.22, 0.14]
+## The KO grip slows the game to this for this long, real time (Marko 2026-11-11: "Usporeno"; Settings →
+## Slow motion).
+const KO_SLOW_SCALE: float = 0.35
+const KO_SLOW_TIME: float = 0.4
+## Leaving at the end of a match, this much slower than the hands let go during it (Marko 2026-11-11: R4).
+const LEAVE_SLOW: float = 1.55
 
-enum Stage { CATCHING, UNDER, BACK }
+enum Stage { CATCHING, UNDER, BACK, KO }
 
 ## Faceted and rim-lit, coloured by the model's vertices; whatever hangs below the table fades into the dark.
 const SKIN_SHADER: String = """shader_type spatial;
@@ -122,6 +142,34 @@ void fragment() {
 """
 
 static var _skin_shader: Shader
+
+## The KO hand's pieces: one colour, faceted, rim-lit; below the table it fades into the dark round it.
+const FLAT_SHADER: String = """shader_type spatial;
+render_mode depth_draw_always;
+uniform vec3 base : source_color;
+uniform vec3 rim : source_color;
+uniform float rim_amt = 0.6;
+varying float wy;
+void vertex() {
+	wy = (MODEL_MATRIX * vec4(VERTEX, 1.0)).y;
+}
+void fragment() {
+	vec3 n = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
+	if (dot(n, VIEW) < 0.0) {
+		n = -n;
+	}
+	NORMAL = n;
+	float fade = smoothstep(-0.4, -4.5, wy);
+	ALBEDO = mix(base, vec3(0.012, 0.009, 0.008), fade);
+	ROUGHNESS = 0.75;
+	SPECULAR = 0.25;
+	ALPHA = 1.0;
+	float f = pow(1.0 - clamp(dot(n, VIEW), 0.0, 1.0), 3.0);
+	EMISSION = (rim * f * rim_amt + base * 0.1) * (1.0 - fade);
+}
+"""
+
+static var _flat_shader: Shader
 
 
 ## One hand on a long edge: side -1 the left one, +1 the right one, in the blue seat's view.
@@ -255,6 +303,15 @@ var _returning: bool = false
 var _gen: int = 0
 ## Its own tweens (the balls' pictures, the face), so that _snap can stop them.
 var _tweens: Array[Tween] = []
+## Balls going down a KO hole now, and the holes and hands of those (freed by _snap).
+var _dying: Dictionary[String, bool] = {}
+var _ko_nodes: Array[Node3D] = []
+## The KO grip slows the game a moment (the match sets it from Settings → Slow motion), and whether it
+## has the game slowed now (put right if Bochet goes in the middle of it).
+var slow_ko: bool = true
+var _slowing: bool = false
+## Gone at the end of the match (leave): nothing more happens.
+var _left: bool = false
 
 
 ## Bochet for this table, seen from the red seat or the blue one; null when its model is not in the data
@@ -306,7 +363,7 @@ func tick(delta: float, state: GameState, bodies: Dictionary[String, BallBody], 
 		_pose_claw(c)
 	_place_eyes(delta)
 	_drive_eyes(delta, state, bodies)
-	if _entering:
+	if _entering or _left:
 		return
 	_watch()
 	for h: Hand in _hands:
@@ -366,7 +423,7 @@ func taken_off(id: String, from: Vector3, state: GameState, hp: int) -> bool:
 func reset() -> void:
 	var gone: Array[String] = []
 	for held: Held in _held.values():
-		if held.gone:
+		if held.gone or held.stage == Stage.KO:
 			gone.append(held.id)
 	_snap(_shown)
 	for id: String in gone:
@@ -376,6 +433,73 @@ func reset() -> void:
 ## Where on the table a point is: the map, a start strip, or off it all.
 func _area(global: Vector3) -> BallWorld.Area:
 	return _arena.area_at(_arena.to_local(global))
+
+
+## Whether he can take a knocked-out hero's ball down a hole now (he is on the table, it is not in a hand).
+func can_take(id: String) -> bool:
+	return _shown and not _entering and not _left and not _held.has(id) and _bodies.has(id)
+
+
+## A hero knocked out where its ball stands (not in a hand of his): a hole opens under the ball and his
+## claws take it down (_ko_hole); `kept` when it is gone. False when he leaves it be (the match shatters it).
+func ko_hole(id: String) -> bool:
+	if not can_take(id):
+		return false
+	var b: BallBody = _bodies[id]
+	var held := Held.new()
+	held.id = id
+	held.at = to_local(b.global_position)
+	held.pos = held.at
+	held.stage = Stage.KO
+	_held[id] = held
+	_dying[id] = true
+	_ko_hole(held, b)
+	return true
+
+
+## Taking a knocked-out ball down now (a hole open, or one kept in a hand on its way into the dark).
+func ko_busy() -> bool:
+	if not _dying.is_empty():
+		return true
+	for held: Held in _held.values():
+		if held.gone:
+			return true
+	return false
+
+
+## The match is over (Marko 2026-11-11: N1, R4): the eyes shut and are gone, both hands let go of the edges
+## the chosen way and sink into the dark, the right a moment after the left, all LEAVE_SLOW slower.
+func leave() -> void:
+	if not _shown or _left:
+		return
+	_left = true
+	_entering = false
+	if _entry != null and _entry.is_valid():
+		_entry.kill()
+	var s: float = LEAVE_SLOW
+	var et: Tween = _btw()
+	et.tween_property(self, "closed", 1.0, 0.3 * s)
+	et.tween_callback(func() -> void: _eyes.visible = false)
+	for h: Hand in _hands:
+		if h.position.y < BELOW + 0.5:
+			# Down in the dark already (caught a ball, or no room on its edge).
+			continue
+		_stop(h)
+		h.busy = true
+		var t: Tween = _tw(h, h)
+		t.tween_interval(0.2 * s + (0.12 if h.side > 0.0 else 0.0))
+		t.tween_property(h, "hang", 1.0, 0.16 * s)
+		t.parallel().tween_property(h, "straight", 1.0, 0.16 * s)
+		t.parallel().tween_property(h, "position:y", 1.0, 0.16 * s)
+		t.tween_interval(0.1 * s)
+		t.tween_property(h, "position:y", BELOW, 0.22 * s).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
+
+func _exit_tree() -> void:
+	# The KO grip's slow motion must not outlive him (the match left in the middle of it).
+	if _slowing:
+		Engine.time_scale = 1.0
+		_slowing = false
 
 
 # --- the hands -------------------------------------------------------------------------------------
@@ -1714,6 +1838,221 @@ func _pick_up(id: String, from: Vector3, target: Vector3, hp0: int) -> void:
 	_hands_home()
 
 
+# --- a hero knocked out ---------------------------------------------------------------------------------
+
+## KO4 (Marko 2026-11-10): a hole opens in the table under the ball, the fingers come up out of it round
+## the ball and close on it (the game slows a moment), and pull it down with its figure; the hole shuts.
+## KO5: next to another ball the hole is only as wide as there is room for (half the way to a ball that
+## goes down too), the hand as big as the hole but never smaller than the ball needs. KO6: two at once,
+## a hole and a hand each.
+func _ko_hole(held: Held, b: BallBody) -> void:
+	var gen: int = _gen
+	var at: Vector3 = held.at
+	var r: float = b.radius()
+	var space: float = b.tuning.hex_spacing()
+	var rad: float = space
+	for ob: BallBody in _bodies.values():
+		if ob == b or not ob.visible:
+			continue
+		var op: Vector3 = to_local(ob.global_position)
+		var od: float = Vector2(op.x - at.x, op.z - at.z).length()
+		if od > space * 3.0:
+			continue
+		var room: float = od * 0.5 - 0.05 if _dying.has(ob.ball_id) else od - ob.radius() - 0.05
+		rad = minf(rad, room / 1.22)
+	rad = hole_radius(space, r, rad)
+	var hole := Node3D.new()
+	add_child(hole)
+	_ko_nodes.append(hole)
+	hole.position = Vector3(at.x, 0.06, at.z)
+	hole.rotation.x = -PI * 0.5
+	# Over a stage's board too (it is drawn without depth at priority 2).
+	var sizes: Array[float] = [1.22, 1.07, 1.0]
+	var cols: Array[Color] = [Color(RIM, 0.3), HOLE_RIM, HOLE_DARK]
+	var zs: Array[float] = [-0.01, -0.005, 0.0]
+	for i: int in sizes.size():
+		var mi: MeshInstance3D = _flat(hole, disc(Vector2.ZERO, rad * sizes[i], 30), cols[i], zs[i])
+		var m := mi.material_override as StandardMaterial3D
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.render_priority = 3
+	hole.scale = Vector3.ONE * 0.05
+	var k: float = maxf(0.95 * rad / space, (r + 0.03) / 1.15)
+	var claw: Node3D = _ko_hand()
+	claw.scale = Vector3.ONE * k
+	add_child(claw)
+	_ko_nodes.append(claw)
+	# The palm right under the ball, so that the fingertips close on the ball and not below it.
+	var palm := Vector3(at.x, -0.62 * k - 0.06, at.z)
+	var wrap: PackedFloat32Array = wrap_solve(r / k, (at.y - palm.y) / k)
+	var wide: float = clampf(inverse_lerp(0.6, 0.95, k), 0.0, 1.0)
+	_wrap_set(0.0, claw, wrap, wide)
+	claw.position = palm + Vector3(0, -3.2, 0)
+	var t: Tween = _btw()
+	t.tween_property(hole, "scale", Vector3.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_interval(0.1)
+	t.tween_property(claw, "position", palm, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_interval(0.14)
+	t.tween_callback(_ko_slow)
+	t.tween_method(_wrap_set.bind(claw, wrap, wide), 0.0, 1.0, 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_interval(0.34)
+	t.tween_property(claw, "position", palm + Vector3(0, -6.0, 0), 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(held, "pos", at + Vector3(0, -6.0, 0), 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_property(hole, "scale", Vector3.ONE * 0.02, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await t.finished
+	if gen != _gen:
+		return
+	for n: Node3D in [hole, claw]:
+		_ko_nodes.erase(n)
+		n.queue_free()
+	_dying.erase(held.id)
+	held.shown = false
+	if _held.get(held.id) == held:
+		_held.erase(held.id)
+	kept.emit(held.id)
+
+
+## How wide a KO hole is: as much as `room` allows, at most a hex, never less than the ball and a little.
+static func hole_radius(space: float, ball_r: float, room: float) -> float:
+	return maxf(minf(room, space), ball_r + 0.12)
+
+
+## The KO grip slows the game for a moment (real time).
+func _ko_slow() -> void:
+	if not slow_ko or _slowing:
+		return
+	_slowing = true
+	Engine.time_scale = KO_SLOW_SCALE
+	await get_tree().create_timer(KO_SLOW_TIME, true, false, true).timeout
+	if _slowing:
+		Engine.time_scale = 1.0
+		_slowing = false
+
+
+## The closed grip on a ball of radius `r` whose centre is `cy` above the palm, both in the hand's own
+## units: each piece of a finger runs along the tangent to the ball from where the piece before it ended,
+## the claw and its point aimed at the ball. Returns each piece's turn from the one before.
+static func wrap_solve(r: float, cy: float) -> PackedFloat32Array:
+	var c := Vector2(0, cy)
+	var j := Vector2(1.15, 0.15)
+	var prev: float = 0.0
+	var out := PackedFloat32Array()
+	for i: int in WRAP_LENS.size():
+		var t: float = r + WRAP_THICK[i]
+		var v: Vector2 = c - j
+		var alpha: float = asin(clampf(t / maxf(v.length(), 0.001), 0.0, 1.0))
+		if i >= 3:
+			var dist: float = v.length()
+			var ends: float = r + (0.13 if i == 3 else 0.02)
+			alpha = acos(clampf((dist * dist + WRAP_LENS[i] * WRAP_LENS[i] - ends * ends) / (2.0 * dist * WRAP_LENS[i]), -1.0, 1.0))
+		var d: Vector2 = v.normalized().rotated(-alpha)
+		var phi: float = atan2(-d.x, d.y)
+		out.append(phi - prev)
+		prev = phi
+		j += d * WRAP_LENS[i]
+	return out
+
+
+## The fingers from open (0: as wide as the hole lets them, `wide`) to closed on the ball (1).
+func _wrap_set(g: float, claw: Node3D, wrap: PackedFloat32Array, wide: float) -> void:
+	if not is_instance_valid(claw):
+		return
+	for f: Node in claw.get_children():
+		var n := f as Node3D
+		n.rotation.z = lerpf(lerpf(WRAP_OPEN[0], WRAP_WIDE[0], wide), wrap[0], g)
+		var piv := (n.get_child(0) as Node3D).get_child(0) as Node3D
+		piv.rotation.z = 0.0
+		for i: int in range(1, wrap.size()):
+			piv = piv.get_child(2) as Node3D
+			piv.rotation.z = lerpf(lerpf(WRAP_OPEN[i], WRAP_WIDE[i], wide), wrap[i], g)
+
+
+## The KO hand: only its four fingers, round where the ball will be, each three pieces and a claw.
+func _ko_hand() -> Node3D:
+	var skin: ShaderMaterial = _flat_mat(KO_SKIN, RIM, 0.5)
+	var nail: ShaderMaterial = _flat_mat(KO_NAIL, KO_NAIL_RIM, 0.2)
+	var root := Node3D.new()
+	for k: int in 4:
+		var a: float = TAU * k / 4.0 + 0.6
+		var f := Node3D.new()
+		f.position = Vector3(cos(a) * 1.15, 0.15, sin(a) * 1.15)
+		f.rotation.y = -a
+		f.rotation.z = -0.7
+		f.add_child(_chain([0.8, 0.65, 0.45], [0.4, 0.36, 0.31, 0.26], [0.0, 0.35, 0.4], skin, nail, 0.5, 0.3))
+		root.add_child(f)
+	return root
+
+
+## A finger along +y: jointed pieces that curl about z, each joint a knob, then a two-piece claw. Every
+## joint's children are its knob, its piece and the next joint, in that order (_wrap_set walks them).
+func _chain(lens: Array[float], radii: Array[float], bends: Array[float], skin: Material, nail: Material, claw_len: float, claw_bend: float) -> Node3D:
+	var root := Node3D.new()
+	var at: Node3D = root
+	for i: int in lens.size():
+		var piv := Node3D.new()
+		piv.rotation.z = bends[i]
+		if i > 0:
+			piv.position.y = lens[i - 1]
+		at.add_child(piv)
+		piv.add_child(_knob(radii[i] * 1.12, skin))
+		piv.add_child(_seg(lens[i], radii[i], radii[i + 1], 6, skin))
+		at = piv
+	var last: float = radii[radii.size() - 1]
+	var cp := Node3D.new()
+	cp.position.y = lens[lens.size() - 1]
+	cp.rotation.z = claw_bend
+	at.add_child(cp)
+	cp.add_child(_knob(last * 1.05, skin))
+	cp.add_child(_seg(claw_len, last * 0.95, last * 0.62, 5, nail))
+	var tp := Node3D.new()
+	tp.position.y = claw_len
+	tp.rotation.z = claw_bend * 0.6
+	cp.add_child(tp)
+	tp.add_child(_seg(claw_len * 0.95, last * 0.62, 0.0, 5, nail))
+	return root
+
+
+static func _piece(mesh: Mesh, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mi
+
+
+static func _seg(length: float, r0: float, r1: float, sides: int, mat: Material) -> MeshInstance3D:
+	var c := CylinderMesh.new()
+	c.bottom_radius = r0
+	c.top_radius = r1
+	c.height = length
+	c.radial_segments = sides
+	c.rings = 1
+	var mi: MeshInstance3D = _piece(c, mat)
+	mi.position.y = length * 0.5
+	return mi
+
+
+static func _knob(r: float, mat: Material) -> MeshInstance3D:
+	var sp := SphereMesh.new()
+	sp.radius = r
+	sp.height = r * 2.0
+	sp.radial_segments = 6
+	sp.rings = 3
+	return _piece(sp, mat)
+
+
+static func _flat_mat(base: Color, rim: Color, rim_amt: float) -> ShaderMaterial:
+	if _flat_shader == null:
+		_flat_shader = Shader.new()
+		_flat_shader.code = FLAT_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = _flat_shader
+	m.render_priority = 4
+	m.set_shader_parameter("base", base)
+	m.set_shader_parameter("rim", rim)
+	m.set_shader_parameter("rim_amt", rim_amt)
+	return m
+
+
 # --- coming up ----------------------------------------------------------------------------------------
 
 ## At once: on the edges with its eyes open (shown), or out of sight below the table with its eyes shut.
@@ -1729,8 +2068,17 @@ func _snap(shown: bool) -> void:
 	for c: Claw in _claws:
 		c.queue_free()
 	_claws.clear()
+	for n: Node3D in _ko_nodes:
+		if is_instance_valid(n):
+			n.queue_free()
+	_ko_nodes.clear()
+	_dying.clear()
+	if _slowing:
+		Engine.time_scale = 1.0
+		_slowing = false
 	_held.clear()
 	_returning = false
+	_left = false
 	_shown = shown
 	_entering = false
 	closed = 0.0 if shown else 1.0

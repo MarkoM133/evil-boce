@@ -62,6 +62,24 @@ func test_a_ball_is_held_over_its_spot_while_its_ring_out_is_being_paid() -> voi
 	assert_false(Bochet.ring_pending(s, "p0:h1"))
 
 
+func test_a_ko_hole_has_the_room_it_can_get() -> void:
+	# Alone: a hex wide.
+	assert_almost_eq(Bochet.hole_radius(1.73, 0.6, 99.0), 1.73, 0.001)
+	# A ball next to it: only the room there is (KO5).
+	assert_almost_eq(Bochet.hole_radius(1.73, 0.6, 0.9), 0.9, 0.001)
+	# Never smaller than the ball and a little.
+	assert_almost_eq(Bochet.hole_radius(1.73, 0.6, 0.2), 0.72, 0.001)
+
+
+func test_the_ko_fingers_close_round_the_ball() -> void:
+	var wrap: PackedFloat32Array = Bochet.wrap_solve(0.6, 0.7)
+	assert_eq(wrap.size(), Bochet.WRAP_LENS.size(), "a turn per piece of a finger")
+	for a: float in wrap:
+		assert_true(is_finite(a) and absf(a) < PI, "a real bend")
+	# Closed, the finger leans in over the ball (it opens outwards).
+	assert_true(wrap[0] > Bochet.WRAP_OPEN[0])
+
+
 func test_the_eyes_stand_further_out_as_the_view_turns_away() -> void:
 	assert_almost_eq(Bochet.eyes_out(Vector3(0, 30, 50)), Bochet.EYES_NEAR, 0.001, "home view")
 	assert_almost_eq(Bochet.eyes_out(Vector3(50, 30, 0)), Bochet.EYES_TURNED, 0.001, "from the side")

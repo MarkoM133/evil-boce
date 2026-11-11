@@ -39,6 +39,8 @@ signal card_played(card_id: String, hero_id: String)
 signal ability_fired(hero_id: String, card_id: String)
 ## The centre is taken by a band (true) or free again (false): the match waits while it is taken.
 signal announcing_changed(busy: bool)
+## The KO announcement of these heroes is up (the bands before it gone): Evil Bochet takes them down now.
+signal ko_due(ids: PackedStringArray)
 ## The battle the bar, the scale and the table show changed (see shown_battle).
 signal shown_battle_changed
 signal menu_pressed
@@ -80,6 +82,11 @@ const START_BANNER_TIME: float = 2.2
 const BATTLE_BANNER_TIME: float = 1.6
 ## The combo card stays over the screen this long (a click or Enter puts it away sooner).
 const COMBO_SHOW_TIME: float = 2.6
+## The KO announcement (_ko_show): about this long on the screen; it waits at most KO_WAIT_MOST seconds
+## for Evil Bochet's claws, and with him the right card is dragged off KO_DRAG_GAP after the left (KO6).
+const KO_SHOW_TIME: float = 2.4
+const KO_WAIT_MOST: float = 3.0
+const KO_DRAG_GAP: float = 0.16
 ## The combo window's cards: how tall, and how far the two overlap.
 const COMBO_CARD_H: float = 190.0
 const COMBO_PARTS_OVERLAP: int = -46
@@ -202,6 +209,16 @@ var _bar_last: Dictionary = {}
 var _live_key: String = ""
 ## The series line on the end screen ("SERIES 1–0 · GAME 2 NEXT"), set by the match scene.
 var series_text: String = ""
+## Evil Bochet holds the table (set by the match scene): his claws take a fallen hero's card off the KO
+## announcement, and the fallen face off the end screen (KO4, Z1; Marko 2026-11-10).
+var bochet: bool = false
+## Heroes his claws are taking down now: their KO announcement waits until they are gone.
+var _ko_waiting: Dictionary[String, bool] = {}
+## The end screen's moment (S1, K2): a click finishes it, a redraw of the screen does not start it again.
+var _end_anim_tween: Tween
+var _end_anim_done: bool = false
+## What the end screen was built from, so that it is not built again for nothing.
+var _over_key: String = ""
 
 ## How far the hand is lowered (0 = up); it drops when the mouse is over the table (GDD 11).
 var _hand_drop: float = 0.0
@@ -732,6 +749,7 @@ func is_announcing() -> bool:
 ## The bands of one moment, merged: BATTLE! and the ties stand alone (they show both sides);
 ## the rest become one band, the loudest as its title and the others as lines beside it.
 func _push_group() -> void:
+	_group = gather_kos(_group)
 	var run: Array[Dictionary] = []
 	for b: Dictionary in _group:
 		if stands_alone(b):
@@ -748,9 +766,29 @@ func _push_group() -> void:
 		_next_banner()
 
 
+## Heroes knocked out in the same moment fall in one announcement, side by side (KO6), after the moment's
+## other bands (the blows that did it).
+static func gather_kos(group: Array[Dictionary]) -> Array[Dictionary]:
+	var first_ko: Dictionary = {}
+	var kept: Array[Dictionary] = []
+	for b: Dictionary in group:
+		if not b.has("ko"):
+			kept.append(b)
+		elif first_ko.is_empty():
+			first_ko = b
+		else:
+			var ids: PackedStringArray = JsonUtil.as_strings(first_ko["ko"])
+			ids.append_array(JsonUtil.as_strings(b["ko"]))
+			first_ko["ko"] = ids
+	if not first_ko.is_empty():
+		kept.append(first_ko)
+	return kept
+
+
 static func stands_alone(b: Dictionary) -> bool:
 	var title: String = str(b.get("title", ""))
-	return title == "BATTLE!" or title.begins_with("TIE") or title.ends_with(" PHASE") or not str(b.get("card", "")).is_empty()
+	return title == "BATTLE!" or title.begins_with("TIE") or title.ends_with(" PHASE") or not str(b.get("card", "")).is_empty() \
+			or b.has("ko")
 
 
 ## How loud a band is: the winner names the moment, a KO or a ring-out comes next, then the
@@ -2838,6 +2876,9 @@ func _input(event: InputEvent) -> void:
 		skip_banner()
 	elif end_hold and go_on:
 		end_skip = true
+	elif go_on and _over != null and _over.visible:
+		# The end screen's moment, at once.
+		finish_end_anim()
 	# An open big card goes away on any left click (the click does nothing else).
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and not _big_cid.is_empty():
@@ -3816,7 +3857,10 @@ func _banner_for(e: Dictionary) -> void:
 		"ring_out":
 			banner("RING-OUT", Palette.GOLD, "", _hero_label(str(e.get("hero", ""))).to_upper())
 		"ko":
-			banner("KO", Palette.ACCENT_DEEP, "", _hero_label(str(e.get("hero", ""))).to_upper())
+			# The KO that ends the match is told by the end of it (Marko 2026-11-10/11: Z1, Y2).
+			if state.is_over() and state.result == "ko" and JsonUtil.as_int(e.get("turn", -1), -1) == state.turn:
+				return
+			_ko_banner(str(e.get("hero", "")))
 		"stage_claimed":
 			var st: StageState = state.stage(str(e.get("stage", "")))
 			banner("STAGE CLAIMED", Palette.GOLD, player_name(JsonUtil.as_int(e.get("player", 0))).to_upper(),
@@ -3861,6 +3905,8 @@ func _next_banner() -> void:
 	if JsonUtil.as_bool(b.get("pop", false)) and _pop_show(b):
 		return
 	if not str(b.get("card", "")).is_empty() and not JsonUtil.as_bool(b.get("pop", false)) and _combo_show(b):
+		return
+	if b.has("ko") and _ko_show(b):
 		return
 	var lines: PackedStringArray = b.get("lines", PackedStringArray())
 	var color: Color = b["color"]
@@ -3928,6 +3974,266 @@ func _next_banner() -> void:
 	t.tween_callback(func() -> void:
 		band.queue_free()
 		_next_banner())
+
+
+## A hero knocked out: its card over the screen (_ko_show), queued like a band, standing alone.
+func _ko_banner(hero_id: String) -> void:
+	if GameSettings.banners() == "off":
+		return
+	var b: Dictionary = {"title": "KO", "color": Palette.ACCENT_DEEP, "left": "", "right": _hero_label(hero_id).to_upper(),
+		"hold": KO_SHOW_TIME, "lines": PackedStringArray(), "card": "", "parts": PackedStringArray(), "ko": PackedStringArray([hero_id])}
+	if not _tagging.is_empty():
+		b["battle"] = _tagging
+	if _grouping:
+		_group.append(b)
+		return
+	_banners.append(b)
+	if not _banner_busy:
+		_next_banner()
+
+
+## Evil Bochet's claws are taking this hero down (a hole, or a hand into the dark): its announcement waits.
+func ko_wait(hero_id: String) -> void:
+	_ko_waiting[hero_id] = true
+
+
+## ...and it is gone now.
+func ko_done(hero_id: String) -> void:
+	_ko_waiting.erase(hero_id)
+
+
+func _ko_waits(ids: PackedStringArray) -> bool:
+	for id: String in ids:
+		if _ko_waiting.has(id):
+			return true
+	return false
+
+
+## The KO announcement (item 26, E2 + E4, Marko 2026-11-09/10): the screen goes red, the fallen hero's
+## card lands in the middle with a rim and glow in its team's colour, KNOCKED OUT stamps onto it with a
+## jolt, and the line "<PLAYER> · N HEROES LEFT" comes under it; then it fades. Two at once side by side
+## (KO6). With Evil Bochet (KO4) it waits until his claws have taken the ball down, and at the end the
+## line goes first and a hand of his comes up from under the screen, hooks each card and drags it down,
+## the right one KO_DRAG_GAP after the left. A click or Enter skips it.
+func _ko_show(b: Dictionary) -> bool:
+	var ids: PackedStringArray = JsonUtil.as_strings(b.get("ko", []))
+	var fallen: Array[HeroState] = []
+	for id: String in ids:
+		var h: HeroState = state.hero(id)
+		if h != null and db != null and engine.stat_card(h) != null:
+			fallen.append(h)
+	if fallen.is_empty():
+		return false
+	var show := Panel.new()
+	show.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	show.set_meta("show", true)
+	show.z_index = 90
+	show.size = size
+	show.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_banner_layer.add_child(show)
+	_band = show
+	_band_tween = null
+	# Evil Bochet's claws take them down now, the bands before this one gone (the match opens the holes).
+	ko_due.emit(ids)
+	_ko_run(show, fallen, ids)
+	return true
+
+
+func _ko_run(show: Panel, fallen: Array[HeroState], ids: PackedStringArray) -> void:
+	var waited: float = 0.0
+	while _ko_waits(ids) and waited < KO_WAIT_MOST:
+		await get_tree().process_frame
+		if not is_instance_valid(show) or _band != show:
+			return
+		waited += get_process_delta_time()
+	if waited > 0.0:
+		await get_tree().create_timer(0.15).timeout
+		if not is_instance_valid(show) or _band != show:
+			return
+	_band_tween = _ko_build(show, fallen, bochet)
+
+
+func _ko_build(show: Panel, fallen: Array[HeroState], drag: bool) -> Tween:
+	var n: int = fallen.size()
+	var mid := Vector2(size.x * 0.5, size.y * 0.5 - 10.0)
+	var dim := ColorRect.new()
+	dim.color = Color(0.22, 0.0, 0.0, 0.7)
+	dim.position = Vector2(-40, -40)
+	dim.size = size + Vector2(80, 80)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dim.modulate.a = 0.0
+	show.add_child(dim)
+	var held := Control.new()
+	held.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	show.add_child(held)
+	var hh: float = 350.0 if n == 1 else 290.0
+	var grip_y: float = mid.y + hh * 0.5 + 125.0
+	var cards: Array[Control] = []
+	var hands: Array[Node2D] = []
+	var stamps: Array[UiShape] = []
+	var lines: Array[Label] = []
+	var xs: Array[float] = []
+	var gap: float = 0.0
+	for i: int in n:
+		var hero: HeroState = fallen[i]
+		var team: Color = Palette.team(state.team_of(hero.owner))
+		var card_id: String = engine.stat_card(hero).id
+		var big: Texture2D = db.large(card_id) if db.large(card_id) != null else db.thumb(card_id)
+		var ww: float = hh * 0.716
+		if big != null:
+			ww = hh * float(big.get_width()) / maxf(float(big.get_height()), 1.0)
+		gap = ww + 70.0
+		var cx: float = mid.x + (i - (n - 1) * 0.5) * gap
+		xs.append(cx)
+		var card := Control.new()
+		card.position = Vector2(cx, mid.y)
+		card.rotation_degrees = -3.0 if i % 2 == 0 else 3.0
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.modulate.a = 0.0
+		card.scale = Vector2.ONE * 1.3
+		held.add_child(card)
+		var frame := Panel.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(team, 0.25)
+		sb.border_color = team.lightened(0.15)
+		sb.set_border_width_all(7)
+		sb.set_corner_radius_all(22)
+		sb.shadow_color = Color(team, 0.55)
+		sb.shadow_size = 26
+		frame.add_theme_stylebox_override("panel", sb)
+		frame.size = Vector2(ww + 22.0, hh + 22.0)
+		frame.position = -frame.size * 0.5
+		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(frame)
+		var pic := TextureRect.new()
+		pic.texture = big
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pic.size = Vector2(ww, hh)
+		pic.position = -pic.size * 0.5
+		pic.modulate = Color(1.0, 0.82, 0.82)
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(pic)
+		cards.append(card)
+	if drag:
+		for i: int in n:
+			var hand := Node2D.new()
+			hand.position = Vector2(xs[i], grip_y + 560.0)
+			hand.scale = Vector2.ONE * (1.0 if n == 1 else 0.86)
+			held.add_child(hand)
+			_claws_2d(hand)
+			hands.append(hand)
+	for i: int in n:
+		var stamp: UiShape = UiShape.chip("KNOCKED OUT", Palette.ACCENT, Palette.FG, 70 if n == 1 else 52, 96.0 if n == 1 else 72.0, 30.0 if n == 1 else 24.0)
+		stamp.outline = Color.BLACK
+		stamp.outline_width = 4.0
+		stamp.pivot_offset = stamp.custom_minimum_size * 0.5
+		stamp.rotation_degrees = -8.0 if i % 2 == 0 else 6.0
+		stamp.position = Vector2(xs[i], mid.y) - stamp.custom_minimum_size * 0.5
+		stamp.modulate.a = 0.0
+		stamp.scale = Vector2.ONE * 2.6
+		stamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		held.add_child(stamp)
+		stamps.append(stamp)
+		var hero: HeroState = fallen[i]
+		var left: int = 0
+		for x: HeroState in state.heroes_of(hero.owner):
+			if not x.is_ko():
+				left += 1
+		var line: Label = UiTheme.label("%s  ·  %d HERO%s LEFT" % [player_name(hero.owner).to_upper(), left, "" if left == 1 else "ES"], 30 if n == 1 else 24, Color(Palette.FG, 0.9))
+		line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var lw: float = size.x if n == 1 else gap
+		line.position = Vector2(xs[i] - lw * 0.5, mid.y + hh * 0.5 + 40.0)
+		line.size = Vector2(lw, 40)
+		line.modulate.a = 0.0
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		show.add_child(line)
+		lines.append(line)
+	var t: Tween = show.create_tween()
+	t.tween_property(dim, "modulate:a", 1.0, 0.15)
+	for card: Control in cards:
+		t.parallel().tween_property(card, "modulate:a", 1.0, 0.12)
+		t.parallel().tween_property(card, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_interval(0.22)
+	for i: int in n:
+		t.tween_property(stamps[i], "modulate:a", 1.0, 0.04)
+		t.parallel().tween_property(stamps[i], "scale", Vector2.ONE, 0.13).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		for off: Vector2 in [Vector2(9, -7), Vector2(-7, 6), Vector2(5, -3), Vector2(-2, 2), Vector2.ZERO]:
+			t.tween_property(show, "position", off, 0.035)
+		t.parallel().tween_property(cards[i], "scale", Vector2.ONE * 0.97, 0.05)
+		t.tween_property(cards[i], "scale", Vector2.ONE, 0.08)
+	t.tween_interval(0.02)
+	for line: Label in lines:
+		t.parallel().tween_property(line, "modulate:a", 1.0, 0.2)
+	if drag:
+		t.tween_interval(0.7)
+		# The line goes first: nothing is written over the hand.
+		t.tween_interval(0.01)
+		for line: Label in lines:
+			t.parallel().tween_property(line, "modulate:a", 0.0, 0.12)
+		t.tween_interval(0.01)
+		for i: int in n:
+			t.parallel().tween_callback(_ko_drag_one.bind(show, cards[i], hands[i], stamps[i], grip_y, KO_DRAG_GAP * i, 2.5 if i % 2 == 0 else -2.5))
+		t.tween_interval(0.17 + 0.06 + 0.3 + 0.36 + KO_DRAG_GAP * (n - 1))
+		t.tween_interval(0.3)
+	else:
+		t.tween_interval(1.5 * GameSettings.anim_scale())
+	t.tween_property(show, "modulate:a", 0.0, 0.25)
+	t.tween_callback(func() -> void:
+		show.queue_free()
+		if _band == show:
+			_band = null
+		_next_banner())
+	return t
+
+
+## One fallen hero's card taken by Evil Bochet's hand: up onto the card, a tug, and down with it and its stamp.
+func _ko_drag_one(show: Control, card: Control, hand: Node2D, stamp: Control, grip_y: float, wait: float, tilt: float) -> void:
+	if not is_instance_valid(show):
+		return
+	var drop: float = size.y + 260.0
+	var cy: float = card.position.y
+	var sy: float = stamp.position.y
+	var t: Tween = show.create_tween()
+	t.tween_interval(wait + 0.001)
+	t.tween_property(hand, "position:y", grip_y, 0.17).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(card, "position:y", cy + 14.0, 0.06)
+	t.parallel().tween_property(stamp, "position:y", sy + 14.0, 0.06)
+	t.parallel().tween_property(hand, "position:y", grip_y + 14.0, 0.06)
+	t.parallel().tween_property(card, "rotation_degrees", tilt, 0.06)
+	t.tween_interval(0.3)
+	t.tween_property(card, "position:y", cy + drop, 0.36).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(stamp, "position:y", sy + drop, 0.36).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(hand, "position:y", grip_y + drop, 0.36).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(card, "rotation_degrees", tilt * 3.2, 0.36)
+
+
+## Evil Bochet's hand drawn flat on the screen, coming up from under it: the back of the hand and four
+## fingers, each with two plates and a claw.
+func _claws_2d(hand: Node2D) -> void:
+	var skin := Color("241640")
+	var edge := Color("5a37a8")
+	var plate := Color("36215f")
+	var nail := Color("e9dcbd")
+	var nail_dark := Color("9a7b55")
+	_poly_2d(hand, PackedVector2Array([Vector2(-134, 150), Vector2(134, 150), Vector2(156, 700), Vector2(-156, 700)]), skin)
+	for i: int in 4:
+		var x: float = (i - 1.5) * 62.0
+		var top: float = -200.0 + absf(i - 1.5) * 20.0
+		_poly_2d(hand, PackedVector2Array([Vector2(x - 29, 300), Vector2(x - 29, top + 24), Vector2(x - 18, top), Vector2(x + 18, top), Vector2(x + 29, top + 24), Vector2(x + 29, 300)]), skin)
+		_poly_2d(hand, PackedVector2Array([Vector2(x - 29, 300), Vector2(x - 29, top + 24), Vector2(x - 18, top), Vector2(x - 10, top), Vector2(x - 20, top + 26), Vector2(x - 20, 300)]), edge)
+		_poly_2d(hand, PackedVector2Array([Vector2(x - 17, top + 62), Vector2(x + 21, top + 62), Vector2(x + 17, top + 108), Vector2(x - 13, top + 108)]), plate)
+		_poly_2d(hand, PackedVector2Array([Vector2(x - 15, top + 128), Vector2(x + 19, top + 128), Vector2(x + 15, top + 170), Vector2(x - 11, top + 170)]), plate)
+		var lean: float = -(i - 1.5) * 7.0
+		_poly_2d(hand, PackedVector2Array([Vector2(x - 20, top + 8), Vector2(x + 20, top + 8), Vector2(x + 15 + lean * 0.4, top - 38), Vector2(x + 6 + lean * 0.8, top - 78), Vector2(x + lean * 1.3, top - 104), Vector2(x - 8 + lean * 0.8, top - 70), Vector2(x - 16 + lean * 0.4, top - 34)]), nail)
+		_poly_2d(hand, PackedVector2Array([Vector2(x - 20, top + 8), Vector2(x + 20, top + 8), Vector2(x + 18, top - 12), Vector2(x - 18, top - 12)]), nail_dark)
+
+
+static func _poly_2d(parent: Node, pts: PackedVector2Array, col: Color) -> void:
+	var pg := Polygon2D.new()
+	pg.polygon = pts
+	pg.color = col
+	parent.add_child(pg)
 
 
 ## The other side put down an Equipment or an Assist (Marko 2026-11-07: it went by unseen): its card
@@ -4502,7 +4808,15 @@ func _refresh_over() -> void:
 	var was: bool = _over.visible
 	_over.visible = state.is_over() and not replay and not end_hold
 	if not _over.visible:
+		_over_key = ""
+		_end_anim_done = false
 		return
+	# Built once: a redraw with nothing new on it would start its moment again.
+	var key: String = "%d|%s|%d|%s|%s|%s|%s|%d" % [state.winner, state.result, state.turn, str(local_slots), rematch_text, series_text,
+		str(new_match), end_summary.size()]
+	if was and key == _over_key:
+		return
+	_over_key = key
 	_clear(_over_box)
 	# A leftover choice under the end screen showed through it (playtest 2026-10-30).
 	if _dialog != null:
@@ -4523,14 +4837,18 @@ func _refresh_over() -> void:
 	head.add_theme_color_override("font_outline_color", Color.BLACK)
 	head.add_theme_constant_override("outline_size", 12)
 	_over_box.add_child(head)
-	var story: Label = UiTheme.label(end_sentence(), 24, Palette.FG, false)
-	story.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	story.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	story.custom_minimum_size.x = 900
-	_over_box.add_child(story)
-	var turn_l: Label = UiTheme.label("TURN %d" % state.turn, 16, Palette.MUTED)
-	turn_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_over_box.add_child(turn_l)
+	# Won on stages or by KO the end is told as a moment (item 31, S1 and K2, Marko 2026-11-10); else in words.
+	if state.winner >= 0 and (state.result == "stages" or state.result == "ko"):
+		_end_anim(was)
+	else:
+		var story: Label = UiTheme.label(end_sentence(), 24, Palette.FG, false)
+		story.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		story.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		story.custom_minimum_size.x = 900
+		_over_box.add_child(story)
+		var turn_l: Label = UiTheme.label("TURN %d" % state.turn, 16, Palette.MUTED)
+		turn_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_over_box.add_child(turn_l)
 	_over_box.add_child(_end_sides())
 	if not JsonUtil.as_array(end_summary.get("curve", [])).is_empty():
 		_over_box.add_child(_end_curve())
@@ -4548,6 +4866,336 @@ func _refresh_over() -> void:
 		var t: Tween = _over_box.create_tween().set_parallel(true)
 		t.tween_property(_over_box, "modulate:a", 1.0, 0.25)
 		t.tween_property(_over_box, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## The end as a moment (item 31, Marko 2026-11-10): S1 for stages, K2 for a KO (K1 when the last blow had
+## no hero behind it). It plays once: built again (a rematch vote, the series line) it shows how it ended,
+## and a click or Enter finishes it.
+func _end_anim(redraw: bool) -> void:
+	var area := Control.new()
+	area.custom_minimum_size = Vector2(900, 150)
+	area.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	area.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_over_box.add_child(area)
+	var box := Control.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	area.add_child(box)
+	var t: Tween = _end_anim_stages(box, state.winner) if state.result == "stages" else _end_anim_ko(box, state.winner)
+	if t == null:
+		return
+	_end_anim_tween = t
+	t.finished.connect(func() -> void: _end_anim_done = true)
+	if redraw or _end_anim_done:
+		finish_end_anim()
+
+
+## The end screen's moment, at its end now.
+func finish_end_anim() -> void:
+	if _end_anim_tween != null and _end_anim_tween.is_valid() and _end_anim_tween.is_running():
+		_end_anim_tween.custom_step(60.0)
+
+
+func _end_face(hero: HeroState, size_: Vector2) -> HeroSlice:
+	var f := HeroSlice.new()
+	var tex: Texture2D = db.thumb(engine.stat_card(hero).id)
+	f.art = tex
+	f.art_region = HeroSlice.region_for(tex)
+	f.art_w = PlayerCard.ALL_PICTURE
+	f.bg = Color(0, 0, 0, 0)
+	f.outline = Color.BLACK
+	f.outline_width = 2.5
+	f.size = size_
+	f.pivot_offset = size_ * 0.5
+	f.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return f
+
+
+func _end_stage_pic(st: StageState, size_: Vector2, team: int) -> HeroSlice:
+	var pic := HeroSlice.new()
+	pic.art = db.thumb(st.card_id)
+	pic.art_region = Rect2(0.115, 0.125, 0.77, 0.37)
+	pic.art_w = PlayerCard.ALL_PICTURE
+	pic.color_edge = Palette.team(team)
+	pic.size = size_
+	pic.pivot_offset = size_ * 0.5
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return pic
+
+
+func _end_label(parent: Control, text: String, font_size: int, color: Color, y: float, x: float = 0.0, w: float = 900.0) -> Label:
+	var l: Label = UiTheme.label(text, font_size, color)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.position = Vector2(x, y)
+	l.size = Vector2(w, font_size + 10.0)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(l)
+	return l
+
+
+## The winner's claimed stages, the one that decided it last.
+func _end_claimed(winner: int) -> Array[StageState]:
+	var out: Array[StageState] = []
+	for st: StageState in state.stages:
+		if st.is_claimed() and state.team_of(st.claimed_by) == state.team_of(winner):
+			out.append(st)
+	var last: StageState = state.stage(str(_last_event("stage_claimed").get("stage", "")))
+	if last != null and out.has(last):
+		out.erase(last)
+		out.append(last)
+	return out
+
+
+## A white flash over the moment and a short jolt of it.
+func _end_impact(box: Control) -> void:
+	var fl := ColorRect.new()
+	fl.color = Color(1, 1, 1, 0.85)
+	fl.position = Vector2(-60, -10)
+	fl.size = Vector2(1020, 170)
+	fl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(fl)
+	var t: Tween = fl.create_tween()
+	t.tween_property(fl, "modulate:a", 0.0, 0.22)
+	t.tween_callback(fl.queue_free)
+	var s: Tween = box.create_tween()
+	var offs: Array[Vector2] = [Vector2(10, -6), Vector2(-8, 5), Vector2(5, -3), Vector2(-2, 2), Vector2.ZERO]
+	for off: Vector2 in offs:
+		s.tween_property(box, "position", off, 0.035)
+
+
+## S1: the stage that decided it first, big ("THIRD STAGE CLAIMED · TURN n"); then it takes its place in the
+## row of all of them, the others coming in from the left ("3 STAGES CLAIMED · TURN n").
+func _end_anim_stages(box: Control, winner: int) -> Tween:
+	var team: int = state.team_of(winner)
+	var stages: Array[StageState] = _end_claimed(winner)
+	var n: int = stages.size()
+	if n == 0:
+		return null
+	var last: StageState = stages[n - 1]
+	var nth: String = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH"][clampi(n - 1, 0, 4)]
+	var slot := Vector2(220, 74)
+	var gap: float = 20.0
+	var x0: float = (900.0 - (slot.x * n + gap * (n - 1))) * 0.5
+	var y: float = 36.0
+	var head: Label = _end_label(box, "%s STAGE CLAIMED  ·  TURN %d" % [nth, state.turn], 17, Palette.GOLD, 2.0)
+	head.modulate.a = 0.0
+	var big := Vector2(312, 105)
+	var pic: HeroSlice = _end_stage_pic(last, big, team)
+	pic.position = Vector2(450.0 - big.x * 0.5, y)
+	pic.scale = Vector2.ONE * 1.7
+	pic.modulate.a = 0.0
+	box.add_child(pic)
+	var big_name: Label = _end_label(box, _card_name(last.card_id).to_upper(), 30, Palette.FG, y + big.y - 46.0)
+	big_name.add_theme_color_override("font_outline_color", Color.BLACK)
+	big_name.add_theme_constant_override("outline_size", 9)
+	big_name.modulate.a = 0.0
+	var others: Array[HeroSlice] = []
+	var names: Array[Label] = []
+	for i: int in n:
+		var at := Vector2(x0 + i * (slot.x + gap), y + 4.0)
+		var nm: Label = _end_label(box, _card_name(stages[i].card_id).to_upper(), 15, Palette.FG, at.y + slot.y + 4.0, at.x, slot.x)
+		nm.modulate.a = 0.0
+		names.append(nm)
+		if i < n - 1:
+			var p: HeroSlice = _end_stage_pic(stages[i], slot, team)
+			p.position = at - Vector2(260, 0)
+			p.modulate.a = 0.0
+			box.add_child(p)
+			others.append(p)
+	var t: Tween = box.create_tween()
+	t.tween_interval(0.5)
+	t.tween_property(pic, "modulate:a", 1.0, 0.06)
+	t.parallel().tween_property(pic, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_callback(_end_impact.bind(box))
+	t.tween_property(pic, "scale", Vector2.ONE * 1.05, 0.05)
+	t.parallel().tween_property(head, "modulate:a", 1.0, 0.12)
+	t.parallel().tween_property(big_name, "modulate:a", 1.0, 0.12)
+	t.tween_property(pic, "scale", Vector2.ONE, 0.08)
+	t.tween_interval(1.3)
+	t.tween_property(big_name, "modulate:a", 0.0, 0.12)
+	t.tween_callback(func() -> void: head.text = "%d STAGES CLAIMED  ·  TURN %d" % [n, state.turn])
+	var end_at := Vector2(x0 + (n - 1) * (slot.x + gap), y + 4.0)
+	t.tween_property(pic, "size", slot, 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(pic, "position", end_at, 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	for i: int in others.size():
+		t.parallel().tween_property(others[i], "position:x", x0 + i * (slot.x + gap), 0.32).set_delay(0.07 * i).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(others[i], "modulate:a", 1.0, 0.2).set_delay(0.07 * i)
+	for nm: Label in names:
+		t.parallel().tween_property(nm, "modulate:a", 1.0, 0.2).set_delay(0.3)
+	return t
+
+
+## K1: the two parties face each other, run into each other, and only the winners are left.
+func _end_anim_sides(box: Control, winner: int) -> Tween:
+	var loser: int = engine.other_slot(state, winner)
+	var face := Vector2(124, 76)
+	var gap: float = 8.0
+	var y: float = 44.0
+	var wg := Control.new()
+	var lg := Control.new()
+	var lose_faces: Array[HeroSlice] = []
+	var count: int = 0
+	for hero: HeroState in state.heroes_of(winner):
+		var f: HeroSlice = _end_face(hero, face)
+		f.position = Vector2(count * (face.x + gap), 0)
+		wg.add_child(f)
+		count += 1
+	var gw: float = face.x * count + gap * (count - 1)
+	var lcount: int = 0
+	for hero: HeroState in state.heroes_of(loser):
+		var f: HeroSlice = _end_face(hero, face)
+		f.position = Vector2(lcount * (face.x + gap), 0)
+		lg.add_child(f)
+		lose_faces.append(f)
+		lcount += 1
+	for g: Control in [wg, lg]:
+		g.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(g)
+	wg.position = Vector2(-gw - 60.0, y)
+	lg.position = Vector2(960.0, y)
+	var vs: Label = _end_label(box, "VS", 48, Palette.GOLD, y + 6.0)
+	vs.add_theme_color_override("font_outline_color", Color.BLACK)
+	vs.add_theme_constant_override("outline_size", 10)
+	vs.modulate.a = 0.0
+	var head: Label = _end_label(box, "EVERY HERO OF %s IS DOWN  ·  TURN %d" % [player_name(loser).to_upper(), state.turn], 17, Palette.GOLD, 4.0)
+	head.modulate.a = 0.0
+	var wx: float = 450.0 - 46.0 - gw
+	var lx: float = 450.0 + 46.0
+	var t: Tween = box.create_tween()
+	t.tween_interval(0.5)
+	t.tween_property(wg, "position:x", wx, 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(lg, "position:x", lx, 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(vs, "modulate:a", 1.0, 0.2)
+	t.tween_interval(0.95)
+	t.tween_property(wg, "position:x", wx - 36.0, 0.16)
+	t.parallel().tween_property(lg, "position:x", lx + 36.0, 0.16)
+	t.tween_property(wg, "position:x", 450.0 - gw + 8.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(lg, "position:x", 450.0 - 8.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_callback(func() -> void:
+		vs.visible = false
+		_end_impact(box)
+		var dy: Array[float] = [90.0, -80.0, 130.0]
+		var rot: Array[float] = [0.5, -0.45, 0.8]
+		for i: int in lose_faces.size():
+			var f: HeroSlice = lose_faces[i]
+			var st: Tween = f.create_tween().set_parallel(true)
+			st.tween_property(f, "position", f.position + Vector2(240.0 + 70.0 * i, dy[i % 3]), 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			st.tween_property(f, "rotation", rot[i % 3], 0.6)
+			st.tween_property(f, "modulate", Color(0.45, 0.45, 0.45, 0.0), 0.6))
+	t.tween_interval(0.35)
+	t.tween_property(wg, "position:x", 450.0 - gw * 0.5, 0.36).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(head, "modulate:a", 1.0, 0.25)
+	return t
+
+
+## K2: the last hit. The hitter and the last hero run into each other ("X HITS Y FOR n"), the loser is
+## stamped KNOCKED OUT and drops, and the hitter's own side gathers round it ("EVERY HERO OF <player> IS
+## DOWN"). With Evil Bochet his claws come up from under the strip, take the fallen face and pull it down (Z1).
+func _end_anim_ko(box: Control, winner: int) -> Tween:
+	var loser: int = engine.other_slot(state, winner)
+	var ko: Dictionary = _last_event("ko")
+	var hero: HeroState = state.hero(str(ko.get("hero", "")))
+	var hit: Dictionary = _last_event("damage", str(ko.get("hero", "")))
+	var by: HeroState = state.hero(str(hit.get("by", "")))
+	if hero == null or by == null:
+		return _end_anim_sides(box, winner)
+	var big := Vector2(210, 104)
+	var y: float = 36.0
+	var a: HeroSlice = _end_face(by, big)
+	var b: HeroSlice = _end_face(hero, big)
+	a.position = Vector2(-280.0, y)
+	b.position = Vector2(960.0, y)
+	box.add_child(a)
+	box.add_child(b)
+	var vs: Label = _end_label(box, "VS", 48, Palette.GOLD, y + 22.0)
+	vs.add_theme_color_override("font_outline_color", Color.BLACK)
+	vs.add_theme_constant_override("outline_size", 10)
+	vs.modulate.a = 0.0
+	var head: Label = _end_label(box, "%s HITS %s FOR %d  ·  TURN %d" % [hero_name(by).to_upper(), hero_name(hero).to_upper(),
+		JsonUtil.as_int(hit.get("amount", 0)), state.turn], 17, Palette.GOLD, 4.0)
+	head.modulate.a = 0.0
+	var stamp: UiShape = UiShape.chip("KNOCKED OUT", Palette.ACCENT, Palette.FG, 26, 38.0, 12.0)
+	stamp.outline = Color.BLACK
+	stamp.outline_width = 2.5
+	stamp.pivot_offset = stamp.custom_minimum_size * 0.5
+	stamp.rotation_degrees = -8.0
+	stamp.size = stamp.custom_minimum_size
+	var clash_b: float = 450.0 - 8.0
+	stamp.position = Vector2(clash_b + big.x * 0.5, y + big.y * 0.5) - stamp.custom_minimum_size * 0.5
+	stamp.scale = Vector2.ONE * 2.4
+	stamp.modulate.a = 0.0
+	stamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(stamp)
+	# The winners' row the hitter ends in.
+	var face := Vector2(124, 76)
+	var gap: float = 8.0
+	var party: Array[HeroState] = [by]
+	for x: HeroState in state.heroes_of(winner):
+		if x != by:
+			party.append(x)
+	var gw: float = face.x * party.size() + gap * (party.size() - 1)
+	var rx: float = 450.0 - gw * 0.5
+	var ry: float = y + 12.0
+	var rest: Array[HeroSlice] = []
+	for i: int in range(1, party.size()):
+		var f: HeroSlice = _end_face(party[i], face)
+		f.position = Vector2(rx + i * (face.x + gap) + 320.0, ry)
+		f.modulate.a = 0.0
+		box.add_child(f)
+		rest.append(f)
+	var ax: float = 450.0 - 50.0 - big.x
+	var bx: float = 450.0 + 50.0
+	var t: Tween = box.create_tween()
+	t.tween_interval(0.5)
+	t.tween_property(a, "position:x", ax, 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(b, "position:x", bx, 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(vs, "modulate:a", 1.0, 0.2)
+	t.tween_interval(0.85)
+	t.tween_property(a, "position:x", ax - 36.0, 0.16)
+	t.parallel().tween_property(b, "position:x", bx + 36.0, 0.16)
+	t.tween_property(a, "position:x", 450.0 - big.x + 8.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(b, "position:x", clash_b, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_callback(func() -> void:
+		vs.visible = false
+		_end_impact(box))
+	t.tween_property(stamp, "modulate:a", 1.0, 0.04).set_delay(0.12)
+	t.parallel().tween_property(stamp, "scale", Vector2.ONE, 0.13).set_delay(0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(b, "modulate", Color(0.5, 0.5, 0.5, 1.0), 0.2).set_delay(0.12)
+	t.parallel().tween_property(head, "modulate:a", 1.0, 0.2)
+	var hand: Node2D = null
+	if bochet:
+		# Evil Bochet takes the fallen one: claws up from under the strip, onto the face, and down with it.
+		var clipc := Control.new()
+		clipc.clip_contents = true
+		clipc.position = Vector2(-120, -20)
+		clipc.size = Vector2(1140, 196)
+		clipc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(clipc)
+		hand = Node2D.new()
+		hand.scale = Vector2.ONE * 0.44
+		var hx: float = clash_b + big.x * 0.5 + 120.0
+		var grip_y: float = y + big.y + 44.0 + 20.0
+		hand.position = Vector2(hx, grip_y + 190.0)
+		clipc.add_child(hand)
+		_claws_2d(hand)
+		t.tween_interval(0.55)
+		t.tween_property(hand, "position:y", grip_y, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.tween_property(b, "rotation_degrees", 4.0, 0.06)
+		t.tween_interval(0.26)
+	else:
+		t.tween_interval(1.0)
+	t.tween_property(b, "position:y", y + 150.0, 0.4 if hand == null else 0.36).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	if hand != null:
+		t.parallel().tween_property(hand, "position:y", hand.position.y + 10.0, 0.36).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(stamp, "position:y", stamp.position.y + 150.0, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(b, "modulate:a", 0.0, 0.4)
+	t.parallel().tween_property(stamp, "modulate:a", 0.0, 0.4)
+	t.tween_callback(func() -> void: head.text = "EVERY HERO OF %s IS DOWN  ·  TURN %d" % [player_name(loser).to_upper(), state.turn])
+	t.tween_property(a, "size", face, 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(a, "position", Vector2(rx, ry), 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	for i: int in rest.size():
+		t.parallel().tween_property(rest[i], "position:x", rx + (i + 1) * (face.x + gap), 0.32).set_delay(0.07 * i).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(rest[i], "modulate:a", 1.0, 0.2).set_delay(0.07 * i)
+	return t
 
 
 ## How it ended, in words, from the last events of the log: the hit that knocked the last hero

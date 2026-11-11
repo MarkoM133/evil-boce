@@ -18,6 +18,24 @@ func test_battle_and_ties_stand_alone() -> void:
 	assert_false(Hud.stands_alone(_b("GIORNO WINS THE FIGHT!")))
 
 
+## The KO announcement (the card over the screen) is not a band to merge: it stands alone, and the
+## heroes of one moment share one, after the blows (KO6).
+func test_ko_announcements_gather_after_the_blows() -> void:
+	var ko_a: Dictionary = _b("KO", "", "ZORO")
+	ko_a["ko"] = PackedStringArray(["p0:a"])
+	var ko_b: Dictionary = _b("KO", "", "FUGO")
+	ko_b["ko"] = PackedStringArray(["p1:b"])
+	assert_true(Hud.stands_alone(ko_a))
+	var hit_a: Dictionary = _b("ZORO TAKES 9 DAMAGE", "", "HP 0")
+	var hit_b: Dictionary = _b("FUGO TAKES 8 DAMAGE", "", "HP 0")
+	var out: Array[Dictionary] = Hud.gather_kos([hit_a, ko_a, hit_b, ko_b])
+	assert_eq(out.size(), 3)
+	assert_eq(str(out[0]["title"]), "ZORO TAKES 9 DAMAGE")
+	assert_eq(str(out[1]["title"]), "FUGO TAKES 8 DAMAGE")
+	assert_eq(Array(JsonUtil.as_strings(out[2]["ko"])), ["p0:a", "p1:b"])
+	assert_eq(Hud.gather_kos([hit_a]).size(), 1, "nothing to gather")
+
+
 func test_winner_names_the_merged_band() -> void:
 	var run: Array[Dictionary] = [_b("SHANKS TAKES 3 DAMAGE", "", "HP 0", 1.6), _b("GIORNO WINS THE FIGHT!", "", "", 2.0),
 		_b("KO", "", "SHANKS"), _b("STAGE CLAIMED", "MARKO", "DRESSROSA")]

@@ -25,6 +25,10 @@ const STAGE_ART_ALPHA: float = 0.6
 ## Battle camera: its tilt (the opening view's) and how long it stays after the last battle.
 const BATTLE_CAM_PITCH: float = 34.0
 const BATTLE_CAM_HOLD: float = 1.8
+## The end with Evil Bochet (R4, Marko 2026-11-11): after the bands the camera goes back to the whole
+## table, he leaves this much later, and the end screen comes this long after he starts leaving.
+const END_LEAVE_AFTER: float = 0.45
+const END_LEAVE_SCREEN: float = 0.8
 const CORE_COLORS: Dictionary[String, Color] = {
 	"Buff": Color("4fb858"), "Major": Color("ffd23f"), "Debuff": Color("9a5bd6"),
 }
@@ -110,6 +114,9 @@ var _hovered: String = ""
 var _range_key: String = ""
 ## Evil Bochet under the table, or null (_build_bochet).
 var _bochet: Bochet
+## Heroes knocked out on the table whose hole waits for the bands of their moment (Marko 2026-11-11: the
+## band of the blow covered the hole): the KO announcement starts it, or the end of the bands.
+var _ko_due: Dictionary[String, bool] = {}
 ## The heroes of the battle whose balls are off their hexes, as last drawn (_watch_battle_marks).
 var _away_key: String = ""
 ## Hexes of the stage or core hovered in the HUD strip (marked like a footprint).
@@ -414,13 +421,36 @@ func _build_bochet() -> void:
 	if _bochet == null:
 		return
 	add_child(_bochet)
-	# A ball its ring-out knocked out goes into the dark with him, and is gone when he has taken it.
+	# A ball he takes down (a KO hole, or a ring-out that knocked it out) is gone when he has taken it, and
+	# its KO announcement comes then.
 	_bochet.kept.connect(func(id: String) -> void:
 		var h: HeroState = state.hero(id)
 		if h != null and h.is_ko() and _bodies.has(id):
-			_bodies[id].visible = false)
+			_bodies[id].visible = false
+		hud.ko_done(id))
+	_bochet.slow_ko = GameSettings.effect("slow_mo")
+	hud.bochet = true
+	hud.ko_due.connect(_start_ko_holes)
 	arena.sink_table()
 	cam.frame_table(arena.extent(), Bochet.VIEW_NEAR_BIAS, Bochet.VIEW_ZOOM)
+
+
+## The holes of these knocked-out heroes open now (all that wait, with none named); a ball he cannot take
+## any more is simply gone.
+func _start_ko_holes(ids: PackedStringArray = PackedStringArray()) -> void:
+	var which: Array[String] = []
+	if ids.is_empty():
+		which.assign(_ko_due.keys())
+	else:
+		which.assign(ids)
+	for id: String in which:
+		if not _ko_due.has(id):
+			continue
+		_ko_due.erase(id)
+		if _bochet == null or not _bochet.ko_hole(id):
+			if _bodies.has(id):
+				_bodies[id].visible = false
+			hud.ko_done(id)
 
 
 ## Seconds left on the move timer of a player at this screen, INF when none runs (Bochet drums on the edge).
@@ -1138,13 +1168,27 @@ func _end_moment() -> void:
 	# After the bands of what decided it (Marko 2026-11-09: "PLAYER 1 WINS" came before STAGE
 	# CLAIMED): this runs before the table is redrawn, their bands are made then.
 	_end_pause = -1.0
-	hud.banner.call_deferred(title, Palette.GOLD if state.winner >= 0 else Palette.SURFACE_2, "", why, MatchHud.END_HOLD_TIME, "")
+	_end_band.call_deferred(title, why)
+
+
+## The band of the end, once the table is drawn; with Evil Bochet once his claws have taken the last hero
+## down (Marko 2026-11-11: Y2, the hole first, then the band).
+func _end_band(title: String, why: String) -> void:
+	if _bochet != null and (not _ko_due.is_empty() or _bochet.ko_busy()):
+		while is_inside_tree() and is_instance_valid(_bochet) and (not _ko_due.is_empty() or _bochet.ko_busy()):
+			await get_tree().process_frame
+		if not is_inside_tree():
+			return
+		await get_tree().create_timer(0.2).timeout
+		if not is_inside_tree():
+			return
+	hud.banner(title, Palette.GOLD if state.winner >= 0 else Palette.SURFACE_2, "", why, MatchHud.END_HOLD_TIME, "")
 	get_tree().create_timer(0.1).timeout.connect(func() -> void: _end_hold_watch())
 
 
 ## The end screen comes when the band is gone (held its time, or skipped).
 func _end_hold_watch() -> void:
-	if not is_inside_tree():
+	if not is_inside_tree() or not hud.end_hold:
 		return
 	if hud.is_announcing():
 		_end_pause = -1.0
@@ -1154,6 +1198,20 @@ func _end_hold_watch() -> void:
 	if _end_pause < 0.0:
 		_end_pause = MatchHud.END_PAUSE_TIME * GameSettings.anim_scale()
 		hud.end_skip = false
+		if _bochet != null:
+			# R4 (Marko 2026-11-11): the camera back on the whole table, Evil Bochet leaves, and the end
+			# screen comes while his hands are still on their way down.
+			hud.battle_cam = false
+			cam.reset_view()
+			hud.refresh()
+			# The countdown below runs in tenths that come late; the end screen comes on its own timer.
+			_end_pause = INF
+			get_tree().create_timer(END_LEAVE_AFTER).timeout.connect(func() -> void:
+				if _bochet != null and state.is_over():
+					_bochet.leave())
+			get_tree().create_timer(END_LEAVE_AFTER + END_LEAVE_SCREEN).timeout.connect(func() -> void:
+				hud.end_skip = true
+				_end_hold_watch())
 	_end_pause -= 0.1
 	if _end_pause > 0.0 and not hud.end_skip:
 		get_tree().create_timer(0.1).timeout.connect(func() -> void: _end_hold_watch())
@@ -1224,8 +1282,18 @@ func _sync_hero(h: HeroState) -> void:
 			world.bodies.erase(b)
 			if _bochet != null and _bochet.keep(h.id):
 				# In Evil Bochet's hand: he takes it into the dark, no shattering (Bochet.kept hides it).
-				if not animate:
+				if animate:
+					hud.ko_wait(h.id)
+				else:
 					b.visible = false
+			elif _bochet != null and animate and _bochet.can_take(h.id):
+				# On the table: his claws take it down a hole (KO4), no shattering (Bochet.kept hides it),
+				# once the bands of the moment have passed (the KO announcement starts it: _start_ko_holes).
+				if h.hp < was:
+					v.hit(was - h.hp)
+				_ko_due[h.id] = true
+				hud.ko_wait(h.id)
+				cam.shake()
 			elif animate:
 				if h.hp < was:
 					v.hit(was - h.hp)
@@ -2138,6 +2206,10 @@ func _process(delta: float) -> void:
 		_claim_mat.albedo_color = Color(1, 1, 1, 0.35 + 0.65 * (0.5 + 0.5 * sin(_pulse_t * 5.0)))
 	if _bochet != null:
 		_bochet.tick(delta, state, _bodies, _views, _local_clock_left())
+		# A KO hole with no announcement to start it (bands off, the KO that ends the match): when the
+		# bands of its moment are gone.
+		if not _ko_due.is_empty() and not hud.is_announcing():
+			_start_ko_holes()
 	for id: String in _views:
 		_place_view(id)
 	if _replay != null:
@@ -2185,6 +2257,9 @@ func _show_frame(i: int, animate: bool) -> void:
 	if _quiet and _bochet != null:
 		# A jump: Evil Bochet lets go of every ball at once (the state says where they are).
 		_bochet.reset()
+		for id: String in _ko_due:
+			hud.ko_done(id)
+		_ko_due.clear()
 	_sync()
 	_quiet = false
 	_replay_bar.show_frame(_frame, _replay.frame_count(), state.turn, state.phase)
