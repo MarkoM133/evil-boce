@@ -47,6 +47,22 @@ func test_a_stat_takes_the_colour_of_its_shortest_bonus() -> void:
 	assert_eq(Hud.stat_tint(0, 1, -2), Hud.BONUS_TURN_UP, "this turn before for good")
 
 
+## The energy window (item 20): what a share of the energy would do in a stage.
+func test_energy_fills_the_ring_then_takes_then_is_lost() -> void:
+	# 6 mine, 2 theirs, 14 places: 2 go into the empty ones.
+	var a: Dictionary = Hud.split_effect(6, 2, 2, 14)
+	assert_eq([a["fill"], a["take"], a["after"], a["over"]], [2, 0, 8, 0])
+	# A full ring (3 + 11): every one of 4 is taken from the other side.
+	var b: Dictionary = Hud.split_effect(3, 11, 4, 14)
+	assert_eq([b["fill"], b["take"], b["after"], b["over"]], [0, 4, 7, 0])
+	# More than the ring holds: the rest is lost.
+	var c: Dictionary = Hud.split_effect(12, 1, 5, 14)
+	assert_eq([c["fill"], c["take"], c["after"], c["over"]], [1, 1, 14, 3])
+	# A ring of one's own (nothing of the other side counted): up to the goal.
+	var d: Dictionary = Hud.split_effect(10, 0, 6, 14)
+	assert_eq([d["fill"], d["take"], d["after"], d["over"]], [4, 0, 14, 2])
+
+
 func test_winner_names_the_merged_band() -> void:
 	var run: Array[Dictionary] = [_b("SHANKS TAKES 3 DAMAGE", "", "HP 0", 1.6), _b("GIORNO WINS THE FIGHT!", "", "", 2.0),
 		_b("KO", "", "SHANKS"), _b("STAGE CLAIMED", "MARKO", "DRESSROSA")]

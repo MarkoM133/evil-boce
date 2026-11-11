@@ -99,6 +99,9 @@ var _marks := ImmediateMesh.new()
 var _gauges := ImmediateMesh.new()
 var _gauge_shown: Dictionary[String, PackedFloat32Array] = {}
 var _gauge_key: String = ""
+## What the energy split being made would add, on the stages' edges (_update_energy_ghost).
+var _energy_ghosts := ImmediateMesh.new()
+var _energy_ghost_key: String = ""
 ## Energy the edge fills (or drains) in a second.
 const GAUGE_SPEED: float = 11.0
 ## The edge's track and its colour, as wide as this; how far outside the stage's own outline it runs.
@@ -310,6 +313,10 @@ func _ready() -> void:
 	gauge_mi.mesh = _gauges
 	gauge_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(gauge_mi)
+	var ghost_mi := MeshInstance3D.new()
+	ghost_mi.mesh = _energy_ghosts
+	ghost_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(ghost_mi)
 	_claim_mat = MeshKit.unshaded(Color.WHITE)
 	var claim_mi := MeshInstance3D.new()
 	claim_mi.mesh = _claim_marks
@@ -544,6 +551,7 @@ func _build_hud() -> void:
 	hud.shown_battle_changed.connect(_on_shown_battle_changed)
 	hud.damage_pressed.connect(func(slot: int, target: String, cards: Array) -> void: _apply(Move.make(Move.DAMAGE_TO, slot, {"target": target, "cards": cards})))
 	hud.energy_pressed.connect(func(slot: int, split: Dictionary) -> void: _apply(Move.make(Move.STAGE_ENERGY, slot, {"split": split})))
+	hud.stage_anchor = _stage_anchor
 	hud.choose_pressed.connect(func(slot: int, value: Variant) -> void: _apply(Move.make(Move.CHOOSE, slot, {"value": value})))
 	hud.ability_pressed.connect(func(slot: int, hero_id: String, card_id: String, index: int) -> void:
 		_apply(Move.make(Move.USE_ABILITY, slot, {"hero": hero_id, "card": card_id, "index": index})))
@@ -2199,6 +2207,88 @@ func _stage_ring(st: StageState, cw: bool) -> PackedVector2Array:
 	return pts
 
 
+## Where the − n + of a stage stand on the screen while the End phase's energy is shared out on the table
+## (item 20): just under the stage, on the viewer's side of it.
+func _stage_anchor(id: String) -> Vector2:
+	var st: StageState = state.stage(id) if state != null else null
+	if st == null or not st.placed:
+		return Vector2(-4000, -4000)
+	var at: Vector3 = arena.hex_center(st.center) + Vector3(0, 0.1, -2.9 if cam.is_flipped() else 2.9)
+	if cam.camera.is_position_behind(at):
+		return Vector2(-4000, -4000)
+	return cam.camera.unproject_position(at)
+
+
+## What the split being made would put into each stage, lighter, on the stage's edge after what the
+## player has there (item 20: on the table the edge says what the window's bar says). Drawn again only
+## when the split or the stages change.
+func _update_energy_ghost() -> void:
+	var pv: Dictionary = hud.energy_preview() if state != null and _current_battle().is_empty() else {}
+	var key: String = ""
+	if not pv.is_empty():
+		key = "%s|%s|%s" % [str(pv["who"]), str(pv["split"]), state.settings.stage_claim]
+		for id: String in JsonUtil.as_strings(pv["stages"]):
+			var ks: StageState = state.stage(id)
+			if ks != null:
+				key += "|%s%s%s" % [id, str(ks.center), str(ks.progress)]
+	if key == _energy_ghost_key:
+		return
+	_energy_ghost_key = key
+	_energy_ghosts.clear_surfaces()
+	if pv.is_empty():
+		return
+	var who: int = JsonUtil.as_int(pv["who"])
+	var team: int = clampi(state.team_of(who), 0, 1)
+	var goal: int = maxi(state.settings.stage_goal, 1)
+	var light: Color = Palette.team(team).lightened(0.62)
+	var split: Dictionary = pv["split"]
+	var any: bool = false
+	_energy_ghosts.surface_begin(Mesh.PRIMITIVE_TRIANGLES, _line_mat)
+	for id: String in JsonUtil.as_strings(pv["stages"]):
+		var st: StageState = state.stage(id)
+		var n: int = JsonUtil.as_int(split.get(id, 0))
+		if st == null or not st.placed or st.is_claimed() or n <= 0:
+			continue
+		var fx: Dictionary = hud.energy_effect(st, who, n, goal)
+		var gain: int = JsonUtil.as_int(fx["fill"]) + JsonUtil.as_int(fx["take"])
+		var mine: float = 0.0
+		for slot: int in st.progress:
+			if clampi(state.team_of(slot), 0, 1) == team:
+				mine += float(st.progress[slot])
+		var from: float = mine
+		var to: float = mine + gain
+		var path: PackedVector2Array
+		var edges: int
+		if state.settings.shared_ring():
+			# One ring: blue from its start, red from its end.
+			path = _stage_ring(st, false)
+			edges = path.size() / 2
+			if team == 1:
+				from = goal - mine - gain
+				to = goal - mine
+		else:
+			path = _stage_ring(st, team == 1)
+			edges = path.size() / 4
+		var a: float = from / goal * edges
+		var b: float = to / goal * edges
+		for k: int in edges:
+			var lo: float = clampf(a - k, 0.0, 1.0)
+			var hi: float = clampf(b - k, 0.0, 1.0)
+			if hi - lo < 0.001:
+				continue
+			var p0: Vector2 = path[k * 2]
+			var p1: Vector2 = path[k * 2 + 1]
+			var s0: Vector2 = p0.lerp(p1, lo)
+			var s1: Vector2 = p0.lerp(p1, hi)
+			MeshKit.ribbon(_energy_ghosts, PackedVector3Array([Vector3(s0.x, 0.09, s0.y), Vector3(s1.x, 0.09, s1.y)]), GAUGE_FILL_W, light)
+			any = true
+	if not any:
+		_energy_ghosts.surface_add_vertex(Vector3.ZERO)
+		_energy_ghosts.surface_add_vertex(Vector3.ZERO)
+		_energy_ghosts.surface_add_vertex(Vector3.ZERO)
+	_energy_ghosts.surface_end()
+
+
 func _gauge_rib(a: Vector2, b: Vector2, y: float, width: float, color: Color) -> void:
 	if a.distance_to(b) < 0.005:
 		return
@@ -2285,6 +2375,7 @@ func _update_gauges(delta: float) -> void:
 func _process(delta: float) -> void:
 	_watch_balls(delta)
 	_update_gauges(delta)
+	_update_energy_ghost()
 	_ping_tick -= delta
 	if _ping_tick <= 0.0 and net_role != "" and _replay == null:
 		_ping_tick = 1.0

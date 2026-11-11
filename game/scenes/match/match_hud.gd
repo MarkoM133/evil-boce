@@ -348,6 +348,11 @@ var _damage_key: String = ""
 ## The energy claim variant: the split being set in the End phase box (stage id -> energy), and
 ## the decision it belongs to.
 var energy_split: Dictionary = {}
+## The energy window was closed by a click outside it: the split is made on the table (_energy_table).
+var energy_on_table: bool = false
+## Where a stage is on the screen, for the steps that stand by it: set by the match (stage id -> Vector2).
+var stage_anchor: Callable
+var _energy_rows: Dictionary[String, Control] = {}
 var _energy_key: String = ""
 var _target_why: Dictionary = {}
 var _last_why_by: Dictionary = {}
@@ -1007,6 +1012,10 @@ func _build() -> void:
 	pc_sb.content_margin_bottom = 8
 	_prompt_card.add_theme_stylebox_override("panel", pc_sb)
 	_prompt_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_prompt_card.gui_input.connect(func(e: InputEvent) -> void:
+		if energy_on_table and e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			energy_on_table = false
+			refresh())
 	var pcol := VBoxContainer.new()
 	pcol.add_theme_constant_override("separation", 2)
 	pcol.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1994,8 +2003,16 @@ func _refresh_prompt() -> void:
 			# The window says it all, as for a hit.
 			pass
 		elif str(d.get("type", "")) == RulesEngine.DECISION_STAGE_ENERGY:
-			# The window says it all, as for a hit.
-			pass
+			# The window says it all, as for a hit; with the split on the table the card and CONFIRM do.
+			if not _energy_decision().is_empty():
+				_energy_prepare(d, who)
+			if energy_on_table and not _energy_decision().is_empty():
+				var e_left: int = _energy_left(d)
+				_kicker.text = "END PHASE"
+				_prompt.text = "%d energy into your stages" % JsonUtil.as_int(d.get("energy", 0))
+				_detail.text = "Split it with − and + by each stage. Click here for the window."
+				var ok: Button = _action("CONFIRM" if e_left == 0 else "CONFIRM  %d LEFT" % e_left, func() -> void: _energy_confirm(d, who), &"Primary")
+				ok.disabled = e_left != 0
 		elif str(d.get("type", "")) == RulesEngine.DECISION_DAMAGE:
 			# The box in the middle says it all (Marko 2026-11-08).
 			pass
@@ -2328,6 +2345,7 @@ func _process(delta: float) -> void:
 	_track_panel_hover()
 	if _hand_box == null or state == null:
 		return
+	_place_energy_rows()
 	_fit_tug()
 	# A card under the mouse shows on the dial what would be left after paying for it.
 	if _energy != null and _energy.visible:
@@ -2928,6 +2946,14 @@ func _input(event: InputEvent) -> void:
 		return
 	if not _drag.is_empty() and _drag_input(event):
 		return
+	# A click outside the energy window closes it: the split goes on on the table (item 20).
+	if _dialog.visible and not energy_on_table and not _energy_decision().is_empty() and event is InputEventMouseButton:
+		var emb := event as InputEventMouseButton
+		if emb.pressed and emb.button_index == MOUSE_BUTTON_LEFT and not _dialog.get_global_rect().has_point(emb.position) and not _menu_button.get_global_rect().has_point(emb.position):
+			energy_on_table = true
+			refresh()
+			get_viewport().set_input_as_handled()
+			return
 	var go_on: bool = (event is InputEventMouseButton and (event as InputEventMouseButton).pressed
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT) \
 			or (event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo
@@ -3080,6 +3106,12 @@ func _lift(card: Control, up: bool, playable: bool) -> void:
 func _refresh_dialog() -> void:
 	_clear(_dialog_box)
 	_dialog.visible = false
+	_clear_energy_rows()
+	if _energy_decision().is_empty():
+		energy_on_table = false
+	# The card bottom right opens the energy window again while the split is on the table.
+	_prompt_card.mouse_filter = Control.MOUSE_FILTER_STOP if energy_on_table else Control.MOUSE_FILTER_IGNORE
+	_prompt_card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if energy_on_table else Control.CURSOR_ARROW
 	_damage_dim.visible = false
 	_dialog_sb.border_color = Palette.GOLD
 	_set_dialog_pad(28, 22)
@@ -3292,38 +3324,85 @@ func _damage_hero(h: HeroState, among: int, picked: bool, on_hero: int) -> VBoxC
 	return col
 
 
-## The energy claim variant's End phase (Marko 2026-11-02): the energy left goes into
-## the stages the player's heroes stand on. With more than one, the player shares it out here,
-## all of it, with − and + per stage (+ with nothing left takes one from another stage), and
-## CONFIRMs. It starts filling the stage with the most energy in it up to the goal, then the next.
-func _energy_dialog(d: Dictionary, who: int) -> void:
-	_dialog.visible = true
+## The End phase's energy (Marko 2026-11-02; the window and the table as chosen 2026-11-10, item 20, H2):
+## the energy left goes into the stages the player's heroes stand on. With more than one, the player
+## shares it out, all of it, with − and + per stage (+ with nothing left takes one from another stage),
+## and CONFIRMs: in the window, or, after a click outside it, on the table itself (energy_on_table: the
+## steps stand by each stage, CONFIRM is bottom right, and a click on the card above it opens the window
+## again). The split starts by filling the stage with the most energy in it up to the goal, then the next.
+func _energy_prepare(d: Dictionary, who: int) -> void:
 	var energy: int = JsonUtil.as_int(d.get("energy", 0))
 	var goal: int = JsonUtil.as_int(d.get("goal", state.settings.stage_goal))
 	var ids: PackedStringArray = JsonUtil.as_strings(d.get("stages", []))
 	var key: String = "%d|%d|%d|%s" % [who, state.turn, energy, ",".join(ids)]
-	if key != _energy_key:
-		_energy_key = key
-		energy_split = {}
-		var order: Array = Array(ids)
-		order.sort_custom(func(a: String, b: String) -> bool: return state.stage(a).progress_of(who) > state.stage(b).progress_of(who))
-		var rest: int = energy
-		for id: String in order:
-			var n: int = mini(rest, maxi(goal - state.stage(id).progress_of(who), 0))
-			if n > 0:
-				energy_split[id] = n
-				rest -= n
-		if rest > 0 and not order.is_empty():
-			energy_split[order[0]] = JsonUtil.as_int(energy_split.get(order[0], 0)) + rest
-	var left: int = energy
-	for id: String in ids:
+	if key == _energy_key:
+		return
+	_energy_key = key
+	energy_on_table = false
+	energy_split = {}
+	var order: Array = Array(ids)
+	order.sort_custom(func(a: String, b: String) -> bool: return state.stage(a).progress_of(who) > state.stage(b).progress_of(who))
+	var rest: int = energy
+	for id: String in order:
+		var n: int = mini(rest, maxi(goal - state.stage(id).progress_of(who), 0))
+		if n > 0:
+			energy_split[id] = n
+			rest -= n
+	if rest > 0 and not order.is_empty():
+		energy_split[order[0]] = JsonUtil.as_int(energy_split.get(order[0], 0)) + rest
+
+
+## The energy decision a player at this screen is to make now, or nothing (bands first, as for any choice).
+func _energy_decision() -> Dictionary:
+	if state == null or state.pending.is_empty() or _banner_busy or replay:
+		return {}
+	var d: Dictionary = state.pending[0]
+	if str(d.get("type", "")) != RulesEngine.DECISION_STAGE_ENERGY or not local_slots.has(JsonUtil.as_int(d.get("player", -1), -1)):
+		return {}
+	return d
+
+
+## How much of the decision's energy is not shared out yet.
+func _energy_left(d: Dictionary) -> int:
+	var left: int = JsonUtil.as_int(d.get("energy", 0))
+	for id: String in JsonUtil.as_strings(d.get("stages", [])):
 		left -= JsonUtil.as_int(energy_split.get(id, 0))
+	return left
+
+
+func _energy_confirm(d: Dictionary, who: int) -> void:
+	var split: Dictionary = {}
+	for id: String in JsonUtil.as_strings(d.get("stages", [])):
+		if JsonUtil.as_int(energy_split.get(id, 0)) > 0:
+			split[id] = JsonUtil.as_int(energy_split[id])
+	energy_pressed.emit(who, split)
+
+
+## What the table shows of the split while it is being made (the match draws it on the stages' edges):
+## {who, split: stage id -> energy} or nothing.
+func energy_preview() -> Dictionary:
+	var d: Dictionary = _energy_decision()
+	if d.is_empty():
+		return {}
+	return {"who": JsonUtil.as_int(d.get("player", 0)), "split": energy_split, "stages": JsonUtil.as_strings(d.get("stages", []))}
+
+
+func _energy_dialog(d: Dictionary, who: int) -> void:
+	_energy_prepare(d, who)
+	if energy_on_table:
+		_energy_table(d, who)
+		return
+	_dialog.visible = true
+	var energy: int = JsonUtil.as_int(d.get("energy", 0))
+	var goal: int = JsonUtil.as_int(d.get("goal", state.settings.stage_goal))
+	var ids: PackedStringArray = JsonUtil.as_strings(d.get("stages", []))
+	var left: int = _energy_left(d)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
-	col.custom_minimum_size.x = 560
+	col.add_theme_constant_override("separation", 12)
+	col.custom_minimum_size.x = 700
 	_dialog_box.add_child(col)
 	col.add_child(UiTheme.label("END PHASE" + ("  ·  %s" % player_name(who).to_upper() if local_slots.size() > 1 else ""), 13, Palette.GOLD))
-	var title: Label = UiTheme.label("%d ENERGY INTO YOUR STAGES" % energy, 28)
+	var title: Label = UiTheme.label("%d ENERGY INTO YOUR STAGES" % energy, 34)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(title)
 	for id: String in ids:
@@ -3333,16 +3412,11 @@ func _energy_dialog(d: Dictionary, who: int) -> void:
 	var low := HBoxContainer.new()
 	low.add_theme_constant_override("separation", 12)
 	col.add_child(low)
-	var note: Label = _damage_note("All of it goes in. %d in one stage claims it." % goal, 13, Palette.MUTED)
+	var note: Label = _damage_note("All of it goes in. %d in one stage claims it. Click outside to share it out on the table." % goal, 13, Palette.MUTED)
 	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	note.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	low.add_child(note)
-	var confirm: Button = _option_button("CONFIRM" if left == 0 else "CONFIRM   %d LEFT" % left, func() -> void:
-		var split: Dictionary = {}
-		for id: String in ids:
-			if JsonUtil.as_int(energy_split.get(id, 0)) > 0:
-				split[id] = JsonUtil.as_int(energy_split[id])
-		energy_pressed.emit(who, split))
+	var confirm: Button = _option_button("CONFIRM" if left == 0 else "CONFIRM   %d LEFT" % left, func() -> void: _energy_confirm(d, who))
 	_dialog_box.remove_child(confirm)
 	low.add_child(confirm)
 	confirm.theme_type_variation = &"Primary"
@@ -3352,23 +3426,52 @@ func _energy_dialog(d: Dictionary, who: int) -> void:
 	confirm.disabled = left != 0
 
 
-## One stage of the energy window: its picture, what it holds with what would go in, and − and +.
+## What `n` energy of `who` would do in a stage: {have, theirs, fill, take, after, over, other}. The shared
+## ring fills the empty places, then takes the other side's, and what is left over is lost; with a ring
+## of one's own it fills up to the goal.
+func energy_effect(st: StageState, who: int, n: int, goal: int) -> Dictionary:
+	var have: int = st.progress_of(who)
+	var theirs: int = 0
+	var other: String = ""
+	if state.settings.shared_ring():
+		for p: PlayerState in state.players:
+			if state.team_of(p.slot) != state.team_of(who):
+				theirs += st.progress_of(p.slot)
+				other = player_name(p.slot)
+	var out: Dictionary = split_effect(have, theirs, n, goal)
+	out["other"] = other
+	return out
+
+
+## `n` energy into a ring of `goal` places where the player has `have` and the other side `theirs`: it
+## fills the empty places first, then takes the other side's, and the rest is lost.
+static func split_effect(have: int, theirs: int, n: int, goal: int) -> Dictionary:
+	var fill: int = mini(n, maxi(goal - have - theirs, 0))
+	var take: int = mini(n - fill, theirs)
+	return {"have": have, "theirs": theirs, "fill": fill, "take": take, "after": have + fill + take, "over": n - fill - take}
+
+
+## One stage of the energy window: its picture, the ring with what would go in, the numbers, the heroes of
+## the player standing on it, and − and +.
 func _energy_row(st: StageState, who: int, goal: int, energy: int, left: int, ids: PackedStringArray) -> HBoxContainer:
 	var id: String = st.id
-	var have: int = st.progress_of(who)
 	var n: int = JsonUtil.as_int(energy_split.get(id, 0))
-	var after: int = mini(have + n, goal)
-	var over: int = have + n - after
+	var fx: Dictionary = energy_effect(st, who, n, goal)
+	var have: int = fx["have"]
+	var theirs: int = fx["theirs"]
+	var take: int = fx["take"]
+	var after: int = fx["after"]
+	var over: int = fx["over"]
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 14)
 	var pic := HeroSlice.new()
-	pic.custom_minimum_size = Vector2(170, 72)
+	pic.custom_minimum_size = Vector2(210, 92)
 	pic.art_w = PlayerCard.ALL_PICTURE
 	pic.set_mirrored(false)
 	pic.art = db.thumb(st.card_id) if db != null else null
 	pic.art_region = Rect2(0.115, 0.125, 0.77, 0.37)
 	pic.color_edge = Palette.team(state.team_of(who))
-	pic.content.add_theme_constant_override("margin_left", 10)
+	pic.content.add_theme_constant_override("margin_left", 12)
 	pic.content.add_theme_constant_override("margin_right", int(HeroSlice.CUT + HeroSlice.EDGE_W) + 5)
 	pic.gui_input.connect(func(e: InputEvent) -> void: _card_click(e, st.card_id))
 	row.add_child(pic)
@@ -3376,49 +3479,175 @@ func _energy_row(st: StageState, who: int, goal: int, energy: int, left: int, id
 	names.alignment = BoxContainer.ALIGNMENT_END
 	names.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pic.content.add_child(names)
-	var name_l: Label = UiTheme.label(_card_name(st.card_id), 16)
+	var name_l: Label = UiTheme.label(_card_name(st.card_id), 19)
 	name_l.add_theme_color_override("font_outline_color", Color.BLACK)
 	name_l.add_theme_constant_override("outline_size", 6)
 	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD
 	names.add_child(name_l)
 	var mid := VBoxContainer.new()
-	mid.add_theme_constant_override("separation", 2)
+	mid.add_theme_constant_override("separation", 5)
 	mid.alignment = BoxContainer.ALIGNMENT_CENTER
 	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(mid)
-	var bar := UiSegments.new()
-	bar.max_value = goal
-	bar.value = after
-	bar.ghost = after - have
-	bar.color = Palette.team(state.team_of(who))
-	bar.lean = 1.5
-	bar.custom_minimum_size = Vector2(0, 12)
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	mid.add_child(bar)
+	if state.settings.shared_ring():
+		mid.add_child(_ring_bar(have, theirs, JsonUtil.as_int(fx["fill"]), take, goal, state.team_of(who)))
+	else:
+		var bar := UiSegments.new()
+		bar.max_value = goal
+		bar.value = after
+		bar.ghost = after - have
+		bar.color = Palette.team(state.team_of(who))
+		bar.lean = 1.5
+		bar.custom_minimum_size = Vector2(0, 22)
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mid.add_child(bar)
+	var words := HBoxContainer.new()
+	words.add_theme_constant_override("separation", 10)
+	mid.add_child(words)
 	var line: String = "%d  →  %d  /  %d" % [have, after, goal]
 	if after >= goal:
 		line += "   CLAIMS IT"
 	if over > 0:
 		line += "  (%d LOST)" % over
-	mid.add_child(UiTheme.label(line, 20, Palette.GOLD if n > 0 else Palette.MUTED))
+	var mine_l: Label = UiTheme.label(line, 24, Palette.GOLD if n > 0 else Palette.MUTED)
+	mine_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.add_child(mine_l)
+	if theirs > 0:
+		var red: Color = Palette.team(1 - clampi(state.team_of(who), 0, 1)).lightened(0.35)
+		var other: String = str(fx["other"]).to_upper()
+		var their_l: Label = UiTheme.label(("%s  %d  →  %d" % [other, theirs, theirs - take]) if take > 0 else "%s  %d" % [other, theirs], 16, red)
+		their_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		words.add_child(their_l)
+	# The player's heroes standing on it, with their names; three and more are faces only (name on hover).
+	var who_row := HBoxContainer.new()
+	who_row.add_theme_constant_override("separation", 8)
+	mid.add_child(who_row)
+	var faces := HBoxContainer.new()
+	faces.add_theme_constant_override("separation", 2)
+	who_row.add_child(faces)
+	var hero_names := PackedStringArray()
+	for x: HeroState in state.heroes_on_stage(st):
+		if x.owner != who:
+			continue
+		var f: HeroSlice = _energy_face(x)
+		faces.add_child(f)
+		hero_names.append(hero_name(x).get_slice(",", 0).to_upper())
+	if hero_names.size() <= 2:
+		var names_l: Label = UiTheme.label(" + ".join(hero_names), 14, Palette.MUTED)
+		names_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		who_row.add_child(names_l)
 	var steps := HBoxContainer.new()
 	steps.add_theme_constant_override("separation", 6)
 	steps.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(steps)
 	var minus: Button = _step_button("−", func() -> void: _energy_step(id, -1, ids, who))
-	minus.custom_minimum_size = Vector2(40, 40)
 	minus.disabled = n <= 0
 	steps.add_child(minus)
-	var num: Label = UiTheme.label("+%d" % n, 24, Palette.GOLD if n > 0 else Palette.MUTED)
-	num.custom_minimum_size.x = 42
+	var num: Label = UiTheme.label("+%d" % n, 28, Palette.GOLD if n > 0 else Palette.MUTED)
+	num.custom_minimum_size.x = 48
 	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	num.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	steps.add_child(num)
 	var plus: Button = _step_button("+", func() -> void: _energy_step(id, 1, ids, who))
-	plus.custom_minimum_size = Vector2(40, 40)
 	plus.disabled = left <= 0 and n >= energy
 	steps.add_child(plus)
 	return row
+
+
+## A hero's face, small and slanted, for the energy window.
+func _energy_face(hero: HeroState) -> HeroSlice:
+	var f := HeroSlice.new()
+	var tex: Texture2D = db.thumb(engine.stat_card(hero).id) if db != null else null
+	f.art = tex
+	f.art_region = HeroSlice.region_for(tex)
+	f.art_w = 66.0 - HeroSlice.CUT
+	f.bg = Color(0, 0, 0, 0)
+	f.outline = Color.BLACK
+	f.outline_width = 2.0
+	f.custom_minimum_size = Vector2(66, 38)
+	f.tooltip_text = hero_name(hero)
+	f.mouse_filter = Control.MOUSE_FILTER_PASS
+	return f
+
+
+## The shared ring as a row of places: the player's from the left, the other side's from the right, the
+## places that would be filled lighter, and those taken from the other side lighter with their rim.
+func _ring_bar(mine: int, theirs: int, fill: int, take: int, goal: int, team: int) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(0, 22)
+	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var own: Color = Palette.team(clampi(team, 0, 1))
+	var other: Color = Palette.team(1 - clampi(team, 0, 1))
+	c.draw.connect(func() -> void:
+		var lean: float = 5.0
+		var gap: float = 2.0
+		var sw: float = (c.size.x - gap * (goal - 1) - lean) / maxf(goal, 1)
+		var hh: float = c.size.y
+		for i: int in goal:
+			var x: float = i * (sw + gap)
+			var col: Color = Color(0.2, 0.2, 0.2)
+			var edge := Color(0, 0, 0, 0)
+			if i < mine:
+				col = own
+			elif i < mine + fill:
+				col = own.lightened(0.5)
+			elif i >= goal - theirs and i < goal - theirs + take:
+				col = own.lightened(0.5)
+				edge = other
+			elif i >= goal - theirs:
+				col = other
+			var poly := PackedVector2Array([Vector2(x + lean, 0), Vector2(x + lean + sw, 0), Vector2(x + sw, hh), Vector2(x, hh)])
+			c.draw_colored_polygon(poly, col)
+			if edge.a > 0.0:
+				poly.append(poly[0])
+				c.draw_polyline(poly, edge, 2.0, true))
+	return c
+
+
+## The split on the table (the window closed by a click outside it): − n + by each stage, placed where the
+## match says the stage is on the screen (stage_anchor), every frame.
+func _energy_table(d: Dictionary, who: int) -> void:
+	var ids: PackedStringArray = JsonUtil.as_strings(d.get("stages", []))
+	var energy: int = JsonUtil.as_int(d.get("energy", 0))
+	var left: int = _energy_left(d)
+	for id: String in ids:
+		var n: int = JsonUtil.as_int(energy_split.get(id, 0))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		var minus: Button = _step_button("−", func() -> void: _energy_step(id, -1, ids, who))
+		minus.custom_minimum_size = Vector2(34, 34)
+		minus.disabled = n <= 0
+		row.add_child(minus)
+		row.add_child(UiShape.chip("+%d" % n, Palette.GOLD if n > 0 else Palette.SURFACE_2, Color.BLACK if n > 0 else Palette.MUTED, 20, 34.0, 12.0))
+		var plus: Button = _step_button("+", func() -> void: _energy_step(id, 1, ids, who))
+		plus.custom_minimum_size = Vector2(34, 34)
+		plus.disabled = left <= 0 and n >= energy
+		row.add_child(plus)
+		add_child(row)
+		# Under the bands, like the other things that stand on the table.
+		move_child(row, _banner_layer.get_index())
+		row.reset_size()
+		_energy_rows[id] = row
+	_place_energy_rows()
+
+
+func _place_energy_rows() -> void:
+	for id: String in _energy_rows:
+		var row: Control = _energy_rows[id]
+		if not is_instance_valid(row):
+			continue
+		var at := Vector2(-4000, -4000)
+		if stage_anchor.is_valid():
+			at = stage_anchor.call(id)
+		row.position = at - Vector2(row.size.x * 0.5, 0)
+
+
+func _clear_energy_rows() -> void:
+	for id: String in _energy_rows:
+		if is_instance_valid(_energy_rows[id]):
+			_energy_rows[id].queue_free()
+	_energy_rows.clear()
 
 
 func _step_button(text: String, cb: Callable) -> Button:
