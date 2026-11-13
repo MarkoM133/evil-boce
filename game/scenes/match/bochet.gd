@@ -292,6 +292,18 @@ var _blink_in: float = 1.7
 ## His eyes (and the mouth under them) are there; off, only his hands hold the table (Marko 2026-11-13, Settings →
 ## Evil Bochet: Hands only), and a ball over the near end is caught by a hand from below.
 var eyes_on: bool = true
+## The eyes on or off during a match (Settings): off they shut and are gone at once, on they open.
+func set_eyes(on: bool) -> void:
+	if on == eyes_on:
+		return
+	eyes_on = on
+	if _shown and not _left:
+		_eyes.visible = on
+		closed = 0.0 if on else 1.0
+		if not on:
+			_mouth.visible = false
+
+
 ## A blink every BLINK_MIN to BLINK_MAX seconds (Marko 2026-11-13: far fewer than the 2.6 s they had).
 const BLINK_MIN: float = 7.0
 const BLINK_MAX: float = 14.0

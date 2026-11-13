@@ -1625,6 +1625,16 @@ func offer_ball_pass(slot: int, at: Vector2) -> void:
 	_ball_pass.visible = true
 
 
+func ball_pass_shown() -> bool:
+	return _ball_pass != null and _ball_pass.visible
+
+
+## The PASS under a ball, kept under it: `at` is where the ball's foot is on the screen now.
+func move_ball_pass(at: Vector2) -> void:
+	if _ball_pass != null:
+		_ball_pass.position = at - Vector2(_ball_pass.size.x * 0.5, 0.0)
+
+
 func hide_ball_pass() -> void:
 	if _ball_pass != null:
 		_ball_pass.visible = false

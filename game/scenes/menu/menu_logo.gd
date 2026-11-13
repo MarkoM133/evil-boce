@@ -225,8 +225,8 @@ func _grab(side: float, run: int) -> void:
 	var breathe: Tween = _base.create_tween().set_loops()
 	breathe.tween_property(_base, "scale", Vector2.ONE * 1.012, 1.1).set_trans(Tween.TRANS_SINE)
 	breathe.tween_property(_base, "scale", Vector2.ONE, 1.1).set_trans(Tween.TRANS_SINE)
-	# A little sooner and quicker on the menu than in the mockup (Marko 2026-11-12).
-	await get_tree().create_timer(0.7).timeout
+	# Soon after the clean logo lands (Marko 2026-11-12, and 2026-11-13: it still waited too long).
+	await get_tree().create_timer(0.15).timeout
 	if not _here(run):
 		return
 	# The fingers flex a little as the hands rise (a third of the first try, and slower: less wiggling in the dark).
