@@ -32,8 +32,9 @@ var _k: float = 0.0
 var _zoom_t: float = 0.0
 ## The folder of the animation's layers, "" for the still logo.
 var anim_dir: String = ""
-## The four fingers' knuckles in the 1024 picture (their pivots) and how far each turns open.
-const KNUCKLES: Array[Vector2] = [Vector2(282, 222), Vector2(432, 142), Vector2(760, 108), Vector2(880, 212)]
+## The four fingers' knuckles in the 1024 picture (their pivots: each finger layer is that whole finger, skin and
+## claw, and turns about the top of it) and how far each turns open.
+const KNUCKLES: Array[Vector2] = [Vector2(282, 222), Vector2(445, 95), Vector2(760, 108), Vector2(880, 212)]
 const OPEN_DEG: Array[float] = [52.0, 42.0, -42.0, -52.0]
 ## The eyes' middle in the 1024 picture (they blink about it).
 const EYES_AT := Vector2(540, 292)
