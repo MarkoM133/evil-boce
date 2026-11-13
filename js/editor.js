@@ -1909,15 +1909,16 @@ export function createEditor(env) {
   }
   const pictureStale = id => stale.ids.get(id) === true;
 
-  // Every out-of-date picture drawn again at once, one database write (no new card version: looks, not play).
-  async function redrawAll() {
+  // Every out-of-date picture drawn again at once, one database write (no new card version: looks, not play);
+  // `prefix` ('OP1-') keeps it to one set.
+  async function redrawAll(prefix = '') {
     if (!canPublish()) throw new Error('Redrawing writes the pictures: open Card Studio on a computer with the shared folder.');
     await env.assertFresh();
     await fontsReady();
     const images = {};
     const names = [];
     for (const card of db().cards) {
-      if (card.deleted || ed.drafts?.cards?.[card.id] || !card.imageHash) continue;
+      if (card.deleted || ed.drafts?.cards?.[card.id] || !card.imageHash || !card.id.startsWith(prefix)) continue;
       const pic = await drawPublished(card).catch(() => null);
       if (!pic || pic.hash === card.imageHash) continue;
       await fs.writeFile(store().root, `data/images/${card.id}.${pic.hash}.png`, pic.bytes);
@@ -2411,7 +2412,8 @@ export function createEditor(env) {
   const sets = createSetsView({
     h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast,
     cards: allCards, drafts: () => ed.drafts, locks: () => ed.locks, thumbInto, go: id => go(id), newCard, nextId,
-    pictureStale, checkPictures, redrawAll, canPublish, stalePictures: () => [...stale.ids.values()].filter(Boolean).length,
+    pictureStale, checkPictures, redrawAll, canPublish,
+    stalePictures: (prefix = '') => [...stale.ids].filter(([id, out]) => out && id.startsWith(prefix)).length,
   });
 
   return {

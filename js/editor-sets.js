@@ -163,7 +163,7 @@ export function createSetsView(ctx) {
           h('h1', {}, s.name),
           h('p', { class: 'muted' }, special ? `${all.length} cards` : `Set ${String(s.number).padStart(2, '0')} · ${all.length} cards · ${s.packSize ?? DEFAULT_PACK} per pack`)),
         h('div', { class: 'ce-page-actions' },
-          redrawAllButton(),
+          redrawButton(`${s.code}-`, 'Redraw pictures'),
           newCardButton(s.code, special ? [newType] : NEW_TYPES, 'primary'))),
       h('div', { class: 'ce-filters' },
         h('input', { type: 'search', placeholder: 'Search name, text or tag…', value: v.q, oninput: e => { v.q = e.target.value; clearTimeout(v.qt); v.qt = setTimeout(ctx.render, 250); } }),
@@ -211,13 +211,14 @@ export function createSetsView(ctx) {
       h('button', { class: cls, type: 'button', 'aria-haspopup': 'menu', onclick: () => { menu.hidden = !menu.hidden; } }, 'New card ▾'), menu);
   }
 
-  // Pictures out of date with the renderer (NEEDS REDRAW on their tiles), all of them drawn again with one click.
-  function redrawAllButton() {
+  // Pictures out of date with the renderer (NEEDS REDRAW on their tiles) drawn again with one click: a set's on its
+  // page, every set's on Sets & packs (Marko 2026-11-13).
+  function redrawButton(prefix, label) {
     ctx.checkPictures();
-    const n = ctx.stalePictures();
+    const n = ctx.stalePictures(prefix);
     return h('button', { type: 'button', class: n ? '' : 'ghost', disabled: !ctx.canPublish() || !n,
       title: !ctx.canPublish() ? 'Redrawing writes the pictures: a computer with the shared folder.' : n ? 'Draw every out-of-date picture again with the renderer as it is now' : 'Every picture is up to date',
-      onclick: () => ctx.guard(ctx.redrawAll) }, n ? `Redraw all pictures (${n})` : 'Redraw all pictures');
+      onclick: () => ctx.guard(() => ctx.redrawAll(prefix)) }, n ? `${label} (${n})` : label);
   }
 
   function tile(c, draft) {
@@ -250,7 +251,8 @@ export function createSetsView(ctx) {
     const page = h('section', { class: 'ce-set ce-all-settings' },
       h('header', { class: 'ce-set-head' },
         h('div', { class: 'ce-set-title' }, h('p', { class: 'muted small' }, 'Card editor / Sets'), h('h1', {}, 'Sets & packs'),
-          h('p', { class: 'muted' }, 'Name, number and Draft pack of every set; the mixed pack is for a Draft whose cards come from several sets.'))),
+          h('p', { class: 'muted' }, 'Name, number and Draft pack of every set; the mixed pack is for a Draft whose cards come from several sets.')),
+        h('div', { class: 'ce-page-actions' }, redrawButton('', 'Redraw all pictures'))),
       list.map(s => h('div', { class: 'ce-settings-block', id: `set-${s.code}` },
         h('div', { class: 'ce-settings-head' }, packImg(s.code, 'ce-settab-pack'), h('h2', {}, `${s.name} · ${s.code}`)),
         renderSettings(s, list))),
