@@ -8,7 +8,10 @@ extends Control
 const MENU_SCENE: String = "res://scenes/menu/main_menu.tscn"
 const KEY_LABELS: Dictionary[String, String] = {"pass": "Pass / end the round", "menu": "Menu / cancel",
 	"card_zoom": "Show a card big", "battle_cam": "Battle camera on / off", "hold": "Hold (no auto-pass while down)",
-	"beams": "Beams on heroes on / off", "table_text": "Words over the table on / off", "stage_strip": "Stage and core boxes open / folded"}
+	"beams": "Beams on heroes on / off", "table_text": "Words over the table on / off", "stage_strip": "Stage and core boxes open / folded",
+	"bochet_eyes": "Evil Bochet's eyes on / off", "cam_left": "Camera left", "cam_right": "Camera right",
+	"cam_forward": "Camera forward", "cam_back": "Camera back", "cam_turn_left": "Camera turn left",
+	"cam_turn_right": "Camera turn right"}
 const TABS: Array[String] = ["GAME", "INTERFACE", "GRAPHICS", "SOUND", "KEYS"]
 
 ## The tab last open, kept while the game runs.

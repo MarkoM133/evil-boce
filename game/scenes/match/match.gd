@@ -2923,6 +2923,13 @@ func _on_key(k: InputEventKey) -> void:
 			hud.toast("Beams %s" % ("on" if GameSettings.beams() else "off"), Palette.FG)
 		KEY_C:
 			_toggle_battle_cam()
+		KEY_Y:
+			# Evil Bochet's eyes on or off in a match (Marko 2026-11-13; Settings → Keys), kept for the next ones.
+			if _bochet != null:
+				var on: bool = not GameSettings.effect("bochet_eyes")
+				GameSettings.set_value("effects", "bochet_eyes", on)
+				_bochet.set_eyes(on)
+				hud.toast("Evil Bochet's eyes %s" % ("on" if on else "off"), Palette.FG)
 		KEY_T:
 			# Words over the table on or off (Marko 2026-11-01).
 			GameSettings.set_value("display", "table_text", not GameSettings.table_text())

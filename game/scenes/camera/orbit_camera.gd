@@ -135,19 +135,20 @@ func _held(key: Key) -> bool:
 
 func _process(delta: float) -> void:
 	var move := Vector2.ZERO
-	if _held(KEY_A) or _held(KEY_LEFT):
+	# The keys each player set (Settings → Keys); the arrows too.
+	if _held(GameSettings.key("cam_left")) or _held(KEY_LEFT):
 		move.x -= 1.0
-	if _held(KEY_D) or _held(KEY_RIGHT):
+	if _held(GameSettings.key("cam_right")) or _held(KEY_RIGHT):
 		move.x += 1.0
-	if _held(KEY_W) or _held(KEY_UP):
+	if _held(GameSettings.key("cam_forward")) or _held(KEY_UP):
 		move.y += 1.0
-	if _held(KEY_S) or _held(KEY_DOWN):
+	if _held(GameSettings.key("cam_back")) or _held(KEY_DOWN):
 		move.y -= 1.0
 	if move != Vector2.ZERO:
 		_pan(move.normalized() * distance * 0.9 * delta)
-	if _held(KEY_Q):
+	if _held(GameSettings.key("cam_turn_left")):
 		yaw += 1.6 * delta
-	if _held(KEY_E):
+	if _held(GameSettings.key("cam_turn_right")):
 		yaw -= 1.6 * delta
 	var a: float = 1.0 - exp(-SMOOTH * delta)
 	_cur_target = _cur_target.lerp(target, a)

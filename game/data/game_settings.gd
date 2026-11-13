@@ -170,8 +170,12 @@ const FPS_LIMITS: Array[int] = [0, 60, 120, 144, 240]
 ## Sound buses; Music and Effects send to Master and are made on first use.
 const BUSES: Array[String] = ["Master", "Music", "Effects"]
 ## Rebindable keys: action -> default key.
+## Every key the game has, so each player sets them on Settings → Keys (Marko 2026-11-13: the camera's too, and
+## Evil Bochet's eyes); the arrow keys move the camera as well, always.
 const DEFAULT_KEYS: Dictionary[String, Key] = {"pass": KEY_SPACE, "menu": KEY_ESCAPE, "card_zoom": KEY_ALT,
-	"battle_cam": KEY_C, "hold": KEY_CTRL, "beams": KEY_B, "table_text": KEY_T, "stage_strip": KEY_G}
+	"battle_cam": KEY_C, "hold": KEY_CTRL, "beams": KEY_B, "table_text": KEY_T, "stage_strip": KEY_G,
+	"bochet_eyes": KEY_Y, "cam_left": KEY_A, "cam_right": KEY_D, "cam_forward": KEY_W, "cam_back": KEY_S,
+	"cam_turn_left": KEY_Q, "cam_turn_right": KEY_E}
 ## The card-zoom key: held (the card shows while it is down) or pressed (on, then off).
 const ZOOM_MODES: Array[String] = ["hold", "press"]
 
