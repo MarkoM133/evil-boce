@@ -36,7 +36,6 @@ const RIM := Color("7d4dff")
 const EYE := Color("ffc61a")
 const IRIS := Color("fff2a8")
 const PUPIL := Color("140a05")
-const LID := Color("0b0908")
 const BROW := Color("4a2d8a")
 const MOUTH := Color("2a0509")
 const TOOTH := Color("f3efe7")
@@ -277,8 +276,8 @@ var _eyes: Node3D
 var _lids: Node3D
 var _jaw: Node3D
 var _mouth: Node3D
-var _irises: Array[Node3D] = []
-var _pupils: Array[Node3D] = []
+var _irises: Array[MeshInstance3D] = []
+var _pupils: Array[MeshInstance3D] = []
 ## On the table (from the first turn on), and still on its way up.
 var _shown: bool = false
 var _entering: bool = false
@@ -2183,8 +2182,10 @@ func _raise_hands() -> void:
 # --- the eyes -----------------------------------------------------------------------------------------
 
 ## Two flat round eyes in a plane that leans back (the lids node, which also squashes to blink), each with
-## an iris and a slit pupil that slide inside it, a slanted lid across the top, lower towards the middle,
-## and a thin brow under the lid (the O8 eyes); under them a mouth, shut and gone until a ball comes by.
+## an iris and a slit pupil that slide inside it, cut off along a slanted line across the top, lower towards
+## the middle, with a thin brow on the cut (the O8 eyes); under them a mouth, shut and gone until a ball
+## comes by. The cut is a real cut (Marko 2026-11-13): a dark lid painted over the eye only hid on the dark
+## under the table, and showed as a cap as soon as the camera turned and the eye stood against anything else.
 func _make_eyes() -> Node3D:
 	var root := Node3D.new()
 	root.name = "Eyes"
@@ -2197,17 +2198,10 @@ func _make_eyes() -> Node3D:
 		var eye := Node3D.new()
 		eye.position = Vector3(e * 1.45, 0.1, 0)
 		_lids.add_child(eye)
-		_flat(eye, disc(Vector2.ZERO, 1.32, 26), Color(EYE, 0.22), -0.03)
-		_flat(eye, disc(Vector2.ZERO, 1.0, 26), EYE, 0.0)
-		_irises.append(_flat(eye, disc(Vector2.ZERO, 0.6, 20), IRIS, 0.02))
-		_pupils.append(_flat(eye, lens(Vector2(0, -0.62), Vector2(0, 0.62), 0.5, 7), PUPIL, 0.04))
-		var lid := PackedVector2Array([Vector2(-1.7 * e, lo - slope * 1.7), Vector2(1.7 * e, lo + slope * 1.7),
-			Vector2(1.7 * e, 1.9), Vector2(-1.7 * e, 1.9)])
-		# Only where the eye is: the part of the eye's round above the line.
-		var cut: Array[PackedVector2Array] = Geometry2D.intersect_polygons(disc(Vector2.ZERO, 1.36, 26), lid)
-		if not cut.is_empty():
-			lid = cut[0]
-		_flat(eye, lid, LID, 0.06)
+		_cut(eye, disc(Vector2.ZERO, 1.32, 26), Color(EYE, 0.22), -0.03, lo, slope * e)
+		_cut(eye, disc(Vector2.ZERO, 1.0, 26), EYE, 0.0, lo, slope * e)
+		_irises.append(_cut(eye, disc(Vector2.ZERO, 0.6, 20), IRIS, 0.02, lo, slope * e))
+		_pupils.append(_cut(eye, lens(Vector2(0, -0.62), Vector2(0, 0.62), 0.5, 7), PUPIL, 0.04, lo, slope * e))
 		_flat(eye, PackedVector2Array([Vector2(-1.25 * e, lo - slope * 1.25 - 0.09), Vector2(1.25 * e, lo + slope * 1.25 - 0.09),
 			Vector2(1.25 * e, lo + slope * 1.25 + 0.05), Vector2(-1.25 * e, lo - slope * 1.25 + 0.05)]), BROW, 0.07)
 	# The mouth (K10): a dark lens with a row of teeth above and below, in the same plane as the eyes.
@@ -2255,6 +2249,55 @@ static func _flat(parent: Node3D, pts: PackedVector2Array, col: Color, z: float)
 	mi.position.z = z
 	parent.add_child(mi)
 	return mi
+
+
+## A flat polygon as _flat, of which only the part under the line y = lo + slope * x of its parent's plane
+## is drawn. A piece that slides or stretches in that plane says so with _cut_at, so the line stays put.
+static func _cut(parent: Node3D, pts: PackedVector2Array, col: Color, z: float, lo: float, slope: float) -> MeshInstance3D:
+	var mi: MeshInstance3D = _flat(parent, pts, col, z)
+	var m := ShaderMaterial.new()
+	m.shader = _cut_shader(col.a < 1.0)
+	m.set_shader_parameter("col", col)
+	m.set_shader_parameter("lo", lo)
+	m.set_shader_parameter("slope", slope)
+	mi.material_override = m
+	return mi
+
+
+## Where a _cut piece is in its parent's plane now: moved by `shift`, `wide` times as wide.
+static func _cut_at(piece: MeshInstance3D, shift: Vector2, wide: float) -> void:
+	var m: ShaderMaterial = piece.material_override
+	m.set_shader_parameter("shift", shift)
+	m.set_shader_parameter("wide", wide)
+
+
+static var _cut_shaders: Dictionary[bool, Shader] = {}
+
+
+static func _cut_shader(see_through: bool) -> Shader:
+	if not _cut_shaders.has(see_through):
+		var sh := Shader.new()
+		sh.code = """shader_type spatial;
+render_mode unshaded, cull_disabled, shadows_disabled;
+uniform vec4 col : source_color = vec4(1.0);
+uniform vec2 shift = vec2(0.0);
+uniform float wide = 1.0;
+uniform float lo = 0.0;
+uniform float slope = 0.0;
+varying vec2 at;
+void vertex() {
+	at = vec2(VERTEX.x * wide, VERTEX.y) + shift;
+}
+void fragment() {
+	if (at.y > lo + slope * at.x) {
+		discard;
+	}
+	ALBEDO = col.rgb;
+%s}
+""" % ("	ALPHA = col.a;
+" if see_through else "")
+		_cut_shaders[see_through] = sh
+	return _cut_shaders[see_through]
 
 
 static func disc(c: Vector2, r: float, n: int) -> PackedVector2Array:
@@ -2479,8 +2522,10 @@ func _drive_eyes(delta: float, state: GameState, bodies: Dictionary[String, Ball
 	_lids.scale.y = lerpf(1.0, 0.06, shut) * lerpf(1.0, 0.4, squint) * lerpf(1.0, 0.05, closed)
 	for i: int in _irises.size():
 		_irises[i].position = Vector3(_look.x * 0.8, _look.y * 0.8, 0.02)
+		_cut_at(_irises[i], _look * 0.8, 1.0)
 		_pupils[i].position = Vector3(_look.x, _look.y, 0.04)
 		_pupils[i].scale.x = _wide
+		_cut_at(_pupils[i], _look, _wide)
 
 
 ## In the eyes' own plane: sideways is sideways, up is away from the camera.
