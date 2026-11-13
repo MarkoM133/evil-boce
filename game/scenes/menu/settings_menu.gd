@@ -279,8 +279,13 @@ func _build_graphics(col: VBoxContainer) -> void:
 		GameSettings.set_value("effects", "slow_mo", i < 2)
 		_store("effects", "shake", i == 0))
 	_hint(col, "All: a blink of freeze when damage lands, slow motion on a ball over the edge (without Evil Bochet) and on his claws taking a fallen hero, and the view jolting on a KO and when he grabs a ball. No shake: the same without the jolt.")
-	var bo := _option(col, "Evil Bochet", ["Off  ·  the table stands on its slab", "On  ·  a monster holds the table"], 1 if GameSettings.effect("bochet") else 0)
-	bo.item_selected.connect(func(i: int) -> void: _store("effects", "bochet", i == 1))
+	# Hands only: his hands hold the table, no eyes under it (Marko 2026-11-13).
+	var bochet_at: int = 0 if not GameSettings.effect("bochet") else (2 if GameSettings.effect("bochet_eyes") else 1)
+	var bo := _option(col, "Evil Bochet", ["Off  ·  the table stands on its slab", "Hands only  ·  his hands hold the table, no eyes",
+		"On  ·  hands and eyes"], bochet_at)
+	bo.item_selected.connect(func(i: int) -> void:
+		GameSettings.set_value("effects", "bochet_eyes", i == 2)
+		_store("effects", "bochet", i > 0))
 
 
 func _build_sound(col: VBoxContainer) -> void:

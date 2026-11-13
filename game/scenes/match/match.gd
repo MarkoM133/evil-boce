@@ -466,6 +466,7 @@ func _build_bochet() -> void:
 			_bodies[id].visible = false
 		hud.ko_done(id))
 	_bochet.slow_ko = GameSettings.effect("slow_mo")
+	_bochet.eyes_on = GameSettings.effect("bochet_eyes")
 	hud.bochet = true
 	hud.ko_due.connect(_start_ko_holes)
 	arena.sink_table()

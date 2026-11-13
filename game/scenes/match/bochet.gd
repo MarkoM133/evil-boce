@@ -115,13 +115,14 @@ const DODGE_CORNER: float = 2.5
 
 enum Stage { CATCHING, UNDER, BACK, KO }
 
-## Faceted and rim-lit, coloured by the model's vertices; whatever hangs below the table fades into the dark.
+## Faceted and rim-lit, coloured by the model's vertices; whatever hangs below the table fades out into the dark
+## under it, like into mist (Marko 2026-11-13: the arm under a hand on the rim stood there as a black post).
 const SKIN_SHADER: String = """shader_type spatial;
 render_mode cull_disabled, depth_draw_always;
 uniform vec3 rim : source_color;
 uniform float rim_amt = 0.5;
-uniform float fade_a = -0.4;
-uniform float fade_b = -4.5;
+uniform float fade_a = -0.3;
+uniform float fade_b = -3.2;
 varying float wy;
 varying vec3 vcol;
 void vertex() {
@@ -139,7 +140,7 @@ void fragment() {
 	ALBEDO = vcol * (1.0 - fade);
 	ROUGHNESS = 0.75;
 	SPECULAR = 0.25 * (1.0 - fade);
-	ALPHA = 1.0;
+	ALPHA = 1.0 - fade;
 	float lum = dot(vcol, vec3(0.3, 0.6, 0.1));
 	float f = pow(1.0 - clamp(dot(n, VIEW), 0.0, 1.0), 3.0);
 	EMISSION = (rim * f * rim_amt * (1.0 - clamp(lum * 2.0, 0.0, 1.0)) + vcol * 0.25) * (1.0 - fade);
@@ -164,11 +165,11 @@ void fragment() {
 		n = -n;
 	}
 	NORMAL = n;
-	float fade = smoothstep(-0.4, -4.5, wy);
+	float fade = smoothstep(-0.3, -3.2, wy);
 	ALBEDO = mix(base, vec3(0.012, 0.009, 0.008), fade);
 	ROUGHNESS = 0.75;
 	SPECULAR = 0.25;
-	ALPHA = 1.0;
+	ALPHA = 1.0 - fade;
 	float f = pow(1.0 - clamp(dot(n, VIEW), 0.0, 1.0), 3.0);
 	EMISSION = (rim * f * rim_amt + base * 0.1) * (1.0 - fade);
 }
@@ -288,6 +289,12 @@ var _drum_wait: float = 0.0
 var _look := Vector2(0, 0.18)
 var _wide: float = 0.22
 var _blink_in: float = 1.7
+## His eyes (and the mouth under them) are there; off, only his hands hold the table (Marko 2026-11-13, Settings →
+## Evil Bochet: Hands only), and a ball over the near end is caught by a hand from below.
+var eyes_on: bool = true
+## A blink every BLINK_MIN to BLINK_MAX seconds (Marko 2026-11-13: far fewer than the 2.6 s they had).
+const BLINK_MIN: float = 7.0
+const BLINK_MAX: float = 14.0
 var _blink: float = 0.0
 var closed: float = 1.0
 var squint: float = 0.0
@@ -1127,7 +1134,8 @@ func _catch(id: String, at: Vector3, radius: float, hp0: int) -> void:
 	held.hold = Vector3(at.x + CATCH_REACH * side, CATCH_DOWN, at.z)
 	if short_end:
 		held.hold = Vector3(at.x, CATCH_DOWN, at.z + CATCH_REACH * signf(at.z))
-	if short_end and at.z > 0.0:
+	# Over the near end the mouth takes it; without the face, a hand as at any other end.
+	if short_end and at.z > 0.0 and eyes_on:
 		_catch_mouth(held)
 		return
 	var own: Hand = _hand(side)
@@ -2117,7 +2125,7 @@ func _snap(shown: bool) -> void:
 	face_x = 0.0
 	face_dy = 0.0
 	_aside_n = 0
-	_eyes.visible = shown
+	_eyes.visible = shown and eyes_on
 	_mouth.visible = false
 	_mouth.scale.y = 0.02
 	_eyes_placed = false
@@ -2155,7 +2163,7 @@ func _enter() -> void:
 	_snap(false)
 	_shown = true
 	_entering = true
-	_eyes.visible = true
+	_eyes.visible = eyes_on
 	_entry = create_tween()
 	_entry.tween_property(self, "closed", 0.0, 0.16)
 	_entry.tween_interval(0.55)
@@ -2519,7 +2527,7 @@ func _drive_eyes(delta: float, state: GameState, bodies: Dictionary[String, Ball
 	_wide = lerpf(_wide, 0.5 if busy else 0.22, clampf(delta * 8.0, 0.0, 1.0))
 	_blink_in -= delta
 	if _blink_in <= 0.0:
-		_blink_in = 2.6
+		_blink_in = randf_range(BLINK_MIN, BLINK_MAX)
 		_blink = 0.2
 	_blink = maxf(0.0, _blink - delta)
 	var shut: float = 1.0 - absf(_blink - 0.1) / 0.1 if _blink > 0.0 else 0.0
