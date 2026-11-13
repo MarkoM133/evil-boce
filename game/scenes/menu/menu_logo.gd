@@ -39,6 +39,8 @@ const OPEN_DEG: Array[float] = [52.0, 42.0, -42.0, -52.0]
 ## The eyes' middle in the 1024 picture (they blink about it).
 const EYES_AT := Vector2(540, 292)
 static var _grab_played: bool = false
+## Which run of the animation is the live one: a replay starts a new run and the old one's waits end.
+var _run: int = 0
 var _root: Control
 var _base: TextureRect
 var _hands: Control
@@ -78,6 +80,30 @@ func _input(event: InputEvent) -> void:
 			_idle = 0.0
 	elif event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton:
 		_idle = 0.0
+	# The grab once more (Marko 2026-11-13, while the menu is being worked on): F5, or a click on the logo.
+	if anim_dir.is_empty() or _root == null:
+		return
+	var key := event as InputEventKey
+	var click := event as InputEventMouseButton
+	var f5: bool = key != null and key.pressed and not key.echo and key.keycode == KEY_F5
+	var on_logo: bool = click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT \
+			and get_global_rect().has_point(click.position)
+	if f5 or on_logo:
+		replay()
+
+
+## The grab from the start: the hands behind the logo again, then the grab, the flash and the eyes.
+func replay() -> void:
+	if anim_dir.is_empty():
+		return
+	_run += 1
+	if is_instance_valid(_root):
+		_root.queue_free()
+	_root = null
+	_eyes = null
+	_fingers.clear()
+	_grab_played = false
+	_play()
 
 
 ## Screenshots: as if left alone long enough.
@@ -140,14 +166,16 @@ func _layer(parent: Control, file: String, side: float) -> TextureRect:
 	return t
 
 
-## True while the menu is still there to animate (it may be left in the middle of the grab).
-func _here() -> bool:
-	return is_inside_tree() and is_instance_valid(_root)
+## True while the menu is still there to animate (it may be left in the middle of the grab) and `run` is still the
+## live run (a replay starts another).
+func _here(run: int) -> bool:
+	return is_inside_tree() and run == _run and is_instance_valid(_root)
 
 
 func _play() -> void:
+	var run: int = _run
 	await get_tree().process_frame
-	if not is_inside_tree():
+	if not is_inside_tree() or run != _run:
 		return
 	var side: float = minf(size.x, size.y)
 	_root = Control.new()
@@ -178,28 +206,28 @@ func _play() -> void:
 	_hands.modulate = Color(0.25, 0.2, 0.3, 1.0)
 	# The clean logo is there at once (the splash's lands on it); the hands wait until the splash is gone.
 	_hands.visible = false
-	while _here() and (not get_tree().root.find_children("*", "Splash", true, false).is_empty() or not is_visible_in_tree()):
+	while _here(run) and (not get_tree().root.find_children("*", "Splash", true, false).is_empty() or not is_visible_in_tree()):
 		await get_tree().process_frame
-	if not _here():
+	if not _here(run):
 		return
 	_hands.visible = true
 	if _grab_played:
-		_held()
+		_held(run)
 		return
 	_grab_played = true
-	await _grab(side)
-	if _here():
-		_eyes_alive()
+	await _grab(side, run)
+	if _here(run):
+		_eyes_alive(run)
 
 
 ## The grab, once a run.
-func _grab(side: float) -> void:
+func _grab(side: float, run: int) -> void:
 	var breathe: Tween = _base.create_tween().set_loops()
 	breathe.tween_property(_base, "scale", Vector2.ONE * 1.012, 1.1).set_trans(Tween.TRANS_SINE)
 	breathe.tween_property(_base, "scale", Vector2.ONE, 1.1).set_trans(Tween.TRANS_SINE)
 	# A little sooner and quicker on the menu than in the mockup (Marko 2026-11-12).
 	await get_tree().create_timer(0.7).timeout
-	if not _here():
+	if not _here(run):
 		return
 	# The fingers flex a little as the hands rise (a third of the first try, and slower: less wiggling in the dark).
 	var flexes: Array[Tween] = []
@@ -234,14 +262,14 @@ func _grab(side: float) -> void:
 		t.parallel().tween_property(_fingers[k], "rotation_degrees", 0.0, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	t.parallel().tween_property(_base, "scale", Vector2.ONE * 0.99, 0.1)
 	await t.finished
-	if not _here():
+	if not _here(run):
 		return
 	var home: Vector2 = _root.position
 	var j: Tween = _root.create_tween()
 	for off: Vector2 in [Vector2(4, -2), Vector2(-3, 2), Vector2(1, 1), Vector2.ZERO]:
 		j.tween_property(_root, "position", home + off, 0.04)
 	await get_tree().create_timer(0.35).timeout
-	if not _here():
+	if not _here(run):
 		return
 	# The eyes flash open.
 	_eyes.modulate = Color(3.0, 2.6, 1.6, 1.0)
@@ -251,7 +279,7 @@ func _grab(side: float) -> void:
 
 
 ## Later visits to the menu in the same run: he holds the logo already, eyes lit.
-func _held() -> void:
+func _held(run: int) -> void:
 	_root.move_child(_hands, _root.get_child_count() - 2)
 	_hands.scale = Vector2.ONE
 	_hands.position = Vector2.ZERO
@@ -259,25 +287,25 @@ func _held() -> void:
 	for k: int in 4:
 		_fingers[k].rotation_degrees = 0.0
 	_eyes.modulate = Color.WHITE
-	_eyes_alive()
+	_eyes_alive(run)
 
 
 ## The eyes once he holds the logo (Marko 2026-11-12): their glow breathes, and they blink now and then
 ## (sometimes twice); _look has them follow the mouse.
-func _eyes_alive() -> void:
+func _eyes_alive(run: int) -> void:
 	var glow: Tween = _eyes.create_tween().set_loops()
 	glow.tween_property(_eyes, "modulate", Color(1.35, 1.2, 1.0), 1.6).set_trans(Tween.TRANS_SINE)
 	glow.tween_property(_eyes, "modulate", Color.WHITE, 1.6).set_trans(Tween.TRANS_SINE)
-	while _here():
+	while _here(run):
 		await get_tree().create_timer(randf_range(2.5, 6.0)).timeout
-		if not _here():
+		if not _here(run):
 			return
 		for i: int in (2 if randf() < 0.25 else 1):
 			var b: Tween = _eyes.create_tween()
 			b.tween_property(_eyes, "scale:y", 0.08, 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 			b.tween_property(_eyes, "scale:y", 1.0, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 			await b.finished
-			if not _here():
+			if not _here(run):
 				return
 
 
