@@ -21,6 +21,13 @@ const MAP_INFO: Dictionary[int, Array] = {
 const MAIN_RULES: Array[String] = ["stage_claim", "stage_goal", "stages_to_win", "timer_seconds"]
 ## Rules of the modes not offered now (MatchSettings.LOCKED_MODES): shown only when changed (a remembered custom).
 const HIDDEN_RULES: Array[String] = ["series_wins", "deck_size"]
+## The foot under the rules: two lines of its font, always (the window keeps its height as the mouse moves).
+const FOOT_H: float = 44.0
+## The big tiles' width; MORE RULES' lines are as wide, under them, with LINE_PAD inside at each end (so the two
+## columns stand apart by two pads and the gap), and every value is LINE_VALUE_W between its arrows.
+const TILE_W: float = 470.0
+const LINE_PAD: int = 20
+const LINE_VALUE_W: float = 180.0
 ## A shorter line for the hovered rule where the full one is too long for the foot.
 const SHORT_WHAT: Dictionary[String, String] = {
 	"stage_claim": "How a stage is claimed. Shared ring: one ring of places for both sides; your energy fills it, then takes the other side's. Separate: each side fills its own. Stay: the first rule (two Stays in a row, two heroes, or the battle there).",
@@ -470,7 +477,10 @@ func open_rules() -> void:
 	_rules_foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_rules_foot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rules_foot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_rules_foot.custom_minimum_size = Vector2(0, 44)
+	# Always two lines high, never more (Marko 2026-11-13: the window grew and shrank as the mouse went over rules).
+	_rules_foot.max_lines_visible = 2
+	_rules_foot.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_rules_foot.custom_minimum_size = Vector2(0, FOOT_H)
 	foot.add_child(_rules_foot)
 	if editable:
 		var reset := Button.new()
@@ -515,15 +525,14 @@ func _fill_rules() -> void:
 		rest.append(key)
 		if settings.get(key) != standard_value(key):
 			rest_changed += 1
+	# A real button, not a line of grey text (Marko 2026-11-13: MORE RULES was not seen).
 	var more := Button.new()
-	more.text = ("MORE RULES  ▴" if _rules_more else "MORE RULES  ▾  ·  %d more" % rest.size()) \
+	more.text = ("MORE RULES  ▴" if _rules_more else "MORE RULES  ▾   %d more" % rest.size()) \
 		+ ("  ·  %d changed" % rest_changed if rest_changed > 0 else "")
-	more.theme_type_variation = &"Ghost"
-	more.add_theme_font_size_override("font_size", 18)
-	more.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	more.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	if rest_changed > 0:
-		more.add_theme_color_override("font_color", Palette.GOLD)
+	more.theme_type_variation = &"Gold" if rest_changed > 0 else &""
+	more.add_theme_font_size_override("font_size", 20)
+	more.custom_minimum_size = Vector2(0, 46)
+	more.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	more.pressed.connect(func() -> void:
 		_rules_more = not _rules_more
 		_fill_rules())
@@ -531,8 +540,9 @@ func _fill_rules() -> void:
 	if _rules_more:
 		var small := GridContainer.new()
 		small.columns = 2
-		small.add_theme_constant_override("h_separation", 40)
-		small.add_theme_constant_override("v_separation", 4)
+		# The two columns well apart, and in each the arrows one under the other (Marko 2026-11-13).
+		small.add_theme_constant_override("h_separation", 16)
+		small.add_theme_constant_override("v_separation", 6)
 		_rules_body.add_child(small)
 		for key: String in rest:
 			small.add_child(_rule_line(key, JsonUtil.as_array(rows[key])))
@@ -563,7 +573,7 @@ static func _rules_by_key() -> Dictionary:
 func _rule_tile(key: String, r: Array) -> Control:
 	var tile := PanelContainer.new()
 	tile.add_theme_stylebox_override("panel", UiTheme.box(Color(1, 1, 1, 0.04), 0, Color(0, 0, 0, 0), 18, 14))
-	tile.custom_minimum_size = Vector2(470, 0)
+	tile.custom_minimum_size = Vector2(TILE_W, 0)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
 	tile.add_child(v)
@@ -575,15 +585,21 @@ func _rule_tile(key: String, r: Array) -> Control:
 
 ## A small line: the name, then the value with its arrows.
 func _rule_line(key: String, r: Array) -> Control:
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", LINE_PAD)
+	pad.add_theme_constant_override("margin_right", LINE_PAD)
+	pad.custom_minimum_size = Vector2(TILE_W, 0)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
+	pad.add_child(row)
 	var name_l: Label = UiTheme.label(str(r[1]).to_upper(), 18)
 	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(name_l)
-	row.add_child(_rule_value(key, r, 20, 170.0 if key == "manual_setup" else 110.0))
-	_rule_hover(row, key, r)
-	return row
+	# Every value as wide as the widest (BY THE PLAYERS), so the arrows of a column line up.
+	row.add_child(_rule_value(key, r, 20, LINE_VALUE_W))
+	_rule_hover(pad, key, r)
+	return pad
 
 
 func _rule_value(key: String, r: Array, size: int, width: float) -> HBoxContainer:
