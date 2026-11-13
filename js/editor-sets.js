@@ -13,7 +13,7 @@ const DEFAULT_PACK = 10;
 const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist'];
 const NEW_TYPES = TYPES;
 const COLORS = ['Cyan', 'Yellow', 'Purple', 'Red', 'Blue', 'Green'];
-const STATUS_FILTERS = [['', 'All statuses'], ['draft', 'Draft'], ['done', 'Done'], ['fx', 'Needs fx'], ['claude', 'Changed by Claude'], ['edited', 'Unpublished changes'], ['noart', 'No art']];
+const STATUS_FILTERS = [['', 'All statuses'], ['draft', 'Draft'], ['done', 'Done'], ['fx', 'Needs fx'], ['claude', 'Changed by Claude'], ['edited', 'Unpublished changes'], ['noart', 'No art'], ['redraw', 'Needs redraw']];
 // Nacrt koji je zadnji spremio Claude Code: Marko ga treba pogledati (oznaka nestane kad netko spremi kartu).
 const byClaude = d => d?.who === 'Claude Code';
 
@@ -149,6 +149,7 @@ export function createSetsView(ctx) {
       if (v.status === 'edited' && !drafts[c.id]) return false;
       if (v.status === 'claude' && !byClaude(drafts[c.id])) return false;
       if (v.status === 'noart' && c.art) return false;
+      if (v.status === 'redraw' && !ctx.pictureStale(c.id)) return false;
       return !q || `${c.id} ${c.name} ${c.text ?? ''} ${(c.traits ?? []).join(' ')}`.toLowerCase().includes(q);
     });
     const newType = s.code === 'Stage' ? 'Stage' : s.code === 'Core' ? 'Core' : s.code === 'CB' ? 'Combo' : 'Action';
@@ -162,6 +163,7 @@ export function createSetsView(ctx) {
           h('h1', {}, s.name),
           h('p', { class: 'muted' }, special ? `${all.length} cards` : `Set ${String(s.number).padStart(2, '0')} · ${all.length} cards · ${s.packSize ?? DEFAULT_PACK} per pack`)),
         h('div', { class: 'ce-page-actions' },
+          redrawAllButton(),
           newCardButton(s.code, special ? [newType] : NEW_TYPES, 'primary'))),
       h('div', { class: 'ce-filters' },
         h('input', { type: 'search', placeholder: 'Search name, text or tag…', value: v.q, oninput: e => { v.q = e.target.value; clearTimeout(v.qt); v.qt = setTimeout(ctx.render, 250); } }),
@@ -209,12 +211,22 @@ export function createSetsView(ctx) {
       h('button', { class: cls, type: 'button', 'aria-haspopup': 'menu', onclick: () => { menu.hidden = !menu.hidden; } }, 'New card ▾'), menu);
   }
 
+  // Pictures out of date with the renderer (NEEDS REDRAW on their tiles), all of them drawn again with one click.
+  function redrawAllButton() {
+    ctx.checkPictures();
+    const n = ctx.stalePictures();
+    return h('button', { type: 'button', class: n ? '' : 'ghost', disabled: !ctx.canPublish() || !n,
+      title: !ctx.canPublish() ? 'Redrawing writes the pictures: a computer with the shared folder.' : n ? 'Draw every out-of-date picture again with the renderer as it is now' : 'Every picture is up to date',
+      onclick: () => ctx.guard(ctx.redrawAll) }, n ? `Redraw all pictures (${n})` : 'Redraw all pictures');
+  }
+
   function tile(c, draft) {
     const lock = ctx.locks()[c.id];
     const canvas = h('canvas', { class: 'ce-tile-img' });
     ctx.thumbInto(canvas, c, ['Hero', 'Evolution', 'Combo'].includes(c.type) ? 300 : 210);
     const badge = lock ? h('span', { class: 'ce-st lock' }, `🔒 ${lock.who.toUpperCase()}`)
       : needsFx(c) ? h('span', { class: 'ce-st fx' }, 'NEEDS FX')
+        : ctx.pictureStale(c.id) ? h('span', { class: 'ce-st fx', title: 'The picture was drawn by an older renderer: Redraw picture, or Redraw all pictures' }, 'NEEDS REDRAW')
         : h('span', { class: `ce-st ${c.status ?? 'draft'}` }, (c.status ?? 'draft').toUpperCase());
     const claude = byClaude(draft) ? h('span', { class: 'ce-st claude', title: 'Changed by Claude Code: have a look, then Save' }, 'CLAUDE') : null;
     return h('button', { class: `ce-tile${c.type === 'Hero' || c.type === 'Evolution' ? ' wide' : ''}`, type: 'button', onclick: () => ctx.go(c.id) },

@@ -1865,16 +1865,12 @@ export function createEditor(env) {
   // Nacrta objavljenu kartu iznova trenutnim rendererom i upiše novu sliku (novi hash) u bazu bez nove
   // verzije: izgled, ne igra. Samo na računalu s otvorenim folderom, samo za kartu bez nacrta
   // (nacrt crta Objava). Stara slika ostaje do iduće Objave, kao i kod Objave (Undo).
-  async function redrawPicture() {
-    const id = ed.work?.id;
-    const card = db().cards.find(c => c.id === id && !c.deleted);
-    if (!card) throw new Error('This card is not published yet: Publish draws it.');
-    if (ed.drafts?.cards?.[id]) throw new Error('This card has a draft: Publish draws it.');
-    await env.assertFresh();
+  // The picture a published card would get from the renderer as it is now: {bytes, hash}, or null without art.
+  async function drawPublished(card) {
     const core = card.type === 'Core' && coreMode(card) === 'effect';
     const url = card.art ? await store().dataUrl(card.art) : null;
     const art = url ? await loadImage(url).catch(() => null) : null;
-    if (!art && !core) throw new Error('The card has no art to draw.');
+    if (!art && !core) return null;
     const heroOfCard = card.type === 'Evolution' ? db().cards.find(x => x.type === 'Hero' && x.name === card.hero) : null;
     const emblemPath = card.emblem ?? heroOfCard?.emblem ?? null;
     const eUrl = emblemPath ? await store().dataUrl(emblemPath) : null;
@@ -1883,13 +1879,76 @@ export function createEditor(env) {
     renderCard(canvas, decorate(card, db().cards.filter(c => !c.deleted)), await templateFor(card), art, emblem);
     const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    const hash = await imageHashOf(bytes);
+    return { bytes, hash: await imageHashOf(bytes) };
+  }
+
+  // Which published pictures are out of date (Marko 2026-11-13: a new colour in the renderer, and no way to see which
+  // cards it touched): each card without a draft is drawn again as the renderer draws it now and its hash compared
+  // with the picture's. By card id: true out of date, false up to date; worked out once per database version.
+  const stale = { version: null, ids: new Map(), running: false };
+  async function checkPictures() {
+    const version = db()?.version;
+    // Only where pictures are drawn and written (a computer with the folder): another browser may draw a pixel
+    // differently, and every card would look out of date there.
+    if (!canPublish() || stale.running || version == null || stale.version === version) return;
+    stale.running = true;
+    try {
+      await fontsReady();
+      const ids = new Map();
+      for (const card of db().cards) {
+        if (card.deleted || ed.drafts?.cards?.[card.id] || !card.imageHash) continue;
+        const pic = await drawPublished(card).catch(() => null);
+        if (pic) ids.set(card.id, pic.hash !== card.imageHash);
+      }
+      stale.ids = ids;
+      stale.version = version;
+    } finally {
+      stale.running = false;
+    }
+    env.render();
+  }
+  const pictureStale = id => stale.ids.get(id) === true;
+
+  // Every out-of-date picture drawn again at once, one database write (no new card version: looks, not play).
+  async function redrawAll() {
+    if (!canPublish()) throw new Error('Redrawing writes the pictures: open Card Studio on a computer with the shared folder.');
+    await env.assertFresh();
+    await fontsReady();
+    const images = {};
+    const names = [];
+    for (const card of db().cards) {
+      if (card.deleted || ed.drafts?.cards?.[card.id] || !card.imageHash) continue;
+      const pic = await drawPublished(card).catch(() => null);
+      if (!pic || pic.hash === card.imageHash) continue;
+      await fs.writeFile(store().root, `data/images/${card.id}.${pic.hash}.png`, pic.bytes);
+      images[card.id] = pic.hash;
+      names.push(card.id);
+    }
+    if (!names.length) { env.toast('Every picture is up to date.'); return; }
+    const { db: next } = applyDrafts(db(), {}, images);
+    await env.commitDb(next, { keepOld: true });
+    for (const id of names) await logHistory(id, 'picture redrawn').catch(() => {});
+    stale.version = null;
+    env.toast(`${names.length} ${names.length === 1 ? 'picture' : 'pictures'} redrawn.`);
+    env.render();
+  }
+
+  async function redrawPicture() {
+    const id = ed.work?.id;
+    const card = db().cards.find(c => c.id === id && !c.deleted);
+    if (!card) throw new Error('This card is not published yet: Publish draws it.');
+    if (ed.drafts?.cards?.[id]) throw new Error('This card has a draft: Publish draws it.');
+    await env.assertFresh();
+    const pic = await drawPublished(card);
+    if (!pic) throw new Error('The card has no art to draw.');
+    const { bytes, hash } = pic;
     if (hash === card.imageHash) { env.toast(`${card.name}: the picture is already up to date.`); return; }
     await fs.writeFile(store().root, `data/images/${id}.${hash}.png`, bytes);
     const { db: next } = applyDrafts(db(), {}, { [id]: hash });
     await env.commitDb(next, { keepOld: true });
     await logHistory(id, 'picture redrawn').catch(() => {});
     env.toast(`${card.name}: picture redrawn (v${next.version}).`);
+    stale.version = null;
     env.render();
   }
 
@@ -2352,6 +2411,7 @@ export function createEditor(env) {
   const sets = createSetsView({
     h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast,
     cards: allCards, drafts: () => ed.drafts, locks: () => ed.locks, thumbInto, go: id => go(id), newCard, nextId,
+    pictureStale, checkPictures, redrawAll, canPublish, stalePictures: () => [...stale.ids.values()].filter(Boolean).length,
   });
 
   return {
