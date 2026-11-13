@@ -97,7 +97,12 @@ func _ready() -> void:
 	var splash := Splash.new()
 	splash.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(splash)
-	splash.setup(db, logo, _news_items(), _version_line(), _logo_node)
+	# With the logo's grab animation the splash shows the logo without the monster: it lands on the menu's, and the
+	# hands come for it there.
+	var splash_logo: Texture2D = logo
+	if _logo_node is MenuLogo and not (_logo_node as MenuLogo).anim_dir.is_empty():
+		splash_logo = db.logo_clean()
+	splash.setup(db, splash_logo, _news_items(), _version_line(), _logo_node)
 	splash.wipe_started.connect(_play_intro.bind(false))
 	splash.finished.connect(func() -> void:
 		if _logo_node != null:
@@ -323,6 +328,7 @@ func _build_strip(logo: Texture2D) -> void:
 	if logo != null:
 		var img := MenuLogo.new()
 		img.logo = logo
+		img.anim_dir = db.logo_anim_dir()
 		img.shot = ReplayStore.last_shot()
 		img.shots = ReplayStore.highlights()
 		img.caption = ReplayStore.last_caption().trim_prefix("Last match: ")

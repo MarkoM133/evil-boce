@@ -189,6 +189,27 @@ func logo() -> Texture2D:
 	return texture(data_dir().path_join("branding/evil-boce-logo.png"))
 
 
+## The logo's grab animation (MenuLogo): its layers, cut from the logo Marko chose on 2026-11-11 (ZF2).
+const LOGO_ANIM_DIR: String = "branding/logo-anim"
+const LOGO_ANIM_FILES: Array[String] = ["base_clean.png", "body.png", "finger0.png", "finger1.png", "finger2.png",
+	"finger3.png", "eyes.png"]
+
+
+## The folder of the logo animation's layers, "" when any of them is missing (the menu keeps the still logo).
+func logo_anim_dir() -> String:
+	var dir: String = data_dir().path_join(LOGO_ANIM_DIR)
+	for f: String in LOGO_ANIM_FILES:
+		if not FileAccess.file_exists(dir.path_join(f)):
+			return ""
+	return dir
+
+
+## The logo without the monster, as the animation starts from (the splash shows it); null without the layers.
+func logo_clean() -> Texture2D:
+	var dir: String = logo_anim_dir()
+	return texture(dir.path_join("base_clean.png")) if not dir.is_empty() else null
+
+
 ## Loads an image file from disk once; null if it is missing.
 func texture(abs_path: String) -> Texture2D:
 	if abs_path.is_empty():

@@ -46,3 +46,25 @@ func test_bad_json() -> void:
 func test_missing_folder() -> void:
 	var db: CardDb = CardDb.load_from("Z:/does/not/exist")
 	assert_false(db.is_ok())
+
+
+## The logo's grab animation (2026-11-13): its layers come from the shared folder's branding/logo-anim, all of them
+## or none (the menu keeps the still logo then).
+func test_the_logo_animation_needs_all_its_layers() -> void:
+	var root: String = ProjectSettings.globalize_path("user://test_logo_anim")
+	var dir: String = root.path_join("data").path_join(CardDb.LOGO_ANIM_DIR)
+	DirAccess.make_dir_recursive_absolute(dir)
+	var db := CardDb.new()
+	db.root_dir = root
+	assert_eq(db.logo_anim_dir(), "", "no layers")
+	assert_null(db.logo_clean())
+	var img := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+	for f: String in CardDb.LOGO_ANIM_FILES:
+		if f != "eyes.png":
+			img.save_png(dir.path_join(f))
+	assert_eq(db.logo_anim_dir(), "", "one missing")
+	img.save_png(dir.path_join("eyes.png"))
+	assert_eq(db.logo_anim_dir(), dir)
+	assert_not_null(db.logo_clean())
+	for f: String in CardDb.LOGO_ANIM_FILES:
+		DirAccess.remove_absolute(dir.path_join(f))
