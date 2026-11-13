@@ -143,7 +143,10 @@ const wishKey = (kind, word) => `${kind}:${String(word).trim().replace(/^IF\s+/i
 
 export async function addWishes(drive, card, extensions) {
   const file = path.join(drive, WISHLIST);
-  const list = await readJson(file, { version: 1, items: [] });
+  // A wishlist of another shape (the phone may write the file) is read as an empty one, not a crash.
+  let list = await readJson(file, null).catch(() => null);
+  if (!list || typeof list !== 'object' || Array.isArray(list)) list = { version: 1, items: [] };
+  if (!Array.isArray(list.items)) list.items = [];
   const now = new Date().toISOString();
   for (const x of extensions) {
     const key = wishKey(x.kind, x.word);
@@ -154,6 +157,7 @@ export async function addWishes(drive, card, extensions) {
     }
     item.lastAt = now;
     // A word dismissed or done before comes back open only for a card it did not cover yet.
+    if (!Array.isArray(item.cards)) item.cards = [];
     const known = item.cards.some(c => c.id === card.id);
     item.cards = item.cards.filter(c => c.id !== card.id);
     item.cards.push({ id: card.id, name: card.name, fx: x.fx, who: card.who, at: now });
@@ -171,11 +175,47 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
   const textOutDir = path.join(drive, 'data', 'text-claude');
   let busy = false;
 
+  // A request as the worker may take it: its JSON, with the card code that is also its file's name (the answer
+  // goes to <code>.json, so a request must not name another card's). null: nothing to answer; a file that
+  // cannot be read is removed once it is STALE_MS old (younger, it may still be on its way in).
+  const STALE_MS = 30_000;
+  async function takeRequest(file) {
+    let req = null;
+    try {
+      req = JSON.parse(await fs.readFile(file, 'utf8'));
+    } catch (e) {
+      if (e.code === 'ENOENT') return null;
+      const st = await fs.stat(file).catch(() => null);
+      if (st && Date.now() - st.mtimeMs > STALE_MS) {
+        await fs.rm(file, { force: true });
+        log(`${path.basename(file)}: not a request, removed`);
+      }
+      return null;
+    }
+    const id = String(req?.id ?? '');
+    if (!CODE_RE.test(id) || !req?.text || id !== path.basename(file, '.json')) {
+      await fs.rm(file, { force: true });
+      return null;
+    }
+    return req;
+  }
+
+  // The request is answered: it goes, unless a newer one for the same card took its place while Claude was asked
+  // (that one waits for the next tick).
+  async function finishRequest(file, req) {
+    let now = null;
+    try {
+      now = JSON.parse(await fs.readFile(file, 'utf8'));
+    } catch { /* gone, or unreadable: nothing to keep */ }
+    if (now && now.at !== req.at) return;
+    await fs.rm(file, { force: true });
+  }
+
   // Check text: isti tok kao fx (zahtjev u folderu, odgovor pored njega), drugi folderi i drugi prompt.
   async function answerText(file) {
-    const req = await readJson(file);
-    const id = String(req?.id ?? '');
-    if (!CODE_RE.test(id) || !req?.text) { await fs.rm(file, { force: true }); return; }
+    const req = await takeRequest(file);
+    if (!req) return;
+    const id = req.id;
     const out = path.join(textOutDir, `${id}.json`);
     const before = await readJson(out);
     if (before && before.askedAt === req.at && before.askedText === req.text && !before.error) { await fs.rm(file, { force: true }); return; }
@@ -204,14 +244,14 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
     }
     await fs.mkdir(textOutDir, { recursive: true });
     await fs.writeFile(out, JSON.stringify(result, null, 2) + '\n');
-    await fs.rm(file, { force: true });
+    await finishRequest(file, req);
     log(`text: ${id} ${result.error ? 'failed: ' + result.error : result.verdict}`);
   }
 
   async function answer(file) {
-    const req = await readJson(file);
-    const id = String(req?.id ?? '');
-    if (!CODE_RE.test(id) || !req?.text) { await fs.rm(file, { force: true }); return; }
+    const req = await takeRequest(file);
+    if (!req) return;
+    const id = req.id;
     const out = path.join(outDir, `${id}.json`);
     const textHash = hashText(req.text);
     const before = await readJson(out);
@@ -237,13 +277,17 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
       result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, textHash, askedText: req.text, model: msg.model, fx, unsure: parsed.unsure ?? [], notes: parsed.notes ?? '', extensions: parsed.extensions ?? [], problems: fxProblems(fx) };
       // Kako ga čita parser igre (Claude ga ne vidi): kad se slažu, čitanje je dvaput potvrđeno.
       if (typeof req.read === 'string') { result.read = req.read; result.agree = sameFx(fx, req.read); }
-      if (result.extensions.length) await addWishes(drive, { id, name: req.name, who: req.who }, result.extensions);
+      // The answer is paid for: a wishlist that cannot be written is noted on it, never loses it.
+      if (result.extensions.length) {
+        await addWishes(drive, { id, name: req.name, who: req.who }, result.extensions)
+          .catch(e => { result.wishlistError = e?.message ?? String(e); });
+      }
     } catch (e) {
       result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, textHash, error: e?.message ?? String(e) };
     }
     await fs.mkdir(outDir, { recursive: true });
     await fs.writeFile(out, JSON.stringify(result, null, 2) + '\n');
-    await fs.rm(file, { force: true });
+    await finishRequest(file, req);
     log(`fx: ${id} ${result.error ? 'failed: ' + result.error : 'answered'}`);
   }
 

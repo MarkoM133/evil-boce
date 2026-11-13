@@ -103,7 +103,8 @@ export async function handleFs(req, res, { drive, enabled, send, fail }) {
     } catch (e) {
       return fail(res, e.status ?? 400, e.message);
     }
-    if (p.endsWith('.json') && data.length) {
+    // An empty body is not JSON either (an empty request file had the fx worker fail on it every few seconds).
+    if (p.endsWith('.json')) {
       try {
         JSON.parse(data.toString('utf8'));
       } catch {

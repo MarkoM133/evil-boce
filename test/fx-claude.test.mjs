@@ -130,3 +130,68 @@ test('Check text: "changes" with the same text is an ok, and its issues go', asy
   assert.equal(res.verdict, 'ok');
   assert.deepEqual(res.issues, []);
 });
+
+// --- code review 2026-11-13 ---
+
+test('a file that is not a request is left while it is fresh and removed once it is stale, never asked about', async () => {
+  const dir = await drive();
+  const fresh = path.join(dir, 'data', 'fx-requests', 'OP1-101.json');
+  const stale = path.join(dir, 'data', 'fx-requests', 'OP1-102.json');
+  await fs.writeFile(fresh, '');
+  await fs.writeFile(stale, '');
+  const old = new Date(Date.now() - 120_000);
+  await fs.utimes(stale, old, old);
+  const client = fakeClient({ fx: 'PREROLL: HEAL FRIENDLY 3', unsure: [], notes: '' });
+  const w = createFxWorker({ root: ROOT, drive: dir, client, log: () => {} });
+  await w.tick();
+  assert.deepEqual(await fs.readdir(path.join(dir, 'data', 'fx-requests')), ['OP1-101.json']);
+  assert.equal(client.calls.length, 0);
+});
+
+test("a request that names another card than its file is dropped: it cannot write that card's answer", async () => {
+  const dir = await drive();
+  await fs.writeFile(path.join(dir, 'data', 'fx-requests', 'AAA.json'), JSON.stringify(request('OP1-002', 'Some text.')));
+  const client = fakeClient({ fx: 'PREROLL: HEAL FRIENDLY 3', unsure: [], notes: '' });
+  const w = createFxWorker({ root: ROOT, drive: dir, client, log: () => {} });
+  await w.tick();
+  assert.equal(client.calls.length, 0);
+  assert.deepEqual(await fs.readdir(path.join(dir, 'data', 'fx-requests')), []);
+  await assert.rejects(fs.access(path.join(dir, 'data', 'fx-claude', 'OP1-002.json')));
+});
+
+test('a wishlist of another shape does not lose the answer', async () => {
+  const dir = await drive();
+  await fs.writeFile(path.join(dir, 'data', 'fx-wishlist.json'), '{}');
+  await fs.writeFile(path.join(dir, 'data', 'fx-requests', 'OP1-103.json'), JSON.stringify(request('OP1-103', 'Some text.')));
+  const client = fakeClient({ fx: 'PREROLL: HEAL FRIENDLY 3', unsure: [], notes: '',
+    extensions: [{ kind: 'verb', word: 'ZAP', meaning: 'm', why: 'w', fx: 'PREROLL: ZAP ENEMY 1' }] });
+  const w = createFxWorker({ root: ROOT, drive: dir, client, log: () => {} });
+  await w.tick();
+  const res = JSON.parse(await fs.readFile(path.join(dir, 'data', 'fx-claude', 'OP1-103.json'), 'utf8'));
+  assert.equal(res.error, undefined);
+  assert.equal(res.fx, 'PREROLL: HEAL FRIENDLY 3');
+  const list = JSON.parse(await fs.readFile(path.join(dir, 'data', 'fx-wishlist.json'), 'utf8'));
+  assert.equal(list.items.length, 1);
+  assert.equal(list.items[0].cards[0].id, 'OP1-103');
+});
+
+test('a newer request for the same card, made while Claude was asked, is kept for the next round', async () => {
+  const dir = await drive();
+  const file = path.join(dir, 'data', 'fx-requests', 'OP1-104.json');
+  await fs.writeFile(file, JSON.stringify(request('OP1-104', 'First text.', '2026-11-13T10:00:00.000Z')));
+  const calls = [];
+  const client = { calls, beta: { messages: { create: async params => {
+    calls.push(params);
+    // The second ask lands while the first is with Claude.
+    if (calls.length === 1) await fs.writeFile(file, JSON.stringify(request('OP1-104', 'Second text.', '2026-11-13T10:00:05.000Z')));
+    return { model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ fx: 'PREROLL: HEAL FRIENDLY 3', unsure: [], notes: '' }) }] };
+  } } } };
+  const w = createFxWorker({ root: ROOT, drive: dir, client, log: () => {} });
+  await w.tick();
+  assert.deepEqual(await fs.readdir(path.join(dir, 'data', 'fx-requests')), ['OP1-104.json']);
+  await w.tick();
+  assert.deepEqual(await fs.readdir(path.join(dir, 'data', 'fx-requests')), []);
+  const res = JSON.parse(await fs.readFile(path.join(dir, 'data', 'fx-claude', 'OP1-104.json'), 'utf8'));
+  assert.equal(res.askedText, 'Second text.');
+  assert.equal(calls.length, 2);
+});

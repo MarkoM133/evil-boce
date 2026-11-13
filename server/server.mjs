@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFxWorker } from './fx-claude.mjs';
 import { handleFs } from './fs-api.mjs';
+import { inside, repoFile } from './static-path.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = path.join(ROOT, 'server', 'config.local.json');
@@ -61,11 +62,6 @@ const IMMUTABLE = 'public, max-age=31536000, immutable';
 const fail = (res, status, msg) => send(res, status, { error: msg });
 
 // Datoteka unutar baze, ili null ako putanja izlazi iz nje.
-function inside(base, rel) {
-  const file = path.resolve(base, '.' + path.sep + rel);
-  return file === base || file.startsWith(base + path.sep) ? file : null;
-}
-
 async function sendFile(res, file, cache) {
   try {
     const data = await fs.readFile(file);
@@ -263,12 +259,11 @@ async function handle(req, res) {
     return name ? sendFile(res, path.join(cfg.drive, name)) : fail(res, 404, 'no logo');
   }
 
-  // Web app iz repoa. server/ i .git/ se ne poslužuju; docs/ (privatno, testna stranica) samo ovom računalu.
-  const top = (parts[0] ?? '').toLowerCase();
+  // Web app iz repoa: index.html, css/ i js/ svima; ostatak repoa (docs/ s mockupima i testnom stranicom) samo
+  // ovom računalu; server/, .git/ i node_modules/ nikome. Pravilo je u static-path.mjs i gleda stvarnu putanju.
   const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
-  if (['server', '.git', 'node_modules'].includes(top) || (top === 'docs' && !local)) return fail(res, 404, 'not found');
-  const file = inside(ROOT, rel.endsWith('/') ? rel + 'index.html' : rel);
-  return file ? sendFile(res, file) : fail(res, 403, 'forbidden');
+  const got = await repoFile(ROOT, rel, local);
+  return got.file ? sendFile(res, got.file) : fail(res, got.status, got.status === 403 ? 'forbidden' : 'not found');
 }
 
 // Tailscale adresa pri prijavi u Windows zna kasniti: adresa koje još nema pokušava se ponovo svakih 30 s.
