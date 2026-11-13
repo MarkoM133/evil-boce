@@ -640,12 +640,22 @@ func _rule_hover(c: Control, key: String, r: Array) -> void:
 func _arrow(text: String, on_press: Callable, red: bool = false) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override("font_size", 26 if red else 24)
-	b.custom_minimum_size = Vector2(52 if red else 44, 0)
-	if red:
-		b.theme_type_variation = &"Primary"
-	else:
-		b.add_theme_color_override("font_color", Palette.ACCENT)
+	b.theme_type_variation = &"Primary"
+	b.add_theme_font_size_override("font_size", 26 if red else 18)
+	b.custom_minimum_size = Vector2(52 if red else 40, 0)
+	if not red:
+		# The red button, smaller, for the lines under MORE RULES (Marko 2026-11-13: grey with a red glyph was not
+		# the app's style): the same slant and colours, less padding and a thinner deep edge.
+		var normal: StyleBoxFlat = UiTheme.slant(Palette.ACCENT, 10, 3)
+		normal.border_color = Palette.ACCENT_DEEP
+		normal.border_width_bottom = 3
+		var hover: StyleBoxFlat = UiTheme.slant(Palette.ACCENT_HOVER, 10, 3)
+		hover.border_color = Palette.GOLD
+		hover.set_border_width_all(2)
+		b.add_theme_stylebox_override("normal", normal)
+		b.add_theme_stylebox_override("hover", hover)
+		b.add_theme_stylebox_override("pressed", UiTheme.slant(Palette.GOLD, 10, 3))
+		b.add_theme_stylebox_override("hover_pressed", UiTheme.slant(Palette.GOLD.lightened(0.15), 10, 3))
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.pressed.connect(on_press)
 	return b
