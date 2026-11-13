@@ -5974,14 +5974,15 @@ func _mulligan_button(text: String, cb: Callable, kind: StringName) -> Button:
 	b.focus_mode = Control.FOCUS_NONE
 	if kind != &"":
 		b.theme_type_variation = kind
+		b.add_theme_font_size_override("font_size", 24)
+		b.custom_minimum_size = Vector2(220, 52)
 	else:
-		# Over the dimmed table a plain dark button was lost (Marko 2026-11-09): lighter, with an edge.
-		var sb: StyleBoxFlat = UiTheme.slant(Color("34312d"), 26, 10)
-		sb.set_border_width_all(2)
-		sb.border_color = Color(Palette.FG, 0.6)
-		b.add_theme_stylebox_override("normal", sb)
-	b.add_theme_font_size_override("font_size", 24)
-	b.custom_minimum_size = Vector2(220, 52)
+		# The side choice is the game's plain grey button, smaller than KEEP (Marko 2026-11-13: it had an edge of its
+		# own and was as big as KEEP); a shade lighter than elsewhere so it reads over the dimmed table (2026-11-09).
+		b.add_theme_stylebox_override("normal", UiTheme.slant(Palette.BUTTON.lightened(0.1)))
+		b.add_theme_font_size_override("font_size", 20)
+		b.custom_minimum_size = Vector2(170, 44)
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.pressed.connect(cb)
 	_mulligan_row.add_child(b)
 	return b
