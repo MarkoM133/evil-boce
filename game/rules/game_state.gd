@@ -265,8 +265,13 @@ func to_dict() -> Dictionary:
 	for p: PlayerState in players:
 		ps["p%d" % p.slot] = p.to_dict()
 	var hs: Dictionary = {}
+	# The heroes' order (each player's as in the deck) is part of the state: it says where a hero waits on its
+	# start strip and which battle comes first. A dictionary does not keep it through JSON (code review
+	# 2026-11-13: a guest and a match carried on had the heroes by id, the host as dealt).
+	var order: Array = []
 	for h: HeroState in heroes:
 		hs[h.id] = h.to_dict()
+		order.append(h.id)
 	var cs: Dictionary = {}
 	for c: CoreState in cores:
 		cs[c.id] = c.to_dict()
@@ -292,6 +297,7 @@ func to_dict() -> Dictionary:
 		"initiative": initiative,
 		"players": ps,
 		"heroes": hs,
+		"hero_order": order,
 		"cores": cs,
 		"stages": ss,
 		"walls": ws,
@@ -341,8 +347,16 @@ static func from_dict(d: Dictionary) -> GameState:
 		s.players.append(PlayerState.from_dict(JsonUtil.as_dict(ps[k])))
 	s.players.sort_custom(func(a: PlayerState, b: PlayerState) -> bool: return a.slot < b.slot)
 	var hs: Dictionary = JsonUtil.as_dict(d.get("heroes", {}))
+	# In the order the state was written with ("hero_order"); a state from before that, and any hero the list
+	# does not name, by id as they come.
+	var seen: Dictionary[String, bool] = {}
+	for id: String in JsonUtil.as_strings(d.get("hero_order", [])):
+		if hs.has(id) and not seen.has(id):
+			seen[id] = true
+			s.heroes.append(HeroState.from_dict(JsonUtil.as_dict(hs[id])))
 	for k: Variant in hs:
-		s.heroes.append(HeroState.from_dict(JsonUtil.as_dict(hs[k])))
+		if not seen.has(str(k)):
+			s.heroes.append(HeroState.from_dict(JsonUtil.as_dict(hs[k])))
 	var cs: Dictionary = JsonUtil.as_dict(d.get("cores", {}))
 	for k: Variant in cs:
 		s.cores.append(CoreState.from_dict(JsonUtil.as_dict(cs[k])))

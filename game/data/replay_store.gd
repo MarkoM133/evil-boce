@@ -9,6 +9,14 @@ const SAVE_DIR: String = "user://saves"
 const CURRENT_SAVE: String = "user://saves/current.json"
 ## The online match this computer hosts, kept apart from the local one (Online › Continue).
 const CURRENT_ONLINE: String = "user://saves/current_online.json"
+## Headers of the replays already read, by file name: {"at": its modified time, "size": its bytes, "header"}.
+## A replay is some 2 MB of JSON and its header a few fields of it: without this every list parsed every replay
+## again (code review 2026-11-13: the main menu and Online each stood still for over a second with 13 replays).
+const HEADERS: String = "user://replay_headers.json"
+
+static var _headers: Dictionary = {}
+static var _headers_read: bool = false
+static var _headers_dirty: bool = false
 
 
 static func replay_path(record: MatchRecord) -> String:
@@ -35,14 +43,58 @@ static func list_replays() -> Array[Dictionary]:
 		if not f.ends_with(".json"):
 			continue
 		var path: String = REPLAY_DIR.path_join(f)
-		var d: Dictionary = _read_json(path)
-		if d.is_empty():
+		var h: Dictionary = header_of(path)
+		if h.is_empty():
 			continue
-		var h: Dictionary = MatchRecord.header_from_dict(d)
 		h["path"] = path
 		out.append(h)
+	_keep_headers(DirAccess.get_files_at(REPLAY_DIR))
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a["created"]) > str(b["created"]))
 	return out
+
+
+## A replay's header (MatchRecord.header_from_dict), {} when the file is no record: from HEADERS while the file
+## is the one it was read from (same time and size), else read from the file and remembered.
+static func header_of(path: String) -> Dictionary:
+	if not _headers_read:
+		_headers_read = true
+		_headers = _read_json(HEADERS)
+	var name: String = path.get_file()
+	var at: int = FileAccess.get_modified_time(path)
+	var size: int = _size(path)
+	var known: Dictionary = JsonUtil.as_dict(_headers.get(name, {}))
+	if not known.is_empty() and JsonUtil.as_int(known.get("at", -1), -1) == at and JsonUtil.as_int(known.get("size", -1), -1) == size:
+		var h: Dictionary = JsonUtil.as_dict(known.get("header", {})).duplicate(true)
+		# Back from JSON: the numbers and the names as the header has them.
+		for key: String in ["turns", "frames", "cards_version"]:
+			h[key] = JsonUtil.as_int(h.get(key, 0))
+		h["winner"] = JsonUtil.as_int(h.get("winner", -1), -1)
+		h["names"] = JsonUtil.as_strings(h.get("names", []))
+		return h
+	var d: Dictionary = _read_json(path)
+	if d.is_empty():
+		return {}
+	var fresh: Dictionary = MatchRecord.header_from_dict(d)
+	_headers[name] = {"at": at, "size": size, "header": fresh.duplicate(true)}
+	_headers_dirty = true
+	return fresh
+
+
+## Writes HEADERS when a header was read anew; `files` (the replay folder as it is) drops those of replays gone.
+static func _keep_headers(files: PackedStringArray = PackedStringArray()) -> void:
+	if not files.is_empty():
+		for name: Variant in _headers.keys():
+			if not files.has(str(name)):
+				_headers.erase(name)
+				_headers_dirty = true
+	if _headers_dirty:
+		_headers_dirty = false
+		_write_json(HEADERS, _headers)
+
+
+static func _size(path: String) -> int:
+	var f: FileAccess = FileAccess.open(path, FileAccess.READ)
+	return f.get_length() if f != null else -1
 
 
 static func load_record(path: String) -> MatchRecord:
@@ -82,15 +134,15 @@ static func recent_against_someone(me: String, count: int, scan: int = 30) -> Ar
 		if not f.ends_with(".json"):
 			continue
 		var path: String = REPLAY_DIR.path_join(f)
-		var d: Dictionary = _read_json(path)
-		if d.is_empty():
+		var h: Dictionary = header_of(path)
+		if h.is_empty():
 			continue
-		var h: Dictionary = MatchRecord.header_from_dict(d)
 		if is_match_against_someone(h, me):
 			h["path"] = path
 			out.append(h)
 			if out.size() >= count:
 				break
+	_keep_headers()
 	return out
 
 

@@ -138,4 +138,14 @@ static func _used_cards(catalog: CardCatalog, decks: Array) -> Dictionary:
 						var h: CardDef = catalog.hero_named(name)
 						if h != null and not out.has(h.id):
 							out[h.id] = h.to_record()
+	# A Combo is in no deck: it is the two cards it is made of. Every combo whose two cards are in the match goes
+	# along, or a match carried on from its record (Continue, an online match resumed, "continue from here") would
+	# never offer it (code review 2026-11-13).
+	for combo: CardDef in catalog.of_type("Combo"):
+		var both: bool = combo.ingredients.size() == 2
+		for id: String in combo.ingredients:
+			if not out.has(id):
+				both = false
+		if both and not out.has(combo.id):
+			out[combo.id] = combo.to_record()
 	return out

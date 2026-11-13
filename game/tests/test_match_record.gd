@@ -196,3 +196,79 @@ func test_the_record_keeps_every_hero_a_first_tag_names() -> void:
 	assert_not_null(back.hero_named("Hotel"), "Hotel travels with the record")
 	var k: Dictionary = FirstTag.kind_of(back, back.get_card("TF-006"))
 	assert_eq(str(k["kind"]), FirstTag.HEROES)
+
+
+## Code review 2026-11-13: a state that went through JSON (to a guest, into a record) had its heroes by id, the
+## host's own as dealt: start-zone spots and the order of battles differed between the two.
+func test_heroes_keep_their_order_through_json() -> void:
+	var decks: Array = _decks()
+	decks[0]["heroes"] = ["TA-003", "TA-001", "TA-002"]
+	var settings := MatchSettings.new()
+	settings.manual_setup = false
+	var rec: MatchRecorder = MatchRecorder.start(engine, settings, decks, 7, [{"name": "Marko"}, {"name": "Bot", "bot": true}], "0.1.0")
+	var fresh := PackedStringArray()
+	for h: HeroState in rec.state.heroes:
+		fresh.append(h.id)
+	assert_eq(fresh.slice(0, 3), PackedStringArray(["p0:TA-003", "p0:TA-001", "p0:TA-002"]), "as in the deck")
+	var text: String = JSON.stringify(rec.state.to_dict())
+	var loaded: GameState = GameState.from_dict(JsonUtil.as_dict(JSON.parse_string(text)))
+	var after := PackedStringArray()
+	for h: HeroState in loaded.heroes:
+		after.append(h.id)
+	assert_eq(after, fresh, "the same order on the other side of JSON")
+	# What a guest gets (redacted) and what a record keeps, the same way.
+	var guest: GameState = GameState.from_dict(JsonUtil.as_dict(JSON.parse_string(JSON.stringify(NetProtocol.redact(rec.state.to_dict(), 1, catalog)))))
+	assert_eq(guest.heroes_of(0)[0].id, "p0:TA-003")
+	var back: MatchRecord = MatchRecord.from_dict(JsonUtil.as_dict(JSON.parse_string(JSON.stringify(rec.record.to_dict()))))
+	assert_eq(back.state_at(0).heroes_of(0)[0].id, "p0:TA-003")
+	# A state written before the order was kept still loads, by id.
+	var old: Dictionary = rec.state.to_dict()
+	old.erase("hero_order")
+	assert_eq(GameState.from_dict(JsonUtil.as_dict(JSON.parse_string(JSON.stringify(old)))).heroes.size(), 6)
+
+
+## Code review 2026-11-13: a Combo is in no deck, so the record's own catalog had none and a match carried on
+## from it never offered one.
+func test_a_record_keeps_the_combos_its_cards_make() -> void:
+	var decks: Array = _decks()
+	decks[0]["cards"] = {"TX-010": 20, "TA-040": 4, "TA-042": 4}
+	var settings := MatchSettings.new()
+	settings.manual_setup = false
+	var rec: MatchRecorder = MatchRecorder.start(engine, settings, decks, 7, [{"name": "Marko"}, {"name": "Bot", "bot": true}], "0.1.0")
+	var back: MatchRecord = MatchRecord.from_dict(JsonUtil.as_dict(JSON.parse_string(JSON.stringify(rec.record.to_dict()))))
+	var combos: Array[CardDef] = back.catalog().of_type("Combo")
+	assert_eq(combos.size(), 1)
+	assert_eq(combos[0].id, "TC-001")
+	assert_eq(combos[0].ingredients, PackedStringArray(["TA-040", "TA-042"]))
+	assert_eq(combos[0].extra_cost, 1)
+	assert_true(combos[0].is_ready(), "and it can be offered")
+	# With only one of its two cards in the match it stays out.
+	assert_eq(_start().record.catalog().of_type("Combo").size(), 0)
+
+
+## Code review 2026-11-13: every list parsed every replay (2 MB each). A header is read from its file once and
+## kept (ReplayStore.HEADERS) for as long as the file is the same.
+func test_a_replays_header_is_read_once_and_again_when_the_file_changes() -> void:
+	var rec: MatchRecorder = _start()
+	_play_to_select(rec)
+	rec.apply(Move.make(Move.SURRENDER, 0))
+	var path: String = ReplayStore.save_replay(rec.record)
+	var first: Dictionary = ReplayStore.header_of(path)
+	assert_eq(str(first["title"]), "Marko vs Bot")
+	assert_true(ReplayStore._headers.has(path.get_file()), "remembered")
+	assert_eq(ReplayStore.header_of(path), first, "the same from memory")
+	# As after a restart: from the file of headers.
+	ReplayStore._keep_headers()
+	ReplayStore._headers = {}
+	ReplayStore._headers_read = false
+	var cold: Dictionary = ReplayStore.header_of(path)
+	assert_eq(cold, first, "the same from HEADERS, numbers and names as they were")
+	assert_false(ReplayStore._headers_dirty, "and the replay itself was not read again")
+	# Another match under the same name: read anew.
+	var other: MatchRecorder = MatchRecorder.start(engine, MatchSettings.new(), _decks(), 9, [{"name": "Someone else"}, {"name": "Bot", "bot": true}], "0.1.0")
+	ReplayStore._write_json(path, other.record.to_dict())
+	assert_eq(str(ReplayStore.header_of(path)["title"]), "Someone else vs Bot")
+	# Gone: a list forgets it.
+	assert_true(ReplayStore.delete(path))
+	ReplayStore.list_replays()
+	assert_false(ReplayStore._headers.has(path.get_file()))
