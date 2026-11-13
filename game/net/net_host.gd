@@ -198,6 +198,9 @@ func all_connected() -> bool:
 func resume_match(record: MatchRecord) -> String:
 	if record == null or record.frame_count() == 0 or record.finished:
 		return "no match to continue"
+	var cards: String = cards_mismatch(record)
+	if not cards.is_empty():
+		return cards
 	var my_name: String = str(seat(host_slot).get("name", ""))
 	var me: int = -1
 	for i: int in record.players.size():
@@ -234,6 +237,9 @@ func continue_from(record: MatchRecord, frame: int) -> String:
 		return "no such moment in the replay"
 	if record.state_at(frame).is_over():
 		return "the match is over there; step back a little"
+	var cards: String = cards_mismatch(record)
+	if not cards.is_empty():
+		return cards
 	if seats.size() > record.players.size():
 		return "more players here than that match had"
 	var next: Array[Dictionary] = []
@@ -280,6 +286,15 @@ func continue_from(record: MatchRecord, frame: int) -> String:
 	match_started.emit()
 	_send_states()
 	return ""
+
+
+## Why a recorded match cannot be played on online, or "": it was played on other cards than the ones everyone
+## has now (Marko 2026-11-13, A). The host would play by the record's cards and the guests' screens by today's
+## (costs, stats, what may be played); watching it together still works.
+func cards_mismatch(record: MatchRecord) -> String:
+	if record.cards_version == cards_version:
+		return ""
+	return "this match was played on cards v%d and the cards are v%d now: it can be continued online only on the same cards" % [record.cards_version, cards_version]
 
 
 func start(seed: int) -> String:

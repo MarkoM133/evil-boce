@@ -193,6 +193,10 @@ func test_the_host_carries_on_a_saved_match() -> void:
 	host = NetHost.new(RulesEngine.new(catalog), "Host", "1.0", 1)
 	add_child_autofree(host)
 	assert_eq(host.listen(PORT), "")
+	var other_cards: MatchRecord = MatchRecord.from_dict(saved.to_dict())
+	other_cards.cards_version = 99
+	assert_string_contains(host.resume_match(other_cards), "cards v99")
+	assert_false(host.started)
 	assert_eq(host.resume_match(saved), "")
 	assert_true(host.started)
 	assert_true(host.paused, "it waits for the guest")
@@ -318,6 +322,11 @@ func test_a_replay_watched_together_is_played_on_from_its_frame() -> void:
 	await _settle(0.4)
 	assert_true(client.replay_stream)
 	assert_eq(host.continue_from(replay, frames + 3), "no such moment in the replay")
+	# Played on other cards than everyone has now: not online (Marko 2026-11-13, A).
+	replay.cards_version = 99
+	assert_string_contains(host.continue_from(replay, 0), "cards v99")
+	assert_true(host.streaming, "the replay goes on as it was")
+	replay.cards_version = 1
 	client_state = null
 	assert_eq(host.continue_from(replay, 0), "")
 	await _settle(0.4)

@@ -414,7 +414,8 @@ func _fill_matches() -> void:
 		c.queue_free()
 	var me: String = GameSettings.player_name()
 	var saved: MatchRecord = ReplayStore.load_current_online()
-	var has_saved: bool = saved != null and saved.frame_count() > 0 and not saved.finished and saved.game_version == _version()
+	# Only one that can go on: the same game and the same cards (NetHost.cards_mismatch).
+	var has_saved: bool = saved != null and saved.frame_count() > 0 and not saved.finished and saved.game_version == _version() 			and saved.cards_version == db.version
 	var played: Array[Dictionary] = ReplayStore.recent_against_someone(me, 2 if has_saved else 3)
 	_matches_box.add_child(UiTheme.label("RECENT MATCHES", 15, Palette.GOLD))
 	if not has_saved and played.is_empty():

@@ -93,6 +93,9 @@ join again" (the host never sends cards or images; Syncthing is required, GDD 2)
   if it was one, else the host is told who is missing and the replay goes on. The recorder branches the record,
   so the replay is untouched; names in the new match are the players' own. Guests get a plain START and their
   (redacted) states, and their table opens again as a seat.
+- Both only on the cards everyone has now (`NetHost.cards_mismatch`, Marko 2026-11-13): the host plays a recorded
+  match by the record's cards, the guests' screens show their own, so a record of another cards version is refused
+  with why, and Online does not offer such a saved match. Watching a replay together still works on any cards.
 
 ## End of a match
 
