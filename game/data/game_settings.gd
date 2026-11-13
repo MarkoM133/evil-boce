@@ -411,7 +411,6 @@ static func splash() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "splash", true))
 
 
-## A small frames-per-second counter in the corner of a match.
 ## Discord shows what you play ("Playing Evil Boće", the match and the turn); Settings → Discord status.
 static func discord() -> bool:
 	return JsonUtil.as_bool(_config().get_value("online", "discord", true))
@@ -422,6 +421,7 @@ static func game_cursor() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "game_cursor", true))
 
 
+## A small frames-per-second counter in the corner of a match.
 static func show_fps() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "fps", false))
 

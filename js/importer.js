@@ -7,7 +7,7 @@ export const CE_FIELDS = ['name', 'type', 'color', 'cost', 'evo', 'hero', 'stats
 // Polja koja se uređuju samo u appu. Ponovni uvoz ih ne dira.
 // Za igru: fx (efekt karte za igru), fxStatus ('ok' | 'check' | ''), terrain (Stage; iz retka "Terrain:" ili ručno),
 // aliases (Hero): druga imena po kojima ga prvi tag karte prepoznaje (pravilo prvog taga, js/tags.js),
-// , npr. figures/OP1-001.glb), ballColor i ballColor2 (kuglica: tijelo i akcent), heroSfx.
+// figure (model heroja u zajedničkom folderu, npr. figures/OP1-001.glb), ballColor i ballColor2 (kuglica: tijelo i akcent), heroSfx.
 export const APP_FIELDS = ['wt', 'aliases', 'fx', 'fxStatus', 'fxRead', 'terrain', 'figure', 'ballColor', 'ballColor2', 'heroSfx', 'deleted'];
 // Izgled: ne mijenja igru, pa ne diže verziju baze (sprite je isto izgled, ali dolazi iz exporta).
 // fxStatus je samo oznaka za pregled, pa ni on ne diže verziju.
