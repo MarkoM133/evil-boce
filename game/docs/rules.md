@@ -188,9 +188,13 @@ Paths use the JSON form of the state: `players.p0.hand`, `heroes.<id>.hp`, `core
   (`RulesEngine.MIN_HIT`; Marko and Tarik 2026-11-08: Kaido's -1 made a ring-out free). Extra
   damage taken adds as before, and `DAMAGE … TRUE` still skips the modifier. Scenario 64.
 - An activated hero that leaves the map mid-turn (KO or ring-out) leaves its player with Pass
-  only until the turn ends (`GameState.only_pass`): no card, no ability, and no Roll Phase
-  offer either (Marko 2026-11-08: a ringed-out hero rolled back in with its own ROLL_AGAIN
-  ability). Scenario 63.
+  or an Assist (`RulesEngine.pass_only`, from `GameState.only_pass` and `only_pass_battle`;
+  Marko and Tarik 2026-11-13): no Action, Equipment or Evolution and no ability. Outside the
+  Battle phase that holds until the turn ends; in the Battle phase only in the battle it fell
+  in, and in the battles after it the player's other heroes play as ever (all of them when it
+  fell before the Battle phase). An Assist is played in the colour of the activated hero, gone
+  or not. No Roll Phase offer either (Marko 2026-11-08: a ringed-out hero rolled back in with
+  its own ROLL_AGAIN ability). Scenarios 63 and 80, `test_pass_only.gd`.
 - Ring-out (Marko 2026-11-07, in place of the wall damage, which is gone with its MATCH RULES
   setting): every ring-out costs the hero 1 DMG (`RulesEngine.RING_OUT_DAMAGE`; a hero at 1 HP
   is knocked out by it), whoever caused it, the strips included. With a card in the hand the

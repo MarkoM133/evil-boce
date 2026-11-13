@@ -532,8 +532,10 @@ func _apply_card_round_move(s: GameState, m: Move) -> String:
 			s.round_over = true
 		return ""
 	if m.type == Move.PLAY_CARD:
-		if s.only_pass.has(m.player):
-			return "you can only pass this turn"
+		if pass_only(s, m.player):
+			var asked: CardDef = catalog.get_card(m.str_arg("card"))
+			if asked == null or asked.type != "Assist":
+				return PASS_ONLY_WHY
 		# Combo (2026-11-07): the second card of a pair, for another of the player's heroes in this battle,
 		# is offered as the combo first; the card is played (or replaced) when the offer is answered.
 		var offer: Dictionary = _combo_offer(s, m)
@@ -549,8 +551,8 @@ func _apply_card_round_move(s: GameState, m: Move) -> String:
 		s.to_act = _next_slot(s, s.to_act)
 		return ""
 	if m.type == Move.USE_ABILITY:
-		if s.only_pass.has(m.player):
-			return "you can only pass this turn"
+		if pass_only(s, m.player):
+			return PASS_ONLY_WHY
 		var err: String = fx.use_ability(s, m.player, m.str_arg("hero"), m.str_arg("card"), JsonUtil.as_int(m.data.get("index", 0)))
 		if not err.is_empty():
 			return err
@@ -714,7 +716,7 @@ func _answer_roll_offer(s: GameState, index: int, m: Move) -> String:
 		return ""
 	# The offer was made before the hero went off (its own roll rang it out): Pass only now.
 	if s.only_pass.has(m.player):
-		return "you can only pass this turn"
+		return PASS_ONLY_WHY
 	if m.type == Move.USE_ABILITY:
 		var key: String = "%s|%s|%d" % [m.str_arg("hero"), m.str_arg("card"), JsonUtil.as_int(m.data.get("index", 0))]
 		if not JsonUtil.as_strings(d.get("abilities", [])).has(key):
@@ -1705,10 +1707,30 @@ func _drop_cores(s: GameState, h: HeroState) -> void:
 	h.cores = PackedStringArray()
 
 
-## The activated hero leaving the map mid-turn leaves its player with Pass only.
+## The activated hero leaving the map mid-turn leaves its player with Pass or an Assist (pass_only); in a battle,
+## which battle it was is kept too.
 func _lost_active(s: GameState, h: HeroState) -> void:
 	if s.active.get(h.owner, "") == h.id and not s.only_pass.has(h.owner):
 		s.only_pass.append(h.owner)
+		if s.phase == GameState.PHASE_BATTLE and s.battle_index >= 0 and s.battle_index < s.battles.size():
+			s.only_pass_battle[h.owner] = s.battle_index
+
+
+const PASS_ONLY_WHY: String = "your activated hero is out: pass, or play an Assist"
+
+
+## Whether `slot` is down to Pass or an Assist now (GDD 10; Marko and Tarik 2026-11-13): its activated hero was
+## knocked out or rung out this turn. Outside the Battle phase that holds until the turn ends: cards go to the
+## activated hero there, and it is gone. In the Battle phase it holds only in the battle it fell in; in the
+## battles after it (all of them, when it fell before the Battle phase) the player's other heroes get their cards
+## and use their abilities as ever. An Assist goes on no hero, so it may always be played (its colour is the
+## activated hero's, gone or not: _play).
+func pass_only(s: GameState, slot: int) -> bool:
+	if not s.only_pass.has(slot):
+		return false
+	if s.phase != GameState.PHASE_BATTLE:
+		return true
+	return s.battle_index >= 0 and s.only_pass_battle.get(slot, -1) == s.battle_index
 
 
 ## Grid knockback: `steps` hexes in direction `dir`. A wall or hero stops it (no damage,
@@ -2292,6 +2314,9 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 		same_colour.append(forced)
 	else:
 		var context: Array[HeroState] = card_context_heroes(s, slot)
+		if context.is_empty() and card.type == "Assist" and pass_only(s, slot) and s.active_hero(slot) != null:
+			# Down to Pass or an Assist: the Assist is played in the colour of the activated hero that is gone.
+			context.append(s.active_hero(slot))
 		if context.is_empty():
 			return "no hero to play cards for"
 		# A colorless card is for a hero of any colour (its bonus is worked out per hero).

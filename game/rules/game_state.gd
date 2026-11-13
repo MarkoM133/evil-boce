@@ -50,6 +50,8 @@ var battle_index: int = -1
 var pending: Array[Dictionary] = []
 ## Slots that may only Pass until the end of the turn.
 var only_pass: PackedInt32Array = PackedInt32Array()
+## Of those, the ones whose hero fell in a battle: slot -> that battle's index (RulesEngine.pass_only).
+var only_pass_battle: Dictionary[int, int] = {}
 ## Hero ids the sim has to throw next (all rollers at first, one hero after ROLL_AGAIN).
 var pending_rolls: PackedStringArray = PackedStringArray()
 ## Where every hero stood as the Roll phase began (REVERSE_ROLL puts one back there):
@@ -215,6 +217,13 @@ func active_hero(slot: int) -> HeroState:
 	return hero(str(active.get(slot, "")))
 
 
+static func _int_keys(d: Dictionary[int, int]) -> Dictionary:
+	var out: Dictionary = {}
+	for k: int in d:
+		out[str(k)] = d[k]
+	return out
+
+
 func is_over() -> bool:
 	return phase == PHASE_OVER
 
@@ -248,6 +257,7 @@ func reset_turn_data() -> void:
 	battle_index = -1
 	pending.clear()
 	only_pass = PackedInt32Array()
+	only_pass_battle.clear()
 	pending_rolls = PackedStringArray()
 	roll_snapshot.clear()
 	roll_offered = false
@@ -315,6 +325,7 @@ func to_dict() -> Dictionary:
 		"battle_index": battle_index,
 		"pending": pending.duplicate(true),
 		"only_pass": Array(only_pass),
+		"only_pass_battle": _int_keys(only_pass_battle),
 		"pending_rolls": Array(pending_rolls),
 		"roll_snapshot": roll_snapshot.duplicate(true),
 		"roll_offered": roll_offered,
@@ -389,6 +400,9 @@ static func from_dict(d: Dictionary) -> GameState:
 		s.pending.append(JsonUtil.as_dict(p))
 	for v: Variant in JsonUtil.as_array(d.get("only_pass", [])):
 		s.only_pass.append(JsonUtil.as_int(v))
+	var fell: Dictionary = JsonUtil.as_dict(d.get("only_pass_battle", {}))
+	for k: Variant in fell:
+		s.only_pass_battle[str(k).to_int()] = JsonUtil.as_int(fell[k], -1)
 	s.pending_rolls = JsonUtil.as_strings(d.get("pending_rolls", []))
 	var snap: Dictionary = JsonUtil.as_dict(d.get("roll_snapshot", {}))
 	for k: Variant in snap:

@@ -1,0 +1,237 @@
+{
+  "name": "The activated hero rings out in the Roll phase (Marko and Tarik 2026-11-13): its player is down to Pass or an Assist while cards would go to it (an Action is refused, an Assist is played in its colour), and in the Battle phase the player's other hero, in a battle of its own, gets its card as ever",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1,
+        "decks": [
+          {
+            "heroes": [
+              "TA-001",
+              "TA-002",
+              "TA-003"
+            ],
+            "cards": {
+              "TX-010": 40
+            },
+            "stages": [],
+            "cores": []
+          },
+          {
+            "heroes": [
+              "TB-001",
+              "TB-002",
+              "TB-003"
+            ],
+            "cards": {
+              "TX-010": 40
+            },
+            "stages": [],
+            "cores": []
+          }
+        ]
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          4,
+          10
+        ],
+        "heroes.p0:TA-002.zone": "map",
+        "heroes.p0:TA-002.hex": [
+          4,
+          5
+        ],
+        "players.p0.hand": [
+          "TX-010",
+          "TA-030",
+          "TA-042"
+        ],
+        "players.p0.energy": 5,
+        "players.p1.hand": [],
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": true
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-001",
+        "roll": true
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "move": {
+        "type": "aim",
+        "player": 0,
+        "dir": [
+          0,
+          1
+        ],
+        "power": 1
+      }
+    },
+    {
+      "move": {
+        "type": "aim",
+        "player": 1,
+        "dir": [
+          0,
+          1
+        ],
+        "power": 0.5
+      }
+    },
+    {
+      "roll": {
+        "thrower": "p0:TA-001",
+        "results": [
+          {
+            "ball": "p0:TA-001",
+            "thrown": true,
+            "end_area": 1,
+            "strip_entered": 0,
+            "end_hex": [
+              4,
+              16
+            ]
+          },
+          {
+            "ball": "p1:TB-001",
+            "thrown": true,
+            "end_area": 0,
+            "strip_entered": -1,
+            "end_hex": [
+              4,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.zone": "strip",
+        "only_pass": {
+          "$has": 0
+        },
+        "pending.0.type": "damage",
+        "pending.0.ring_out": true
+      }
+    },
+    {
+      "move": {
+        "type": "damage_to",
+        "player": 0,
+        "target": "p0:TA-001",
+        "cards": []
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "expect": {
+        "phase": "postroll",
+        "pending": {
+          "$size": 0
+        },
+        "only_pass_battle": {}
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TX-010"
+      },
+      "error": "pass, or play an Assist"
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-030"
+      }
+    },
+    {
+      "expect": {
+        "players.p0.assists": [
+          "TA-030"
+        ],
+        "players.p0.hand": [
+          "TX-010",
+          "TA-042"
+        ]
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "phase": "battle",
+        "battle_index": 0,
+        "only_pass": {
+          "$has": 0
+        }
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TX-010"
+      },
+      "error": "needs a Red hero in this battle"
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-042",
+        "hero": "p0:TA-002"
+      }
+    },
+    {
+      "expect": {
+        "players.p0.graveyard": {
+          "$has": "TA-042"
+        },
+        "players.p0.hand": [
+          "TX-010"
+        ]
+      }
+    }
+  ]
+}
