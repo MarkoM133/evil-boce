@@ -4,6 +4,7 @@
 // The rules are not public: they come with the data, like the cards, never from the repo.
 
 export const RULES_PATH = 'data/rules/rules.md';
+const RULES_FRESH_MS = 30_000;
 
 const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -40,7 +41,9 @@ export function rulesHtml(lines) {
   while (i < lines.length) {
     const l = lines[i];
     if (!l.trim()) { i++; continue; }
-    if (l.startsWith('### ')) { html.push(`<h4>${inline(l.slice(4))}</h4>`); i++; continue; }
+    // "### " and any other heading inside a section ("####", "#x"): a subheading. (A "#" line no branch took
+    // used to stop the loop for ever: code review 2026-11-13.)
+    if (l.startsWith('#')) { html.push(`<h4>${inline(l.replace(/^#+\s*/, ''))}</h4>`); i++; continue; }
     if (l.startsWith('> ')) { html.push(`<p class="rl-note">${inline(l.slice(2))}</p>`); i++; continue; }
     if (l.startsWith('|')) {
       const rows = [];
@@ -59,11 +62,13 @@ export function rulesHtml(lines) {
         else items.push(lines[i].replace(/^(- |\d+\. )/, ''));
         i++;
       }
-      const tag = ordered ? 'ol' : 'ul';
-      html.push(`<${tag}>${items.map(t => `<li>${inline(t)}</li>`).join('')}</${tag}>`);
+      // A numbered list goes on from its own first number (a list a paragraph cut in two keeps counting).
+      const open = ordered ? `<ol start="${parseInt(l, 10)}">` : '<ul>';
+      html.push(`${open}${items.map(t => `<li>${inline(t)}</li>`).join('')}</${ordered ? 'ol' : 'ul'}>`);
       continue;
     }
-    const para = [];
+    // A paragraph: this line whatever it is (so the loop always moves on), and the plain lines after it.
+    const para = [lines[i++]];
     while (i < lines.length && lines[i].trim() && !/^(#|> |\||- |\d+\. )/.test(lines[i])) para.push(lines[i++]);
     html.push(`<p>${inline(para.join(' '))}</p>`);
   }
@@ -74,27 +79,41 @@ export function rulesHtml(lines) {
 export function searchRules(sections, query) {
   const q = query.trim().toLowerCase();
   if (!q) return sections;
-  return sections.filter(s => s.title.toLowerCase().includes(q) || s.text.toLowerCase().includes(q));
+  // The text as it reads, without the Markdown marks ("**win** with" is found by "win with").
+  const plain = t => t.replace(/\*\*|`/g, '').toLowerCase();
+  return sections.filter(s => s.title.toLowerCase().includes(q) || plain(s.text).includes(q));
 }
 
-// The word marked in HTML, only in text, never inside a tag.
+// The word marked in HTML: only in the text between tags, and never inside an entity ("a" must not mark the
+// "a" of "&amp;"); a search with "&", "<" or ">" in it is looked for as the page writes those.
 export function markWord(html, query) {
   const q = query.trim();
   if (!q) return html;
-  const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?![^<]*>)`, 'gi');
-  return html.replace(re, '<mark>$1</mark>');
+  const re = new RegExp(esc(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  const mark = t => t.replace(re, '<mark>$&</mark>');
+  const special = /[&<>]/.test(q);
+  return html.split(/(<[^>]*>)/).map(part => {
+    if (part.startsWith('<')) return part;
+    return special ? mark(part) : part.split(/(&[a-z0-9#]+;)/i).map(t => (/^&[a-z0-9#]+;$/i.test(t) ? t : mark(t))).join('');
+  }).join('');
 }
 
 export function renderRules({ h, state }) {
   const page = h('div', { class: 'rl' }, h('p', { class: 'muted' }, 'Loading the rules…'));
   (async () => {
-    if (state.rulesMd == null) state.rulesMd = (await state.store.readRules().catch(() => null)) ?? '';
+    // Kept for RULES_FRESH_MS only: the file changes while Card Studio is open, and a read that failed (the
+    // phone off the network for a moment) is never kept, so it does not stay "no rules" until a reload.
+    if (!state.rulesMd || Date.now() - (state.rulesAt ?? 0) > RULES_FRESH_MS) {
+      state.rulesMd = (await state.store.readRules().catch(() => null)) || null;
+      state.rulesAt = Date.now();
+    }
+    const md = state.rulesMd ?? '';
     page.replaceChildren(h('div', { class: 'rl-head' }, h('h2', {}, 'Rules')));
-    if (!state.rulesMd.trim()) {
+    if (!md.trim()) {
       page.append(h('p', { class: 'muted' }, `No rules in the shared folder yet (${RULES_PATH}).`));
       return;
     }
-    const all = parseRules(state.rulesMd);
+    const all = parseRules(md);
     const intro = all[0];
     const parts = all.slice(1);
     const toc = h('nav', { class: 'rl-toc', 'aria-label': 'Contents' });

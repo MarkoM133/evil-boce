@@ -50,8 +50,10 @@ static func to_bbcode(lines: PackedStringArray) -> String:
 		var l: String = lines[i]
 		if l.strip_edges().is_empty():
 			i += 1
-		elif l.begins_with("### "):
-			out.append("[font=%s][font_size=22][color=%s]%s[/color][/font_size][/font]" % [HEAD_FONT, BONE, inline(l.substr(4))])
+		elif l.begins_with("#"):
+			# "### " and any other heading inside a section ("####", "#x"): a subheading. (A "#" line no branch
+			# took used to stop this loop, and the game with it: code review 2026-11-13.)
+			out.append("[font=%s][font_size=22][color=%s]%s[/color][/font_size][/font]" % [HEAD_FONT, BONE, inline(l.lstrip("#").strip_edges())])
 			i += 1
 		elif l.begins_with("> "):
 			out.append("[color=%s]%s[/color]" % [STRAW, inline(l.substr(2))])
@@ -85,7 +87,9 @@ static func to_bbcode(lines: PackedStringArray) -> String:
 				listed.append("[indent]%s%s[/indent]" % [it.substr(0, sep + 2), inline(it.substr(sep + 2))])
 			out.append("\n".join(listed))
 		else:
-			var para := PackedStringArray()
+			# A paragraph: this line whatever it is (so the loop always moves on), and the plain lines after it.
+			var para := PackedStringArray([l])
+			i += 1
 			while i < lines.size() and not lines[i].strip_edges().is_empty() and not lines[i].begins_with("#") \
 					and not lines[i].begins_with("> ") and not lines[i].begins_with("|") and item.search(lines[i]) == null:
 				para.append(lines[i])

@@ -31,3 +31,15 @@ func test_bold_brackets_tables_and_lists() -> void:
 func test_no_file_no_sections() -> void:
 	assert_eq(RulesText.sections("").size(), 0)
 	assert_eq(RulesText.read("res://no/such/folder"), "")
+
+
+## Code review 2026-11-13: a "#" line that was no known heading stopped the loop, and the game with it.
+func test_any_heading_line_is_a_subheading_and_never_stops_the_text() -> void:
+	for line: String in ["#### Deeper", "###NoSpace", "#1 rule", "##", "#"]:
+		var s: Array[Dictionary] = RulesText.sections("## A\n\nBefore.\n\n%s\n\nAfter." % line)
+		assert_eq(s.size(), 1, line)
+		var bb: String = str(s[0]["bb"])
+		assert_true(bb.contains("Before.") and bb.contains("After."), line)
+	var deep: String = str(RulesText.sections("## A\n\n#### Deeper\n")[0]["bb"])
+	assert_true(deep.contains("]Deeper[/color]"), "shown as a subheading, without its marks")
+	assert_false(deep.contains("####"))
