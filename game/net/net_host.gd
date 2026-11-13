@@ -225,6 +225,63 @@ func resume_match(record: MatchRecord) -> String:
 	return ""
 
 
+## "Continue from here" online (GDD 2; Marko 2026-11-13): the replay the host is showing everyone becomes a new
+## match from its frame `frame`, played by the people at the table. Seat i of the lobby plays seat i of the record
+## with the record's deck; a seat of the record nobody sits in stays a bot if it was one, else the match cannot
+## start. The original replay is untouched (the recorder branches it). Guests get START and their states.
+func continue_from(record: MatchRecord, frame: int) -> String:
+	if record == null or frame < 0 or frame >= record.frame_count():
+		return "no such moment in the replay"
+	if record.state_at(frame).is_over():
+		return "the match is over there; step back a little"
+	if seats.size() > record.players.size():
+		return "more players here than that match had"
+	var next: Array[Dictionary] = []
+	for i: int in record.players.size():
+		var p: Dictionary = record.players[i]
+		var deck: Dictionary = JsonUtil.as_dict(record.decks[i]) if i < record.decks.size() else {}
+		if i < seats.size():
+			var s: Dictionary = seats[i].duplicate()
+			if not JsonUtil.as_bool(s.get("connected", false)) and not JsonUtil.as_bool(s.get("bot", false)):
+				return "%s is not here" % str(s.get("name", ""))
+			s["slot"] = i
+			s["deck"] = deck
+			s["ready"] = true
+			next.append(s)
+		elif JsonUtil.as_bool(p.get("bot", false)):
+			next.append({"slot": i, "name": str(p.get("name", "")), "peer": -1, "ready": true, "bot": true,
+				"bot_level": str(p.get("bot_level", "easy")), "deck": deck, "connected": true})
+		else:
+			return "%s's seat needs a player: someone joins, or add a bot in the lobby" % str(p.get("name", ""))
+	streaming = false
+	_stream_record = null
+	_stream_state = {}
+	engine = RulesEngine.new(record.catalog())
+	settings = MatchSettings.from_dict(record.settings)
+	seats = next
+	series = null
+	_series_filed = false
+	recorder = MatchRecorder.resume(engine, record, frame)
+	# The people at the table now, in the new record and on the table.
+	for i: int in seats.size():
+		var who: String = str(seats[i].get("name", ""))
+		if i < recorder.record.players.size():
+			recorder.record.players[i]["name"] = who
+			recorder.record.players[i]["bot"] = JsonUtil.as_bool(seats[i].get("bot", false))
+			recorder.record.players[i]["bot_level"] = str(seats[i].get("bot_level", ""))
+		var ps: PlayerState = recorder.state.player(i)
+		if ps != null:
+			ps.name = who
+	started = true
+	if paused:
+		set_paused(false, host_slot)
+	link.broadcast({"t": NetProtocol.START, "settings": settings.to_dict(), "players": recorder.record.players,
+		"seed": recorder.record.seed, "cards_version": cards_version})
+	match_started.emit()
+	_send_states()
+	return ""
+
+
 func start(seed: int) -> String:
 	var why: String = can_start()
 	if not why.is_empty():

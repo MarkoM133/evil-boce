@@ -85,7 +85,14 @@ join again" (the host never sends cards or images; Syncthing is required, GDD 2)
 - **Client role**: `_apply` → `send_move`; `state_received` → redraw; `balls` move the frozen
   bodies; no recorder, no bots, no save (the host keeps them).
 - Hot seat is unchanged; the network is a seat type, as GDD 2 wants.
-- Only local matches write `saves/current.json` (Continue); an online one needs everyone.
+- The host keeps its online match like a local one and can carry it on (Online > CONTINUE, `NetHost.resume_match`,
+  2026-11-07): the table opens paused until the others join back under their names.
+- **Continue from here, online** (`NetHost.continue_from(record, frame)`, 2026-11-13): while the host shows a replay
+  to everyone (below), its CONTINUE FROM HERE turns that frame into a new match for the people at the table. Seat i
+  of the lobby plays seat i of the record with the record's deck; a seat of the record nobody sits in stays a bot
+  if it was one, else the host is told who is missing and the replay goes on. The recorder branches the record,
+  so the replay is untouched; names in the new match are the players' own. Guests get a plain START and their
+  (redacted) states, and their table opens again as a seat.
 
 ## End of a match
 
@@ -97,7 +104,6 @@ join again" (the host never sends cards or images; Syncthing is required, GDD 2)
 
 ## Not done yet
 
-- Watching a replay together (the host steps through frames, the guests follow).
 - Spectator seats, timer per phase, 2v2 seats (step 4), a dedicated server build.
 - A real test over Tailscale between two computers.
 

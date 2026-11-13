@@ -76,7 +76,6 @@ func _button(parent: Control, text: String, tip: String, cb: Callable) -> Button
 	return b
 
 
-## Without "Continue from here" (a replay the host watches with its table: "continue online"
-## is not there yet, and a local match would leave the table waiting).
+## Without "Continue from here".
 func hide_continue() -> void:
 	_continue.visible = false

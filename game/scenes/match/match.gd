@@ -170,6 +170,8 @@ var _combo_list: VBoxContainer
 var _combo_toggle: HBoxContainer
 ## The combo list shows every combo, not only the ones this screen's deck can make.
 var _combo_all: bool = false
+## A guest: the host started a match from the replay being watched; reopen the table on its first state.
+var _client_restart: bool = false
 ## Discord: when this match began, and the bot's level it plays (_update_presence).
 var _presence_since: int = 0
 var _presence_bot: String = "easy"
@@ -263,6 +265,15 @@ func _ready() -> void:
 				ReplayStore.save_replay(record)
 			hud.refresh())
 		net_client.back_in_lobby.connect(func() -> void: get_tree().change_scene_to_file(LOBBY_SCENE))
+		# The host turned the replay everyone was watching into a match ("continue from here"): this table opens
+		# again as a seat in it, once its first state is in.
+		net_client.match_started.connect(func(_info: Dictionary) -> void: _client_restart = true)
+		net_client.state_received.connect(func(_s: GameState) -> void:
+			if _client_restart and is_inside_tree():
+				_client_restart = false
+				MatchLaunch.config = {"net": {"role": "client", "node": net_client}, "settings": MatchSettings.from_dict(net_client.settings),
+					"decks": [], "bots": PackedInt32Array(), "seed": 0}
+				get_tree().change_scene_to_file(MATCH_SCENE))
 	if _replay != null:
 		_frame = clampi(JsonUtil.as_int(_config.get("frame", 0)), 0, _replay.frame_count() - 1)
 		state = _replay.state_at(_frame)
@@ -534,11 +545,19 @@ func _build_hud() -> void:
 		_replay_bar.play_toggled.connect(_toggle_play)
 		_replay_bar.speed_changed.connect(func(s: float) -> void: _replay_speed = s)
 		_replay_bar.continue_pressed.connect(func() -> void:
+			if _streaming():
+				# Watched together: the people at the table play on from here (NetHost.continue_from).
+				var why: String = net_host.continue_from(_replay, _frame)
+				if not why.is_empty():
+					hud.toast(why, Palette.FG)
+					return
+				MatchLaunch.config = {"net": {"role": "host", "node": net_host}, "settings": net_host.settings, "decks": [],
+					"bots": PackedInt32Array(), "seed": 0}
+				get_tree().change_scene_to_file(MATCH_SCENE)
+				return
 			MatchLaunch.config = MatchLaunch.from_record(_replay, _frame)
 			get_tree().change_scene_to_file(MATCH_SCENE))
 		_replay_bar.exit_pressed.connect(_exit_replay)
-		if _streaming():
-			_replay_bar.hide_continue()
 		_replay_bar.show_frame(_frame, _replay.frame_count(), state.turn, state.phase)
 		if JsonUtil.as_bool(_config.get("autoplay", false)):
 			_set_playing.call_deferred(true)

@@ -288,3 +288,75 @@ func test_a_bot_seat_can_be_freed_for_a_player() -> void:
 	await _settle()
 	assert_eq(rejected, "")
 	assert_eq(welcomed_slot, 1)
+
+
+## "Continue from here" online (GDD 2): the replay the host shows everyone becomes a match from the frame it is on,
+## played by the people at the table; the replay itself is left as it was.
+func test_a_replay_watched_together_is_played_on_from_its_frame() -> void:
+	_start_host()
+	host.set_my_deck(_deck(true))
+	_start_client("Guest")
+	await _settle()
+	client.send_deck(_deck(false))
+	client.send_ready(true)
+	await _settle(0.4)
+	assert_eq(host.start(11), "")
+	await _settle()
+	assert_eq(host.apply(Move.make(Move.MULLIGAN, 0, {"keep": true})), "")
+	client.send_move(Move.make(Move.MULLIGAN, 1, {"keep": true}))
+	await _settle(0.4)
+	# The match as a replay: other names in it, as if it had been played by other people.
+	var replay: MatchRecord = MatchRecord.from_dict(host.recorder.record.to_dict())
+	replay.players[0]["name"] = "Then A"
+	replay.players[1]["name"] = "Then B"
+	var frames: int = replay.frame_count()
+	host.back_to_lobby()
+	await _settle(0.4)
+	assert_false(host.started)
+	host.stream_start(replay)
+	host.stream_state(replay.state_at(0))
+	await _settle(0.4)
+	assert_true(client.replay_stream)
+	assert_eq(host.continue_from(replay, frames + 3), "no such moment in the replay")
+	client_state = null
+	assert_eq(host.continue_from(replay, 0), "")
+	await _settle(0.4)
+	assert_true(host.started)
+	assert_false(host.streaming)
+	assert_true(client.started)
+	assert_false(client.replay_stream, "a match now, not a replay")
+	assert_not_null(client_state)
+	assert_eq(client_state.phase, host.state().phase)
+	assert_eq(host.state().player(0).name, "Host", "the people at the table, not the replay's")
+	assert_eq(host.state().player(1).name, "Guest")
+	assert_eq(str(host.recorder.record.players[1]["name"]), "Guest")
+	assert_true(client_state.player(0).hand[0] == NetProtocol.PLACEHOLDER_CARD, "hands are hidden again")
+	assert_false(client_state.player(1).hand.has(NetProtocol.PLACEHOLDER_CARD))
+	assert_eq(replay.frame_count(), frames, "the replay is untouched")
+	assert_eq(str(replay.players[1]["name"]), "Then B")
+	# The guest plays its seat.
+	client.send_move(Move.make(Move.MULLIGAN, 1, {"keep": true}))
+	await _settle(0.4)
+	assert_true(host.state().player(1).mulligan_done)
+
+
+func test_continuing_a_replay_needs_someone_in_every_seat() -> void:
+	_start_host()
+	host.set_my_deck(_deck(true))
+	assert_eq(host.add_bot("easy", _deck(false)), "")
+	assert_eq(host.start(7), "")
+	var with_bot: MatchRecord = MatchRecord.from_dict(host.recorder.record.to_dict())
+	var two_people: MatchRecord = MatchRecord.from_dict(with_bot.to_dict())
+	two_people.players[1]["bot"] = false
+	two_people.players[1]["name"] = "Someone"
+	host.back_to_lobby()
+	host.remove_bots()
+	assert_eq(host.seats.size(), 1)
+	host.stream_start(two_people)
+	assert_eq(host.continue_from(two_people, 0), "Someone's seat needs a player: someone joins, or add a bot in the lobby")
+	assert_true(host.streaming, "refused: the replay goes on")
+	# A seat that was a bot's stays a bot.
+	assert_eq(host.continue_from(with_bot, 0), "")
+	assert_eq(host.seats.size(), 2)
+	assert_true(JsonUtil.as_bool(host.seats[1]["bot"]))
+	assert_true(host.started)
