@@ -681,11 +681,7 @@ func _build_menu_overlay() -> Control:
 
 	# The match log, right: newest at the bottom.
 	var log_box := VBoxContainer.new()
-	log_box.anchor_left = 0.42
-	log_box.anchor_right = 0.94
-	log_box.anchor_top = 0.12
-	log_box.anchor_bottom = 0.88
-	log_box.add_theme_constant_override("separation", 10)
+	_menu_side(log_box)
 	root.add_child(log_box)
 	_menu_log_box = log_box
 	# Tabs MATCH LOG, COMBO LIST when there are combos (Marko 2026-11-07) and RULES (2026-11-11, G1).
@@ -723,11 +719,7 @@ func _build_menu_overlay() -> Control:
 ## can make, or every combo (ALL). The opponent's deck never shows here.
 func _build_combo_box() -> Control:
 	var box := VBoxContainer.new()
-	box.anchor_left = 0.42
-	box.anchor_right = 0.94
-	box.anchor_top = 0.12
-	box.anchor_bottom = 0.88
-	box.add_theme_constant_override("separation", 10)
+	_menu_side(box)
 	box.visible = false
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 10)
@@ -761,11 +753,25 @@ func _build_combo_box() -> Control:
 	return box
 
 
+## The pause menu's right side, the same place for MATCH LOG, COMBO LIST and RULES (Marko 2026-11-13: switching
+## tabs moved the tabs; the rules had a box of their own size), and the tabs' row the same height in each.
+const MENU_TABS_H: float = 48.0
+
+
+func _menu_side(box: VBoxContainer) -> void:
+	box.anchor_left = 0.42
+	box.anchor_right = 0.95
+	box.anchor_top = 0.1
+	box.anchor_bottom = 0.9
+	box.add_theme_constant_override("separation", 10)
+
+
 ## The tabs over the pause menu's right side (Marko 2026-11-08, from the mockups): slanted buttons like YOUR
 ## DECK and ALL beside them, the open one straw. COMBO LIST only when there are combos.
 func _menu_tabs(open: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
+	row.custom_minimum_size = Vector2(0, MENU_TABS_H)
 	var tabs: Array[String] = ["log"]
 	if not engine.catalog.of_type("Combo").is_empty():
 		tabs.append("combos")
@@ -801,11 +807,7 @@ func _show_tab(tab: String) -> void:
 ## data/rules/rules.md in the shared folder, the same file as Card Studio's Rules page (RulesText).
 func _build_rules_box() -> Control:
 	var box := VBoxContainer.new()
-	box.anchor_left = 0.42
-	box.anchor_right = 0.96
-	box.anchor_top = 0.1
-	box.anchor_bottom = 0.9
-	box.add_theme_constant_override("separation", 10)
+	_menu_side(box)
 	box.visible = false
 	box.add_child(_menu_tabs("rules"))
 	var row := HBoxContainer.new()
