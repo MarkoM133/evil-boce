@@ -578,7 +578,7 @@ func _rule_tile(key: String, r: Array) -> Control:
 	v.add_theme_constant_override("separation", 6)
 	tile.add_child(v)
 	v.add_child(UiTheme.label(str(r[1]).to_upper(), 22))
-	v.add_child(_rule_value(key, r, 30, 300.0))
+	v.add_child(_rule_value(key, r, 30, 300.0, true))
 	_rule_hover(tile, key, r)
 	return tile
 
@@ -602,7 +602,8 @@ func _rule_line(key: String, r: Array) -> Control:
 	return pad
 
 
-func _rule_value(key: String, r: Array, size: int, width: float) -> HBoxContainer:
+## `big`: a main rule's tile, whose arrows are red (Marko 2026-11-13: the four tiles all one grey).
+func _rule_value(key: String, r: Array, size: int, width: float, big: bool = false) -> HBoxContainer:
 	var values: Array = r[3]
 	var now: Variant = settings.get(key)
 	var std: Variant = standard_value(key)
@@ -613,7 +614,7 @@ func _rule_value(key: String, r: Array, size: int, width: float) -> HBoxContaine
 		settings.set(key, values[posmod((i if i >= 0 else 0) + d, values.size())])
 		_changed()
 	if editable:
-		h.add_child(_arrow("‹", func() -> void: step.call(-1)))
+		h.add_child(_arrow("‹", func() -> void: step.call(-1), big))
 	var val: Label = UiTheme.label(value_text(key, now), size, Palette.GOLD if now != std else Palette.FG)
 	val.custom_minimum_size = Vector2(width, 0)
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -622,7 +623,7 @@ func _rule_value(key: String, r: Array, size: int, width: float) -> HBoxContaine
 	val.mouse_filter = Control.MOUSE_FILTER_PASS
 	h.add_child(val)
 	if editable:
-		h.add_child(_arrow("›", func() -> void: step.call(1)))
+		h.add_child(_arrow("›", func() -> void: step.call(1), big))
 	return h
 
 
@@ -635,11 +636,16 @@ func _rule_hover(c: Control, key: String, r: Array) -> void:
 	c.mouse_exited.connect(_rules_summary)
 
 
-func _arrow(text: String, on_press: Callable) -> Button:
+## A red arrow (`red`: the main tiles', the red action button's style), else a grey one with a red glyph.
+func _arrow(text: String, on_press: Callable, red: bool = false) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override("font_size", 24)
-	b.custom_minimum_size = Vector2(44, 0)
+	b.add_theme_font_size_override("font_size", 26 if red else 24)
+	b.custom_minimum_size = Vector2(52 if red else 44, 0)
+	if red:
+		b.theme_type_variation = &"Primary"
+	else:
+		b.add_theme_color_override("font_color", Palette.ACCENT)
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.pressed.connect(on_press)
 	return b
