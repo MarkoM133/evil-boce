@@ -412,6 +412,7 @@ func tick(delta: float, state: GameState, bodies: Dictionary[String, BallBody], 
 			_gate(h)
 			_keep_clear(h, state, bodies)
 	_drum(delta, clock_left)
+	_at_rest(delta)
 	_bring_back()
 
 
@@ -1133,6 +1134,7 @@ func _watch_held(held: Held, b: BallBody) -> void:
 ## the edge (_catch_lean); a second one by the first into the same palm (_join); with both hands busy into
 ## the dark (_fall_past); over the near end into the mouth (_catch_mouth); elsewhere a hand from below.
 func _catch(id: String, at: Vector3, radius: float, hp0: int) -> void:
+	come_out()
 	var held := Held.new()
 	held.id = id
 	# Where it left the table, at the height it rolled at (the ball itself may be falling already).
@@ -2362,7 +2364,9 @@ func _place_eyes(delta: float) -> void:
 	var from: Vector3 = to_local(view.global_position)
 	var fx: float = face_x + _dodge_x
 	var want: float = eyes_out(from)
-	while want < EYES_FURTHEST and not eyes_seen(Vector3(fx, EYES_DOWN, _ext.y + want), from, _ext):
+	var down: float = EYES_DOWN
+	var furthest: float = EYES_FURTHEST
+	while want < furthest and not eyes_seen(Vector3(fx, down, _ext.y + want), from, _ext):
 		want += 0.2
 	var now: float = _eyes.position.z - _ext.y
 	if not _eyes_placed or want > now:
@@ -2370,7 +2374,8 @@ func _place_eyes(delta: float) -> void:
 	else:
 		now = lerpf(now, want, clampf(delta * 10.0, 0.0, 1.0))
 	_eyes_placed = true
-	_eyes.position = Vector3(fx, EYES_DOWN + face_dy, _ext.y + now)
+	_eyes.position = Vector3(fx, down + face_dy, _ext.y + now)
+	_mist_veil(get_process_delta_time())
 	var to: Vector3 = from - _eyes.position
 	_eyes.rotation.y = atan2(to.x, to.z)
 	_lids.rotation.x = -atan2(to.y, Vector2(to.x, to.z).length())
@@ -2557,3 +2562,174 @@ func _look_at(p: Vector3) -> Vector2:
 	var loc: Vector3 = _eyes.global_transform.affine_inverse() * p
 	var d := Vector2(loc.x, -loc.z)
 	return d.normalized() * 0.4 * clampf(d.length() / 6.0, 0.0, 1.0)
+
+
+# --- at rest, and the eyes in the mist (Marko 2026-11-13, from the F7 and F8 mockups) --------------------------
+
+## The eyes watch from the mist: a soft veil of it over the face and their colours dimmer. They come out of it, the
+## veil gone and their colours full, for the moments that matter (OUT_EVENTS, a catch, the end), OUT_HOLD seconds.
+const OUT_EVENTS: Array[String] = ["battle", "ko", "stage_claimed", "ring_out", "match_end", "combo"]
+const OUT_HOLD: float = 2.6
+const IN_MIST_DIM: float = 0.6
+const VEIL: float = 0.55
+var _veil: MeshInstance3D
+## 0 in the mist, 1 out of it; how long they stay out.
+var _out: float = 0.0
+var _out_t: float = 0.0
+var _dim_now: float = 1.0
+## The hands at rest: the next regrip, and how far the log and the phase have been read.
+var _idle_in: float = 6.0
+var _log_seen: int = -1
+
+
+## The eyes come out of the mist now, for secs seconds.
+func come_out(secs: float = OUT_HOLD) -> void:
+	_out_t = maxf(_out_t, secs)
+
+
+func _mist_veil(delta: float) -> void:
+	if _veil == null:
+		_veil = MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(9.0, 5.0)
+		_veil.mesh = q
+		var sh := Shader.new()
+		sh.code = """shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never, blend_mix;
+uniform vec3 mist : source_color = vec3(0.26, 0.23, 0.30);
+uniform float amount = 0.55;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+}
+void fragment() {
+	vec2 c = (UV - 0.5) * vec2(1.8, 2.0);
+	float r = length(c);
+	float n = noise(UV * 4.0 + vec2(TIME * 0.05, TIME * 0.02)) * 0.6 + noise(UV * 9.0 - vec2(TIME * 0.04, 0.0)) * 0.4;
+	ALBEDO = mist;
+	ALPHA = amount * (1.0 - smoothstep(0.35, 1.0, r)) * (0.55 + 0.45 * n);
+}
+"""
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.render_priority = 2
+		_veil.material_override = m
+		_veil.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_veil.position = Vector3(0, -0.4, 0.6)
+		_lids.add_child(_veil)
+	# Out of the mist quickly, back into it slowly.
+	_out_t = maxf(0.0, _out_t - delta)
+	_out = move_toward(_out, 1.0 if _out_t > 0.0 or _left else 0.0, delta * (4.0 if _out_t > 0.0 else 0.8))
+	(_veil.material_override as ShaderMaterial).set_shader_parameter("amount", VEIL * (1.0 - _out))
+	_veil.visible = _out < 0.99
+	var dim: float = lerpf(IN_MIST_DIM, 1.0, _out)
+	if absf(dim - _dim_now) < 0.005:
+		return
+	var k: float = dim / _dim_now
+	_dim_now = dim
+	for n: Node in _lids.find_children("*", "MeshInstance3D", true, false):
+		if n == _veil:
+			continue
+		var mi := n as MeshInstance3D
+		var sm := mi.material_override as ShaderMaterial
+		if sm != null:
+			var c: Color = sm.get_shader_parameter("col")
+			sm.set_shader_parameter("col", Color(c.r * k, c.g * k, c.b * k, c.a))
+		var st := mi.material_override as StandardMaterial3D
+		if st != null:
+			st.albedo_color = Color(st.albedo_color.r * k, st.albedo_color.g * k, st.albedo_color.b * k, st.albedo_color.a)
+
+
+## The hands at rest (Marko 2026-11-13): every 8 to 15 quiet seconds one hand shifts a finger or two; a hand slaps
+## the edge when a stage is claimed and the fingers twitch when a hero falls. The moments that matter bring the eyes
+## out of the mist.
+func _at_rest(delta: float) -> void:
+	if _state != null:
+		if _log_seen < 0 or _log_seen > _state.log.size():
+			_log_seen = _state.log.size()
+		for i: int in range(_log_seen, _state.log.size()):
+			var t: String = str(_state.log[i].get("type", ""))
+			if OUT_EVENTS.has(t):
+				come_out()
+			if t == "stage_claimed":
+				_slam()
+			elif t == "ko":
+				_twitch()
+		_log_seen = _state.log.size()
+	if _any_moving():
+		return
+	_idle_in -= delta
+	if _idle_in > 0.0:
+		return
+	_idle_in = randf_range(8.0, 15.0)
+	var free: Array[Hand] = []
+	for h: Hand in _hands:
+		if not h.busy and not h.off and not h.hanging and not h.sunk and h.gate == "":
+			free.append(h)
+	if free.is_empty():
+		return
+	_regrip(free[randi() % free.size()])
+
+
+## One or two fingers lift slowly and come down again: the hand shifts its hold.
+func _regrip(h: Hand) -> void:
+	h.busy = true
+	var n: int = 1 if randf() < 0.6 else 2
+	var first: int = randi() % (h.fingers.size() - n + 1)
+	for k: int in n:
+		var fin: Node3D = h.fingers[first + k]
+		var tip := fin.get_child(0) as Node3D
+		var t: Tween = _tw(h, fin)
+		t.tween_interval(0.12 * k)
+		t.tween_property(tip, "rotation:z", -h.side * 0.45, 0.22).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(fin, "position:y", 0.22, 0.22)
+		t.tween_interval(0.15)
+		t.tween_property(tip, "rotation:z", 0.0, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		t.parallel().tween_property(fin, "position:y", 0.0, 0.12)
+	var done: Tween = _tw(h, h)
+	done.tween_interval(0.12 * n + 0.55)
+	done.tween_callback(func() -> void: h.busy = false)
+
+
+## A stage claimed: the first free hand lifts all four fingers and slaps them down at once.
+func _slam() -> void:
+	for h: Hand in _hands:
+		if h.busy or h.off or h.hanging or h.sunk or h.gate != "":
+			continue
+		h.busy = true
+		for fin: Node3D in h.fingers:
+			var tip := fin.get_child(0) as Node3D
+			var t: Tween = _tw(h, fin)
+			t.tween_property(tip, "rotation:z", -h.side * 0.8, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			t.parallel().tween_property(fin, "position:y", 0.8, 0.12)
+			t.tween_interval(0.08)
+			t.tween_property(tip, "rotation:z", 0.0, 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			t.parallel().tween_property(fin, "position:y", 0.0, 0.06)
+		var done: Tween = _tw(h, h)
+		done.tween_interval(0.28)
+		done.tween_callback(func() -> void:
+			_cam.shake(0.25, 0.25)
+			h.busy = false)
+		return
+
+
+## A hero fell: the fingers of both hands twitch twice, quickly.
+func _twitch() -> void:
+	for h: Hand in _hands:
+		if h.busy or h.off or h.hanging or h.sunk or h.gate != "":
+			continue
+		h.busy = true
+		for i: int in h.fingers.size():
+			var fin: Node3D = h.fingers[i]
+			var tip := fin.get_child(0) as Node3D
+			var t: Tween = _tw(h, fin)
+			t.tween_interval(0.03 * i)
+			for r: int in 2:
+				t.tween_property(tip, "rotation:z", -h.side * 0.35, 0.06)
+				t.tween_property(tip, "rotation:z", 0.0, 0.06)
+		var done: Tween = _tw(h, h)
+		done.tween_interval(0.4)
+		done.tween_callback(func() -> void: h.busy = false)
