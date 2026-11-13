@@ -93,7 +93,15 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
 - Knocked off stays: half the player's energy there goes, and those places are empty again.
 - Decided by Tarik (2026-11-10): energy left on a stage does not fade; a knock-off empties, it does
   not hand places to the other side; the goal stays 14; a place taken counts as energy invested for
-  the tie-break; in 2v2 the ring is per team. Cards that touch claims are still to be gone through.
+  the tie-break; in 2v2 the ring is per team.
+- The cards that touch claims, gone through under the ring (2026-11-13, scenarios 71 to 76; nothing had to change):
+  - "can't claim" (`NO_CLAIM`, on heroes or on the player): the energy still goes in and may fill the ring; the claim
+    is held back and looked at again in every later End phase. Until then the ring is open: the other side alone on
+    the stage takes places with its energy before the claim is looked at (all energy goes in first, then claims), and
+    a knock off halves it. A full ring claims whether or not its side still stands there.
+  - a card that sends an enemy off its stage (`KNOCKBACK` away or towards) or knocks it out there costs that player
+    half, as a battle's knockback does; a move or swap by its own side (`MOVE`, `SWAP`) costs nothing.
+  - energy a card gives or takes before the End phase (`CHARGE`, `DISCHARGE`, up to `max_energy`) is what goes in.
 - Scenarios 67 and 68. Compare with `tools/bot_games.gd --claim=ring`.
 - The move timer's safe move puts it all into the stage with the most energy already in it.
 - **Tie-break** (Marko 2026-11-04): when every winning side reaches its stages in the same End phase, the side that put more energy into stages over the whole match wins (`PlayerState.energy_invested`: everything banked into stages, over the goal and later lost included; result `stages_energy`, event `tie_broken {by, totals, winner_team}`); equal totals, or a win by KO at the same time, stay a draw. With Stay claims a simultaneous win stays a draw.
