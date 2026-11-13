@@ -216,6 +216,13 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    same constraints (cores in the opponent's half, ≥ 3 from other cores and stage edges,
    never on a stage). If something still does not fit, the gap shrinks for the rest and the
    log says `setup_gap_relaxed`.
+   Placing by hand looks ahead (Marko 2026-11-13: the sixth stage had no legal hex and the bot stood still):
+   a spot after which the stages (or the cores of that half) still to come would not all fit is refused
+   ("no room would be left for the stages still to come"), so every piece always gets out. `SetupFit` does the
+   search; `stage_placement_error` / `core_placement_error` with no gap given are that rule, and what the
+   table lights, the bot and the timer use. When the map cannot hold them at the match's gap at all (odd custom
+   rules), nothing is looked ahead and a piece with no spot is placed at the widest smaller gap that has one
+   (`stage_setup_gap`, `setup_gap_relaxed` in the log). Random placement is unchanged.
 5. **Overflow cores** (confirmed 2026-10-26) (a hero already holding three) come back within that hero's range, or
    anywhere in the owner's half if the hero is gone. Inventory cores are queued at the next
    phase change; until they are placed the owner can do nothing else. A core an ability or a card

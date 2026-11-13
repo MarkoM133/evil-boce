@@ -26,6 +26,8 @@ var fx: FxRuntime
 ## cost energy in a stage, so a knockback's wall damage is part of the knockback. Per hero: a
 ## stage's reveal effect that knocks another hero back is still that hero's own, outermost, move.
 var _moving: Dictionary[String, int] = {}
+## What the setup look-ahead worked out for a layout (_setup_plan), by the layout's key.
+var _setup_plans: Dictionary[String, SetupPlan] = {}
 
 
 func _init(catalog_: CardCatalog) -> void:
@@ -129,7 +131,7 @@ func _auto_place(s: GameState) -> void:
 		for gap: int in range(s.settings.effective_stage_gap(), -1, -1):
 			var options: Array[Vector2i] = []
 			for a: Vector2i in cells:
-				if stage_placement_error(s, st, a, gap).is_empty():
+				if _stage_spot_error(s, st, a, gap).is_empty():
 					options.append(a)
 			if options.is_empty():
 				continue
@@ -142,7 +144,7 @@ func _auto_place(s: GameState) -> void:
 		for gap: int in range(s.settings.effective_core_gap(), -1, -1):
 			var options: Array[Vector2i] = []
 			for a: Vector2i in cells:
-				if core_placement_error(s, c, a, gap).is_empty():
+				if _core_setup_error(s, c, a, gap).is_empty():
 					options.append(a)
 			if options.is_empty():
 				continue
@@ -161,7 +163,7 @@ func _try_place_stages(s: GameState, cells: Array[Vector2i]) -> bool:
 	for st: StageState in s.stages:
 		var options: Array[Vector2i] = []
 		for a: Vector2i in cells:
-			if stage_placement_error(s, st, a).is_empty():
+			if _stage_spot_error(s, st, a, s.settings.effective_stage_gap()).is_empty():
 				options.append(a)
 		if options.is_empty():
 			for other: StageState in s.stages:
@@ -172,11 +174,26 @@ func _try_place_stages(s: GameState, cells: Array[Vector2i]) -> bool:
 	return true
 
 
-## "" when stage `st` may be placed centred on `a`. `gap` is the fewest empty hexes between
-## stage edges (-1 = the match setting).
+## "" when stage `st` may be placed centred on `a`. `gap` is the fewest empty hexes between stage edges; -1 is
+## the setup's own rule: the match's gap, and no spot that would leave the stages still to come without room
+## (Marko 2026-11-13: six stages must always get out). When the map cannot hold them at that gap at all, the gap
+## shrinks as far as it must (stage_setup_gap) and nothing is looked ahead.
 func stage_placement_error(s: GameState, st: StageState, a: Vector2i, gap: int = -1) -> String:
-	if gap < 0:
-		gap = s.settings.effective_stage_gap()
+	if gap >= 0:
+		return _stage_spot_error(s, st, a, gap)
+	var plan: SetupPlan = _stage_plan(s, st)
+	var err: String = _stage_spot_error(s, st, a, plan.gap)
+	if err.is_empty() and plan.ahead and not plan.ok.has(a):
+		return "no room would be left for the stages still to come"
+	return err
+
+
+## The gap stage `st` is placed with now: the match's, or the widest smaller one that still has a spot.
+func stage_setup_gap(s: GameState, st: StageState) -> int:
+	return _stage_plan(s, st).gap
+
+
+func _stage_spot_error(s: GameState, st: StageState, a: Vector2i, gap: int) -> String:
 	for cell: Vector2i in Hex.spiral(a, 1):
 		if not s.map().contains(cell):
 			return "stage must be fully on the map"
@@ -191,13 +208,113 @@ func stage_placement_error(s: GameState, st: StageState, a: Vector2i, gap: int =
 	return ""
 
 
-## "" when core `c` may be put on `a` during setup.
+## "" when core `c` may be put on `a` during setup; `gap` -1 is the setup's own rule, as for a stage.
 func core_placement_error(s: GameState, c: CoreState, a: Vector2i, gap: int = -1) -> String:
+	if gap >= 0:
+		return _core_setup_error(s, c, a, gap)
+	var plan: SetupPlan = _core_plan(s, c)
+	var err: String = _core_setup_error(s, c, a, plan.gap)
+	if err.is_empty() and plan.ahead and not plan.ok.has(a):
+		return "no room would be left for the cores still to come"
+	return err
+
+
+func core_setup_gap(s: GameState, c: CoreState) -> int:
+	return _core_plan(s, c).gap
+
+
+func _core_setup_error(s: GameState, c: CoreState, a: Vector2i, gap: int) -> String:
 	if not s.map().contains(a):
 		return "not on the map"
 	if not s.in_half_of_team(a, 1 - s.team_of(c.owner)):
 		return "core goes into the opponent's half"
-	return _core_spot_error(s, c, a, gap if gap >= 0 else s.settings.effective_core_gap())
+	return _core_spot_error(s, c, a, gap)
+
+
+## What the setup allows for the next piece of a layout: the gap in force, whether spots are checked for the
+## pieces still to come, and the spots that pass.
+class SetupPlan extends RefCounted:
+	var gap: int = 0
+	var ahead: bool = false
+	var ok: Dictionary[Vector2i, bool] = {}
+
+
+func _stage_plan(s: GameState, st: StageState) -> SetupPlan:
+	var full: int = s.settings.effective_stage_gap()
+	var rest: int = 0
+	var key: String = "S|%d|%d" % [s.settings.map_size, full]
+	for other: StageState in s.stages:
+		if other.placed:
+			key += "|%d,%d" % [other.center.x, other.center.y]
+		elif other != st:
+			rest += 1
+	key += "|%d" % rest
+	if _setup_plans.has(key):
+		return _setup_plans[key]
+	var plan := SetupPlan.new()
+	var free: Array[Vector2i] = []
+	for gap: int in range(full, -1, -1):
+		free = _sweep(s.map().cells().filter(func(a: Vector2i) -> bool: return _stage_spot_error(s, st, a, gap).is_empty()))
+		plan.gap = gap
+		if not free.is_empty():
+			break
+	_look_ahead(plan, free, rest, full + 3, plan.gap == full)
+	_keep_plan(key, plan)
+	return plan
+
+
+func _core_plan(s: GameState, c: CoreState) -> SetupPlan:
+	var full: int = s.settings.effective_core_gap()
+	var team: int = s.team_of(c.owner)
+	var rest: int = 0
+	var key: String = "C|%d|%d|%d" % [s.settings.map_size, full, team]
+	for other: CoreState in s.cores:
+		if other.place == CoreState.ON_FIELD:
+			key += "|%d,%d" % [other.hex.x, other.hex.y]
+		elif other != c and other.place == CoreState.UNPLACED and s.team_of(other.owner) == team:
+			rest += 1
+	for st: StageState in s.stages:
+		if st.placed:
+			key += "|s%d,%d" % [st.center.x, st.center.y]
+	key += "|%d" % rest
+	if _setup_plans.has(key):
+		return _setup_plans[key]
+	var plan := SetupPlan.new()
+	var free: Array[Vector2i] = []
+	for gap: int in range(full, -1, -1):
+		free = _sweep(s.map().cells().filter(func(a: Vector2i) -> bool: return _core_setup_error(s, c, a, gap).is_empty()))
+		plan.gap = gap
+		if not free.is_empty():
+			break
+	_look_ahead(plan, free, rest, full + 1, plan.gap == full)
+	_keep_plan(key, plan)
+	return plan
+
+
+## Marks the spots of `free` after which `rest` more pieces still fit. No look-ahead when the gap is relaxed, when
+## nothing more is to come, or when they would not all fit even now (then any spot the gap allows will do).
+func _look_ahead(plan: SetupPlan, free: Array[Vector2i], rest: int, min_dist: int, full_gap: bool) -> void:
+	if not full_gap or rest <= 0 or not SetupFit.fits(free, rest + 1, min_dist):
+		return
+	for a: Vector2i in free:
+		if SetupFit.fits(SetupFit.without(free, a, min_dist), rest, min_dist):
+			plan.ok[a] = true
+	plan.ahead = not plan.ok.is_empty()
+
+
+## Hexes in the order the look-ahead packs them: column by column across the map.
+func _sweep(cells: Array[Vector2i]) -> Array[Vector2i]:
+	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var oa: Vector2i = Hex.axial_to_offset(a)
+		var ob: Vector2i = Hex.axial_to_offset(b)
+		return oa.x < ob.x or (oa.x == ob.x and oa.y < ob.y))
+	return cells
+
+
+func _keep_plan(key: String, plan: SetupPlan) -> void:
+	if _setup_plans.size() > 64:
+		_setup_plans.clear()
+	_setup_plans[key] = plan
 
 
 ## `gap` < 0 skips the distance rules (returning a core from the inventory).
@@ -278,6 +395,9 @@ func _apply_setup_stage(s: GameState, m: Move) -> String:
 	var err: String = stage_placement_error(s, st, a)
 	if not err.is_empty():
 		return err
+	var gap: int = stage_setup_gap(s, st)
+	if gap < s.settings.effective_stage_gap():
+		s.event("setup_gap_relaxed", {"stage": st.id, "gap": gap})
 	st.center = a
 	st.placed = true
 	s.event("stage_placed", {"stage": st.id, "hex": Hex.to_json(a)})
@@ -299,6 +419,9 @@ func _apply_setup_core(s: GameState, m: Move) -> String:
 	var err: String = core_placement_error(s, c, a)
 	if not err.is_empty():
 		return err
+	var gap: int = core_setup_gap(s, c)
+	if gap < s.settings.effective_core_gap():
+		s.event("setup_gap_relaxed", {"core": c.id, "gap": gap})
 	c.hex = a
 	c.place = CoreState.ON_FIELD
 	c.face_up = false
