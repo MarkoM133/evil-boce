@@ -8,11 +8,11 @@ func test_kinds() -> void:
 	assert_eq(ReplaysMenu.kind_of({"names": ["Marko", "Bot (Easy)"], "bots": [false, true]}), "bot")
 	assert_eq(ReplaysMenu.kind_of({"names": ["Player 1", "Bot (Hard)"]}), "bot", "an old replay has no bot flag")
 	assert_eq(ReplaysMenu.kind_of({"names": ["Player 1", "Player 2"], "bots": [false, false]}), "local")
-	assert_eq(ReplaysMenu.kind_of({"names": ["Marko", "Tarik"], "bots": [false, false]}), "online")
+	assert_eq(ReplaysMenu.kind_of({"names": ["Marko", "Luka"], "bots": [false, false]}), "online")
 
 
 func test_filters() -> void:
-	var online: Dictionary = {"names": ["Marko", "Tarik"], "bots": [false, false], "finished": true}
+	var online: Dictionary = {"names": ["Marko", "Luka"], "bots": [false, false], "finished": true}
 	var stopped: Dictionary = {"names": ["Marko", "Bot (Easy)"], "bots": [false, true], "finished": false}
 	assert_true(ReplaysMenu.matches(online, ""))
 	assert_true(ReplaysMenu.matches(online, "online"))

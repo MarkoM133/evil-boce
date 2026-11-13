@@ -111,7 +111,7 @@ moves into or out of range gains or loses the effect at once.
 | `MOVE SELF <n>` | | the player picks a free hex up to n steps away (walls and heroes block) |
 | `KNOCKBACK <t> <n> [AWAY|TOWARDS]` | | grid knockback from the source hero (`TOWARDS` pulls) |
 | `STATUS <t> <NAME> [turns|TURN]` | IMMUNE_KB, STUN, … | status with a timer (`TURN` = this turn) |
-| `DAMAGE_MOD <t> <n> [TURN]` | | "takes ±n DMG from all sources"; passive or this turn. Applied to every hit on its own (battle hits, walls, traps, cards, a damage cost); a reduction never brings a hit under 1 (Marko and Tarik 2026-11-08); on a battle hit only to the part that lands on the hero, not to cards paid from the hand. `DAMAGE … TRUE` skips it |
+| `DAMAGE_MOD <t> <n> [TURN]` | | "takes ±n DMG from all sources"; passive or this turn. Applied to every hit on its own (battle hits, walls, traps, cards, a damage cost); a reduction never brings a hit under 1 (Marko 2026-11-08); on a battle hit only to the part that lands on the hero, not to cards paid from the hand. `DAMAGE … TRUE` skips it |
 | `REMOVE_EVO <t>` | | takes the top evolution off |
 | `WALL [n]` | | the player picks a free hex (not on a stage) for a 1-hex wall |
 | `REVEAL_CORE` / `ACTIVATE_CORE` | | pick a core on the field: turn it face up / put it on SELF |

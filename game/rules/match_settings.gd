@@ -48,7 +48,7 @@ var stage_goal: int = 14
 
 const CLAIM_STAY: String = "stay"
 const CLAIM_ENERGY: String = "energy"
-## The shared ring (Marko and Tarik 2026-11-10; Standard's rule since that day, until they have
+## The shared ring (Marko 2026-11-10; Standard's rule since that day, until they have
 ## played it and say otherwise): energy claims with one ring of `stage_goal` places per stage for
 ## both sides. Energy fills the empty places first; once none is left, each
 ## energy turns one of the other side's places into yours. The whole ring claims the stage.

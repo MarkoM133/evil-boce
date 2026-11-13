@@ -84,7 +84,7 @@ const BATTLE_BANNER_TIME: float = 1.6
 const COMBO_SHOW_TIME: float = 2.6
 ## The KO announcement (_ko_show): about this long on the screen; it waits at most KO_WAIT_MOST seconds
 ## for Evil Bochet's claws, and with him the right card is dragged off KO_DRAG_GAP after the left (KO6).
-## Stat colours (item 25, B3b, Marko and Tarik 2026-11-09): up or down, for good, this phase, this turn.
+## Stat colours (item 25, B3b, Marko 2026-11-09): up or down, for good, this phase, this turn.
 const BONUS_LASTING_UP := Color("3ddc68")
 const BONUS_PHASE_UP := Color("35d9d0")
 const BONUS_TURN_UP := Color("4aa3ff")
@@ -1536,8 +1536,8 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 	return out
 
 
-## PWR DMG RNG KB as they stand now, each in the colour of what moved it (item 25, B3b, Marko and
-## Tarik 2026-11-09): up or down, and for how long; white when nothing did.
+## PWR DMG RNG KB as they stand now, each in the colour of what moved it (item 25, B3b, Marko
+## 2026-11-09): up or down, and for how long; white when nothing did.
 func _stats_bbcode(h: HeroState, right: bool) -> String:
 	var parts := PackedStringArray()
 	for key: String in ["pwr", "dmg", "rng", "kb"]:

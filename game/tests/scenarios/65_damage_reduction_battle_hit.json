@@ -1,5 +1,5 @@
 {
-  "name": "Damage reduction on a battle hit (Marko and Tarik 2026-11-08): TA-011 takes 1 less per hit; TB-002's 3 DMG lands as 2, so 10 HP go to 8.",
+  "name": "Damage reduction on a battle hit (Marko 2026-11-08): TA-011 takes 1 less per hit; TB-002's 3 DMG lands as 2, so 10 HP go to 8.",
   "steps": [
     {"setup": {"seed": 1, "decks": [
       {"heroes": ["TA-011", "TA-002", "TA-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []},

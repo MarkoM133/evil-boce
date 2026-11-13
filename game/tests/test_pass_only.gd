@@ -1,5 +1,5 @@
 extends GutTest
-## Down to Pass or an Assist (RulesEngine.pass_only; Marko and Tarik 2026-11-13): for the rest of the turn where
+## Down to Pass or an Assist (RulesEngine.pass_only; Marko 2026-11-13): for the rest of the turn where
 ## cards go to the activated hero, in the Battle phase only in the battle it fell in.
 
 var catalog: CardCatalog

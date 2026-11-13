@@ -1,5 +1,5 @@
 {
-  "name": "Damage reduction never brings a hit under 1 (Marko and Tarik 2026-11-08): TA-011 takes 1 less per hit, so a 1 DMG ring-out still costs 1 (scenario 65 has a battle hit, 23 an unblockable one).",
+  "name": "Damage reduction never brings a hit under 1 (Marko 2026-11-08): TA-011 takes 1 less per hit, so a 1 DMG ring-out still costs 1 (scenario 65 has a battle hit, 23 an unblockable one).",
   "steps": [
     {"setup": {"seed": 1, "decks": [
       {"heroes": ["TA-011", "TA-002", "TA-003"], "cards": {"TX-010": 40}, "stages": [], "cores": []},

@@ -8,7 +8,7 @@ extends RefCounted
 const DECISION_DAMAGE: String = "damage"
 ## What a ring-out costs (Marko 2026-11-07): 1 DMG, or a card from the hand instead.
 const RING_OUT_DAMAGE: int = 1
-## The least a hit lands as after damage reduction (Marko and Tarik 2026-11-08).
+## The least a hit lands as after damage reduction (Marko 2026-11-08).
 const MIN_HIT: int = 1
 const DECISION_RETURN_CORE: String = "return_core"
 ## After the roll: a player with a "Roll Phase:" card or ability may use one (or pass).
@@ -1582,7 +1582,7 @@ func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = fa
 	if h == null or h.is_ko() or amount <= 0:
 		return
 	if not unblockable:
-		# Less damage taken never brings a hit under 1 (Marko and Tarik 2026-11-08: Kaido paid 0 for a
+		# Less damage taken never brings a hit under 1 (Marko 2026-11-08: Kaido paid 0 for a
 		# ring-out); more damage taken adds as before.
 		var mod: int = fx.damage_mod(s, h)
 		amount = maxi(amount + mod, MIN_HIT if mod < 0 else 0)
@@ -1719,7 +1719,7 @@ func _lost_active(s: GameState, h: HeroState) -> void:
 const PASS_ONLY_WHY: String = "your activated hero is out: pass, or play an Assist"
 
 
-## Whether `slot` is down to Pass or an Assist now (GDD 10; Marko and Tarik 2026-11-13): its activated hero was
+## Whether `slot` is down to Pass or an Assist now (GDD 10; Marko 2026-11-13): its activated hero was
 ## knocked out or rung out this turn. Outside the Battle phase that holds until the turn ends: cards go to the
 ## activated hero there, and it is gone. In the Battle phase it holds only in the battle it fell in; in the
 ## battles after it (all of them, when it fell before the Battle phase) the player's other heroes get their cards
@@ -1973,7 +1973,7 @@ func _put_energy_ring(s: GameState, slot: int, st: StageState, n: int) -> void:
 	st.progress[slot] = st.progress_of(slot) + filled + taken
 	var p: PlayerState = s.player(slot)
 	if p != null:
-		# Everything put in counts for the tie-break, places taken too (Tarik 2026-11-10).
+		# Everything put in counts for the tie-break, places taken too (Marko 2026-11-10).
 		p.energy_invested += n
 	var info: Dictionary = {"player": slot, "stage": st.id, "amount": filled + taken,
 		"progress": stage_energy_of_team(s, st, team), "goal": goal}

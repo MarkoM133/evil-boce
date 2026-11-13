@@ -91,7 +91,7 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
   into the player's own (from whoever holds the most; event `stage_energy` carries `taken`).
 - A team holding the whole ring claims the stage (`stage_energy_of_team`); what is left over is lost.
 - Knocked off stays: half the player's energy there goes, and those places are empty again.
-- Decided by Tarik (2026-11-10): energy left on a stage does not fade; a knock-off empties, it does
+- Decided (2026-11-10): energy left on a stage does not fade; a knock-off empties, it does
   not hand places to the other side; the goal stays 14; a place taken counts as energy invested for
   the tie-break; in 2v2 the ring is per team.
 - The cards that touch claims, gone through under the ring (2026-11-13, scenarios 71 to 76; nothing had to change):
@@ -185,11 +185,11 @@ Paths use the JSON form of the state: `players.p0.hand`, `heroes.<id>.hp`, `core
   stage), keeping their face state. Cores off a KO'd hero go to the core owner's inventory
   and come back anywhere free in the owner's own half.
 - Damage reduction (`DAMAGE_MOD` with a negative number) never brings a hit under 1
-  (`RulesEngine.MIN_HIT`; Marko and Tarik 2026-11-08: Kaido's -1 made a ring-out free). Extra
+  (`RulesEngine.MIN_HIT`; Marko 2026-11-08: Kaido's -1 made a ring-out free). Extra
   damage taken adds as before, and `DAMAGE … TRUE` still skips the modifier. Scenario 64.
 - An activated hero that leaves the map mid-turn (KO or ring-out) leaves its player with Pass
   or an Assist (`RulesEngine.pass_only`, from `GameState.only_pass` and `only_pass_battle`;
-  Marko and Tarik 2026-11-13): no Action, Equipment or Evolution and no ability. Outside the
+  Marko 2026-11-13): no Action, Equipment or Evolution and no ability. Outside the
   Battle phase that holds until the turn ends; in the Battle phase only in the battle it fell
   in, and in the battles after it the player's other heroes play as ever (all of them when it
   fell before the Battle phase). An Assist is played in the colour of the activated hero, gone

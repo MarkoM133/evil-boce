@@ -1,5 +1,5 @@
 {
-  "name": "Shared ring (on trial, Marko and Tarik 2026-11-10): energy fills the empty places first, then turns the other side's places into yours; the whole ring claims the stage and what is left over is lost",
+  "name": "Shared ring (on trial, Marko 2026-11-10): energy fills the empty places first, then turns the other side's places into yours; the whole ring claims the stage and what is left over is lost",
   "steps": [
     {"setup": {"seed": 1, "settings": {"stage_claim": "ring", "stage_goal": 6}, "decks": [
       {"name": "A", "heroes": ["TA-001", "TA-002", "TA-003"], "cards": {"TX-010": 40},

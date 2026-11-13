@@ -151,9 +151,9 @@ func test_header_and_summary() -> void:
 
 
 func test_which_replays_are_matches_against_someone() -> void:
-	var h: Dictionary = {"finished": true, "result": "ko", "names": ["Marko", "Tarik"], "bots": [false, false]}
+	var h: Dictionary = {"finished": true, "result": "ko", "names": ["Marko", "Luka"], "bots": [false, false]}
 	assert_true(ReplayStore.is_match_against_someone(h, "Marko"))
-	assert_false(ReplayStore.is_match_against_someone(h, "Luka"), "not one of the seats")
+	assert_false(ReplayStore.is_match_against_someone(h, "Ivan"), "not one of the seats")
 	var open: Dictionary = h.duplicate()
 	open["finished"] = false
 	assert_false(ReplayStore.is_match_against_someone(open, "Marko"), "not finished")
