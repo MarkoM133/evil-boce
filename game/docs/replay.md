@@ -30,7 +30,12 @@ the record, the physics never runs again), a **save** (resume from the last phas
   re-running any trigger.
 - **Cards travel with the record** (`cards`: every card the decks, stages and cores use, as
   cards.json records, hand-written `fx` included). `MatchRecord.catalog()` rebuilds a
-  `CardCatalog` from them, so an old replay plays with the cards as they were.
+  `CardCatalog` from them, so an old replay plays with the cards as they were. A Combo is in no
+  deck: every combo whose two cards are in the match goes along (since 2026-11-13; a record from
+  before has none, so a match carried on from it offers no combo).
+- **The heroes' order** is part of every state (`hero_order`, the ids as dealt: each player's as in
+  the deck). A dictionary does not keep it through JSON, and the order says where a hero waits on its
+  start strip and which battle comes first. A state without it (before 2026-11-13) loads by id.
 - **Roll paths**: each `RollOutcome` keeps the sampled path of every ball; the replay view
   draws those instead of throwing.
 - Moves refused by the engine are not recorded.
@@ -51,7 +56,8 @@ untouched.
 
 | What | Where | Notes |
 |---|---|---|
-| Replays | `user://replays/<created>_<players>.json` | local, one per match; `list_replays()` reads headers only |
+| Replays | `user://replays/<created>_<players>.json` | local, one per match; `list_replays()` gives headers only |
+| Replay headers | `user://replay_headers.json` | each replay's header, kept while the file's time and size are the same, so a list does not parse every replay (2 MB each) again; safe to delete |
 | Match in progress | `user://saves/current.json` | written after every move; cleared when the match ends |
 | Stats | `<shared>/stats/<created>_<players>.json` | `MatchRecord.summary()`: players, heroes, decks, winner, turns, battles, KOs, ring-outs, claims, cards played |
 
