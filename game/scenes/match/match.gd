@@ -2827,9 +2827,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		_replay_input(event)
 		return
 	if hud.board_blocked():
-		# The starting hand is up: only its buttons, and Esc for the menu (Marko 2026-11-08).
-		if event is InputEventKey and (event as InputEventKey).pressed and GameSettings.logical_key((event as InputEventKey).keycode) == KEY_ESCAPE:
-			_toggle_menu()
+		# The starting hand is up: only its buttons, Space for KEEP THIS HAND (Marko 2026-11-13) and Esc for the
+		# menu (Marko 2026-11-08).
+		var bk := event as InputEventKey
+		if bk != null and bk.pressed and not bk.echo:
+			match GameSettings.logical_key(bk.keycode):
+				KEY_ESCAPE:
+					_toggle_menu()
+				KEY_SPACE:
+					var who: int = hud.mulligan_slot()
+					if who >= 0 and not hud.is_announcing():
+						_apply(Move.make(Move.MULLIGAN, who, {"keep": true}))
 		return
 	if event is InputEventKey:
 		_on_key(event as InputEventKey)

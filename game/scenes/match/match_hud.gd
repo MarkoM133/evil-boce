@@ -277,6 +277,8 @@ var _prompt: Label
 var _detail: Label
 var _actions: VBoxContainer
 var _key_hint: Label
+## The player whose KEEP THIS HAND is on the screen now, or -1 (Space keeps that hand).
+var _mulligan_slot: int = -1
 var _fps: Label
 var _tray: HBoxContainer
 ## Energy, bottom left: yours (big) and the opponent's (small, red) above it.
@@ -1926,6 +1928,11 @@ func _in_card_round() -> bool:
 
 ## True when the game waits for something from this slot.
 ## Space in Start: the first local seat with a picked hero confirms it.
+## The player Space keeps the starting hand for now, or -1 (no KEEP THIS HAND on the screen yet).
+func mulligan_slot() -> int:
+	return _mulligan_slot if state != null and state.phase == GameState.PHASE_MULLIGAN else -1
+
+
 func confirm_pick() -> void:
 	for slot: int in local_slots:
 		if not _needs_input(slot):
@@ -1960,6 +1967,7 @@ func _refresh_prompt() -> void:
 	_prompt.text = ""
 	_detail.text = ""
 	_key_hint.text = ""
+	_mulligan_slot = -1
 	_kicker.text = _ribbon_phase(state.phase).to_upper() if state.turn > 0 or state.phase == GameState.PHASE_MULLIGAN else ""
 	if state.is_over() or replay:
 		_kicker.text = ""
@@ -2048,7 +2056,15 @@ func _refresh_prompt() -> void:
 					_mulligan_row.modulate.a = 0.0
 					_mulligan_row.create_tween().tween_property(_mulligan_row, "modulate:a", 1.0, 0.25)
 				_mulligan_button("NEW HAND", func() -> void: keep_pressed.emit(slot, false), &"")
-				_mulligan_button("KEEP THIS HAND", func() -> void: keep_pressed.emit(slot, true), &"Primary")
+				var keep: Button = _mulligan_button("KEEP THIS HAND", func() -> void: keep_pressed.emit(slot, true), &"Primary")
+				# Space keeps the hand (Marko 2026-11-13), once the buttons are there; it says so under the button.
+				_mulligan_slot = slot if wait_ms <= 0 else -1
+				var hint: Label = UiTheme.label("SPACE", 13, Palette.MUTED)
+				hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+				hint.offset_top = 8
+				hint.offset_bottom = 26
+				keep.add_child(hint)
 			GameState.PHASE_START:
 				# Pick a hero, say whether it rolls or stays, confirm (GDD 8, 2026-10-26). Everything
 				# for it sits in one block bottom right, by the CONFIRM button (Marko 2026-10-26).
