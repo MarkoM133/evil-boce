@@ -209,11 +209,10 @@ func _build_cinema(logo: Texture2D, fill: String = "info") -> void:
 		cards.append_array([_last_match_card(), _whats_new_card()])
 		stage.add_child(cards[0])
 	if logo != null:
-		var img := TextureRect.new()
-		img.texture = logo
-		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# The same logo as the strip layout's, the grab animation too (Marko 2026-11-13), without the last match.
+		var img := MenuLogo.new()
+		img.logo = logo
+		img.anim_dir = db.logo_anim_dir()
 		img.custom_minimum_size = {"table": Vector2(340, 320), "empty": Vector2(480, 460)}.get(fill, Vector2(400, 380))
 		stage.add_child(img)
 		_logo_node = img
