@@ -682,7 +682,12 @@ func _apply_decision(s: GameState, m: Move) -> String:
 			for id: String in ids:
 				_put_energy(s, who, s.stage(id), JsonUtil.as_int(split.get(id, 0)))
 			s.player(who).energy = 0
-			_claim_by_energy(s)
+			var more: bool = false
+			for other: Dictionary in s.pending:
+				if str(other.get("type", "")) == DECISION_STAGE_ENERGY:
+					more = true
+			if not more:
+				_claim_by_energy(s)
 		_:
 			return "unknown decision"
 	_continue(s)
@@ -985,6 +990,10 @@ func _place_result(s: GameState, h: HeroState, r: RollResult) -> void:
 		var c: CoreState = s.core(cid)
 		if c != null and c.place == CoreState.ON_FIELD:
 			pick_core(s, h, c)
+		# A trap on the core knocked it out (code review 2026-11-13): it picks up nothing more and does not land.
+		# It used to be put back on the map, or rung out into its start zone, with 0 HP.
+		if h.is_ko():
+			return
 	if r.ring_out or r.strip_entered >= 0:
 		ring_out(s, h, "edge" if r.ring_out else "strip")
 		return
@@ -1867,6 +1876,12 @@ func _bank_energy(s: GameState) -> void:
 			ids.append(st.id)
 		s.pending.append({"type": DECISION_STAGE_ENERGY, "player": slot, "energy": p.energy,
 			"stages": ids, "goal": s.settings.stage_goal})
+	# Claims are looked at when all the energy is in (code review 2026-11-13): with a split still to be made, a
+	# full ring was claimed before the other side's energy could take places in it, and that energy then went
+	# into a claimed stage and was lost. The last split answered looks at the claims (_apply_decision).
+	for d: Dictionary in s.pending:
+		if str(d.get("type", "")) == DECISION_STAGE_ENERGY:
+			return
 	_claim_by_energy(s)
 
 
