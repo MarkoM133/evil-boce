@@ -416,6 +416,12 @@ static func discord() -> bool:
 	return JsonUtil.as_bool(_config().get_value("online", "discord", true))
 
 
+## What is under the table with Evil Bochet (TableFloor): "abyss" (mist) or "light" (a violet pool).
+static func under_table() -> String:
+	var v: String = str(_config().get_value("effects", "under_table", "abyss"))
+	return v if ["abyss", "light"].has(v) else "abyss"
+
+
 ## The game's own cursor (C1), or the system's (Settings → Interface → Cursor).
 static func game_cursor() -> bool:
 	return JsonUtil.as_bool(_config().get_value("display", "game_cursor", true))

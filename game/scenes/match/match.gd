@@ -91,6 +91,10 @@ var _preview: Array[Dictionary] = []
 var _preview_key: String = ""
 ## The battle camera (HUD 5): which battle it last flew to, so it flies once per battle.
 var _cam_battle_key: String = ""
+## The ball the PASS under a ball belongs to (_follow_ball_pass).
+var _ball_pass_id: String = ""
+## The turn the battle camera last looked at (a new turn takes it back to the table).
+var _cam_turn: int = -1
 ## Seconds left of the pause between the last band and the end screen; -1 before it starts.
 var _end_pause: float = -1.0
 var _marks := ImmediateMesh.new()
@@ -470,6 +474,8 @@ func _build_bochet() -> void:
 	hud.bochet = true
 	hud.ko_due.connect(_start_ko_holes)
 	arena.sink_table()
+	# Under the table his abyss (or the violet light), not the slab (Marko 2026-11-13).
+	add_child(TableFloor.make(arena, GameSettings.under_table()))
 	cam.frame_table(arena.extent(), Bochet.VIEW_NEAR_BIAS, Bochet.VIEW_ZOOM)
 
 
@@ -1036,6 +1042,11 @@ func _close_settings() -> void:
 		return
 	_settings.queue_free()
 	_settings = null
+	# What Settings changed for Evil Bochet shows at once (Marko 2026-11-13: his eyes stayed after Hands only);
+	# switching him on or off altogether waits for the next match (his table is built with it).
+	if _bochet != null:
+		_bochet.set_eyes(GameSettings.effect("bochet_eyes"))
+		_bochet.slow_ko = GameSettings.effect("slow_mo")
 	hud.refresh()
 	_menu_first.grab_focus.call_deferred()
 
@@ -2511,6 +2522,7 @@ func _update_gauges(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_watch_balls(delta)
+	_follow_ball_pass()
 	_update_gauges(delta)
 	_update_energy_ghost()
 	_ping_tick -= delta
@@ -2898,7 +2910,9 @@ func _on_key(k: InputEventKey) -> void:
 				# Space confirms the picked hero (it used to send a Pass the engine refused with
 				# "select a hero", playtest 2026-10-30).
 				hud.confirm_pick()
-			elif hud.local_slots.has(state.to_act) and not state.round_over:
+			elif hud.local_slots.has(state.to_act) and not state.round_over and not hud.is_announcing():
+				# Not while a band is on the screen (Marko 2026-11-13: a battle went by unplayed, most likely a
+				# Space meant for the BATTLE band): the choice comes when the band has gone.
 				_apply(Move.make(Move.PASS, state.to_act))
 		KEY_HOME:
 			cam.reset_view()
@@ -3037,10 +3051,30 @@ func _on_hero_clicked(id: String) -> void:
 			return
 	# Preroll, your move: a click on your activated ball offers PASS under it (Marko 2026-11-06).
 	if state.phase == GameState.PHASE_PREROLL and str(state.active.get(h.owner, "")) == id and hud.can_pass(h.owner) and _bodies.has(id):
-		hud.offer_ball_pass(h.owner, cam.camera.unproject_position(_bodies[id].global_position) + Vector2(0, 34))
+		_ball_pass_id = id
+		hud.offer_ball_pass(h.owner, _ball_pass_at(id))
 		return
 	if h.is_on_map():
 		cam.focus(arena.hex_center(h.hex), 14.0)
+
+
+## Where the PASS offered under a ball goes on the screen: just under the ball.
+func _ball_pass_at(id: String) -> Vector2:
+	return cam.camera.unproject_position(_bodies[id].global_position) + Vector2(0, 34)
+
+
+## The PASS under a ball stays under it as the camera moves (Marko 2026-11-13: it was placed once, so a camera
+## that moved after the click left it in the middle of the table), and goes when its ball is off the screen.
+func _follow_ball_pass() -> void:
+	if not hud.ball_pass_shown() or not _bodies.has(_ball_pass_id):
+		return
+	var at: Vector3 = _bodies[_ball_pass_id].global_position
+	var screen: Rect2 = get_viewport().get_visible_rect()
+	var p: Vector2 = _ball_pass_at(_ball_pass_id)
+	if cam.camera.is_position_behind(at) or not screen.grow(-20.0).has_point(p):
+		hud.hide_ball_pass()
+		return
+	hud.move_ball_pass(p)
 
 
 ## True while the auto-pass is about to pass for this player: its move in a card round, nothing to play.
@@ -4071,6 +4105,15 @@ func _update_battle_cam(now: bool = false) -> void:
 	if state.is_over():
 		return
 	var ids: PackedStringArray = _current_battle()
+	# A new turn never starts on the battle camera (Marko 2026-11-13: after a tie it stayed into the next turn).
+	if state.turn != _cam_turn:
+		_cam_turn = state.turn
+		if ids.is_empty() and hud.battle_cam and _replay == null:
+			_cam_battle_key = ""
+			hud.battle_cam = false
+			cam.reset_view()
+			hud.refresh()
+			return
 	if ids.is_empty():
 		if not _cam_battle_key.is_empty():
 			_cam_battle_key = ""
@@ -4220,7 +4263,14 @@ func demo_reveal() -> void:
 func _leave_cam_later() -> void:
 	var t: SceneTreeTimer = get_tree().create_timer(BATTLE_CAM_HOLD * GameSettings.anim_scale())
 	await t.timeout
-	if _current_battle().is_empty() and hud.battle_cam and not state.is_over():
+	# Bands that still tell of the battle (a tie's, a lock's) hold it on the screen: wait for them, then go.
+	# It used to give up when they outlasted the hold, and the camera stayed on the battle into the next turn
+	# (Marko 2026-11-13, after a tie). A new battle on the way takes the camera itself (_cam_battle_key).
+	while is_inside_tree() and not _current_battle().is_empty() and _cam_battle_key.is_empty():
+		await get_tree().process_frame
+	if not is_inside_tree() or not _cam_battle_key.is_empty():
+		return
+	if hud.battle_cam and not state.is_over():
 		hud.battle_cam = false
 		cam.reset_view()
 		hud.refresh()

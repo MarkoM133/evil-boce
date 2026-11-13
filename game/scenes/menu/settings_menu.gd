@@ -286,6 +286,10 @@ func _build_graphics(col: VBoxContainer) -> void:
 	bo.item_selected.connect(func(i: int) -> void:
 		GameSettings.set_value("effects", "bochet_eyes", i == 2)
 		_store("effects", "bochet", i > 0))
+	# Under his table (Marko 2026-11-13): the abyss with mist, or a violet light; from the next match.
+	var under := _option(col, "Under the table", ["Abyss  ·  mist and embers, no floor", "Light  ·  a dim violet glow"],
+		1 if GameSettings.under_table() == "light" else 0)
+	under.item_selected.connect(func(i: int) -> void: _store("effects", "under_table", "light" if i == 1 else "abyss"))
 
 
 func _build_sound(col: VBoxContainer) -> void:
