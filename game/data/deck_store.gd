@@ -27,17 +27,22 @@ static func save_shared(root: String, name: String, heroes: PackedStringArray, c
 	var dir: String = root.path_join("decks")
 	if root.is_empty() or DirAccess.make_dir_recursive_absolute(dir) != OK:
 		return ""
-	var base: String = slug(name)
-	var path: String = dir.path_join(base + ".json")
+	# A second deck of the same slug gets a name of its own too, "Name (2)", whose slug is its file's: saved from
+	# Card Studio under its bare name it would ask to overwrite the first (code review 2026-11-13).
+	var plain: String = slug(name)
+	var base: String = plain
+	var title: String = name.strip_edges()
 	var n: int = 2
-	while FileAccess.file_exists(path):
-		path = dir.path_join("%s-%d.json" % [base, n])
+	while FileAccess.file_exists(dir.path_join(base + ".json")):
+		title = "%s (%d)" % [name.strip_edges(), n]
+		base = "%s-%d" % [plain.substr(0, 59 - str(n).length()).rstrip("-"), n]
 		n += 1
+	var path: String = dir.path_join(base + ".json")
 	var f: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		return ""
 	f.store_string(JSON.stringify({
-		"name": name.strip_edges(),
+		"name": title,
 		"heroes": Array(heroes),
 		"cards": cards,
 		"catalogVersion": version,
@@ -65,14 +70,36 @@ static func slug(name: String) -> String:
 			out += "-"
 			dash = true
 	out = out.lstrip("-").rstrip("-").substr(0, 60)
-	return out if not out.is_empty() else "deck"
+	if out.is_empty():
+		return "deck"
+	# Names no file can have on Windows ("Con", "Aux"…), and "new", Card Studio's address of the empty deck.
+	return "deck-" + out if RESERVED.has(out) else out
 
 
+const RESERVED: Array[String] = ["con", "prn", "aux", "nul", "new", "com1", "com2", "com3", "com4", "com5", "com6", "com7",
+	"com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9"]
+
+
+## Every letter of Latin-1 and Latin Extended-A that Unicode takes apart into a plain letter and its marks
+## (js/deck.js drops the marks with normalize("NFD")), and đ; made by a script, not by hand.
 const ACCENTS: Dictionary[String, String] = {
-	"č": "c", "ć": "c", "ž": "z", "š": "s", "đ": "d", "Č": "C", "Ć": "C", "Ž": "Z", "Š": "S", "Đ": "D",
-	"á": "a", "à": "a", "â": "a", "ä": "a", "ã": "a", "å": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
-	"í": "i", "ì": "i", "î": "i", "ï": "i", "ó": "o", "ò": "o", "ô": "o", "ö": "o", "õ": "o",
-	"ú": "u", "ù": "u", "û": "u", "ü": "u", "ñ": "n", "ç": "c", "ý": "y",
+	"À": "A", "Á": "A", "Â": "A", "Ã": "A", "Ä": "A", "Å": "A", "Ç": "C", "È": "E", "É": "E", "Ê": "E",
+	"Ë": "E", "Ì": "I", "Í": "I", "Î": "I", "Ï": "I", "Ñ": "N", "Ò": "O", "Ó": "O", "Ô": "O", "Õ": "O",
+	"Ö": "O", "Ù": "U", "Ú": "U", "Û": "U", "Ü": "U", "Ý": "Y", "à": "a", "á": "a", "â": "a", "ã": "a",
+	"ä": "a", "å": "a", "ç": "c", "è": "e", "é": "e", "ê": "e", "ë": "e", "ì": "i", "í": "i", "î": "i",
+	"ï": "i", "ñ": "n", "ò": "o", "ó": "o", "ô": "o", "õ": "o", "ö": "o", "ù": "u", "ú": "u", "û": "u",
+	"ü": "u", "ý": "y", "ÿ": "y", "Ā": "A", "ā": "a", "Ă": "A", "ă": "a", "Ą": "A", "ą": "a", "Ć": "C",
+	"ć": "c", "Ĉ": "C", "ĉ": "c", "Ċ": "C", "ċ": "c", "Č": "C", "č": "c", "Ď": "D", "ď": "d", "Ē": "E",
+	"ē": "e", "Ĕ": "E", "ĕ": "e", "Ė": "E", "ė": "e", "Ę": "E", "ę": "e", "Ě": "E", "ě": "e", "Ĝ": "G",
+	"ĝ": "g", "Ğ": "G", "ğ": "g", "Ġ": "G", "ġ": "g", "Ģ": "G", "ģ": "g", "Ĥ": "H", "ĥ": "h", "Ĩ": "I",
+	"ĩ": "i", "Ī": "I", "ī": "i", "Ĭ": "I", "ĭ": "i", "Į": "I", "į": "i", "İ": "I", "Ĵ": "J", "ĵ": "j",
+	"Ķ": "K", "ķ": "k", "Ĺ": "L", "ĺ": "l", "Ļ": "L", "ļ": "l", "Ľ": "L", "ľ": "l", "Ń": "N", "ń": "n",
+	"Ņ": "N", "ņ": "n", "Ň": "N", "ň": "n", "Ō": "O", "ō": "o", "Ŏ": "O", "ŏ": "o", "Ő": "O", "ő": "o",
+	"Ŕ": "R", "ŕ": "r", "Ŗ": "R", "ŗ": "r", "Ř": "R", "ř": "r", "Ś": "S", "ś": "s", "Ŝ": "S", "ŝ": "s",
+	"Ş": "S", "ş": "s", "Š": "S", "š": "s", "Ţ": "T", "ţ": "t", "Ť": "T", "ť": "t", "Ũ": "U", "ũ": "u",
+	"Ū": "U", "ū": "u", "Ŭ": "U", "ŭ": "u", "Ů": "U", "ů": "u", "Ű": "U", "ű": "u", "Ų": "U", "ų": "u",
+	"Ŵ": "W", "ŵ": "w", "Ŷ": "Y", "ŷ": "y", "Ÿ": "Y", "Ź": "Z", "ź": "z", "Ż": "Z", "ż": "z", "Ž": "Z",
+	"ž": "z", "đ": "d", "Đ": "D",
 }
 
 
@@ -109,7 +136,9 @@ static func file_name(name: String) -> String:
 	var safe: String = name.strip_edges().to_lower()
 	for ch: String in ["/", "\\", ":", "*", "?", "\"", "<", ">", "|"]:
 		safe = safe.replace(ch, "-")
-	return (safe if not safe.is_empty() else "deck") + ".json"
+	if safe.is_empty():
+		safe = "deck"
+	return ("deck-" + safe if RESERVED.has(safe) and safe != "new" else safe) + ".json"
 
 
 static func _read_dir(dir: String, local: bool, out: Array[Dictionary]) -> void:

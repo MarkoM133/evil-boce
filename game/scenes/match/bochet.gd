@@ -1728,8 +1728,12 @@ func _release(id: String) -> void:
 	_hands_home()
 
 
-## Whether the player is still to choose what this ball's ring-out costs (damage, or a card instead).
+## Whether the player is still to choose what this ball's ring-out costs (damage, or a card instead). Never once
+## the match is over (code review 2026-11-13): a match given up in the middle of that choice keeps the choice in
+## its state for good, and the hand held the ball over its spot behind the end screen for ever.
 static func ring_pending(state: GameState, hero_id: String) -> bool:
+	if state.is_over():
+		return false
 	for d: Dictionary in state.pending:
 		if str(d.get("type", "")) == RulesEngine.DECISION_DAMAGE and JsonUtil.as_bool(d.get("ring_out", false)) \
 				and JsonUtil.as_strings(d.get("targets", [])).has(hero_id):

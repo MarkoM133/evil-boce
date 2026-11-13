@@ -100,3 +100,15 @@ func test_a_stage_flag_is_as_wide_as_its_logos() -> void:
 	var tex: Texture2D = StageFlag.cloth_texture(Color.BLUE, [], StageFlag.CLOTH_BARE)
 	assert_eq(tex.get_height(), 256)
 	assert_eq(tex.get_image().get_pixel(10, 10), Color.BLUE, "a plain cloth in the team's colour")
+
+
+## Code review 2026-11-13: given up in the middle of the ring-out's choice, the match keeps that choice in its
+## state; the hand must not wait for it any more.
+func test_no_ring_out_is_waited_for_once_the_match_is_over() -> void:
+	var s := GameState.new()
+	s.pending = [{"type": RulesEngine.DECISION_DAMAGE, "player": 0, "by": "ring_out", "amount": 1,
+		"targets": ["p0:h1"], "ring_out": true}]
+	assert_true(Bochet.ring_pending(s, "p0:h1"))
+	s.phase = GameState.PHASE_OVER
+	assert_true(s.is_over())
+	assert_false(Bochet.ring_pending(s, "p0:h1"))
