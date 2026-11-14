@@ -643,3 +643,24 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
 .ce-q-list li { display: grid; gap: 4px; }
 .ce-q-list li.skip > span { opacity: .6; }
 .ce-q-save { font-size: 14px; padding: 6px 12px; background: #6b3fc4; border-color: #6b3fc4; color: #fff; }
+
+/* The card page fills the window and never scrolls as a whole (Marko 2026-11-14: the card moved with the page):
+   the bar on top, the columns below it, and each column scrolls on its own. Only where the columns fit side by
+   side; in one column (phone, narrow window) the page scrolls as before. */
+@media (min-width: 1100px) {
+  #app:has(.ce-full) { padding-bottom: 0; }
+  .ce-full { display: flex; flex-direction: column; height: calc(100vh / var(--z) - 24px); }
+  .ce-full > .ce-top { position: static; }
+  .ce-cols, .ce-cols.wide { flex: 1 1 auto; min-height: 0; align-items: stretch; grid-template-rows: minmax(0, 1fr); }
+  .ce-cols > .ce-side, .ce-cols > .ce-centre, .ce-cols > .ce-form { position: static; max-height: none; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .ce-cols > .ce-side, .ce-cols > .ce-centre { padding-bottom: 24px; align-content: start; }
+}
+/* Two columns (card and panels left, form right): the left side scrolls as one, the form on its own. */
+@media (min-width: 1100px) {
+  @container (max-width: 1000px) {
+    .ce-cols, .ce-cols.wide { grid-template-rows: max-content max-content; align-items: start; overflow-y: auto; overscroll-behavior: contain; }
+    .ce-cols > .ce-side, .ce-cols > .ce-centre { overflow-y: visible; padding-bottom: 0; }
+    .ce-cols > .ce-side { padding-bottom: 24px; }
+    .ce-cols > .ce-form { position: sticky; top: 0; max-height: calc(100vh / var(--z) - 150px); }
+  }
+}
