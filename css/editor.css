@@ -387,6 +387,9 @@ button.link.accent, .accent { color: var(--straw); }
 
 /* Claude prijedlog fx-a u panelu fx */
 .ce-claude-box { display: grid; gap: 8px; margin-top: 4px; }
+.ce-ct-body { display: grid; gap: 8px; }
+/* Folded in place (2026-11-14): hidden parts stay hidden even where a display rule would show them. */
+.ce-intent-body[hidden], .ce-intent-sum[hidden], .ce-ct-body[hidden] { display: none; }
 .ce-claude { display: grid; gap: 6px; width: 100%; border-left: 3px solid var(--straw); padding-left: 10px; }
 .ce-claude.ce-prop-game { border-left-color: var(--muted); margin-top: 4px; }
 .ce-claude-fx { margin: 0; white-space: pre-wrap; background: var(--surface-2); padding: 8px 10px; min-height: 0; }

@@ -568,17 +568,22 @@ export function createEditor(env) {
       oninput: ev => { ed.intentDraft = { id: w.id, value: ev.target.value }; },
       placeholder: 'What the card should do, in your own words (any language). Claude asks what is unclear.',
       onchange: ev => env.guard(async () => { await saveIntent(w.id, ev.target.value, claudeText(w)); env.render(); }) });
-    const toggle = () => {
-      ed.intentOpen = !open;
+    // Folding happens in place: no redraw of the page, so nothing flashes and the form keeps its scroll.
+    const toggle = ev => {
+      const sec = ev.currentTarget.closest('.ce-intent');
+      ed.intentOpen = sec.classList.contains('closed');
       try { localStorage.setItem(INTENT_OPEN_KEY, ed.intentOpen ? '1' : '0'); } catch {}
-      env.render();
+      sec.classList.toggle('closed', !ed.intentOpen);
+      ev.currentTarget.setAttribute('aria-expanded', String(ed.intentOpen));
+      sec.querySelector('.ce-intent-sum').hidden = ed.intentOpen;
+      sec.querySelector('.ce-intent-body').hidden = !ed.intentOpen;
     };
     const pill = stale ? h('span', { class: 'ce-fx-state check' }, 'CHECK') : text ? h('span', { class: 'ce-intent-pill' }, 'GOES TO CLAUDE') : h('span', { class: 'ce-fx-state none' }, 'EMPTY');
     return h('section', { class: `ce-intent${open ? '' : ' closed'}` },
       h('button', { class: 'ce-intent-head', type: 'button', 'aria-expanded': String(open), onclick: toggle },
         h('span', { class: 'ce-fold-chev', 'aria-hidden': 'true' }, '▾'), h('span', { class: 'ce-intent-title' }, 'INTENT'), pill),
-      open ? null : h('p', { class: 'ce-intent-sum small muted' }, lines.length ? `${lines[0]}${lines.length > 1 ? ` · +${lines.length - 1} ${lines.length === 2 ? 'line' : 'lines'}` : ''}` : 'What the card should do, for Claude. Players never see it.'),
-      open ? h('div', { class: 'ce-intent-body' },
+      h('p', { class: 'ce-intent-sum small muted', hidden: open }, lines.length ? `${lines[0]}${lines.length > 1 ? ` · +${lines.length - 1} ${lines.length === 2 ? 'line' : 'lines'}` : ''}` : 'What the card should do, for Claude. Players never see it.'),
+      h('div', { class: 'ce-intent-body', hidden: !open },
         h('p', { class: 'small muted' }, 'What the card should do, in your own words. Players never see it; Claude gets it with Check text and Ask Claude. The fx is still made from the card text.'),
         area,
         stale ? h('div', { class: 'ce-intent-stale small' },
@@ -589,7 +594,7 @@ export function createEditor(env) {
         // Sending it (Marko 2026-11-14: how does it get to Claude?): Check text right here; Ask Claude by the fx sends it too.
         h('div', { class: 'ce-intent-row ce-intent-foot' },
           e ? h('small', { class: 'muted' }, `${e.who || '–'} · ${when(e.at)}`) : h('small', { class: 'muted' }, 'Saved when you click outside the box.'),
-          checkTextButton(w, 'Check text with this'))) : null);
+          checkTextButton(w, 'Check text with this'))));
   }
 
   // Odgovor ispod teksta: prijepis s Use this, što se mijenja i zašto, i pitanja za autora (ona se ne prepisuju).
@@ -611,20 +616,26 @@ export function createEditor(env) {
     const questions = stale ? [] : r.questions ?? [];
     const wants = !!questions.length || (r.verdict === 'changes' && !inUse && !stale);
     const fold = ed.ctOpen[w.id]?.at === r.at ? ed.ctOpen[w.id].open : (wants || st.waiting);
-    const toggle = () => { ed.ctOpen[w.id] = { at: r.at, open: !fold }; env.render(); };
+    const toggle = ev => {
+      const boxEl = ev.currentTarget.closest('.ce-claude-box');
+      const now = boxEl.classList.contains('closed');
+      ed.ctOpen[w.id] = { at: r.at, open: now };
+      boxEl.classList.toggle('closed', !now);
+      ev.currentTarget.setAttribute('aria-expanded', String(now));
+      boxEl.querySelector('.ce-ct-body').hidden = !now;
+    };
     const status = stale ? 'older text or Intent' : questions.length ? `${questions.length} ${questions.length === 1 ? 'question' : 'questions'}`
       : r.verdict === 'ok' || inUse ? '✓ no questions' : 'a rewrite';
     const head = h('button', { class: 'ce-ct-head', type: 'button', 'aria-expanded': String(fold), onclick: toggle },
       h('span', { class: 'ce-fold-chev', 'aria-hidden': 'true' }, '▾'), h('span', { class: 'ce-prop-src' }, 'Claude · text', r.who ? ` · ${r.who}` : ''),
       h('span', { class: `small ${questions.length || stale ? 'warn' : 'ok'}` }, status));
-    if (!fold) { parts.push(head); return h('div', { class: 'ce-claude-box closed' }, parts); }
     const staleLine = stale ? h('p', { class: 'small warn' }, intentChanged ? 'Asked with another Intent: check again.' : 'For an older text: check again.') : null;
     const use = () => {
       snap(true); w.text = toTokens(r.text); if (w.fx && w.fxStatus !== 'check') w.fxStatus = 'check'; changed(); env.render();
       // The text was written from this Intent: the Intent holds for it.
       if (intentOf(w.id) && (r.askedIntent ?? '') === intentOf(w.id)) intentHolds(w.id, claudeText(w)).catch(() => {});
     };
-    const box = [head, staleLine];
+    const box = [staleLine];
     if (r.verdict === 'ok' || inUse) {
       box.push(h('p', { class: 'small ok' }, inUse ? '✓ in the text' : '✓ follows the text guide'));
     } else {
@@ -640,8 +651,8 @@ export function createEditor(env) {
     }
     if (r.notes) box.push(h('p', { class: 'small' }, r.notes));
     if (questions.length) box.push(questionsBox(w, r, questions));
-    parts.push(...box);
-    return h('div', { class: 'ce-claude-box' }, parts.filter(Boolean));
+    parts.push(head, h('div', { class: 'ce-ct-body', hidden: !fold }, box.filter(Boolean)));
+    return h('div', { class: `ce-claude-box${fold ? '' : ' closed'}` }, parts.filter(Boolean));
   }
 
   // Pitanja jednog kruga: polje za odgovor po pitanju, "Not sure yet" ga preskoči (Claude ga pita opet).
@@ -1910,7 +1921,8 @@ export function createEditor(env) {
     }
     refreshToggles();
     area.setAttribute('aria-label', 'Effect text');
-    return [intentPanel(w), tools, h('div', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-text-box' }, bar, h('div', { class: 'ce-ac-wrap' }, area, pop))), adds, textCheckBlock(w)];
+    // The text first, then the Intent and Claude's answer under it (Marko 2026-11-14: the text is what you see first).
+    return [tools, h('div', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-text-box' }, bar, h('div', { class: 'ce-ac-wrap' }, area, pop))), adds, intentPanel(w), textCheckBlock(w)];
   }
 
   // ---------- izmjene, Undo ----------
