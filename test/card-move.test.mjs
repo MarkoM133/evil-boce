@@ -56,3 +56,13 @@ test('drafts, notes and combo ingredients follow the move', () => {
   assert.deepEqual(d['DQ1-002'], { name: 'C' });
   assert.deepEqual(d['CB-004'].ingredients, ['DQ1-002', 'OP1-001']);
 });
+
+test('tokens follow their card and never move on their own (GDD 10, 2026-11-14)', () => {
+  const un = new Set(['DQ1-001', 'DQ1-002', 'DQ1-003', 'DQ1-003-1', 'DQ1-003-2', 'DQ1-001-1']);
+  assert.deepEqual(plan('DQ1-003', 'DQ1-001', new Set(), un),
+    { 'DQ1-003': 'DQ1-001', 'DQ1-001': 'DQ1-002', 'DQ1-002': 'DQ1-003', 'DQ1-003-1': 'DQ1-001-1', 'DQ1-003-2': 'DQ1-001-2', 'DQ1-001-1': 'DQ1-002-1' });
+  assert.throws(() => planMove({ from: 'DQ1-003-1', to: 'DQ1-001', published: new Set(), unpublished: un }), /token/);
+  assert.throws(() => planMove({ from: 'DQ1-003', to: 'DQ1-001', published: new Set(['DQ1-003-1']), unpublished: new Set(['DQ1-001', 'DQ1-003']) }), /DQ1-003-1 is published/);
+  const d = moveDrafts({ 'DQ1-003': { fx: 'PREROLL: TOKEN ME DQ1-003-1\nPLAY: TOKEN OPP DQ1-003-2 2' } }, new Map([['DQ1-003', 'DQ1-001'], ['DQ1-003-1', 'DQ1-001-1'], ['DQ1-003-2', 'DQ1-001-2']]));
+  assert.equal(d['DQ1-001'].fx, 'PREROLL: TOKEN ME DQ1-001-1\nPLAY: TOKEN OPP DQ1-001-2 2');
+});

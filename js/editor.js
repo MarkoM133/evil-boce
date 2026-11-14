@@ -43,7 +43,7 @@ const WHO_KEY = 'evil-boce-who';
 const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'PWR'], ['rng', 'RNG'], ['kb', 'KB']];
 const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB', 'EN'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
-const FIELDS = ['name', 'type', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain',
+const FIELDS = ['name', 'type', 'token', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain',
   'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'ingredients', 'extraCost', 'introducedIn'];
 const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equipment: 'action', Assist: 'action', Stage: 'stage', Core: 'core', Combo: 'combo' };
 
@@ -377,6 +377,42 @@ export function createEditor(env) {
     return h('aside', { class: 'ce-side' }, ...parts);
   }
 
+  // ---------- token karte (GDD 10, Marko 2026-11-14) ----------
+  // Token je Action koju stvara druga karta ili ability heroja; kod mu je kod te karte s brojem (DQ1-010-1).
+  // Nikad ne ide u deck, pakete ni Draft, nije sastojak comba; izgled mu daje renderer (ljubičast, sat i TOKEN).
+  const isTokenId = id => String(id ?? '').split('-').length > 2;
+  const makerOf = id => String(id).split('-').slice(0, 2).join('-');
+  const tokensOf = makerId => allCards().filter(c => c.token && c.id.startsWith(`${makerId}-`) && !isTokenId(c.id.slice(makerId.length + 1)))
+    .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  const MAKER_TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist'];
+
+  function nextTokenId(makerId) {
+    const ids = [...db().cards.map(c => c.id), ...Object.keys(ed.drafts?.cards ?? {}), ed.work?.id ?? ''];
+    const nums = ids.filter(id => id.startsWith(`${makerId}-`)).map(id => Number(id.slice(makerId.length + 1))).filter(Number.isFinite);
+    return `${makerId}-${Math.max(0, ...nums) + 1}`;
+  }
+
+  // New token for this card: an Action in the maker's colour (a hero's token plays with the hero's colour).
+  function newToken(maker) {
+    if (ed.dirty && !confirm('Discard the unsaved changes to this card?')) return;
+    const color = maker.color && (COLORS.includes(maker.color) || maker.color === 'None') ? maker.color : 'None';
+    startCard(nextTokenId(maker.id), { name: '', type: 'Action', token: true, color, cost: 1, bonus: {}, traits: ['General'], text: '' });
+  }
+
+  function tokensRow(w) {
+    if (w.token) {
+      const maker = allCards().find(c => c.id === makerOf(w.id));
+      return h('p', { class: 'small muted ce-token-of' }, h('span', { class: 'ce-st token' }, 'TOKEN'), ' of ',
+        maker ? h('button', { class: 'link accent', type: 'button', onclick: () => go(maker.id) }, `${maker.name || 'New card'} (${maker.id})`) : `${makerOf(w.id)} (no such card yet)`,
+        '. It waits beside the hand, is gone at the end of the turn, and is never in a deck.');
+    }
+    if (!MAKER_TYPES.includes(w.type) || ['Stage', 'Core', 'CB'].includes(setOf(w.id))) return null;
+    const list = tokensOf(w.id);
+    return h('small', { class: 'muted ce-evos' }, 'Tokens: ',
+      list.length ? list.map((t, i) => [i ? ', ' : null, h('button', { class: 'link', type: 'button', onclick: () => go(t.id) }, `${t.name || 'New token'} (${t.id})`)]).flat().filter(Boolean) : 'none',
+      ' · ', h('button', { class: 'link accent', type: 'button', disabled: !canWrite(), title: 'An Action this card makes: "Create a … Token." in its text', onclick: () => newToken(w) }, 'New token'));
+  }
+
   // Evolucije heroja i nova evolucija (bila je ploča Hero cards lijevo; Marko 2026-11-06).
   function heroEvos(w) {
     const evos = db().cards.filter(c => c.type === 'Evolution' && !c.deleted && c.hero === w.name);
@@ -397,7 +433,8 @@ export function createEditor(env) {
     // Čitanje parsera vrijedi samo za objavljeni tekst; server ga uspoređuje, Claude ga ne vidi.
     const read = p && !p.unparsed?.length && base && toWords(base.text ?? '') === text ? (p.read ?? '') : undefined;
     return { id: c.id, name: c.name, type: c.type, color: c.color, bonusColors: c.bonusColors, hero: c.hero, cost: c.cost,
-      bonus: c.bonus && Object.keys(c.bonus).length ? c.bonus : undefined, traits: c.traits, text, read, intent: intentOf(c.id) || undefined, who: who(), at };
+      bonus: c.bonus && Object.keys(c.bonus).length ? c.bonus : undefined, traits: c.traits, text, read, intent: intentOf(c.id) || undefined,
+      tokens: tokensOf(c.id).map(t => ({ id: t.id, name: t.name })).filter(t => t.name) || undefined, token: c.token || undefined, who: who(), at };
   }
 
   async function askClaude(w) {
@@ -901,7 +938,7 @@ export function createEditor(env) {
       canWrite() ? input : null,
       ...lines.map(x => h('p', { class: 'small' }, h('strong', {}, x.who || ''), `${x.who ? ' · ' : ''}${when(x.at)} · ${x.what}`)),
       lines.length || notes.length ? null : h('p', { class: 'small muted' }, 'Nothing yet.'),
-      w.new && ed.drafts?.cards?.[w.id] ? h('button', { class: 'link small', type: 'button', disabled: !canPublish() || ed.lock?.state === 'other',
+      w.new && !w.token && ed.drafts?.cards?.[w.id] ? h('button', { class: 'link small', type: 'button', disabled: !canPublish() || ed.lock?.state === 'other',
         title: canPublish() ? 'Give this card another code in its set; the unpublished cards in between move one place' : 'Moving a card needs the shared folder open on a computer',
         onclick: () => env.guard(moveCard) }, 'Move to another code…') : null,
       ed.drafts?.cards?.[w.id] ? h('button', { class: 'link small', type: 'button', disabled: !canWrite(), onclick: () => env.guard(discardDraft) }, w.new ? 'Throw away this new card' : 'Discard the unpublished changes') : null);
@@ -1518,6 +1555,7 @@ export function createEditor(env) {
         h('h2', {}, 'Ability'),
         field('ABILITY NAME', h('input', { value: w.abilityNames?.[0] ?? '', oninput: e => set('abilityNames', [e.target.value, ...(w.abilityNames ?? []).slice(1)]) })),
         ...text,
+        tokensRow(w),
         h('h2', {}, 'Traits'),
         chips(w, 0, traits, unlock),
         unlock.length ? h('p', { class: 'small muted' }, 'Cards with first tag ', h('strong', { class: 'accent' }, unlock.join(', ')), ' need this evolution in the deck.') : null,
@@ -1529,7 +1567,7 @@ export function createEditor(env) {
       if (w.traits[0] && !firstOptions.some(([v]) => v === w.traits[0])) firstOptions.push([w.traits[0], `${w.traits[0]} (unknown)`]);
       body = [
         h('h2', {}, 'Card'),
-        field('TYPE', seg(PORTRAIT.map(t => [t, t]), w.type, v => { set('type', v); env.render(); })),
+        w.token ? tokensRow(w) : field('TYPE', seg(PORTRAIT.map(t => [t, t]), w.type, v => { set('type', v); env.render(); })),
         field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
         h('div', { class: 'ce-row' }, field('COST', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })), code),
         field('COLOR', h('div', { class: 'ce-swatches' },
@@ -1554,6 +1592,7 @@ export function createEditor(env) {
         }, { step: k === 'pwr' ? 1000 : 1 }))))),
         h('h2', {}, 'Effect text'),
         ...text,
+        w.token ? null : tokensRow(w),
         h('h2', {}, 'Tags'),
         field('FIRST TAG (WHO MAY PLAY THE CARD)', h('select', { onchange: e => set('traits', [e.target.value, ...w.traits.slice(1)]) },
           h('option', { value: '' }, '–'), firstOptions.map(([v, label]) => h('option', { value: v, selected: v === w.traits[0] }, label)))),
@@ -1561,7 +1600,7 @@ export function createEditor(env) {
       ];
     } else if (w.type === 'Combo') {
       // Sastojci: Action i Assist karte (Equipment i ability heroja nisu dio para), po imenu i kodu.
-      const pool = allCards().filter(c => INGREDIENT_TYPES.includes(c.type)).sort((a, b) => a.name.localeCompare(b.name));
+      const pool = allCards().filter(c => INGREDIENT_TYPES.includes(c.type) && !c.token).sort((a, b) => a.name.localeCompare(b.name));
       const ing = w.ingredients ?? ['', ''];
       const colourName = c => (c.color === 'None' ? 'Colorless' : c.color);
       const choose = (k, id) => { const next = [ing[0] ?? '', ing[1] ?? '']; next[k] = id; ed.comboPick = null; ed.comboQ = ''; set('ingredients', next); env.render(); };
@@ -1864,6 +1903,14 @@ export function createEditor(env) {
       const avoid = avoidWarnings(ed.guide, card.text);
       out.push(avoid.length ? [false, avoid[0]] : [true, 'Phrases match the text guide']);
       gameReads();
+    }
+    if (w.token) {
+      out.push(w.type === 'Action' ? [true, 'Token: an Action, never in a deck'] : [false, 'A token can only be an Action']);
+      const maker = allCards().find(c => c.id === makerOf(w.id));
+      if (!maker) out.push([false, `No card ${makerOf(w.id)} makes this token`]);
+      else if (!new RegExp(`\\bcreate (?:an?|\\d+) ${(w.name ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} tokens?\\b`, 'i').test(maker.text ?? '') && !(maker.fx ?? '').includes(w.id))
+        out.push([false, `${maker.name || maker.id} does not say "Create a ${w.name || '…'} Token." yet`]);
+      else out.push([true, `${maker.name || maker.id} makes it`]);
     }
     if (w.color === 'None' && PORTRAIT.includes(w.type)) {
       const cols = w.bonusColors ?? [];
@@ -2195,7 +2242,7 @@ export function createEditor(env) {
     if (ed.dirty && !confirm('Discard the unsaved changes to this card?')) return;
     const copy = cardOf(w);
     for (const k of ['image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted', 'fx', 'fxStatus', 'fxRead', 'aliases', 'updated', 'who', 'new']) delete copy[k];
-    startCard(nextId(setOf(w.id)), { ...copy, name: `${w.name ?? ''} (copy)` });
+    startCard(w.token ? nextTokenId(makerOf(w.id)) : nextId(setOf(w.id)), { ...copy, name: `${w.name ?? ''} (copy)` });
   }
 
   // ---------- zaključavanje ----------

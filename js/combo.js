@@ -61,6 +61,7 @@ export function comboProblems(cards, combo) {
     const c = cards.find(x => x.id === id);
     if (!c) out.push(`${id} is not a card`);
     else if (!INGREDIENT_TYPES.includes(c.type)) out.push(`${c.name} is ${c.type}: only Action and Assist cards make a combo`);
+    else if (c.token) out.push(`${c.name} is a token: a token is never part of a combo`);
   }
   if (!(Number(combo.extraCost) >= 0)) out.push('No extra cost (X)');
   return out;

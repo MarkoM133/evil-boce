@@ -52,3 +52,8 @@ test('Publish keeps the combo fields, makes the combo landscape, and a combo nev
   assert.equal(cb.landscape, true);
   assert.equal(DECK_TYPES.includes('Combo'), false);
 });
+
+test('a token is never part of a combo (GDD 10, 2026-11-14)', () => {
+  const cards = [{ id: 'A1', name: 'One', type: 'Action', color: 'Red' }, { id: 'A1-1', name: 'Spark', type: 'Action', color: 'Red', token: true }];
+  assert.match(comboProblems(cards, { ingredients: ['A1', 'A1-1'], extraCost: 1 }).join(' '), /token/);
+});

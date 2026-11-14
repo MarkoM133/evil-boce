@@ -106,6 +106,9 @@ async function systemPrompt(root, drive) {
     'the text means (where a distance is counted from, who is included, how long it lasts). The fx follows the card text:',
     'never add an effect the text does not state. When the intent asks for something the text does not say, or they',
     'disagree, follow the text and say so under "unsure" so the author fixes the text.',
+    'A card may come with "tokens": the token cards it makes, by id and name. "Create a Spark Token." is TOKEN ME',
+    'with the id of the token named Spark (TOKEN ME DQ1-010-1; "Create 2 Spark Tokens." adds 2). A card with "token": true',
+    'is itself a token: an Action like any other.',
     '',
     '# The fx language (game/docs/fx-keywords.md)',
     rules,
@@ -279,7 +282,8 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
     let result;
     try {
       // bonus: an Action's stat boxes (+2000 Power …), given by the game itself; without it a bare "Battle Phase:" looks cut off.
-      const card = { id, name: req.name, type: req.type, color: req.color, bonusColors: req.bonusColors, hero: req.hero, cost: req.cost, bonus: req.bonus, traits: req.traits, text: req.text, intent: intentOf(req) || undefined };
+      const tokens = Array.isArray(req.tokens) && req.tokens.length ? req.tokens.map(t => ({ id: String(t?.id ?? ''), name: String(t?.name ?? '') })).filter(t => t.id) : undefined;
+      const card = { id, name: req.name, type: req.type, color: req.color, bonusColors: req.bonusColors, hero: req.hero, cost: req.cost, bonus: req.bonus, traits: req.traits, text: req.text, intent: intentOf(req) || undefined, tokens, token: req.token ? true : undefined };
       const msg = await client.beta.messages.create({
         model: MODEL,
         max_tokens: 16000,

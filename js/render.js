@@ -16,6 +16,13 @@ export const PHASE_COLORS = { PASSIVE: '#f3efe7', START: '#80838b', PREROLL: '#9
 const darkInk = hex => { const n = parseInt(hex.slice(1), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 > 150; };
 // Colorless karta (color "None"): siv okvir; boje bonusa (bonusColors) su na rubu costa i u oznaci bonusa.
 const CARD_TINTS = { ...TINTS, None: '#c4cad1' };
+// Token (GDD 10, Marko 2026-11-14, mockup token-ghost.html "A + riječ"): the frame is always violet, whatever the
+// card's colour (the colour still counts for the rules and the text); under the art an hourglass, TOKEN and the rule.
+export const TOKEN_TINT = '#8f5cff';
+const TOKEN_INK = '#c9b3ff';
+const TOKEN_RULE = 'Disappears at the end of the turn';
+// The hourglass, the token mark (24 × 24, as in the mockup).
+const HOURGLASS = 'M6 3h12M6 21h12M7 3c0 5 10 6 10 9s-10 4-10 9M17 3c0 5-10 6-10 9s10 4 10 9';
 // Card types whose effects stay in play: an effect of theirs without a phase is PASSIVE.
 const PASSIVE_TYPES = ['Hero', 'Evolution', 'Equipment', 'Assist'];
 const BONUS_DOT = { Cyan: '#00ffff', Yellow: '#ffee00', Purple: '#b040ff', Red: '#ff2a1f', Blue: '#2a6bff', Green: '#00ff40' };
@@ -115,14 +122,15 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   const warnings = [];
   ctx.clearRect(0, 0, CARD_W, CARD_H);
   const color = CARD_TINTS[card.color] ? card.color : 'Purple';
+  const frameTint = card.token ? TOKEN_TINT : CARD_TINTS[color];
   if (tpl.layers) {
     for (const l of tpl.layers) {
       if (l.art) drawArt(ctx, art, card.artCrop, L, true);
-      else if (l.img) ctx.drawImage(tinted(l.img, l.tint === true ? CARD_TINTS[color] : l.tint || null), 0, 0, CARD_W, CARD_H);
+      else if (l.img) ctx.drawImage(tinted(l.img, l.tint === true ? frameTint : l.tint || null), 0, 0, CARD_W, CARD_H);
     }
   } else {
     drawArt(ctx, art, card.artCrop, L);
-    const frame = tpl.interim[color];
+    const frame = tpl.interim[card.token ? 'Purple' : color];
     if (frame) ctx.drawImage(frame, 0, 0, CARD_W, CARD_H);
   }
   if (!art) warnings.push('No art yet.');
@@ -136,6 +144,7 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: ink(L.code) });
   if (card.comboMark) drawComboMark(ctx, card.id ?? '', L.code);
   drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
+  if (card.token) drawTokenMark(ctx, card.bonus ?? {}, L);
   if (L.tags && !drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag bar.');
   // A colour bonus that is only "+N stat" ("Yellow Bonus: +1 DMG.") leaves the text and goes into a box per colour,
   // hanging under the line below the stats; the text box then starts below the boxes. Card text stays as it is.
@@ -144,7 +153,7 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   const sb = L.bonus ? statBonusLines(text) : { chips: [] };
   if (sb.chips.length) {
     text = sb.rest;
-    const bottom = drawBonusBoxes(ctx, sb.chips, L, tpl.icons, CARD_TINTS[color]);
+    const bottom = drawBonusBoxes(ctx, sb.chips, L, tpl.icons, frameTint);
     const [ex, ey, ew, eh] = L.effect.box;
     const push = Math.max(0, bottom + 12 - ey);
     effectBox = { ...L.effect, box: [ex, ey + push, ew, eh - push] };
@@ -331,6 +340,53 @@ function drawBonus(ctx, bonus, L, icons) {
     }
     fitLine(ctx, `${v > 0 ? '+' : ''}${v}`, { box: slot.value, size: slot.size ?? 106, min: 40 }, { font: TITLE_FONT, color: '#ffffff' });
   }
+}
+
+// Token mark in the stat row under the art: the hourglass always at its left end; TOKEN and the rule beside it as
+// far as the first stat box leaves room (no stats: all three; PWR only: hourglass and TOKEN; DMG or HP: hourglass).
+export function tokenMarkParts(bonus, L) {
+  const row = L.bonus?.pwr?.icon?.[1] ?? 1170;
+  const slots = Object.entries(L.bonus ?? {}).filter(([k, slot]) => bonus[k] && slot.icon[1] === row).map(([, slot]) => slot.icon[0]);
+  const limit = Math.min(1350, ...slots) - 24;
+  const left = 195;
+  const icon = 105;
+  const word = left + icon + 39 + 300;
+  const full = left + icon + 39 + 620;
+  return { row, left, icon, limit, parts: full <= limit ? ['icon', 'word', 'rule'] : word <= limit ? ['icon', 'word'] : ['icon'] };
+}
+
+function drawTokenMark(ctx, bonus, L) {
+  const m = tokenMarkParts(bonus, L);
+  const cy = m.row + 64;
+  ctx.save();
+  ctx.translate(m.left, cy - m.icon / 2);
+  ctx.scale(m.icon / 24, m.icon / 24);
+  ctx.strokeStyle = TOKEN_INK;
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke(new Path2D(HOURGLASS));
+  ctx.lineWidth = 2.6;
+  ctx.stroke(new Path2D('M9.5 18.5h5'));
+  ctx.restore();
+  if (!m.parts.includes('word')) return;
+  const x = m.left + m.icon + 39;
+  ctx.save();
+  ctx.fillStyle = '#e6dbff';
+  ctx.textAlign = 'left';
+  ctx.font = `italic bold 84px ${TITLE_FONT}`;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '13px';
+  const two = m.parts.includes('rule');
+  ctx.textBaseline = two ? 'alphabetic' : 'middle';
+  ctx.fillText('TOKEN', x, two ? cy + 8 : cy);
+  if (two) {
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+    ctx.font = `500 50px ${TITLE_FONT}`;
+    ctx.fillStyle = '#b7a8d8';
+    ctx.textBaseline = 'top';
+    ctx.fillText(TOKEN_RULE, x, cy + 20);
+  }
+  ctx.restore();
 }
 
 // Tagovi: prvi bijel i podebljan, ostali prigušeni, odvojeni točkom; do dva reda, uz smanjivanje.

@@ -164,7 +164,7 @@ export function createSetsView(ctx) {
         h('div', { class: 'ce-set-title' },
           h('p', { class: 'muted small' }, `Card editor / Sets / ${s.code}`),
           h('h1', {}, s.name, wipChip(s.code)),
-          h('p', { class: 'muted' }, special ? `${all.length} cards` : `Set ${String(s.number).padStart(2, '0')} · ${all.length} cards · ${s.packSize ?? DEFAULT_PACK} per pack`)),
+          h('p', { class: 'muted' }, special ? `${all.length} cards` : `Set ${String(s.number).padStart(2, '0')} · ${all.filter(c => !c.token).length} cards${all.some(c => c.token) ? ` · ${all.filter(c => c.token).length} tokens` : ''} · ${s.packSize ?? DEFAULT_PACK} per pack`)),
         h('div', { class: 'ce-page-actions' },
           redrawButton(`${s.code}-`, 'Redraw pictures'),
           special ? null : wipButton(s),
@@ -246,9 +246,10 @@ export function createSetsView(ctx) {
         : ctx.pictureStale(c.id) ? h('span', { class: 'ce-st fx', title: 'The picture was drawn by an older renderer: Redraw picture, or Redraw all pictures' }, 'NEEDS REDRAW')
         : h('span', { class: `ce-st ${c.status ?? 'draft'}` }, (c.status ?? 'draft').toUpperCase());
     const claude = byClaude(draft) ? h('span', { class: 'ce-st claude', title: 'Changed by Claude Code: have a look, then Save' }, 'CLAUDE') : null;
+    const token = c.token ? h('span', { class: 'ce-st token', title: 'A token: made by another card, never in a deck' }, 'TOKEN') : null;
     return h('button', { class: `ce-tile${c.type === 'Hero' || c.type === 'Evolution' ? ' wide' : ''}`, type: 'button', onclick: () => ctx.go(c.id) },
       canvas,
-      h('span', { class: 'ce-tile-name' }, h('strong', {}, c.name || 'New card'), h('span', { class: 'ce-tile-badges' }, claude, badge)),
+      h('span', { class: 'ce-tile-name' }, h('strong', {}, c.name || 'New card'), h('span', { class: 'ce-tile-badges' }, token, claude, badge)),
       h('span', { class: 'muted small' }, `${c.id} · ${c.type}${draft ? (draft.new ? ' · new' : ' · edited') : ''}`));
   }
 

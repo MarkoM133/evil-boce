@@ -1,7 +1,7 @@
 // Rastavljanje teksta efekta za renderer karata (oznake faze, RANGE, uvjet, natuknice).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEffect, parseEffects, richRuns, statBonusLines } from '../js/render.js';
+import { parseEffect, parseEffects, richRuns, statBonusLines, tokenMarkParts } from '../js/render.js';
 
 test('range, phase and the rest of the text', () => {
   const e = parseEffect('[Range] Postroll Phase: Knockback an Opponent\'s Hero 3 spaces.');
@@ -65,4 +65,13 @@ test('colour bonuses that are only +N stat leave the text for the bonus boxes; s
     { stat: 'kb', value: -1, colors: ['Red'] },
   ]);
   assert.deepEqual(parseEffect('Purple Bonus: -1 KB.').lines, [{ bullet: false, text: '-1 KB.' }]);
+});
+
+test('token mark: as much as fits before the first stat box in the row under the art (GDD 10, 2026-11-14)', () => {
+  const L = { bonus: { pwr: { icon: [966, 1170, 128, 128] }, dmg: { icon: [566, 1170, 128, 128] }, hp: { icon: [316, 1170, 128, 128] }, kb: { icon: [316, 1899, 128, 128] }, rng: { icon: [60, 1899, 128, 128] } } };
+  assert.deepEqual(tokenMarkParts({}, L).parts, ['icon', 'word', 'rule']);
+  assert.deepEqual(tokenMarkParts({ pwr: 2000 }, L).parts, ['icon', 'word']);
+  assert.deepEqual(tokenMarkParts({ dmg: 2, pwr: 2000 }, L).parts, ['icon']);
+  assert.deepEqual(tokenMarkParts({ hp: 2 }, L).parts, ['icon']);
+  assert.deepEqual(tokenMarkParts({ kb: 1, rng: 2 }, L).parts, ['icon', 'word', 'rule'], 'KB and RNG sit in the bottom row');
 });
