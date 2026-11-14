@@ -773,7 +773,7 @@ func _offer_roll_effects(s: GameState) -> void:
 				abilities.append(str(a["key"]))
 			var cards := PackedStringArray()
 			var hero_card: CardDef = catalog.get_card(h.card_id)
-			for cid: String in p.hand:
+			for cid: String in p.playable_cards():
 				var card: CardDef = catalog.get_card(cid)
 				if card == null or not card.is_ready() or _play_phase(card) != "ROLL":
 					continue
@@ -1798,6 +1798,7 @@ func _end_phase(s: GameState) -> void:
 	_check_win(s)
 	if s.is_over():
 		return
+	_drop_tokens(s)
 	s.event("turn_end")
 	s.turn += 1
 	s.initiative = _next_slot(s, s.initiative)
@@ -2299,7 +2300,8 @@ func free_play_error(s: GameState, slot: int, cid: String, on: HeroState) -> Str
 func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, forced: HeroState,
 		replace: String = "") -> String:
 	var p: PlayerState = s.player(slot)
-	if not p.hand.has(cid):
+	# A token (GDD 10, 2026-11-14) is played like a card from the hand, from beside it.
+	if not p.hand.has(cid) and not p.tokens.has(cid):
 		return "card is not in your hand"
 	var card: CardDef = catalog.get_card(cid)
 	if card == null:
@@ -2407,8 +2409,12 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 			_take_from_hand(p, cid)
 			for key: String in card.bonus:
 				target.add_bonus(target.phase_bonus, key, card.bonus[key])
-			p.graveyard.append(cid)
-			s.event("action", {"card": cid, "hero": target.id})
+			# A played token is gone: it never reaches the graveyard.
+			if card.token:
+				s.event("action", {"card": cid, "hero": target.id, "token": true})
+			else:
+				p.graveyard.append(cid)
+				s.event("action", {"card": cid, "hero": target.id})
 			_note_played(s, slot, cid, target.id, card.bonus)
 		_:
 			return "%s cards cannot be played" % card.type
@@ -2440,6 +2446,9 @@ func _combo_offer(s: GameState, m: Move) -> Dictionary:
 	var card: CardDef = catalog.get_card(cid)
 	if card == null or (card.type != "Action" and card.type != "Assist"):
 		return {}
+	# A token is never part of a combo (GDD 10, 2026-11-14), whatever a combo card lists.
+	if card.token:
+		return {}
 	var mine: Array[HeroState] = card_context_heroes(s, m.player)
 	if mine.size() < 2:
 		return {}
@@ -2450,6 +2459,9 @@ func _combo_offer(s: GameState, m: Move) -> Dictionary:
 			continue
 		var other: String = combo.ingredients[1] if combo.ingredients[0] == cid else combo.ingredients[0]
 		if other == cid:
+			continue
+		var other_card: CardDef = catalog.get_card(other)
+		if other_card != null and other_card.token:
 			continue
 		for rec: Variant in played:
 			var r: Dictionary = JsonUtil.as_dict(rec)
@@ -2667,8 +2679,42 @@ func deactivate_core(s: GameState, h: HeroState, cid: String) -> void:
 	s.event("core_deactivated", {"core": c.id, "hero": h.id})
 
 
+## The card leaves the hand as it is played; a token leaves the tokens beside it.
 func _take_from_hand(p: PlayerState, cid: String) -> void:
-	p.hand.remove_at(p.hand.find(cid))
+	var at: int = p.hand.find(cid)
+	if at >= 0:
+		p.hand.remove_at(at)
+		return
+	at = p.tokens.find(cid)
+	if at >= 0:
+		p.tokens.remove_at(at)
+
+
+## TOKEN (GDD 10, 2026-11-14): n copies of a token card appear beside the player's hand, open to everyone.
+## Nothing is made in the End phase (the turn's end would take it at once). "" or why not.
+func make_token(s: GameState, slot: int, cid: String, n: int = 1) -> String:
+	var card: CardDef = catalog.get_card(cid)
+	if card == null or not card.token:
+		return "%s is not a token card" % cid
+	var p: PlayerState = s.player(slot)
+	if p == null:
+		return "no such player"
+	if s.phase == GameState.PHASE_END:
+		return ""
+	var count: int = maxi(n, 1)
+	for _i: int in count:
+		p.tokens.append(cid)
+	s.event("token", {"player": slot, "card": cid, "amount": count})
+	return ""
+
+
+## The end of the turn takes every token nobody played: no graveyard, as if it had never been.
+func _drop_tokens(s: GameState) -> void:
+	for p: PlayerState in s.players:
+		if p.tokens.is_empty():
+			continue
+		s.event("tokens_gone", {"player": p.slot, "cards": Array(p.tokens)})
+		p.tokens = PackedStringArray()
 
 
 static func _ids(list: Array[HeroState]) -> PackedStringArray:

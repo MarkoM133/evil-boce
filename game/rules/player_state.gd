@@ -8,6 +8,9 @@ var name: String = ""
 ## Card ids, top of the deck first.
 var deck: PackedStringArray = PackedStringArray()
 var hand: PackedStringArray = PackedStringArray()
+## Token cards made this turn (GDD 10, 2026-11-14), open to everyone. Played like cards from the hand, but they
+## are not in it: they are not counted, drawn, discarded or paid as damage, and the turn's end removes them.
+var tokens: PackedStringArray = PackedStringArray()
 var graveyard: PackedStringArray = PackedStringArray()
 var energy: int = 0
 ## Assist card ids in play.
@@ -24,6 +27,13 @@ var surrendered: bool = false
 var energy_invested: int = 0
 
 
+## Everything the player may play as a card: the hand, then the tokens.
+func playable_cards() -> PackedStringArray:
+	var out: PackedStringArray = hand.duplicate()
+	out.append_array(tokens)
+	return out
+
+
 func to_dict() -> Dictionary:
 	return {
 		"slot": slot,
@@ -31,6 +41,7 @@ func to_dict() -> Dictionary:
 		"name": name,
 		"deck": Array(deck),
 		"hand": Array(hand),
+		"tokens": Array(tokens),
 		"graveyard": Array(graveyard),
 		"energy": energy,
 		"assists": Array(assists),
@@ -50,6 +61,7 @@ static func from_dict(d: Dictionary) -> PlayerState:
 	p.name = str(d.get("name", ""))
 	p.deck = JsonUtil.as_strings(d.get("deck", []))
 	p.hand = JsonUtil.as_strings(d.get("hand", []))
+	p.tokens = JsonUtil.as_strings(d.get("tokens", []))
 	p.graveyard = JsonUtil.as_strings(d.get("graveyard", []))
 	p.energy = JsonUtil.as_int(d.get("energy", 0))
 	p.assists = JsonUtil.as_strings(d.get("assists", []))

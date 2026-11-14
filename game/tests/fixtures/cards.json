@@ -1023,6 +1023,60 @@
       "introducedIn": "TA",
       "text": "Battle Phase: Each of your Heroes in this Battle gets +3000 Power.",
       "fx": "BATTLE: BUFF ALL_FRIENDLY_IN_BATTLE PWR 3000"
+    },
+    {
+      "id": "TA-060",
+      "name": "Red Spark Maker",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "text": "Preroll Phase: Create a Spark Token.",
+      "fx": "PREROLL: TOKEN ME TA-060-1"
+    },
+    {
+      "id": "TA-060-1",
+      "name": "Spark",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Red",
+      "cost": 1,
+      "token": true,
+      "text": "Preroll Phase: Your Hero heals 2 HP.",
+      "fx": "PREROLL: HEAL SELF 2"
+    },
+    {
+      "id": "TA-061-1",
+      "name": "Battle Spark",
+      "type": "Action",
+      "traits": [
+        "General"
+      ],
+      "color": "Blue",
+      "cost": 1,
+      "token": true,
+      "bonus": {
+        "pwr": 1000
+      },
+      "text": "Battle Phase:",
+      "fx": "BATTLE:"
+    },
+    {
+      "id": "TC-002",
+      "name": "Token Combo",
+      "type": "Combo",
+      "ingredients": [
+        "TA-040",
+        "TA-061-1"
+      ],
+      "extraCost": 1,
+      "introducedIn": "TA",
+      "text": "Battle Phase: Each of your Heroes in this Battle gets +3000 Power.",
+      "fx": "BATTLE: BUFF ALL_FRIENDLY_IN_BATTLE PWR 3000"
     }
   ]
 }

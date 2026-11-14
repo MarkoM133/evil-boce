@@ -1,0 +1,198 @@
+{
+  "name": "Token (GDD 10, 2026-11-14): a card makes it beside the hand, it is played like a card and never reaches the graveyard, it cannot pay battle damage, and the one nobody played is gone at the end of the turn",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          4,
+          8
+        ],
+        "heroes.p0:TA-001.hp": 4,
+        "heroes.p1:TB-002.zone": "map",
+        "heroes.p1:TB-002.hex": [
+          6,
+          8
+        ],
+        "players.p0.hand": [
+          "TA-060",
+          "TA-060",
+          "TX-010"
+        ],
+        "players.p0.energy": 5,
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-002",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-060-1"
+      },
+      "error": "not in your hand"
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-060"
+      }
+    },
+    {
+      "expect": {
+        "players.p0.tokens": [
+          "TA-060-1"
+        ],
+        "players.p0.hand": [
+          "TA-060",
+          "TX-010"
+        ],
+        "players.p0.energy": 4,
+        "players.p0.graveyard": [
+          "TA-060"
+        ]
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-060"
+      }
+    },
+    {
+      "expect": {
+        "players.p0.tokens": [
+          "TA-060-1",
+          "TA-060-1"
+        ],
+        "players.p0.hand": [
+          "TX-010"
+        ],
+        "players.p0.energy": 3
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-060-1"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.hp": 6,
+        "players.p0.tokens": [
+          "TA-060-1"
+        ],
+        "players.p0.energy": 2,
+        "players.p0.graveyard": [
+          "TA-060",
+          "TA-060"
+        ],
+        "players.p0.hand": [
+          "TX-010"
+        ]
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "pending.0.type": "damage",
+        "pending.0.player": 0,
+        "pending.0.amount": 3,
+        "players.p0.tokens": [
+          "TA-060-1"
+        ]
+      }
+    },
+    {
+      "move": {
+        "type": "damage_to",
+        "player": 0,
+        "target": "p0:TA-001",
+        "cards": [
+          "TA-060-1"
+        ]
+      },
+      "error": "not in your hand"
+    },
+    {
+      "move": {
+        "type": "damage_to",
+        "player": 0,
+        "target": "p0:TA-001",
+        "cards": [
+          "TX-010"
+        ]
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.hp": 4,
+        "turn": 2,
+        "players.p0.tokens": [],
+        "players.p0.graveyard": [
+          "TA-060",
+          "TA-060",
+          "TX-010"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,164 @@
+{
+  "name": "A token is never part of a combo (GDD 10, 2026-11-14): a combo card that lists one is not offered, whichever of the two cards comes second",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          4,
+          8
+        ],
+        "heroes.p0:TA-002.zone": "map",
+        "heroes.p0:TA-002.hex": [
+          5,
+          9
+        ],
+        "heroes.p1:TB-002.zone": "map",
+        "heroes.p1:TB-002.hex": [
+          6,
+          8
+        ],
+        "players.p0.hand": [
+          "TA-040",
+          "TA-040"
+        ],
+        "players.p0.tokens": [
+          "TA-061-1",
+          "TA-061-1"
+        ],
+        "players.p0.energy": 6,
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-002",
+        "roll": false
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "phase": "battle",
+        "battles.0.heroes": {
+          "$size": 3
+        },
+        "to_act": 0
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-040"
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-061-1",
+        "hero": "p0:TA-002"
+      }
+    },
+    {
+      "expect": {
+        "pending": {
+          "$size": 0
+        },
+        "heroes.p0:TA-002.phase_bonus.pwr": 1000,
+        "heroes.p0:TA-001.phase_bonus.pwr": 1000,
+        "players.p0.tokens": [
+          "TA-061-1"
+        ],
+        "players.p0.graveyard": [
+          "TA-040"
+        ],
+        "players.p0.energy": 4
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-061-1",
+        "hero": "p0:TA-002"
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-040"
+      }
+    },
+    {
+      "expect": {
+        "pending": {
+          "$size": 0
+        },
+        "heroes.p0:TA-001.phase_bonus.pwr": 2000,
+        "heroes.p0:TA-002.phase_bonus.pwr": 2000,
+        "players.p0.tokens": [],
+        "players.p0.hand": [],
+        "players.p0.graveyard": [
+          "TA-040",
+          "TA-040"
+        ],
+        "players.p0.energy": 2
+      }
+    }
+  ]
+}

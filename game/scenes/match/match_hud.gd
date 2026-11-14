@@ -6028,7 +6028,8 @@ static func empty_offer(d: Dictionary) -> bool:
 func can_play(slot: int) -> bool:
 	if not engine.fx.usable_abilities(state, slot).is_empty():
 		return true
-	for cid: String in state.player(slot).hand:
+	# Tokens too (GDD 10, 2026-11-14): auto-pass must not pass over a token the player could play.
+	for cid: String in state.player(slot).playable_cards():
 		if _play_check(slot, cid, true).get("ok", false) == true:
 			return true
 	return false

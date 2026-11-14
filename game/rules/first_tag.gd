@@ -75,6 +75,9 @@ static func has_trait(card: CardDef, trait_name: String) -> bool:
 ## May `card` go in a deck with these heroes and these Evolution cards in it?
 ## {ok, why, needs: [ids of Evolution cards that would let it in]}.
 static func deck_verdict(catalog: CardCatalog, card: CardDef, heroes: Array[CardDef], evolutions: Array[CardDef] = []) -> Dictionary:
+	# A token is made by another card in play (GDD 10, 2026-11-14): no deck, pack or sideboard takes it.
+	if card.token:
+		return _no("a token is never in a deck")
 	var colors := PackedStringArray()
 	var names := PackedStringArray()
 	for h: CardDef in heroes:

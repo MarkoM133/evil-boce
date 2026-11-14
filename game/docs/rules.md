@@ -158,6 +158,28 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
   the deck from the match record, or the deck an online guest sent (`NetClient.my_deck`), never the
   opponent's.
 
+## Token cards (decided and built 2026-11-14)
+
+- Data: a card with `"token": true` (`CardDef.token`), an Action only (another type is not ready). Its id is its
+  maker's with a number (`DQ1-010-1`). `FirstTag.deck_verdict` refuses it, so no deck, sideboard, random deck or
+  Draft pack holds one (`js/tags.js` has the same line).
+- Made by fx `TOKEN <ME|OPP> <id> [n]` (`RulesEngine.make_token`, event `token {player, card, amount}`): the cards
+  go to `PlayerState.tokens`, beside the hand. A `TOKEN` on an `END` or `PASSIVE` line is not read (the card is
+  not ready), and nothing is made while the phase is End.
+- Played with `play_card` like a card from the hand: the same colour, first tag, phase and cost rules; a roll
+  offer lists a `ROLL` token; `PlayerState.playable_cards()` is the hand plus the tokens (the bot and auto-pass
+  use it). Played, it is gone: event `action` carries `"token": true` and nothing goes to the graveyard.
+- It is not a card in the hand: `hand` and every count of it leave tokens out, a `DISCARD` does not see them, a
+  lost battle or a ring-out cannot be paid with one (a hand of tokens only is an empty hand), `FREE_PLAY` does not
+  offer them, and a combo that lists one is never offered.
+- Everyone sees them: `NetProtocol.redact` leaves `tokens` as they are (the hand stays a count).
+- The end of the turn (`_end_phase`, before `turn_end`) removes what nobody played: event `tokens_gone {player,
+  cards}`.
+- Records: `MatchRecorder._used_cards` adds the tokens the match's cards can make (`CardDef.tokens_made`), so a
+  match carried on from its record knows them.
+- Scenarios 81 and 82, `tests/test_tokens.gd`. Not built yet: the match scene does not draw tokens (only
+  auto-pass knows them), and Card Studio cannot make one.
+
 ## Scenario tests
 
 `tests/test_scenarios.gd` runs every `tests/scenarios/*.json` against the fixture catalog

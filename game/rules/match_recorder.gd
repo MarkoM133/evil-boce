@@ -148,4 +148,15 @@ static func _used_cards(catalog: CardCatalog, decks: Array) -> Dictionary:
 				both = false
 		if both and not out.has(combo.id):
 			out[combo.id] = combo.to_record()
+	# Tokens are in no deck either: the ones the match's cards can make go along (a token may make another).
+	var todo: Array = out.keys()
+	while not todo.is_empty():
+		var maker: CardDef = catalog.get_card(str(todo.pop_back()))
+		if maker == null:
+			continue
+		for tid: String in maker.tokens_made():
+			var t: CardDef = catalog.get_card(tid)
+			if t != null and not out.has(tid):
+				out[tid] = t.to_record()
+				todo.append(tid)
 	return out

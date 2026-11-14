@@ -57,7 +57,10 @@ const VERBS: Dictionary[String, Array] = {
 	"SWAP": [true, 0],          # SWAP FRIENDLY [ENGAGED]  (SELF and that hero trade hexes)
 	"DUEL_TOP": [false, 2],     # DUEL_TOP <STAT> <n> [PICK]  (players show their top card; higher cost gets +n: PICK = one hero the winner picks)
 	"MOVE_ID": [false, 2],      # MOVE_ID <hero id> <n>  (one hero of a group move; written by the runtime)
+	"TOKEN": [true, 1],         # TOKEN <ME|OPP> <token card id> [n]  (that player gets n of that token beside the hand)
 }
+## A TOKEN is never made in the End phase (it would be gone at once) nor by a passive (GDD 10, 2026-11-14).
+const NO_TOKEN_WHENS: Array[String] = ["END", "PASSIVE"]
 const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "ALL_FRIENDLY", "ALL_ENEMY",
 	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_ENEMY_IN_RANGE", "ALL_FRIENDLY_IN_BATTLE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR", "MOST_ENERGY"]
 const PLAYER_TARGETS: Array[String] = ["ME", "OPP"]
@@ -144,6 +147,8 @@ static func describe(a: Dictionary) -> String:
 			return "%s draw %s" % [who, n]
 		"DISCARD":
 			return "%s discard %s" % [who, n]
+		"TOKEN":
+			return "%s get %s token%s" % [who, args[1] if args.size() > 1 else "a", "s" if args.size() > 1 and args[1] != "1" else ""]
 		"HOLD_HIT":
 			return "Deal no DMG, double Knockback"
 		"FULL_HIT":
@@ -242,7 +247,21 @@ static func parse_line(line: String) -> FxEffect:
 		if a.is_empty():
 			return null
 		e.actions.append(a)
+	if NO_TOKEN_WHENS.has(e.when) and _has_verb_in(e.actions, "TOKEN"):
+		return null
 	return e
+
+
+## Is the verb among the actions, CHOOSE branches included?
+static func _has_verb_in(list: Array, verb: String) -> bool:
+	for x: Variant in list:
+		var a: Dictionary = JsonUtil.as_dict(x)
+		if str(a.get("verb", "")) == verb:
+			return true
+		for branch: Variant in JsonUtil.as_array(a.get("branches", [])):
+			if _has_verb_in(JsonUtil.as_array(branch), verb):
+				return true
+	return false
 
 
 ## One action; {} when it is not valid.
@@ -293,6 +312,8 @@ static func parse_action(text: String) -> Dictionary:
 	if verb == "CHOOSE" and branches.size() < 2:
 		return {}
 	if verb == "BUFF" and (not STATS.has(args[0]) or not args[1].is_valid_int()):
+		return {}
+	if verb == "TOKEN" and (not PLAYER_TARGETS.has(str(a["target"])) or (args.size() > 1 and (not args[1].is_valid_int() or args[1].to_int() < 1))):
 		return {}
 	return a
 

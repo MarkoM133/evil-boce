@@ -996,6 +996,9 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			p.hand.remove_at(p.hand.find(cid))
 			p.graveyard.append(cid)
 			s.event("discard", {"player": p.slot, "card": cid})
+		"TOKEN":
+			var who: int = player if target == "ME" else engine.other_slot(s, player)
+			return engine.make_token(s, who, args[0], args[1].to_int() if args.size() > 1 else 1)
 		"COST":
 			if e.when == "PASSIVE":
 				return ""

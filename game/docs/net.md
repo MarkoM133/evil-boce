@@ -42,7 +42,8 @@ without a scene; nothing else changes.
 
 The state a guest gets is the true state minus what GDD 11 keeps hidden: the opponent's hand
 (a count of `?`), every deck's order (counts only), the others' aims, face-down cores' cards,
-and the card options of a decision that is not theirs. Everything a guest's HUD shows comes
+and the card options of a decision that is not theirs. Token cards (`players.*.tokens`, 2026-11-14) are open to
+everyone and are not part of the hand count. Everything a guest's HUD shows comes
 from this state, so there is nothing to leak.
 
 ### Versions

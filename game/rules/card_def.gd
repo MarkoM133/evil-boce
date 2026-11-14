@@ -45,6 +45,10 @@ var ability_names: PackedStringArray = PackedStringArray()
 var ingredients: PackedStringArray = PackedStringArray()
 var extra_cost: int = 0
 var introduced_in: String = ""
+## Token (GDD 10, 2026-11-14): an Action another card or a hero ability makes (fx TOKEN). It is never in a deck,
+## a pack or a graveyard: it waits beside the hand (PlayerState.tokens) and is gone at the end of the turn.
+## Its id is its maker's with a number ("DQ1-010-1").
+var token: bool = false
 var fx: String = ""
 var fx_hand_written: bool = false
 var effects: Array[FxEffect] = []
@@ -158,7 +162,10 @@ static func from_card(c: Dictionary) -> CardDef:
 	d.terrain = parse_terrain(d.text)
 	if d.terrain == Terrain.Type.NONE and c.has("terrain") and not has_terrain_line(d.text):
 		d.terrain = Terrain.parse(str(c.get("terrain", "")))
+	d.token = JsonUtil.as_bool(c.get("token", false))
 	d.build_effects(str(c.get("fx", "")) if c.get("fx") != null else "")
+	if d.token and d.type != "Action":
+		d.unparsed.append("token: only an Action can be a token")
 	return d
 
 
@@ -191,6 +198,8 @@ func to_record() -> Dictionary:
 			rec["introducedIn"] = introduced_in
 	if terrain != Terrain.Type.NONE and parse_terrain(text) == Terrain.Type.NONE:
 		rec["terrain"] = Terrain.name_of(terrain)
+	if token:
+		rec["token"] = true
 	if fx_hand_written:
 		rec["fx"] = fx
 	return rec
@@ -212,6 +221,24 @@ static func parse_terrain(text: String) -> Terrain.Type:
 		if s.to_lower().begins_with("terrain:"):
 			return Terrain.parse(s.substr(8))
 	return Terrain.Type.NONE
+
+
+## Ids of the token cards this card's effects make (fx TOKEN, also inside CHOOSE branches).
+func tokens_made() -> PackedStringArray:
+	var out := PackedStringArray()
+	for e: FxEffect in effects:
+		_tokens_in(e.actions, out)
+	return out
+
+
+static func _tokens_in(actions: Array, out: PackedStringArray) -> void:
+	for x: Variant in actions:
+		var a: Dictionary = JsonUtil.as_dict(x)
+		var args: PackedStringArray = JsonUtil.as_strings(a.get("args", []))
+		if str(a.get("verb", "")) == "TOKEN" and not args.is_empty() and not out.has(args[0]):
+			out.append(args[0])
+		for branch: Variant in JsonUtil.as_array(a.get("branches", [])):
+			_tokens_in(JsonUtil.as_array(branch), out)
 
 
 func is_hero() -> bool:

@@ -66,6 +66,8 @@ export const isColorless = card => card?.color === COLORLESS;
 // Smije li karta u deck s ovim herojima (id-evi) i ovim Evolution kartama u decku (id-evi).
 // { ok, why, needs: [id Evolution karata koje bi je otključale] }.
 export function deckVerdict(db, traits, card, heroIds, evolutionIds = []) {
+  // A token is made by another card in play (GDD 10, 2026-11-14): never in a deck. Same rule as FirstTag.deck_verdict.
+  if (card.token) return { ok: false, why: 'a token is never in a deck', needs: [] };
   const ids = new Map(db.cards.map(c => [c.id, c]));
   const heroes = heroIds.map(id => ids.get(id)).filter(Boolean);
   const evos = evolutionIds.map(id => ids.get(id)).filter(Boolean);

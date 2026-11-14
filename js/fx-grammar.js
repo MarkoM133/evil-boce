@@ -13,7 +13,10 @@ export const VERBS = {
   NO_CLAIM: [true, 0], ROLL_AGAIN: [false, 0], REVERSE_ROLL: [false, 0], COST_DAMAGE: [false, 1], OWN_COST: [false, 1],
   CHOOSE: [true, 0], RECYCLE: [true, 1], PICK_CORE: [false, 0], MOVE_CORE: [false, 1], TRAP_CORE: [false, 1],
   HOLD_HIT: [true, 0], FULL_HIT: [true, 0], NOOP: [false, 0], FREE_PLAY: [false, 1], SWAP: [true, 0], DUEL_TOP: [false, 2], MOVE_ID: [false, 2],
+  TOKEN: [true, 1],
 };
+// TOKEN se ne stvara u End fazi (odmah bi nestao) ni pasivno (GDD 10, 2026-11-14).
+export const NO_TOKEN_WHENS = ['END', 'PASSIVE'];
 export const HERO_TARGETS = ['SELF', 'EQUIPPED', 'ENEMY', 'FRIENDLY', 'ALL_FRIENDLY', 'ALL_ENEMY', 'ALL_OTHER_IN_RANGE',
   'ALL_FRIENDLY_IN_RANGE', 'ALL_ENEMY_IN_RANGE', 'ALL_FRIENDLY_IN_BATTLE', 'ALL_HEROES', 'EACH_HERO', 'MOST_HP', 'MOST_PWR', 'MOST_ENERGY'];
 export const PLAYER_TARGETS = ['ME', 'OPP'];
@@ -75,6 +78,10 @@ export function actionProblem(text) {
   if (args.length < minArgs) return `${verb} needs ${minArgs} more argument${minArgs === 1 ? '' : 's'}`;
   if (verb === 'CHOOSE' && branches < 2) return 'CHOOSE needs two [ ... ] branches';
   if (verb === 'BUFF' && (!STATS.includes(args[0]) || !/^[+-]?\d+$/.test(args[1]))) return 'BUFF needs a stat (PWR, DMG, KB, RNG, HP) and a number';
+  if (verb === 'TOKEN') {
+    if (!PLAYER_TARGETS.includes(t[1].toUpperCase())) return 'TOKEN needs the player who gets it: ME or OPP';
+    if (args.length > 1 && !/^[1-9]\d*$/.test(args[1])) return 'TOKEN takes the token card id, then how many (1 or more)';
+  }
   return '';
 }
 
@@ -101,7 +108,18 @@ export function lineProblem(line) {
     const p = actionProblem(part.trim());
     if (p) return p;
   }
+  if (NO_TOKEN_WHENS.includes(head[0]) && tokenIds(line).length) return `a token is never made in ${head[0] === 'END' ? 'the End phase (it would be gone at once)' : 'a PASSIVE effect'}`;
   return '';
+}
+
+// Kodovi token karata koje fx stvara (TOKEN <ME|OPP> <kod> [n]), i unutar CHOOSE grana.
+export function tokenIds(fx) {
+  const out = [];
+  for (const m of String(fx ?? '').matchAll(/(?:^|[\s;:\[])TOKEN\s+(?:ME|OPP)\s+([^\s;\]]+)/gi)) {
+    const id = m[1].toUpperCase();
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
 }
 
 // Svi problemi fx teksta (prazni retci se preskaču): [{ line, problem }].

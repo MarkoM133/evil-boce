@@ -60,3 +60,13 @@ test('colorless: any colour may take it, the first tag still counts', () => {
   assert.equal(no.ok, false, 'Haki colorless: still needs a Haki hero');
   assert.match(no.why, /needs a hero with Haki/);
 });
+
+test('a token is never a deck card, whatever its colour and tag (GDD 10, 2026-11-14)', () => {
+  const d = { cards: [{ id: 'H1', name: 'Hero', type: 'Hero', color: 'Red', traits: [] },
+    { id: 'A1', name: 'Card', type: 'Action', color: 'Red', traits: ['General'] },
+    { id: 'A1-1', name: 'Token', type: 'Action', color: 'Red', traits: ['General'], token: true }] };
+  assert.equal(deckVerdict(d, [], d.cards[1], ['H1']).ok, true);
+  const no = deckVerdict(d, [], d.cards[2], ['H1']);
+  assert.equal(no.ok, false);
+  assert.match(no.why, /token/);
+});

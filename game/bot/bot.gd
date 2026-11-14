@@ -646,7 +646,7 @@ func _card_round(engine: RulesEngine, s: GameState, slot: int) -> Move:
 		return null
 	var options: Array[Move] = []
 	var seen := {}
-	for cid: String in s.player(slot).hand:
+	for cid: String in s.player(slot).playable_cards():
 		if seen.has(cid):
 			continue
 		seen[cid] = true
