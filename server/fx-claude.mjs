@@ -75,6 +75,10 @@ export const sameFx = (a, b) => {
 
 const hashText = s => crypto.createHash('sha1').update(String(s ?? '')).digest('hex').slice(0, 12);
 
+// Intent (Marko 2026-11-14): the author's own words about what the card should do, kept per card in Card Studio
+// (data/editor/intent.json) and sent with each request. Players never see it; it never adds an effect by itself.
+export const intentOf = req => String(req?.intent ?? '').trim().slice(0, 4000);
+
 async function readJson(file, fallback = null) {
   try { return JSON.parse(await fs.readFile(file, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return fallback; throw e; }
 }
@@ -97,6 +101,11 @@ async function systemPrompt(root, drive) {
     'same style as the existing ones, with what it does and this card\'s fx line using it. Prefer existing words and the',
     'smallest addition. Anything that would change how the game plays beyond one word (a new phase, a battle or claim',
     'rule, a win condition) is kind "rule": it is a question for the designer, not a word to add.',
+    '',
+    "A card may come with \"intent\": the author's own words about what the card should do. Use it to understand what",
+    'the text means (where a distance is counted from, who is included, how long it lasts). The fx follows the card text:',
+    'never add an effect the text does not state. When the intent asks for something the text does not say, or they',
+    'disagree, follow the text and say so under "unsure" so the author fixes the text.',
     '',
     '# The fx language (game/docs/fx-keywords.md)',
     rules,
@@ -122,6 +131,13 @@ async function textSystemPrompt(root, drive) {
     '([PWR] [DMG] [HP] [RNG] [KB] [EN]); the card text you get and return uses the words instead: Power, DMG, HP, Range,',
     "Knockback, Energy (\"+2000 Power\", \"takes 3 DMG\", \"an Opponent's Hero in Range\", \"cost 1 Energy less\").",
     'The guide is written in Croatian; the card text is English. A text that already follows the guide gets verdict "ok".',
+    '',
+    "A card may come with \"intent\": the author's own words (often Croatian, often loose) about what the card should do,",
+    'with answers to earlier questions added as lines. It is what the author means, and it overrides the rule above about',
+    'keeping what the card does: make the text say what the intent says, in the house style, and list each such change',
+    'under "issues" with the rule "intent". When the text is empty, write it from the intent. Ask under "questions" only',
+    'what the intent and the text leave open or where they disagree; never ask what the intent already answers. Ask all',
+    'your questions at once, each answerable in a few words. The text stays English; never copy Croatian into it.',
     '',
     '# The text guide (docs/private, the rules agreed with the card author)',
     guide || '(the guide document is not on this computer; use the Card Studio rules below)',
@@ -193,7 +209,8 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
       return null;
     }
     const id = String(req?.id ?? '');
-    if (!CODE_RE.test(id) || !req?.text || id !== path.basename(file, '.json')) {
+    // A Check text request may come with only an intent: Claude then writes the text from it.
+    if (!CODE_RE.test(id) || (!req?.text && !intentOf(req)) || id !== path.basename(file, '.json')) {
       await fs.rm(file, { force: true });
       return null;
     }
@@ -222,7 +239,7 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
     log(`text: asking Claude to check ${id} (${req.who || '?'})`);
     let result;
     try {
-      const card = { id, name: req.name, type: req.type, color: req.color, bonusColors: req.bonusColors, hero: req.hero, cost: req.cost, bonus: req.bonus, traits: req.traits, abilityNames: req.abilityNames, text: req.text };
+      const card = { id, name: req.name, type: req.type, color: req.color, bonusColors: req.bonusColors, hero: req.hero, cost: req.cost, bonus: req.bonus, traits: req.traits, abilityNames: req.abilityNames, text: req.text, intent: intentOf(req) || undefined };
       const msg = await client.beta.messages.create({
         model: MODEL,
         max_tokens: 16000,
@@ -236,8 +253,8 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
       const parsed = JSON.parse(msg.content.find(b => b.type === 'text')?.text ?? '');
       const text = String(parsed.text ?? '').replace(/\s+$/, '');
       // "ok" s drukčijim tekstom ili "changes" bez promjene: vjeruje se tekstu, ne oznaci.
-      const same = !text || text.trim() === req.text.trim();
-      result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, askedText: req.text, model: msg.model,
+      const same = !text || text.trim() === String(req.text ?? '').trim();
+      result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, askedText: req.text, askedIntent: intentOf(req), model: msg.model,
         verdict: same ? 'ok' : 'changes', text: same ? req.text : text, issues: same ? [] : parsed.issues ?? [], questions: parsed.questions ?? [], notes: parsed.notes ?? '' };
     } catch (e) {
       result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, askedText: req.text, error: e?.message ?? String(e) };
@@ -251,6 +268,8 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
   async function answer(file) {
     const req = await takeRequest(file);
     if (!req) return;
+    // fx is made from the card text only: an intent without text has nothing to translate.
+    if (!req.text) { await fs.rm(file, { force: true }); return; }
     const id = req.id;
     const out = path.join(outDir, `${id}.json`);
     const textHash = hashText(req.text);
@@ -260,7 +279,7 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
     let result;
     try {
       // bonus: an Action's stat boxes (+2000 Power …), given by the game itself; without it a bare "Battle Phase:" looks cut off.
-      const card = { id, name: req.name, type: req.type, color: req.color, bonusColors: req.bonusColors, hero: req.hero, cost: req.cost, bonus: req.bonus, traits: req.traits, text: req.text };
+      const card = { id, name: req.name, type: req.type, color: req.color, bonusColors: req.bonusColors, hero: req.hero, cost: req.cost, bonus: req.bonus, traits: req.traits, text: req.text, intent: intentOf(req) || undefined };
       const msg = await client.beta.messages.create({
         model: MODEL,
         max_tokens: 16000,
@@ -274,7 +293,7 @@ export function createFxWorker({ root, drive, client, log = console.log }) {
       const text = msg.content.find(b => b.type === 'text')?.text ?? '';
       const parsed = JSON.parse(text);
       const fx = String(parsed.fx ?? '').trim();
-      result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, textHash, askedText: req.text, model: msg.model, fx, unsure: parsed.unsure ?? [], notes: parsed.notes ?? '', extensions: parsed.extensions ?? [], problems: fxProblems(fx) };
+      result = { id, at: new Date().toISOString(), askedAt: req.at, who: req.who, textHash, askedText: req.text, askedIntent: intentOf(req), model: msg.model, fx, unsure: parsed.unsure ?? [], notes: parsed.notes ?? '', extensions: parsed.extensions ?? [], problems: fxProblems(fx) };
       // Kako ga čita parser igre (Claude ga ne vidi): kad se slažu, čitanje je dvaput potvrđeno.
       if (typeof req.read === 'string') { result.read = req.read; result.agree = sameFx(fx, req.read); }
       // The answer is paid for: a wishlist that cannot be written is noted on it, never loses it.

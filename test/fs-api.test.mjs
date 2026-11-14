@@ -12,7 +12,7 @@ test('paths that climb out, are absolute or odd are refused', () => {
 });
 
 test('the phone may save drafts, locks, Claude requests, the wishlist, art and sets', () => {
-  for (const p of ['data/editor/drafts.json', 'data/editor/notes.json', 'data/editor/history.json', 'data/editor/text-guide.json',
+  for (const p of ['data/editor/drafts.json', 'data/editor/notes.json', 'data/editor/history.json', 'data/editor/text-guide.json', 'data/editor/intent.json',
     'data/locks/OP1-014.json', 'data/fx-requests/OP1-014.json', 'data/text-requests/OP1-014.json', 'data/fx-wishlist.json',
     'data/art/OP1-014.1a2b3c4d.png', 'data/art/emblems/OP1-005.1a2b3c4d.webp', 'data/sets/sets.json', 'data/sets/OP1/icon.png', 'data/card-frames/hero/layout.json']) {
     assert.ok(canWrite(cleanPath(p)), p);

@@ -195,3 +195,39 @@ test('a newer request for the same card, made while Claude was asked, is kept fo
   assert.equal(res.askedText, 'Second text.');
   assert.equal(calls.length, 2);
 });
+
+// --- Intent (Marko 2026-11-14) ---
+
+test('Intent goes to Claude with the card and the answer remembers it, for fx and for Check text', async () => {
+  const dir = await drive();
+  await fs.mkdir(path.join(dir, 'data', 'text-requests'), { recursive: true });
+  const intent = 'Heroji oko Sanjija postanu jači.\nDomet se broji od Sanjija.';
+  await fs.writeFile(path.join(dir, 'data', 'fx-requests', 'OP1-130.json'), JSON.stringify({ ...request('OP1-130', 'Other friendly Heroes get +2000 Power.'), intent }));
+  await fs.writeFile(path.join(dir, 'data', 'text-requests', 'OP1-131.json'), JSON.stringify({ ...request('OP1-131', 'Other friendly Heroes get +2000 Power.'), intent }));
+  const client = fakeClient({ fx: 'PREROLL: HEAL FRIENDLY 3', unsure: [], notes: '', extensions: [], verdict: 'ok', text: '', issues: [], questions: [] });
+  const w = createFxWorker({ root: ROOT, drive: dir, client, log: () => {} });
+  await w.tick();
+  for (const call of client.calls) assert.match(call.messages[0].content, /"intent": "Heroji oko Sanjija/);
+  assert.match(client.calls.find(c => /Propose the fx/.test(c.messages[0].content)).system[0].text, /never add an effect the text does not state/);
+  assert.match(client.calls.find(c => /Check the text/.test(c.messages[0].content)).system[0].text, /never ask what the intent already answers/);
+  const fx = JSON.parse(await fs.readFile(path.join(dir, 'data', 'fx-claude', 'OP1-130.json'), 'utf8'));
+  const tx = JSON.parse(await fs.readFile(path.join(dir, 'data', 'text-claude', 'OP1-131.json'), 'utf8'));
+  assert.equal(fx.askedIntent, intent);
+  assert.equal(tx.askedIntent, intent);
+});
+
+test('Check text writes the text from an intent alone; fx without text is not asked', async () => {
+  const dir = await drive();
+  await fs.mkdir(path.join(dir, 'data', 'text-requests'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'data', 'text-requests', 'OP1-132.json'), JSON.stringify({ ...request('OP1-132', ''), intent: 'Heal 3 jednom heroju.' }));
+  await fs.writeFile(path.join(dir, 'data', 'fx-requests', 'OP1-133.json'), JSON.stringify({ ...request('OP1-133', ''), intent: 'Heal 3 jednom heroju.' }));
+  const client = fakeClient({ verdict: 'changes', text: 'Preroll Phase: A friendly Hero heals 3 HP.', issues: [{ quote: '', problem: 'Written from the intent.', rule: 'intent' }], questions: [], notes: '' });
+  const w = createFxWorker({ root: ROOT, drive: dir, client, log: () => {} });
+  await w.tick();
+  const tx = JSON.parse(await fs.readFile(path.join(dir, 'data', 'text-claude', 'OP1-132.json'), 'utf8'));
+  assert.equal(tx.verdict, 'changes');
+  assert.equal(tx.text, 'Preroll Phase: A friendly Hero heals 3 HP.');
+  assert.equal(client.calls.length, 1, 'only Check text asked');
+  await assert.rejects(fs.access(path.join(dir, 'data', 'fx-requests', 'OP1-133.json')));
+  await assert.rejects(fs.access(path.join(dir, 'data', 'fx-claude', 'OP1-133.json')));
+});

@@ -600,3 +600,26 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
 @media (max-width: 700px) { .ce-combo-slots { grid-template-columns: minmax(0, 1fr); } .ce-combo-swap { justify-self: center; transform: rotate(90deg); } }
 /* The Combos tab's New card tile has the shape of a landscape combo card. */
 .ce-tile-new.wide { min-height: 0; aspect-ratio: 2100 / 1500; }
+
+/* Intent (2026-11-14): what the card should do, for Claude; above the text, folds to one line. */
+.ce-intent { border: 1px solid #6b3fc4; border-radius: 3px; background: linear-gradient(#1a1030, var(--surface) 80%); padding: 8px 10px; display: grid; gap: 6px; }
+.ce-intent-head, .ce-ct-head { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; padding: 2px 0; color: inherit; cursor: pointer; text-align: left; font: inherit; clip-path: none; }
+.ce-intent-title { font: 700 12px var(--text); letter-spacing: .1em; color: #c9b3ff; margin-right: auto; }
+.ce-intent-pill { font: 700 11px var(--text); letter-spacing: .06em; padding: 3px 8px; border-radius: 999px; background: #6b3fc4; color: #f1e6ff; }
+.ce-fold-chev { display: inline-block; width: 12px; color: var(--muted); transition: transform .15s; }
+.closed > .ce-intent-head .ce-fold-chev, .closed > .ce-ct-head .ce-fold-chev, .ce-claude-box.closed .ce-fold-chev { transform: rotate(-90deg); }
+.ce-intent-sum { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ce-intent-body { display: grid; gap: 6px; }
+.ce-intent-body > p { margin: 0; }
+.ce-intent-text { width: 100%; resize: vertical; min-height: 64px; }
+.ce-intent-stale { display: grid; gap: 6px; background: var(--straw-wash); border: 1px solid #5a4410; border-radius: 2px; padding: 8px; }
+.ce-intent-stale strong { color: var(--straw); }
+.ce-intent-row { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.ce-intent-row input { flex: 1 1 160px; min-width: 0; }
+.ce-ct-head .ce-prop-src { margin-right: auto; }
+.ce-questions { display: grid; gap: 6px; }
+.ce-questions > p { margin: 0; }
+.ce-q-list { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.ce-q-list li { display: grid; gap: 4px; }
+.ce-q-list li.skip > span { opacity: .6; }
+.ce-q-save { font-size: 14px; padding: 6px 12px; background: #6b3fc4; border-color: #6b3fc4; color: #fff; }

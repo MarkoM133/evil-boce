@@ -10,7 +10,7 @@ const IMG = '\\.(?:png|jpe?g|webp)';
 // Što smije pisati (PUT): nacrti i bilješke editora, lockovi, Claude zahtjevi (fx i Check text), wishlist, art i amblemi,
 // setovi (sets.json i slike setova), vodič za tekst.
 const WRITE = [
-  /^data\/editor\/(?:drafts|notes|history|text-guide)\.json$/,
+  /^data\/editor\/(?:drafts|notes|history|text-guide|intent)\.json$/,
   new RegExp(`^data/locks/${NAME}\\.json$`),
   new RegExp(`^data/fx-requests/${NAME}\\.json$`),
   new RegExp(`^data/text-requests/${NAME}\\.json$`),
