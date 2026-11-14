@@ -309,8 +309,22 @@ export function createEditor(env) {
     env.render();
   }
 
+  // The page is drawn anew after most clicks (Check text, Save, Use this…): each column goes back to where it was
+  // scrolled, as long as it is the same card (Marko 2026-11-14: Check text with this threw the form to the top).
+  // Read before the new page replaces the old one, put back before the next frame is painted.
+  const SCROLLED = ['.ce-form', '.ce-side', '.ce-centre', '.ce-cols'];
+  function keepScroll(id) {
+    const was = {};
+    for (const sel of SCROLLED) { const n = document.querySelector(sel); if (n?.scrollTop) was[sel] = n.scrollTop; }
+    const same = ed.scrolledFor === id;
+    ed.scrolledFor = id;
+    if (!same || !Object.keys(was).length) return;
+    requestAnimationFrame(() => { for (const [sel, top] of Object.entries(was)) { const n = document.querySelector(sel); if (n) n.scrollTop = top; } });
+  }
+
   function renderCardPage() {
     const w = ed.work;
+    keepScroll(w.id);
     const setName = sets.nameOf(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id));
     const lockChip = ed.lock?.state === 'other'
       ? h('span', { class: 'ce-lockchip other' }, `🔒 ${ed.lock.other?.who ?? 'Someone'} is editing`,
