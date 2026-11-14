@@ -68,7 +68,8 @@ export function createSetsView(ctx) {
     try { fresh = text?.trim() ? JSON.parse(text) : { sets: [] }; } catch { throw new Error('sets.json is being written right now. Try again in a moment.'); }
     fresh.sets ??= [];
     if (one) {
-      const row = { code: one.code, name: one.name, number: one.number, packSize: one.packSize };
+      // wip: Work in progress (Marko and Tarik 2026-11-14), the set's cards stay out of Publish.
+      const row = { code: one.code, name: one.name, number: one.number, packSize: one.packSize, ...(one.wip ? { wip: true } : {}) };
       const i = fresh.sets.findIndex(x => x.code === one.code);
       if (i >= 0) fresh.sets[i] = row; else fresh.sets.push(row);
     }
@@ -90,6 +91,8 @@ export function createSetsView(ctx) {
   }
 
   const sets = () => setList(v.saved, ctx.state.db.cards.filter(c => !c.deleted));
+  const isWip = code => !!v.saved?.sets?.find(s => s.code === code)?.wip;
+  const wipChip = code => (isWip(code) ? h('span', { class: 'ce-st review ce-wip', title: 'Work in progress: its cards stay out of Publish' }, 'WIP') : null);
   const nameOf = code => (code === 'Stage' ? 'Stages' : code === 'Core' ? 'Cores' : code === 'CB' ? 'Combos' : sets().find(s => s.code === code)?.name ?? code);
 
   function packImg(code, cls) {
@@ -108,7 +111,7 @@ export function createSetsView(ctx) {
     v.code ??= list[0]?.code ?? 'Stage';
     // Lijevo setovi | Stages, Cores; desno rijetke stvari: Draft packs (default paket) i + New set (Marko 2026-11-03).
     const tab = ([code, label]) => h('button', { type: 'button', class: code === v.code ? 'active' : '', onclick: () => { v.code = code; ctx.render(); } },
-      NOT_SETS.includes(code) ? null : packImg(code, 'ce-settab-pack'), label);
+      NOT_SETS.includes(code) ? null : packImg(code, 'ce-settab-pack'), label, wipChip(code));
     return h('div', { class: 'ce-page ce-sets' },
       h('nav', { class: 'ce-settabs' },
         list.map(s => tab([s.code, `${s.name} · ${s.code}`])),
@@ -160,7 +163,7 @@ export function createSetsView(ctx) {
         special ? null : packImg(s.code, 'ce-set-pack'),
         h('div', { class: 'ce-set-title' },
           h('p', { class: 'muted small' }, `Card editor / Sets / ${s.code}`),
-          h('h1', {}, s.name),
+          h('h1', {}, s.name, wipChip(s.code)),
           h('p', { class: 'muted' }, special ? `${all.length} cards` : `Set ${String(s.number).padStart(2, '0')} · ${all.length} cards · ${s.packSize ?? DEFAULT_PACK} per pack`)),
         h('div', { class: 'ce-page-actions' },
           redrawButton(`${s.code}-`, 'Redraw pictures'),
@@ -254,7 +257,7 @@ export function createSetsView(ctx) {
           h('p', { class: 'muted' }, 'Name, number and Draft pack of every set; the mixed pack is for a Draft whose cards come from several sets.')),
         h('div', { class: 'ce-page-actions' }, redrawButton('', 'Redraw all pictures'))),
       list.map(s => h('div', { class: 'ce-settings-block', id: `set-${s.code}` },
-        h('div', { class: 'ce-settings-head' }, packImg(s.code, 'ce-settab-pack'), h('h2', {}, `${s.name} · ${s.code}`)),
+        h('div', { class: 'ce-settings-head' }, packImg(s.code, 'ce-settab-pack'), h('h2', {}, `${s.name} · ${s.code}`, wipChip(s.code))),
         renderSettings(s, list))),
       h('div', { class: 'ce-settings-block', id: 'set-default' },
         h('div', { class: 'ce-settings-head' }, packImg('default', 'ce-settab-pack'), h('h2', {}, 'Mixed packs')),
@@ -271,6 +274,9 @@ export function createSetsView(ctx) {
         field('NAME', h('input', { value: s.name, oninput: e => { work.name = e.target.value; } })),
         field('SET NUMBER', h('input', { type: 'number', min: 1, value: s.number, oninput: e => { work.number = Number(e.target.value) || s.number; } })),
         field('CARDS PER PACK', h('input', { type: 'number', min: 1, max: 30, value: s.packSize ?? DEFAULT_PACK, oninput: e => { work.packSize = Number(e.target.value) || DEFAULT_PACK; } }), 'Draft packs.')),
+      h('label', { class: 'ce-check-row' },
+        h('input', { type: 'checkbox', checked: !!s.wip, onchange: e => { work.wip = e.target.checked; } }),
+        h('span', {}, h('strong', {}, 'Work in progress'), h('small', { class: 'muted' }, " The set's cards stay out of Publish until this is off. Switch it off when the set is finished; Publish then fixes the codes."))),
       h('div', { class: 'ce-row' },
         imageField(s.code, 'pack.png', 'PACK', 'the booster in Draft'),
         imageField(s.code, 'draft-bg.png', 'DRAFT BACKGROUND', 'behind the pack while it opens')),
@@ -304,6 +310,15 @@ export function createSetsView(ctx) {
   return {
     render, nameOf, newCardButton, ensure: () => (v.saved ? null : load()),
     list: () => sets(),
+    isWip,
+    // Codes of the sets in Work in progress, read from the file now (Publish: the other computer may have changed it).
+    freshWip: async () => {
+      const text = await fs.readText(ctx.store().root, SETS_PATH);
+      let doc;
+      try { doc = text?.trim() ? JSON.parse(text) : { sets: [] }; } catch { throw new Error('sets.json is being written right now. Try again in a moment.'); }
+      v.saved = doc;
+      return new Set((doc.sets ?? []).filter(s => s.wip).map(s => s.code));
+    },
     pick: code => { v.code = code; },
     current: () => (v.code && !NOT_SETS.includes(v.code) && v.code !== 'default' ? v.code : null),
     // Karte kako ih mreža seta zadnji put pokazala (s filterima): redoslijed za Prev / Next na stranici karte.

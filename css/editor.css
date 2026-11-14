@@ -240,6 +240,10 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-tile-new .plus { font: 300 44px var(--text); }
 .ce-tile-new:hover { border-color: var(--muted); color: var(--bone); }
 .ce-set-settings { gap: 14px; }
+/* Work in progress (2026-11-14): a set kept out of Publish. */
+.ce-wip { margin-left: 8px; vertical-align: middle; font-size: 10px; }
+.ce-check-row { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.ce-check-row input { margin-top: 3px; }
 
 /* Publish */
 .ce-publish h1 { font-size: 48px; }

@@ -15,6 +15,7 @@ import { createFramesView } from './editor-frames.js';
 import { toTokens, toWords, headAt, withHeadAt, stripTerrain, withTerrain, coreBonus, coreEffect, PHASES } from './card-text.js';
 import { deckPool, heroEvolutions, setTraits } from './deck.js';
 import { decorate, comboProblems, touchedIngredients, INGREDIENT_TYPES } from './combo.js';
+import { planMove, targetCode, renameKeys, moveDrafts } from './card-move.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -767,7 +768,69 @@ export function createEditor(env) {
       canWrite() ? input : null,
       ...lines.map(x => h('p', { class: 'small' }, h('strong', {}, x.who || ''), `${x.who ? ' · ' : ''}${when(x.at)} · ${x.what}`)),
       lines.length || notes.length ? null : h('p', { class: 'small muted' }, 'Nothing yet.'),
+      w.new && ed.drafts?.cards?.[w.id] ? h('button', { class: 'link small', type: 'button', disabled: !canPublish() || ed.lock?.state === 'other',
+        title: canPublish() ? 'Give this card another code in its set; the unpublished cards in between move one place' : 'Moving a card needs the shared folder open on a computer',
+        onclick: () => env.guard(moveCard) }, 'Move to another code…') : null,
       ed.drafts?.cards?.[w.id] ? h('button', { class: 'link small', type: 'button', disabled: !canWrite(), onclick: () => env.guard(discardDraft) }, w.new ? 'Throw away this new card' : 'Discard the unpublished changes') : null);
+  }
+
+  // Move an unpublished card to another code in its set (Marko and Tarik 2026-11-14; js/card-move.js). Everything
+  // kept under the code follows it: the draft, notes, history and Claude's answers; Combo drafts follow by ingredient.
+  // Art files keep their names (the draft points at them). Computer with the folder only: Claude's answers are files.
+  async function moveCard() {
+    if (!canPublish()) throw new Error('Moving a card needs the shared folder open on a computer (Chrome or Edge).');
+    if (ed.dirty) throw new Error('Save the card first, then move it.');
+    const from = ed.id;
+    const set = setOf(from);
+    const answer = prompt(`Move ${from} to which code? A number, e.g. 3 for ${set}-003.\nThe unpublished cards in between move one place; published cards keep their codes.`, '');
+    if (answer == null || !answer.trim()) return;
+    const to = targetCode(set, answer);
+    if (!to) throw new Error(`"${answer.trim()}" is not a code in set ${set}. Type a number, e.g. 3.`);
+    await env.assertFresh();
+    const fresh = await readDrafts();
+    await readLocks();
+    const published = new Set(db().cards.filter(c => setOf(c.id) === set).map(c => c.id));
+    const unpublished = new Set(Object.entries(fresh.cards ?? {}).filter(([id, d]) => d?.new && setOf(id) === set && !published.has(id)).map(([id]) => id));
+    const plan = planMove({ from, to, published, unpublished });
+    if (!plan.size) { env.toast(`${from} is already there.`); return; }
+    const moved = [...plan.keys()];
+    const busy = moved.find(id => ed.locks[id]);
+    if (busy) throw new Error(`${ed.locks[busy].who} has ${busy} open. Try again after they close it.`);
+    const usedBy = db().cards.find(c => !c.deleted && (c.ingredients ?? []).some(id => plan.has(id)));
+    if (usedBy) throw new Error(`${usedBy.id} is published and uses ${usedBy.ingredients.find(id => plan.has(id))}, so that code cannot change.`);
+    for (const id of moved) {
+      for (const path of [CLAUDE_REQ(id), TEXT_REQ(id)]) {
+        if ((await fs.readText(store().root, path).catch(() => null)) != null) throw new Error(`Claude is still reading ${id}. Try again in a minute.`);
+      }
+    }
+    const others = moved.filter(id => id !== from).map(id => `${id} → ${plan.get(id)}`);
+    if (!confirm(`Move ${from} to ${to}?${others.length ? `\n\nThese move one place:\n${others.join('\n')}` : ''}`)) return;
+    fresh.cards = moveDrafts(fresh.cards, plan);
+    await writeJson(DRAFTS_PATH, fresh);
+    ed.drafts = fresh;
+    for (const path of [NOTES_PATH, HISTORY_PATH]) {
+      const doc = await readJson(path, { cards: {} });
+      doc.cards = renameKeys(doc.cards, plan);
+      await writeJson(path, doc);
+      if (path === NOTES_PATH) ed.notes = doc; else ed.history = doc;
+    }
+    // Claude's answers in two steps (a temporary name first), so a card moving into a code never meets the old file.
+    for (const res of [CLAUDE_RES, TEXT_RES]) {
+      for (const id of moved) await fs.moveFile(store().root, res(id), `${res(plan.get(id))}.moving`);
+      // An answer left under a new code by a card thrown away earlier is not this card's.
+      for (const id of moved) await fs.removeFile(store().root, res(plan.get(id))).catch(() => {});
+      for (const id of moved) await fs.moveFile(store().root, `${res(plan.get(id))}.moving`, res(plan.get(id)));
+    }
+    ed.claude = renameKeys(ed.claude, plan);
+    ed.textCheck = renameKeys(ed.textCheck, plan);
+    ed.pubOff = new Set([...ed.pubOff].map(id => plan.get(id) ?? id));
+    ed.thumbs.clear();
+    for (const id of moved) await logHistory(plan.get(id), `code changed from ${id}`).catch(() => {});
+    env.toast(`${from} is now ${to}${others.length ? `; ${others.length} ${others.length === 1 ? 'card' : 'cards'} moved one place` : ''}.`);
+    releaseLock();
+    ed.id = null;
+    ed.work = null;
+    env.go(to);
   }
 
   async function addNote(text) {
@@ -2197,11 +2260,21 @@ export function createEditor(env) {
     return out;
   }
 
+  // The Work-in-progress set that holds a card back from Publish: its own set, or for a Combo the set of an
+  // ingredient (a published Combo must not name a card the game does not have). null when nothing holds it.
+  function wipSetOf(id, isWip) {
+    if (isWip(setOf(id))) return setOf(id);
+    const card = merged(db().cards.find(c => c.id === id) ?? { id });
+    for (const ing of card.ingredients ?? []) if (ing && isWip(setOf(ing))) return setOf(ing);
+    return null;
+  }
+
   function renderPublish() {
     const list = draftList();
     const marko = who() === 'Marko';
     const locked = id => ed.locks[id] && lockState(ed.locks[id], who()) === 'other';
-    const selected = list.filter(x => !locked(x.id) && !ed.pubOff.has(x.id));
+    const held = id => wipSetOf(id, id => sets.isWip(id));
+    const selected = list.filter(x => !locked(x.id) && !held(x.id) && !ed.pubOff.has(x.id));
     const why = !canPublish() ? 'Publish runs on a computer with the shared folder open (Chrome or Edge).'
       : !marko ? 'Only Marko publishes (Signed in as Marko).'
         : !ed.agency ? 'Agency FB is not on this computer: the card PNGs must be made on a computer that has it.'
@@ -2223,6 +2296,16 @@ export function createEditor(env) {
           h('div', { class: 'ce-pub-imgs' }, h('figure', {}, thumb(card, px))),
           h('div', { class: 'ce-pub-body' }, h('h3', {}, card.name || id, h('small', {}, ` ${id}`)),
             h('p', { class: 'warn' }, `${l.who} is editing it now. It can be published after they save and close it.`)));
+      }
+      // Work in progress (Marko and Tarik 2026-11-14): the whole set waits until the switch is off.
+      if (held(id)) {
+        return h('div', { class: 'ce-pub-row locked' },
+          h('span', { class: 'ce-pub-check', title: 'Work in progress' }, 'WIP'),
+          h('div', { class: 'ce-pub-imgs' }, h('figure', {}, thumb(card, px))),
+          h('div', { class: 'ce-pub-body' }, h('h3', {}, card.name || id, h('small', {}, ` ${id}`)),
+            h('p', { class: 'muted small' }, held(id) === setOf(id) ? `Set ${setOf(id)} is Work in progress: its cards wait until that is switched off in ⚙ Sets & packs.`
+              : `It uses a card of set ${held(id)}, which is Work in progress: it waits with that set.`)),
+          h('button', { class: 'link accent', type: 'button', onclick: () => go(id) }, 'Open in editor'));
       }
       return h('div', { class: 'ce-pub-row' },
         h('label', { class: 'ce-pub-check' }, h('input', { type: 'checkbox', checked: !ed.pubOff.has(id), onchange: e => { if (e.target.checked) ed.pubOff.delete(id); else ed.pubOff.add(id); env.render(); } })),
@@ -2330,8 +2413,10 @@ export function createEditor(env) {
     await env.assertFresh();
     const fresh = await readDrafts();
     await readLocks();
+    // The other computer may have switched a set to Work in progress since this page was drawn.
+    const wip = await sets.freshWip();
     const drafts = {};
-    for (const id of ids) if (fresh.cards?.[id] && !ed.locks[id]) drafts[id] = fresh.cards[id];
+    for (const id of ids) if (fresh.cards?.[id] && !ed.locks[id] && !wipSetOf(id, code => wip.has(code))) drafts[id] = fresh.cards[id];
     const list = Object.keys(drafts);
     if (!list.length) throw new Error('Nothing to publish.');
     if (!confirm(`Publish ${list.length} ${list.length === 1 ? 'card' : 'cards'} into the game?`)) return;
