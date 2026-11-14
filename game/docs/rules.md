@@ -183,8 +183,14 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
   language refuses (a token in the End phase), leaves the card not ready.
 - Decided by Marko 2026-11-14: a free play from the hand (`FREE_PLAY`) never plays a token; `TOKEN OPP` stays in
   the language.
-- Scenarios 81 and 82, `tests/test_tokens.gd`. Not built yet: the match scene does not draw tokens (only
-  auto-pass knows them), and Card Studio cannot make one.
+- Scenarios 81 and 82, `tests/test_tokens.gd`.
+- Match scene (no rules): your tokens stand right of your hand, a little apart, in a drifting violet mist with a
+  glow (`ui/token_mist.gdshader`; still on low quality or fast animations); a new one comes out of the mist, a
+  played or ended one dissolves into it. The other side's tokens are violet chips under its counts (a click shows
+  the card); the hand count leaves them out. A token is never picked to pay damage. Screenshot helpers
+  `demo_tokens`, `demo_tokens_gone` (after `demo_battle`, `demo_hand_stand`).
+- Card Studio: New token on the maker's page (id = maker + number), violet frame and the hourglass mark from the
+  renderer, tokens follow their card in a code move, never a combo ingredient.
 
 ## Scenario tests
 

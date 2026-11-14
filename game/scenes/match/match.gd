@@ -3474,6 +3474,41 @@ func demo_hand_spent() -> void:
 	hud.refresh()
 
 
+## Screenshot helpers (after demo_battle, demo_hand_stand): tokens (GDD 10, 2026-11-14) beside player 1's hand and one
+## open under player 2's counts; then the end of the turn takes them. The published cards have no token, so two
+## Actions are copied as tokens for the picture (their own art, the violet mist on top).
+func demo_tokens() -> void:
+	var picks: Array[CardDef] = []
+	for c: CardDef in engine.catalog.of_type("Action"):
+		if db != null and db.thumb(c.id) != null and not c.token:
+			picks.append(c)
+		if picks.size() == 2:
+			break
+	var made := PackedStringArray()
+	for c: CardDef in picks:
+		var rec: Dictionary = c.to_record()
+		rec["id"] = c.id + "-1"
+		rec["token"] = true
+		engine.catalog.cards[rec["id"]] = CardDef.from_card(rec)
+		if db != null and db.thumbs.has(c.id):
+			db.thumbs[rec["id"]] = db.thumbs[c.id]
+		made.append(str(rec["id"]))
+	if made.is_empty():
+		return
+	state.player(0).tokens = made
+	state.player(1).tokens = PackedStringArray([made[0]])
+	state.player(0).energy = maxi(state.player(0).energy, 3)
+	# The hand up, as with the mouse over it, so the picture shows the tokens.
+	hud.demo_mouse = Vector2(hud.size.x * 0.5, hud.size.y - 20.0)
+	hud.refresh()
+
+
+func demo_tokens_gone() -> void:
+	for p: PlayerState in state.players:
+		p.tokens = PackedStringArray()
+	hud.refresh()
+
+
 ## Screenshot helper (after demo_battle): a card asks player 1 to choose one of two things.
 func demo_choose_option() -> void:
 	state.pending = [{"type": FxRuntime.DECISION_CHOOSE, "player": 0, "kind": "option", "prompt": "Choose one",

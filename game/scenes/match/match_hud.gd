@@ -59,6 +59,12 @@ const RIBBON_PHASES: Array[String] = PHASES
 const ROSTER_WIDTH: float = 360.0
 const SLICE_HEIGHT: float = 70.0
 const CARD_SIZE := Vector2(128, 178)
+## Token cards (GDD 10, 2026-11-14) stand to the right of the hand, this far apart, in a violet mist.
+const TOKEN_GAP: float = 34.0
+const TOKEN_GLOW := Color(0.62, 0.45, 1.0, 0.6)
+## How long a token takes to come out of the mist, and to go back into it.
+const TOKEN_IN_TIME: float = 0.7
+const TOKEN_OUT_TIME: float = 0.8
 ## Height of the hand strip; the cards stick out of the bottom of the screen a little.
 const HAND_HEIGHT: float = 210.0
 ## The hand's width.
@@ -1351,6 +1357,94 @@ func _fill_roster(col: VBoxContainer, slot: int) -> void:
 	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pad.add_child(info)
 	col.add_child(pad)
+	# Its tokens are open to everyone (GDD 10, 2026-11-14) and not part of the hand count: one violet name each,
+	# a click shows the card.
+	if not p.tokens.is_empty():
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_END if right else BoxContainer.ALIGNMENT_BEGIN
+		row.add_theme_constant_override("separation", 6)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		for cid: String in p.tokens:
+			var chip: UiShape = UiShape.chip("TOKEN · " + _card_name(cid), Color(0.23, 0.12, 0.47, 0.92), Color(0.9, 0.86, 1.0), 11, 20.0, 7.0)
+			chip.mouse_filter = Control.MOUSE_FILTER_STOP
+			chip.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			chip.tooltip_text = "A token: open to everyone, not in the hand count, gone at the end of the turn"
+			var show: String = cid
+			chip.gui_input.connect(func(e: InputEvent) -> void:
+				if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+					_show_big(show))
+			row.add_child(chip)
+		var tpad := MarginContainer.new()
+		tpad.add_theme_constant_override("margin_right" if right else "margin_left", 18)
+		tpad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tpad.add_child(row)
+		col.add_child(tpad)
+
+
+# --- token cards (GDD 10, Marko 2026-11-14; mockup token-ghost.html "A + rijec") ---
+
+## A token in the hand: the mist over its picture (it also rounds the corners) and a soft violet glow around it.
+func _token_look(root: Control, face: Control, pic_node: Control, pic: Rect2) -> void:
+	var glow := Panel.new()
+	glow.name = "TokenGlow"
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0, 0, 0, 0)
+	sb.shadow_color = TOKEN_GLOW
+	sb.shadow_size = 12
+	sb.set_corner_radius_all(8)
+	glow.add_theme_stylebox_override("panel", sb)
+	glow.position = pic.position
+	glow.size = pic.size
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	face.add_child(glow)
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://ui/token_mist.gdshader")
+	m.set_shader_parameter("aspect", pic_node.size.x / maxf(pic_node.size.y, 1.0))
+	# The mist stands still on low quality and with fast animations; it is still there, only not moving.
+	m.set_shader_parameter("speed", 0.0 if GameSettings.quality() == "low" or GameSettings.anim_scale() < 1.0 else 1.0)
+	pic_node.material = m
+	root.set_meta("mist", m)
+
+
+## A new token comes out of the mist where it stands.
+func _token_in(card: Control) -> void:
+	if not card.has_meta("mist"):
+		return
+	var m: ShaderMaterial = card.get_meta("mist")
+	m.set_shader_parameter("dissolve", 1.0)
+	var t: Tween = card.create_tween().set_parallel(true)
+	t.tween_method(func(v: float) -> void: m.set_shader_parameter("dissolve", v), 1.0, 0.0, TOKEN_IN_TIME * GameSettings.anim_scale()).set_ease(Tween.EASE_OUT)
+	var glow: Control = card.get_node_or_null("Face/TokenGlow") as Control
+	if glow != null:
+		glow.modulate.a = 0.0
+		t.tween_property(glow, "modulate:a", 1.0, TOKEN_IN_TIME * 0.4 * GameSettings.anim_scale()).set_delay(TOKEN_IN_TIME * 0.6 * GameSettings.anim_scale())
+	var face: Control = card.get_node_or_null("Face") as Control
+	if face != null:
+		face.scale = Vector2.ONE * 0.9
+		t.tween_property(face, "scale", Vector2.ONE, TOKEN_IN_TIME * GameSettings.anim_scale()).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## A token played, or gone at the end of the turn, goes back into the mist: no graveyard, as if it had never been.
+func _token_out(ghost: Control) -> void:
+	var m: ShaderMaterial = ghost.get_meta("mist")
+	var t: Tween = ghost.create_tween().set_parallel(true)
+	t.tween_method(func(v: float) -> void: m.set_shader_parameter("dissolve", v), 0.0, 1.0, TOKEN_OUT_TIME * GameSettings.anim_scale()).set_ease(Tween.EASE_IN)
+	t.tween_property(ghost, "position:y", ghost.position.y - 30.0, TOKEN_OUT_TIME * GameSettings.anim_scale())
+	# The glow behind the picture would show as a block where the mist has eaten the card: it goes first, and the
+	# cost and the rest fade out with the card.
+	var glow: Control = ghost.get_node_or_null("Face/TokenGlow") as Control
+	if glow != null:
+		t.tween_property(glow, "modulate:a", 0.0, TOKEN_OUT_TIME * 0.25 * GameSettings.anim_scale())
+	t.tween_property(ghost, "modulate:a", 0.0, TOKEN_OUT_TIME * GameSettings.anim_scale()).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	t.chain().tween_callback(ghost.queue_free)
+
+
+## Is the card behind a hand key ("slot|cid#copy") a token?
+func _key_is_token(key: String) -> bool:
+	var cid: String = key.substr(key.find("|") + 1)
+	cid = cid.substr(0, cid.rfind("#"))
+	var c: CardDef = engine.catalog.get_card(cid)
+	return c != null and c.token
 
 
 func _hero_slice(h: HeroState, right: bool) -> Control:
@@ -2511,6 +2605,9 @@ func _hand_leave(slot: int, key: String, was: Dictionary) -> void:
 	ghost.position = _hand.position + Vector2(JsonUtil.as_float(was["x"]), 16.0 - JsonUtil.as_float(was["stand"]))
 	ghost.rotation_degrees = JsonUtil.as_float(was["turn"])
 	_hand_box.add_child(ghost)
+	if ghost.has_meta("mist"):
+		_token_out(ghost)
+		return
 	var t: Tween = ghost.create_tween().set_parallel(true)
 	t.tween_property(ghost, "position:y", ghost.position.y - HAND_LEAVE_RISE, HAND_LEAVE_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	t.tween_property(ghost, "modulate:a", 0.0, HAND_LEAVE_TIME)
@@ -2582,9 +2679,12 @@ func _refresh_hand() -> void:
 		return
 	_hand_title.visible = mulligan
 	var my_round: bool = _in_card_round() and state.to_act == slot and state.pending.is_empty()
-	var n: int = p.hand.size()
+	# The tokens come after the cards (a little apart), so a card's index is the same as in the hand.
+	var cards: PackedStringArray = p.playable_cards()
+	var hand_n: int = p.hand.size()
+	var n: int = cards.size()
 	var step: float = minf(176.0 if mulligan else 104.0, (HAND_WIDTH - 40.0) / maxf(float(n), 1.0))
-	var keys: PackedStringArray = hand_keys(slot, p.hand)
+	var keys: PackedStringArray = hand_keys(slot, cards)
 	if hand_leaving >= 0 and n < before.size():
 		for key: String in before:
 			if JsonUtil.as_int(before[key].get("index", -1), -1) == hand_leaving:
@@ -2592,13 +2692,14 @@ func _refresh_hand() -> void:
 				break
 		hand_leaving = -1
 	for i: int in n:
-		var cid: String = p.hand[i]
+		var cid: String = cards[i]
 		var check: Dictionary = _play_check(slot, cid) if my_round else {}
 		var playable: bool = my_round and check.get("ok", false) == true
 		var card: Control = _hand_card(slot, cid, playable, my_round, str(check.get("why", "")),
 			JsonUtil.as_strings(check.get("heroes", [])), i)
 		var t: float = i - (n - 1) * 0.5
-		card.position = Vector2(_hand.size.x * 0.5 + t * step - CARD_SIZE.x * 0.5, 16.0 + (0.0 if mulligan else t * t * 2.0))
+		var gap: float = 0.0 if hand_n >= n else (TOKEN_GAP * 0.5 if i >= hand_n else -TOKEN_GAP * 0.5)
+		card.position = Vector2(_hand.size.x * 0.5 + t * step + gap - CARD_SIZE.x * 0.5, 16.0 + (0.0 if mulligan else t * t * 2.0))
 		card.rotation_degrees = 0.0 if mulligan else t * 3.0
 		var was: Dictionary = before.get(keys[i], {})
 		card.set_meta("hand_key", keys[i])
@@ -2613,6 +2714,8 @@ func _refresh_hand() -> void:
 		_hand.add_child(card)
 		if not was.is_empty():
 			_hand_slide(card, was)
+		elif i >= hand_n:
+			_token_in(card)
 		# The starting hand flies in from below, one card after another, and settles (once).
 		if mulligan and not _hand_dealt:
 			var face: Control = card.get_node_or_null("Face") as Control
@@ -2636,6 +2739,11 @@ func _refresh_hand() -> void:
 		for key: String in before:
 			if key.begins_with(prefix) and not keys.has(key):
 				gone.append(key)
+		# Tokens go back into the mist however many there are (the end of the turn takes them all at once).
+		var tokens_gone: Array[String] = gone.filter(func(k: String) -> bool: return _key_is_token(k))
+		for key: String in tokens_gone:
+			_hand_leave(slot, key, before[key])
+		gone = gone.filter(func(k: String) -> bool: return not tokens_gone.has(k))
 		if gone.size() <= HAND_LEAVE_MAX:
 			for key: String in gone:
 				_hand_leave(slot, key, before[key])
@@ -2813,6 +2921,8 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 			img.position = Vector2(CARD_SIZE.x, 0)
 		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		img.material = round_corners(img.size.x / img.size.y)
+		if c != null and c.token:
+			_token_look(root, face, img, pic)
 		face.add_child(img)
 	else:
 		var back := ColorRect.new()
@@ -2820,6 +2930,8 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		back.position = pic.position
 		back.size = pic.size
 		back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if c != null and c.token:
+			_token_look(root, face, back, pic)
 		face.add_child(back)
 		var name_l: Label = UiTheme.label(c.name if c != null else cid, 18)
 		name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -2853,8 +2965,8 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 			face.add_child(w)
 		root.tooltip_text = _card_tip("%s  ·  %s %s  ·  cost %d\n%s" % [c.name, c.color, c.type, c.cost, c.text])
 		if hurting:
-			# Picked cards and the ones that may still be picked stay in colour.
-			root.modulate = Color.WHITE if hurt_it or damage_cards.size() < damage_spare() else Color(0.35, 0.35, 0.35)
+			# Picked cards and the ones that may still be picked stay in colour; a token never pays damage.
+			root.modulate = Color.WHITE if not c.token and (hurt_it or damage_cards.size() < damage_spare()) else Color(0.35, 0.35, 0.35)
 		elif picking:
 			root.modulate = Color.WHITE if picks_it else Color(0.35, 0.35, 0.35)
 		elif my_round and not playable:
@@ -3740,6 +3852,10 @@ func pick_damage_hero(id: String) -> void:
 
 ## A hand card (by position) takes 1 DMG of the pending hit, or stops taking it.
 func toggle_damage_card(index: int) -> void:
+	# The tokens after the hand cannot be given up in place of damage (GDD 10, 2026-11-14).
+	var slot: int = hand_slot()
+	if slot < 0 or index < 0 or index >= state.player(slot).hand.size():
+		return
 	var at: int = damage_cards.find(index)
 	if at >= 0:
 		damage_cards.remove_at(at)
@@ -4818,6 +4934,11 @@ func _describe(e: Dictionary) -> String:
 			return "%s energy %+d" % [player_name(JsonUtil.as_int(e.get("player", 0))), JsonUtil.as_int(e.get("amount", 0))]
 		"discard":
 			return "%s discards %s" % [player_name(JsonUtil.as_int(e.get("player", 0))), _card_name(str(e.get("card", "")))]
+		"token":
+			var many: int = JsonUtil.as_int(e.get("amount", 1), 1)
+			return "%s gets %s%s (token)" % [player_name(JsonUtil.as_int(e.get("player", 0))), ("%d× " % many) if many > 1 else "", _card_name(str(e.get("card", "")))]
+		"tokens_gone":
+			return "%s: tokens gone at the end of the turn" % player_name(JsonUtil.as_int(e.get("player", 0)))
 		"battle_locked":
 			return "Tie: %s, locked, fight again next turn" % _heroes_line(e)
 		"battle_tie_break":
@@ -5009,6 +5130,14 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			return dot + "%s %s %d energy (now %d)." % [_who(slot), "charges" if n >= 0 else "discharges", absi(n), JsonUtil.as_int(e.get("energy", 0))]
 		"discard":
 			return dot + "%s discards %s." % [_who(slot), _card_b(str(e.get("card", "")))]
+		"token":
+			var many: int = JsonUtil.as_int(e.get("amount", 1), 1)
+			return dot + "%s gets %s%s, a token: it is gone at the end of the turn." % [_who(slot), ("%d× " % many) if many > 1 else "", _card_b(str(e.get("card", "")))]
+		"tokens_gone":
+			var names := PackedStringArray()
+			for cid: String in JsonUtil.as_strings(e.get("cards", [])):
+				names.append(_card_b(cid))
+			return dot + "%s's unplayed tokens are gone: %s." % [_who(slot), ", ".join(names)]
 		"recycled":
 			return dot + "%s puts %s back into the deck." % [_who(slot), _card_b(str(e.get("card", "")))]
 		"top_card":
