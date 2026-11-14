@@ -166,6 +166,7 @@ export function createSetsView(ctx) {
           h('h1', {}, s.name, wipChip(s.code)),
           h('p', { class: 'muted' }, special ? `${all.length} cards` : `Set ${String(s.number).padStart(2, '0')} · ${all.length} cards · ${s.packSize ?? DEFAULT_PACK} per pack`)),
         h('div', { class: 'ce-page-actions' },
+          special ? null : wipButton(s),
           redrawButton(`${s.code}-`, 'Redraw pictures'),
           newCardButton(s.code, special ? [newType] : NEW_TYPES, 'primary'))),
       h('div', { class: 'ce-filters' },
@@ -222,6 +223,18 @@ export function createSetsView(ctx) {
     return h('button', { type: 'button', class: n ? '' : 'ghost', disabled: !ctx.canPublish() || !n,
       title: !ctx.canPublish() ? 'Redrawing writes the pictures: a computer with the shared folder.' : n ? 'Draw every out-of-date picture again with the renderer as it is now' : 'Every picture is up to date',
       onclick: () => ctx.guard(() => ctx.redrawAll(prefix)) }, n ? `${label} (${n})` : label);
+  }
+
+  // Work in progress on the set's own page (Marko 2026-11-14), one click on or off; also in Sets & packs.
+  function wipButton(s) {
+    const on = isWip(s.code);
+    return h('button', { type: 'button', class: on ? 'ce-wip-btn on' : 'ghost ce-wip-btn', 'aria-pressed': String(on), disabled: !ctx.canWrite(),
+      title: on ? 'Work in progress: the set\'s cards stay out of Publish. Click when the set is finished.' : 'Keep the set\'s cards out of Publish while it is not finished',
+      onclick: () => ctx.guard(async () => {
+        await save({ ...s, wip: !on });
+        ctx.toast(on ? `${s.code} is finished: its cards can be published.` : `${s.code} is Work in progress: its cards stay out of Publish.`);
+        ctx.render();
+      }) }, on ? 'WIP: on' : 'Work in progress');
   }
 
   function tile(c, draft) {
