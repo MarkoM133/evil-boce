@@ -1458,6 +1458,7 @@ func _follow(held: Held, c: Claw) -> void:
 	if held.follow != null and held.follow.is_valid():
 		held.follow.kill()
 	var t: Tween = _btw()
+	t.bind_node(c)
 	t.tween_method(_follow_step.bind(held, c), 0.0, 1.0, 600.0)
 	held.follow = t
 
@@ -1837,6 +1838,9 @@ func _pick_up(id: String, from: Vector3, target: Vector3, hp0: int) -> void:
 	var up := Vector3(0, HOLD_LIFT, 0)
 	c.position = pick + Vector3(0, -5.5, ef * 2.4)
 	var t: Tween = _btw()
+	# The tween dies with the claw: a ball let go while the hand still comes for it (_release frees the claw) left
+	# this one running, and its _follow step was called with the freed claw (soak 2026-11-14).
+	t.bind_node(c)
 	t.tween_property(c, "position", pick + Vector3(0, 0.9, 0), 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	t.tween_property(c, "position", pick, 0.1)
 	t.tween_property(c, "pinch", 1.0, 0.1)
