@@ -2118,11 +2118,14 @@ export function createEditor(env) {
 
   const liveDb = card => setTraits({ ...db(), cards: [...db().cards.filter(c => c.id !== card.id).map(merged), card] }, db().traitList ?? env.state.traits?.traits);
 
-  // Balans dok uređuješ: krivulja costa boje, slične karte (ista boja i cost), heroji koji je smiju uzeti
-  // i koliko karata svoje boje tada imaju (prije → poslije izmjene).
+  // Balans dok uređuješ (Marko 2026-11-15, mockup docs/private/mockups/balance, varijanta B): krivulja costa boje,
+  // slične karte (ista boja i cost, tri pa "+N more"), i svi heroji boje karte kao male pločice po setu s brojem
+  // karata svoje boje koje smiju uzeti (cilj 8; ispod 4 žuto). Svijetle oni koji ovu kartu smiju uzeti; za kartu u
+  // boji uz broj piše prije → poslije. Heroji iz nacrta su tu (novi set); setovi se sklapaju na mjestu.
   function renderBalance(card) {
     if (!card.color) return [];
-    const pool = [...db().cards.filter(c => !c.deleted && c.id !== card.id).map(merged), card].filter(c => PORTRAIT.includes(c.type) && c.color === card.color);
+    const others = allCards().filter(c => c.id !== card.id && !c.deleted);
+    const pool = [...others, card].filter(c => PORTRAIT.includes(c.type) && c.color === card.color);
     const costs = new Map();
     for (const c of pool) costs.set(c.cost ?? 0, (costs.get(c.cost ?? 0) ?? 0) + 1);
     const max = Math.max(1, ...costs.values());
@@ -2130,22 +2133,55 @@ export function createEditor(env) {
     const curve = h('div', { class: 'ce-curve' }, Array.from({ length: top + 1 }, (_, k) => h('div', { class: `ce-bar${k === (card.cost ?? 0) ? ' mine' : ''}`, title: `Cost ${k}: ${costs.get(k) ?? 0}` },
       h('span', { style: `height:${((costs.get(k) ?? 0) / max) * 100}%` }), h('small', {}, String(k)))));
     const similar = pool.filter(c => c.id !== card.id && (c.cost ?? 0) === (card.cost ?? 0));
-    const live = liveDb(card);
-    const pub = setTraits({ ...db(), cards: db().cards.map(merged) }, db().traitList ?? env.state.traits?.traits);
-    const heroes = db().cards.filter(c => c.type === 'Hero' && !c.deleted && (card.color === 'None' || c.color === card.color));
-    const own = (d, hero) => deckPool(d, [hero.id], heroEvolutions(d, [hero.id])).filter(c => c.color === hero.color);
-    const rows = heroes.map(hero => {
-      const before = own(pub, hero).length;
-      const after = own(live, hero);
-      return { hero, before, after: after.length, takes: after.some(c => c.id === card.id) };
-    });
-    return [h('details', { class: 'ce-panel', open: ed.balOpen, ontoggle: e => { ed.balOpen = e.target.open; } },
+    const traitList = db().traitList ?? env.state.traits?.traits;
+    const saved = db().cards.find(c => c.id === card.id && !c.deleted) ? merged(db().cards.find(c => c.id === card.id)) : (ed.drafts?.cards?.[card.id] ? { id: card.id, ...ed.drafts.cards[card.id] } : null);
+    const pub = setTraits({ ...db(), cards: saved ? [...others, saved] : others }, traitList);
+    const live = setTraits({ ...db(), cards: [...others, card] }, traitList);
+    const heroes = others.filter(c => c.type === 'Hero' && (card.color === 'None' || c.color === card.color));
+    const deck = (d, hero) => deckPool(d, [hero.id], heroEvolutions(d, [hero.id]));
+    const own = (d, hero) => deck(d, hero).filter(c => c.color === hero.color);
+    // Whether the hero may take the card is asked of its whole pool: a colorless card is never of the hero's colour.
+    const rows = heroes.map(hero => ({ hero, before: own(pub, hero).length, after: own(live, hero).length, takes: deck(live, hero).some(c => c.id === card.id) }));
+    const takes = rows.filter(r => r.takes).length;
+    // Sets: the card's own first, then by code; one is open while it holds the card's set or a hero that takes it,
+    // until it is folded by hand.
+    const bySet = new Map();
+    for (const r of rows) { const s = setOf(r.hero.id); if (!bySet.has(s)) bySet.set(s, []); bySet.get(s).push(r); }
+    const setCodes = [...bySet.keys()].sort((a, b) => (b === setOf(card.id)) - (a === setOf(card.id)) || a.localeCompare(b));
+    ed.balFold ??= {};
+    const groups = setCodes.map(s => {
+      const list = bySet.get(s).sort((a, b) => a.hero.name.localeCompare(b.hero.name));
+      const open = ed.balFold[s] ?? (s === setOf(card.id) || list.some(r => r.takes));
+      const tiles = h('div', { class: 'ce-bal-tiles', hidden: !open }, list.map(r => {
+        const n = r.after;
+        return h('button', { class: `ce-bal-tile${r.takes ? ' takes' : ''}`, type: 'button', onclick: () => go(r.hero.id),
+          title: `${r.hero.name}: ${r.before === r.after ? n : `${r.before} → ${r.after}`} cards of its colour${r.takes ? '' : ' (cannot take this card)'}` },
+          h('span', { class: 'ce-ft-dot', style: `--sw: var(--c-${r.hero.color})` }), h('span', {}, r.hero.name.length <= 10 ? r.hero.name : r.hero.name.split(/[ ,]/)[0]),
+          h('b', { class: n < 4 ? 'low' : '' }, r.before === r.after ? String(n) : `${r.before}→${n}`));
+      }));
+      const head = h('button', { class: 'ce-bal-set', type: 'button', 'aria-expanded': String(open), onclick: ev => {
+        const now = tiles.hidden;
+        tiles.hidden = !now;
+        ed.balFold[s] = now;
+        ev.currentTarget.setAttribute('aria-expanded', String(now));
+        ev.currentTarget.firstChild.textContent = now ? '▾' : '▸';
+      } }, h('span', { class: 'ce-bal-chev' }, open ? '▾' : '▸'), h('span', {}, sets.nameOf(s) === s ? s : `${s} · ${sets.nameOf(s)}`),
+        h('span', { class: 'muted' }, `${list.filter(r => r.takes).length}/${list.length}`));
+      return [head, tiles];
+    }).flat();
+    const simList = h('ul', { class: 'small ce-similar' }, similar.slice(0, 3).map(c => h('li', {}, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, c.name), ` · ${c.type}`)));
+    const simMore = similar.length > 3 ? h('button', { class: 'link small accent', type: 'button', onclick: ev => {
+      simList.replaceChildren(...similar.map(c => h('li', {}, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, c.name), ` · ${c.type}`)));
+      ev.currentTarget.remove();
+    } }, `+${similar.length - 3} more`) : null;
+    return [h('details', { class: 'ce-panel ce-balance', open: ed.balOpen, ontoggle: e => { ed.balOpen = e.target.open; } },
       h('summary', {}, h('h3', {}, 'Balance')),
-      h('p', { class: 'small muted' }, `Cost curve of ${card.color} cards:`), curve,
+      h('p', { class: 'small muted' }, `Cost curve of ${card.color === 'None' ? 'colorless' : card.color} cards:`), curve,
       h('p', { class: 'small' }, similar.length ? `Same colour and cost (${similar.length}):` : 'No other card of this colour has this cost.'),
-      similar.length ? h('ul', { class: 'small ce-similar' }, similar.slice(0, 6).map(c => h('li', {}, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, c.name), ` · ${c.type}`))) : null,
-      h('p', { class: 'small' }, 'Heroes of this colour (cards they may take):'),
-      h('ul', { class: 'small' }, rows.map(r => h('li', { class: r.takes ? '' : 'muted' }, `${r.takes ? '✓' : '–'} ${r.hero.name}: ${r.before}${r.after !== r.before ? ` → ${r.after}` : ''}`))))];
+      similar.length ? simList : null, simMore,
+      h('p', { class: 'small' }, `Heroes: cards of their colour (goal 8). ${takes} of ${rows.length} may take this card.`),
+      card.color === 'None' ? h('p', { class: 'small muted' }, 'Colorless: it does not change these counts.') : null,
+      ...groups)];
   }
 
   // ---------- spremanje ----------

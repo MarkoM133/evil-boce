@@ -700,3 +700,18 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
 /* Room at the end of the side and form columns (Marko 2026-11-15): the last panel or field never sits on the edge. */
 .ce-cols > .ce-form, .ce-cols > .ce-side { padding-bottom: 72px; }
 @media (max-width: 720px) { .ce-cols > .ce-form, .ce-cols > .ce-side { padding-bottom: 24px; } }
+/* Balance, heroes as tiles by set (2026-11-15, mockup B): lit = may take the card; the number is the cards of the
+   hero's own colour it may take (goal 8), straw under 4. */
+.ce-bal-set { display: flex; gap: 8px; align-items: baseline; width: 100%; background: none; border: 0; padding: 6px 0 2px; clip-path: none;
+  font: 700 11px var(--text); letter-spacing: .1em; color: var(--muted); text-transform: uppercase; cursor: pointer; text-align: left; }
+.ce-bal-set:hover { background: none; color: var(--bone); }
+.ce-bal-set > :last-child { margin-left: auto; }
+.ce-bal-chev { width: 10px; }
+.ce-bal-tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+.ce-bal-tile { display: inline-flex; gap: 6px; align-items: center; padding: 5px 8px; background: #0d0d0d; border: 1px solid var(--line); clip-path: none;
+  font: 500 13px var(--text); color: var(--bone); opacity: .45; cursor: pointer; }
+.ce-bal-tile.takes { opacity: 1; border-color: #4a4a4a; }
+.ce-bal-tile:hover { background: var(--surface-2); opacity: 1; }
+.ce-bal-tile b { font-variant-numeric: tabular-nums; }
+.ce-bal-tile b.low { color: var(--straw); }
+.ce-bal-tile .ce-ft-dot { margin-right: 0; }
