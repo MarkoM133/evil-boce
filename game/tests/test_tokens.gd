@@ -134,3 +134,46 @@ func test_the_bot_may_play_its_token() -> void:
 	assert_eq(s.hero("p0:TA-001").hp, 6)
 	assert_true(s.player(0).tokens.is_empty())
 	assert_true(s.player(0).graveyard.is_empty(), "played, it is gone: no graveyard")
+
+
+## "Create a Spark Token." (Marko 2026-11-14): the text parser reads it, and the catalog puts the token's id in.
+func _text_catalog(extra: Array = []) -> CardCatalog:
+	var list: Array = [
+		{"id": "DQ1-010", "name": "Magical Cylinder", "type": "Action", "color": "Red", "cost": 2, "traits": ["General"],
+			"text": "Preroll Phase: Create a Magical Cylinder Gush Token."},
+		{"id": "DQ1-010-1", "name": "Magical Cylinder Gush", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+			"token": true, "text": "Battle Phase: Your Hero gets +1000 Power."},
+		{"id": "DQ1-001", "name": "Hero Of Sparks", "type": "Hero", "color": "Red", "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 2, "kb": 2},
+			"text": "Postroll Phase Once Per Turn: If Hero Of Sparks is activated, you may create 2 Spark Tokens."},
+		{"id": "DQ1-001-1", "name": "Spark", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"], "token": true,
+			"text": "Postroll Phase: Your Hero heals 2 HP."},
+	]
+	list.append_array(extra)
+	return CardCatalog.from_doc({"version": 1, "cards": list}, false)
+
+
+func test_the_card_text_names_the_token_and_the_game_finds_its_card() -> void:
+	var cat: CardCatalog = _text_catalog()
+	var maker: CardDef = cat.get_card("DQ1-010")
+	assert_eq(maker.fx, "PREROLL: TOKEN ME DQ1-010-1", "the token carries its maker's name and is still found")
+	assert_true(maker.is_ready(), ", ".join(maker.unparsed))
+	assert_eq(Array(maker.tokens_made()), ["DQ1-010-1"])
+	assert_eq(maker.effects[0].line, "PREROLL: TOKEN ME DQ1-010-1", "the line a waiting effect is read from again")
+	var hero: CardDef = cat.get_card("DQ1-001")
+	assert_eq(hero.fx, "POSTROLL ONCE OPTIONAL IF ACTIVATED: TOKEN ME DQ1-001-1 2")
+	assert_true(hero.is_ready(), ", ".join(hero.unparsed))
+
+
+func test_a_token_nobody_made_a_card_for_leaves_the_card_not_ready() -> void:
+	var cat: CardCatalog = _text_catalog([
+		{"id": "DQ1-020", "name": "Empty Promise", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+			"text": "Preroll Phase: Create a Ghost Token."},
+		{"id": "DQ1-021", "name": "End Maker", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+			"text": "End Phase: Create a Spark Token."},
+		{"id": "DQ1-022", "name": "Borrower", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+			"text": "Preroll Phase: Create a Spark Token."},
+	])
+	assert_false(cat.get_card("DQ1-020").is_ready(), "no token card is named Ghost")
+	assert_string_contains(", ".join(cat.get_card("DQ1-020").unparsed), "Ghost")
+	assert_false(cat.get_card("DQ1-021").is_ready(), "a token is never made in the End phase")
+	assert_eq(cat.get_card("DQ1-022").fx, "PREROLL: TOKEN ME DQ1-001-1", "another card may make the hero's token")

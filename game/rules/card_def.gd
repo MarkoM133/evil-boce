@@ -118,8 +118,13 @@ func build_effects(fx_field: String) -> void:
 	var parsed: Dictionary = FxTextParser.parse(self)
 	fx = str(parsed.get("fx", ""))
 	fx_hand_written = false
-	effects = FxEffect.parse_all(fx)
+	var refused := PackedStringArray()
+	effects = FxEffect.parse_all(fx, refused)
 	unparsed = JsonUtil.as_strings(parsed.get("unparsed", []))
+	# A line the parser wrote but the fx language refuses (a TOKEN in the End phase): the card is not ready, rather
+	# than playable with that effect silently gone.
+	for b: String in refused:
+		unparsed.append("fx: " + b)
 
 
 static func from_card(c: Dictionary) -> CardDef:
@@ -221,6 +226,35 @@ static func parse_terrain(text: String) -> Terrain.Type:
 		if s.to_lower().begins_with("terrain:"):
 			return Terrain.parse(s.substr(8))
 	return Terrain.Type.NONE
+
+
+## A TOKEN the text parser wrote by name ("Create a Spark Token." gives TOKEN ME {Spark}) gets the id of the token
+## card with that name. A name no token card has, or that several have, leaves the card not ready.
+func resolve_tokens(catalog: CardCatalog) -> void:
+	for e: FxEffect in effects:
+		_resolve_in(catalog, e.actions, e)
+
+
+func _resolve_in(catalog: CardCatalog, actions: Array, e: FxEffect) -> void:
+	for x: Variant in actions:
+		if not x is Dictionary:
+			continue
+		var a: Dictionary = x
+		var args: PackedStringArray = JsonUtil.as_strings(a.get("args", []))
+		if str(a.get("verb", "")) == "TOKEN" and not args.is_empty() and args[0].begins_with("{"):
+			var named: String = args[0].trim_prefix("{").trim_suffix("}")
+			var tid: String = catalog.token_named(named, id)
+			if tid.is_empty():
+				var why: String = "no token card named \"%s\" (or several)" % named
+				if not unparsed.has(why):
+					unparsed.append(why)
+			else:
+				fx = fx.replace(args[0], tid)
+				e.line = e.line.replace(args[0], tid)
+				args[0] = tid
+				a["args"] = args
+		for branch: Variant in JsonUtil.as_array(a.get("branches", [])):
+			_resolve_in(catalog, JsonUtil.as_array(branch), e)
 
 
 ## Ids of the token cards this card's effects make (fx TOKEN, also inside CHOOSE branches).

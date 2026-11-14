@@ -26,6 +26,7 @@ static func from_doc(doc: Dictionary, with_placeholders: bool = true) -> CardCat
 	cat.set_traits(JsonUtil.as_array(doc.get("traits", [])))
 	if with_placeholders and cat.of_type("Core").is_empty():
 		cat.add_placeholder_cores()
+	cat.resolve_tokens()
 	return cat
 
 
@@ -79,6 +80,24 @@ func of_type(type: String) -> Array[CardDef]:
 	return out
 
 
+## Token names in parsed card texts become token card ids, now that every card is here (CardDef.resolve_tokens).
+func resolve_tokens() -> void:
+	for d: CardDef in cards.values():
+		d.resolve_tokens(self)
+
+
+## The id of the token card with this name, "" when there is none. Two cards may share a name (GDD 10): the
+## maker's own token (its id with a number) wins; otherwise several is none.
+func token_named(name: String, maker_id: String = "") -> String:
+	var found := PackedStringArray()
+	for d: CardDef in cards.values():
+		if d.token and d.name.to_lower() == name.to_lower():
+			if not maker_id.is_empty() and d.id.begins_with(maker_id + "-"):
+				return d.id
+			found.append(d.id)
+	return found[0] if found.size() == 1 else ""
+
+
 ## Hero card with this name (Evolution cards name their hero).
 func hero_named(name: String) -> CardDef:
 	for d: CardDef in cards.values():
@@ -93,6 +112,7 @@ func apply_fx_overrides(d: Dictionary) -> void:
 		var card: CardDef = get_card(str(k))
 		if card != null and not card.fx_hand_written:
 			card.build_effects(str(d[k]))
+	resolve_tokens()
 
 
 ## Six generic cores (2 Buff, 2 Major, 2 Debuff) until the real ones exist in cards.json.

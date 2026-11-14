@@ -177,6 +177,12 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
   cards}`.
 - Records: `MatchRecorder._used_cards` adds the tokens the match's cards can make (`CardDef.tokens_made`), so a
   match carried on from its record knows them.
+- Card text: "Create a Spark Token." / "Create 2 Spark Tokens." (`FxTextParser`, the name kept aside before the
+  card's own name becomes SELF); `CardCatalog.resolve_tokens` then swaps the name for the token card's id
+  (`token_named`: the maker's own token first, one card of that name otherwise). No such card, or a line the fx
+  language refuses (a token in the End phase), leaves the card not ready.
+- Decided by Marko 2026-11-14: a free play from the hand (`FREE_PLAY`) never plays a token; `TOKEN OPP` stays in
+  the language.
 - Scenarios 81 and 82, `tests/test_tokens.gd`. Not built yet: the match scene does not draw tokens (only
   auto-pass knows them), and Card Studio cannot make one.
 

@@ -18,6 +18,10 @@ const STAT_WORDS: Dictionary[String, String] = {
 static var _re: Dictionary[String, RegEx] = {}
 ## Traits of the sentence being parsed, in their original case ({Sword}, not {sword}).
 static var _traits: PackedStringArray = PackedStringArray()
+## "Create a Spark Token." / "Create 2 Spark Tokens." (Marko 2026-11-14): the names of the tokens the text being
+## parsed makes, kept aside before the card's own name is read as SELF (a token may carry its maker's name).
+static var _token_names: PackedStringArray = PackedStringArray()
+const TOKEN_SENTENCE: String = "(?i)\\b(create) (an?|\\d+) ([^.\\n|]+?) tokens?\\b"
 
 
 ## {"fx": String (one line per sentence), "unparsed": PackedStringArray}
@@ -37,6 +41,13 @@ static func parse(card: CardDef) -> Dictionary:
 	text = "\n".join(kept)
 	if text.strip_edges().is_empty():
 		return {"fx": "", "unparsed": unparsed}
+	_token_names = PackedStringArray()
+	var tk: RegExMatch = _rx(TOKEN_SENTENCE).search(text)
+	while tk != null:
+		var count: String = tk.get_string(2) if tk.get_string(2).is_valid_int() else "1"
+		text = text.substr(0, tk.get_start()) + "%s token #%d x%s" % [tk.get_string(1), _token_names.size(), count] + text.substr(tk.get_end())
+		_token_names.append(tk.get_string(3).strip_edges())
+		tk = _rx(TOKEN_SENTENCE).search(text)
 	var self_name: String = card.hero if card.type == "Evolution" and not card.hero.is_empty() else card.name
 	var t: String = _normalise(text, self_name)
 	# Elbaph (2026-11-05): a duel in every battle on the stage; the winner picks one hero in it for the bonus.
@@ -512,6 +523,13 @@ static func _match(low: String) -> Array[Dictionary]:
 
 	if low == "your opponent must discard a card":
 		return [_act("DISCARD", "OPP", ["1"])]
+	# The token is named here; CardCatalog puts its card id in once every card is loaded (CardDef.resolve_tokens).
+	m = _rx("^(?:you )?create token #(\\d+) x(\\d+)$").search(low)
+	if m != null and m.get_string(1).to_int() < _token_names.size():
+		var made: Array = ["{%s}" % _token_names[m.get_string(1).to_int()]]
+		if m.get_string(2).to_int() > 1:
+			made.append(m.get_string(2))
+		return [_act("TOKEN", "ME", made)]
 	m = _rx("^(?:you )?draw (\\d+) cards?$").search(low)
 	if m != null:
 		return [_act("DRAW", "ME", [m.get_string(1)])]
