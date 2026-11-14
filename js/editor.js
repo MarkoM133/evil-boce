@@ -522,6 +522,7 @@ export function createEditor(env) {
   }
 
   function checkTextButton(w, label = 'Check text') {
+    // In the CLAUDE box head (2026-11-14); the head's click folds the box, this button only asks.
     const st = ed.textCheck[w.id] ?? {};
     return h('button', { class: 'ce-add-effect ce-text-ask', type: 'button', disabled: !canWrite() || st.waiting || (!claudeText(w).trim() && !intentNow(w)),
       title: !canWrite() ? 'Open the shared folder to ask Claude' : 'Claude reads the text and the Intent against the text guide on Marko\'s computer, asks what is unclear and proposes a rewrite',
@@ -571,102 +572,144 @@ export function createEditor(env) {
     return !!e && e.forText != null && !ed.dirty && e.forText !== claudeText(w);
   }
 
-  function intentPanel(w) {
-    const e = ed.intent?.cards?.[w.id];
-    const text = e?.text ?? '';
-    const stale = intentStale(w);
-    const open = stale || ed.intentOpen;
-    const lines = text.split('\n').filter(l => l.trim());
-    const typed = ed.intentDraft?.id === w.id ? ed.intentDraft.value : null;
-    const area = h('textarea', { class: 'ce-intent-text', rows: Math.min(10, Math.max(3, lines.length + 1)), value: typed ?? text, disabled: !canWrite(),
-      oninput: ev => { ed.intentDraft = { id: w.id, value: ev.target.value }; },
-      placeholder: 'What the card should do, in your own words (any language). Claude asks what is unclear.',
-      onchange: ev => env.guard(async () => { await saveIntent(w.id, ev.target.value, claudeText(w)); env.render(); }) });
-    // Folding happens in place: no redraw of the page, so nothing flashes and the form keeps its scroll.
-    const toggle = ev => {
-      const sec = ev.currentTarget.closest('.ce-intent');
-      ed.intentOpen = sec.classList.contains('closed');
-      try { localStorage.setItem(INTENT_OPEN_KEY, ed.intentOpen ? '1' : '0'); } catch {}
-      sec.classList.toggle('closed', !ed.intentOpen);
-      ev.currentTarget.setAttribute('aria-expanded', String(ed.intentOpen));
-      sec.querySelector('.ce-intent-sum').hidden = ed.intentOpen;
-      sec.querySelector('.ce-intent-body').hidden = !ed.intentOpen;
-    };
-    const pill = stale ? h('span', { class: 'ce-fx-state check' }, 'CHECK') : text ? h('span', { class: 'ce-intent-pill' }, 'GOES TO CLAUDE') : h('span', { class: 'ce-fx-state none' }, 'EMPTY');
-    return h('section', { class: `ce-intent${open ? '' : ' closed'}` },
-      h('button', { class: 'ce-intent-head', type: 'button', 'aria-expanded': String(open), onclick: toggle },
-        h('span', { class: 'ce-fold-chev', 'aria-hidden': 'true' }, '▾'), h('span', { class: 'ce-intent-title' }, 'INTENT'), pill),
-      h('p', { class: 'ce-intent-sum small muted', hidden: open }, lines.length ? `${lines[0]}${lines.length > 1 ? ` · +${lines.length - 1} ${lines.length === 2 ? 'line' : 'lines'}` : ''}` : 'What the card should do, for Claude. Players never see it.'),
-      h('div', { class: 'ce-intent-body', hidden: !open },
-        h('p', { class: 'small muted' }, 'What the card should do, in your own words. Players never see it; Claude gets it with Check text and Ask Claude. The fx is still made from the card text.'),
-        area,
-        stale ? h('div', { class: 'ce-intent-stale small' },
-          h('span', {}, h('strong', {}, 'The card text changed after this was written.'), ' Does it still hold? Claude gets both.'),
-          h('div', { class: 'ce-intent-row' },
-            h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(async () => { await intentHolds(w.id, claudeText(w)); env.render(); }) }, 'Still holds'),
-            h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(() => checkText(w)) }, '✦ Check text'))) : null,
-        // Sending it (Marko 2026-11-14: how does it get to Claude?): Check text right here; Ask Claude by the fx sends it too.
-        h('div', { class: 'ce-intent-row ce-intent-foot' },
-          e ? h('small', { class: 'muted' }, `${e.who || '–'} · ${when(e.at)}`) : h('small', { class: 'muted' }, 'Saved when you click outside the box.'),
-          checkTextButton(w, 'Check text with this'))));
+  // ---------- the CLAUDE box under the text (Marko 2026-11-14, mockup docs/private/mockups/text-block) ----------
+  // Everything that goes to Claude and comes back, in one box: the status and the one Check text in its head, the
+  // Intent as one line (a click opens it), the proposal as a diff on the card text with Use this under it, and the
+  // questions. Folding and opening the Intent happen in place (no redraw).
+
+  // Word diff of the whole text, line breaks kept: [['=', w] | ['+', w] | ['-', w] | ['\n']].
+  function fullDiff(a, b) {
+    const split = t => String(t).replace(/\n/g, ' \n ').split(/ +/).filter(Boolean);
+    const x = split(a);
+    const y = split(b);
+    const L = Array.from({ length: x.length + 1 }, () => new Array(y.length + 1).fill(0));
+    for (let i = x.length - 1; i >= 0; i--) for (let j = y.length - 1; j >= 0; j--) L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    const out = [];
+    let i = 0;
+    let j = 0;
+    while (i < x.length || j < y.length) {
+      if (i < x.length && j < y.length && x[i] === y[j]) { out.push(['=', x[i]]); i++; j++; } else if (j < y.length && (i >= x.length || L[i][j + 1] > L[i + 1][j])) { out.push(['+', y[j]]); j++; } else { out.push(['-', x[i]]); i++; }
+    }
+    return out.map(o => (o[1] === '\n' ? (o[0] === '-' ? null : ['\n']) : o)).filter(Boolean);
   }
 
-  // Odgovor ispod teksta: prijepis s Use this, što se mijenja i zašto, i pitanja za autora (ona se ne prepisuju).
-  // Pitanja dolaze u krugovima (Marko 2026-11-14): svako ima svoje polje, jedan gumb upiše odgovore u Intent i
-  // odmah pokrene idući krug. Kutija se sklapa; sama se otvori kad nešto traži autora.
-  function textCheckBlock(w) {
+  function diffView(a, b) {
+    const parts = [];
+    for (const o of fullDiff(a, b)) {
+      if (o[0] === '\n') { parts.push(h('br')); continue; }
+      parts.push(o[0] === '=' ? o[1] : h(o[0] === '+' ? 'ins' : 's', {}, o[1]), ' ');
+    }
+    return h('div', { class: 'ce-diff' }, parts);
+  }
+
+  // What Claude's last Check text means now: { r, st, stale, intentChanged, inUse, questions, label, tone }.
+  function claudeState(w) {
     loadTextCheck(w.id);
     const st = ed.textCheck[w.id] ?? {};
     const r = st.res;
-    const parts = [];
-    if (st.waiting) parts.push(h('p', { class: 'small muted' }, 'Waiting for Claude. Marko\'s computer answers while its Card Studio server runs; the request waits in the folder otherwise.'));
-    if (st.late) parts.push(h('p', { class: 'small warn' }, 'No answer yet. Is the server on Marko\'s computer running? The request is still in the folder.'));
-    if (r?.error) parts.push(h('p', { class: 'small warn' }, `Claude could not check the text: ${r.error}`));
-    if (!r || r.error) return parts.length ? h('div', { class: 'ce-claude-box' }, parts) : null;
+    const out = { st, r, stale: false, intentChanged: false, inUse: false, questions: [] };
+    if (st.waiting) return { ...out, label: 'checking…', tone: 'none' };
+    if (!r) return { ...out, label: 'not asked yet', tone: 'none' };
+    if (r.error) return { ...out, label: 'could not check', tone: 'bad' };
     const now = claudeText(w);
-    const inUse = r.verdict === 'changes' && now.trim() === String(r.text).trim();
-    const intentChanged = (r.askedIntent ?? '') !== intentOf(w.id);
-    const stale = (!inUse && r.askedText !== now) || intentChanged;
-    const questions = stale ? [] : r.questions ?? [];
-    const wants = !!questions.length || (r.verdict === 'changes' && !inUse && !stale);
-    const fold = ed.ctOpen[w.id]?.at === r.at ? ed.ctOpen[w.id].open : (wants || st.waiting);
+    out.inUse = r.verdict === 'changes' && now.trim() === String(r.text).trim();
+    out.intentChanged = (r.askedIntent ?? '') !== intentOf(w.id);
+    out.stale = (!out.inUse && r.askedText !== now) || out.intentChanged;
+    out.questions = out.stale ? [] : r.questions ?? [];
+    if (out.stale) return { ...out, label: 'check again', tone: 'check' };
+    if (out.questions.length) return { ...out, label: `${out.questions.length} ${out.questions.length === 1 ? 'question' : 'questions'}`, tone: 'check' };
+    if (r.verdict === 'changes' && !out.inUse) return { ...out, label: 'rewrite ready', tone: 'claude' };
+    return { ...out, label: '✓ follows the guide', tone: 'ok' };
+  }
+
+  function claudeBox(w) {
+    const cs = claudeState(w);
+    const r = cs.r;
+    // Open unless everything is done; a click on the head is remembered for this answer.
+    const auto = cs.tone !== 'ok';
+    const open = ed.ctOpen[w.id]?.at === (r?.at ?? null) ? ed.ctOpen[w.id].open : auto;
     const toggle = ev => {
-      const boxEl = ev.currentTarget.closest('.ce-claude-box');
-      const now = boxEl.classList.contains('closed');
-      ed.ctOpen[w.id] = { at: r.at, open: now };
-      boxEl.classList.toggle('closed', !now);
+      if (ev.target.closest('button.ce-add-effect')) return;
+      const box = ev.currentTarget.closest('.ce-claude-panel');
+      const now = box.classList.contains('closed');
+      ed.ctOpen[w.id] = { at: r?.at ?? null, open: now };
+      box.classList.toggle('closed', !now);
       ev.currentTarget.setAttribute('aria-expanded', String(now));
-      boxEl.querySelector('.ce-ct-body').hidden = !now;
     };
-    const status = stale ? 'older text or Intent' : questions.length ? `${questions.length} ${questions.length === 1 ? 'question' : 'questions'}`
-      : r.verdict === 'ok' || inUse ? '✓ no questions' : 'a rewrite';
-    const head = h('button', { class: 'ce-ct-head', type: 'button', 'aria-expanded': String(fold), onclick: toggle },
-      h('span', { class: 'ce-fold-chev', 'aria-hidden': 'true' }, '▾'), h('span', { class: 'ce-prop-src' }, 'Claude · text', r.who ? ` · ${r.who}` : ''),
-      h('span', { class: `small ${questions.length || stale ? 'warn' : 'ok'}` }, status));
-    const staleLine = stale ? h('p', { class: 'small warn' }, intentChanged ? 'Asked with another Intent: check again.' : 'For an older text: check again.') : null;
+    const head = h('div', { class: 'ce-claude-head', role: 'button', tabindex: 0, 'aria-expanded': String(open), onclick: toggle,
+      onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(e); } } },
+      h('span', { class: 'ce-fold-chev', 'aria-hidden': 'true' }, '▾'), h('span', { class: 'ce-claude-title' }, 'CLAUDE'),
+      h('span', { class: `ce-fx-state ${cs.tone}` }, cs.label), checkTextButton(w));
+    const body = h('div', { class: 'ce-claude-body' }, intentLine(w), ...answerParts(w, cs));
+    return h('section', { class: `ce-claude-panel${open ? '' : ' closed'}` }, head, body);
+  }
+
+  // The Intent: one line; a click opens the box to write in (in place), Done saves it.
+  function intentLine(w) {
+    const e = ed.intent?.cards?.[w.id];
+    const text = e?.text ?? '';
+    const typed = ed.intentDraft?.id === w.id ? ed.intentDraft.value : null;
+    const shown = (typed ?? text).trim();
+    const lines = shown.split('\n').filter(l => l.trim());
+    const stale = intentStale(w);
+    const about = 'What the card should do, in your own words (any language). Players never see it; Claude gets it with Check text and Ask Claude. The fx is still made from the card text.';
+    const summary = h('span', { class: `ce-intent-say${lines.length ? '' : ' muted'}` }, lines.length ? lines[0] : 'What should the card do? (any language)');
+    const more = h('span', { class: 'small muted' }, lines.length > 1 ? `+${lines.length - 1} ${lines.length === 2 ? 'line' : 'lines'}` : '');
+    const line = h('button', { class: 'ce-intent-line', type: 'button', title: about, disabled: !canWrite() && !text,
+      onclick: () => { line.hidden = true; edit.hidden = false; area.focus(); } },
+      h('span', { class: 'ce-intent-tag' }, 'INTENT'), summary, more, h('span', { class: 'small muted ce-intent-hint' }, canWrite() ? 'click to edit' : ''));
+    const area = h('textarea', { class: 'ce-intent-text', rows: Math.min(10, Math.max(3, lines.length + 1)), value: typed ?? text, disabled: !canWrite(),
+      placeholder: 'What the card should do, in your own words (any language). Claude asks what is unclear.',
+      oninput: ev => { ed.intentDraft = { id: w.id, value: ev.target.value }; } });
+    const done = () => env.guard(async () => { await saveIntent(w.id, area.value, claudeText(w)); env.render(); });
+    const edit = h('div', { class: 'ce-intent-edit', hidden: true },
+      h('div', { class: 'ce-intent-row' }, h('span', { class: 'ce-intent-tag' }, 'INTENT'), h('span', { class: 'ce-hint-i', title: about }, 'ⓘ'),
+        e ? h('small', { class: 'muted' }, `${e.who || '–'} · ${when(e.at)}`) : null,
+        h('button', { class: 'ghost ce-intent-done', type: 'button', disabled: !canWrite(), onclick: done }, 'Done')),
+      area);
+    // Typed but not saved yet (a redraw came in between): open, so it is not lost from sight.
+    if (typed != null && typed !== text) { line.hidden = true; edit.hidden = false; }
+    const parts = [line, edit];
+    if (stale) parts.push(h('div', { class: 'ce-intent-stale small' },
+      h('span', {}, h('strong', {}, 'The card text changed after the Intent was written.'), ' Does it still hold? Claude gets both.'),
+      h('div', { class: 'ce-intent-row' },
+        h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(async () => { await intentHolds(w.id, claudeText(w)); env.render(); }) }, 'Still holds'))));
+    return h('div', { class: 'ce-intent-wrap' }, parts);
+  }
+
+  // Claude's answer: what it says about the text, as a diff with Use this, the reasons, and the questions.
+  function answerParts(w, cs) {
+    const { st, r } = cs;
+    const out = [];
+    if (st.waiting) out.push(h('p', { class: 'small muted' }, 'Waiting for Claude. Marko\'s computer answers while its Card Studio server runs; the request waits in the folder otherwise.'));
+    if (st.late) out.push(h('p', { class: 'small warn' }, 'No answer yet. Is the server on Marko\'s computer running? The request is still in the folder.'));
+    if (!r) {
+      if (!st.waiting) out.push(h('p', { class: 'small muted' }, 'Check text reads the text and the Intent against the text guide, asks what is unclear and proposes the text.'));
+      return out;
+    }
+    if (r.error) { out.push(h('p', { class: 'small warn' }, `Claude could not check the text: ${r.error}`)); return out; }
+    if (cs.stale) out.push(h('p', { class: 'small warn' }, cs.intentChanged ? 'Asked with another Intent: Check text again.' : 'Asked about an older text: Check text again.'));
     const use = () => {
       snap(true); w.text = toTokens(r.text); if (w.fx && w.fxStatus !== 'check') w.fxStatus = 'check'; changed(); env.render();
       // The text was written from this Intent: the Intent holds for it.
       if (intentOf(w.id) && (r.askedIntent ?? '') === intentOf(w.id)) intentHolds(w.id, claudeText(w)).catch(() => {});
     };
-    const box = [staleLine];
-    if (r.verdict === 'ok' || inUse) {
-      box.push(h('p', { class: 'small ok' }, inUse ? '✓ in the text' : '✓ follows the text guide'));
-    } else {
+    if (r.verdict === 'changes' && !cs.inUse) {
       const still = avoidWarnings(ed.guide, r.text);
-      box.push(
-        h('pre', { class: 'ce-fx-code ce-claude-fx ce-text-proposal' }, toTokens(r.text)),
+      out.push(
+        diffView(toTokens(claudeText(w)), toTokens(r.text)),
         h('div', { class: 'ce-intent-row' },
-          h('button', { class: 'ce-prop-use', type: 'button', disabled: stale, title: stale ? 'Check again: the text or the Intent changed' : 'Put this text on the card; the fx then waits for a new confirm', onclick: use }, 'Use this'),
-          h('button', { class: 'ce-prop-use', type: 'button', disabled: stale || !canWrite() || ed.lock?.state === 'other', title: 'Put this text on the card and ask Claude for its fx',
+          h('button', { class: 'ce-prop-use', type: 'button', disabled: cs.stale, title: cs.stale ? 'Check again: the text or the Intent changed' : 'Put this text on the card; the fx then waits for a new confirm', onclick: use }, 'Use this'),
+          h('button', { class: 'ce-prop-use', type: 'button', disabled: cs.stale || !canWrite() || ed.lock?.state === 'other', title: 'Put this text on the card and ask Claude for its fx',
             onclick: () => env.guard(async () => { use(); await askClaude(w); }) }, 'Use this and ask for fx')),
         r.issues?.length ? h('ul', { class: 'small ce-text-issues' }, r.issues.map(i => h('li', {}, i.quote ? h('q', {}, i.quote) : null, ` ${i.problem}`, i.rule ? h('span', { class: 'muted' }, ` (${i.rule})`) : null))) : null,
         still.length ? h('p', { class: 'small warn' }, 'Still against the guide: ', still.join(' · ')) : null);
+    } else if (!cs.stale) {
+      out.push(h('p', { class: 'small ok' }, cs.inUse ? '✓ Claude\'s text is on the card.' : '✓ The text follows the guide and says what the Intent says.'));
     }
-    if (r.notes) box.push(h('p', { class: 'small' }, r.notes));
-    if (questions.length) box.push(questionsBox(w, r, questions));
-    parts.push(head, h('div', { class: 'ce-ct-body', hidden: !fold }, box.filter(Boolean)));
-    return h('div', { class: `ce-claude-box${fold ? '' : ' closed'}` }, parts.filter(Boolean));
+    if (r.notes) out.push(h('p', { class: 'small' }, r.notes));
+    if (cs.questions.length) out.push(questionsBox(w, r, cs.questions));
+    return out.filter(Boolean);
   }
 
   // Pitanja jednog kruga: polje za odgovor po pitanju, "Not sure yet" ga preskoči (Claude ga pita opet).
@@ -1578,6 +1621,7 @@ export function createEditor(env) {
             h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(bgVal) ? bgVal : '#000000', oninput: e => { set('bg', e.target.value); const t = e.target.nextSibling; if (t) t.value = e.target.value; } }),
             h('input', { value: bgVal, placeholder: 'colour default', oninput: e => { if (/^#[0-9a-f]{6}$/i.test(e.target.value)) set('bg', e.target.value); else if (!e.target.value) { snap(true); delete w.bg; changed(); } } }))),
           code),
+        tokensRow(w),
         h('div', { class: 'ce-emblem' },
           h('span', { class: 'ce-emblem-dot' }, ed.emblem ? h('img', { src: ed.emblem.src, alt: '' }) : 'LOGO'),
           h('div', {}, h('span', { class: 'small muted' }, 'EMBLEM'),
@@ -1592,7 +1636,6 @@ export function createEditor(env) {
         h('h2', {}, 'Ability'),
         field('ABILITY NAME', h('input', { value: w.abilityNames?.[0] ?? '', oninput: e => set('abilityNames', [e.target.value, ...(w.abilityNames ?? []).slice(1)]) })),
         ...text,
-        tokensRow(w),
         h('h2', {}, 'Traits'),
         chips(w, 0, traits, unlock),
         unlock.length ? h('p', { class: 'small muted' }, 'Cards with first tag ', h('strong', { class: 'accent' }, unlock.join(', ')), ' need this evolution in the deck.') : null,
@@ -1604,6 +1647,7 @@ export function createEditor(env) {
         w.token ? tokensRow(w) : field('TYPE', seg(PORTRAIT.map(t => [t, t]), w.type, v => { set('type', v); env.render(); })),
         field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
         h('div', { class: 'ce-row' }, field('COST', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })), code),
+        w.token ? null : tokensRow(w),
         field('COLOR', h('div', { class: 'ce-swatches' },
           COLORS.map(c => h('button', { type: 'button', class: `ce-swatch${c === w.color ? ' active' : ''}`, style: `--sw: var(--c-${c})`, title: c, 'aria-label': c, onclick: () => { snap(true); w.color = c; delete w.bonusColors; changed(); env.render(); } })),
           h('button', { type: 'button', class: `ce-swatch colorless${w.color === 'None' ? ' active' : ''}`, style: '--sw: var(--c-colorless)', title: 'Colorless: any hero may play it', 'aria-label': 'Colorless',
@@ -1626,7 +1670,6 @@ export function createEditor(env) {
         }, { step: k === 'pwr' ? 1000 : 1 }))))),
         h('h2', {}, 'Effect text'),
         ...text,
-        w.token ? null : tokensRow(w),
         h('h2', {}, 'Tags'),
         firstTagField(w),
         chips(w, 1, traits, []),
@@ -1924,7 +1967,7 @@ export function createEditor(env) {
     const hintText = stage ? 'Type [ for a stat icon, or the start of a phrase from the Text guide: a list opens under the text.'
         : 'Each effect is its own line; the phase and Once per turn set the effect the cursor is in (+ Effect starts a new one). Range goes in the text next to its target: "a friendly Hero in [RNG]". Type [ for a stat icon or the start of a phrase for suggestions.';
     const hint = h('details', { class: 'ce-hint-i' }, h('summary', { title: hintText, 'aria-label': 'How to write the effect text' }, 'ⓘ'), h('p', { class: 'muted small' }, hintText));
-    const adds = h('div', { class: 'ce-adds' }, addEffect, bonusBtn, hint, checkTextButton(w));
+    const adds = h('div', { class: 'ce-adds' }, addEffect, bonusBtn, hint);
     const tools = h('div', { class: 'ce-effect-tools' }, seg, mods);
     function refreshToggles() {
       const hd = here();
@@ -1935,8 +1978,8 @@ export function createEditor(env) {
     }
     refreshToggles();
     area.setAttribute('aria-label', 'Effect text');
-    // The text first, then the Intent and Claude's answer under it (Marko 2026-11-14: the text is what you see first).
-    return [tools, h('div', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-text-box' }, bar, h('div', { class: 'ce-ac-wrap' }, area, pop))), adds, intentPanel(w), textCheckBlock(w)];
+    // The text first, then the one CLAUDE box (Intent, Check text, the answer) under it (Marko 2026-11-14).
+    return [tools, h('div', { class: 'ce-field' }, h('span', {}, 'TEXT'), h('div', { class: 'ce-text-box' }, bar, h('div', { class: 'ce-ac-wrap' }, area, pop))), adds, claudeBox(w)];
   }
 
   // ---------- izmjene, Undo ----------

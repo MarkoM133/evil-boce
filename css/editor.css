@@ -667,3 +667,29 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
     .ce-cols > .ce-form { position: sticky; top: 0; max-height: calc(100vh / var(--z) - 150px); }
   }
 }
+
+/* The CLAUDE box under the text (2026-11-14, mockup docs/private/mockups/text-block): status and Check text in the
+   head, the Intent as one line, the proposal as a diff on the card text. */
+.ce-claude-panel { border: 1px solid #6b3fc4; border-radius: 3px; background: linear-gradient(#1a1030, var(--surface) 70%); display: grid; }
+.ce-claude-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; user-select: none; }
+.ce-claude-head:focus-visible { outline: 1px solid #c9b3ff; }
+.ce-claude-head .ce-text-ask { margin-left: auto; }
+.ce-claude-title { font: 700 12px var(--text); letter-spacing: .12em; color: #c9b3ff; }
+.ce-claude-head:hover .ce-claude-title, .ce-claude-head:hover .ce-fold-chev { color: var(--bone); }
+.ce-claude-panel.closed .ce-fold-chev { transform: rotate(-90deg); }
+.ce-claude-panel.closed .ce-claude-body { display: none; }
+.ce-claude-body { display: grid; gap: 10px; padding: 0 10px 12px; }
+.ce-fx-state.claude { background: #6b3fc4; color: #f1e6ff; }
+.ce-fx-state.bad { background: var(--red); color: var(--bone); }
+.ce-intent-wrap { display: grid; gap: 6px; }
+.ce-intent-line { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; background: var(--black); border: 1px solid var(--line); padding: 8px 10px; color: var(--bone); font: 500 14px var(--text); clip-path: none; cursor: text; }
+.ce-intent-line:hover { background: var(--black); border-color: #6b3fc4; }
+.ce-intent-tag { font: 700 11px var(--text); letter-spacing: .1em; color: #c9b3ff; flex: none; }
+.ce-intent-say { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ce-intent-hint { flex: none; }
+.ce-intent-edit { display: grid; gap: 6px; }
+.ce-intent-edit[hidden], .ce-intent-line[hidden] { display: none; }
+.ce-intent-done { margin-left: auto; font-size: 14px; padding: 5px 12px; }
+.ce-diff { font: 15px/1.6 ui-monospace, Consolas, monospace; background: var(--black); border: 1px solid var(--line); padding: 10px 12px; white-space: normal; }
+.ce-diff s { color: #ff8a80; background: rgba(227, 18, 11, .15); }
+.ce-diff ins { color: #7fe08a; background: rgba(35, 177, 77, .18); text-decoration: none; }
