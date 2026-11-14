@@ -697,3 +697,6 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
 .ce-diff s { color: #ff8a80; background: rgba(227, 18, 11, .15); }
 .ce-diff ins { color: #7fe08a; background: rgba(35, 177, 77, .18); text-decoration: none; }
 .ce-ft-picked { display: flex; align-items: baseline; gap: 4px; font-size: 15px; padding: 4px 0; }
+/* Room at the end of the side and form columns (Marko 2026-11-15): the last panel or field never sits on the edge. */
+.ce-cols > .ce-form, .ce-cols > .ce-side { padding-bottom: 72px; }
+@media (max-width: 720px) { .ce-cols > .ce-form, .ce-cols > .ce-side { padding-bottom: 24px; } }
