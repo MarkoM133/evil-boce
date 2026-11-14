@@ -1509,8 +1509,17 @@ export function createEditor(env) {
   function renderForm() {
     const w = ed.work;
     // Prijedlozi tagova: popis tagova i sve što karte već nose (posade, heroji, Yonko…; Marko 2026-11-05), bez Core oznaka.
-    const traits = [...new Set([...traitNames(env.state.traits?.traits),
-      ...allCards().filter(c => c.type !== 'Core').flatMap(c => c.traits ?? [])])].filter(Boolean);
+    // Tag suggestions (Marko 2026-11-14): only descriptive tags (a card's first tag says who plays it and is never
+    // offered here, nor any hero's name or alias), the ones this card's set already uses first, with their counts.
+    const heroWords = new Set(allCards().filter(c => c.type === 'Hero').flatMap(c => [c.name, ...(c.aliases ?? [])]).map(norm));
+    const described = c => (PORTRAIT.includes(c.type) ? (c.traits ?? []).slice(1) : (c.traits ?? []));
+    const inSet = {};
+    for (const c of allCards()) if (c.type !== 'Core' && c.id !== w.id && setOf(c.id) === setOf(w.id)) for (const t of described(c)) inSet[t] = (inSet[t] ?? 0) + 1;
+    const traits = [...new Set([...traitNames(env.state.traits?.traits), ...allCards().filter(c => c.type !== 'Core').flatMap(described)])]
+      .filter(t => t && norm(t) !== norm(GENERAL) && !heroWords.has(norm(t)))
+      .sort((a, b) => (inSet[b] ?? 0) - (inSet[a] ?? 0) || a.localeCompare(b));
+    traits.inSet = inSet;
+    traits.setCode = setOf(w.id);
     const set = (k, v) => { snap(true); w[k] = v; changed(); };
     const field = (label, input, extra) => h('label', { class: 'ce-field' }, h('span', {}, label), input, extra ?? null);
     const num = (value, oninput, opts = {}) => h('input', { type: 'number', value: value ?? '', placeholder: '–', oninput, ...opts });
@@ -1562,9 +1571,6 @@ export function createEditor(env) {
       ];
     } else if (PORTRAIT.includes(w.type)) {
       // Colorless karta: prvi tag smije biti bilo koji heroj.
-      const heroes = db().cards.filter(c => c.type === 'Hero' && !c.deleted && (w.color === 'None' || c.color === w.color));
-      const firstOptions = [['General', 'General'], ...heroes.map(x => [x.name, `${x.name} (hero)`]), ...traits.map(t => [t, `${t} (trait)`])];
-      if (w.traits[0] && !firstOptions.some(([v]) => v === w.traits[0])) firstOptions.push([w.traits[0], `${w.traits[0]} (unknown)`]);
       body = [
         h('h2', {}, 'Card'),
         w.token ? tokensRow(w) : field('TYPE', seg(PORTRAIT.map(t => [t, t]), w.type, v => { set('type', v); env.render(); })),
@@ -1594,8 +1600,7 @@ export function createEditor(env) {
         ...text,
         w.token ? null : tokensRow(w),
         h('h2', {}, 'Tags'),
-        field('FIRST TAG (WHO MAY PLAY THE CARD)', h('select', { onchange: e => set('traits', [e.target.value, ...w.traits.slice(1)]) },
-          h('option', { value: '' }, '–'), firstOptions.map(([v, label]) => h('option', { value: v, selected: v === w.traits[0] }, label)))),
+        firstTagField(w),
         chips(w, 1, traits, []),
       ];
     } else if (w.type === 'Combo') {
@@ -1659,6 +1664,52 @@ export function createEditor(env) {
   // Tagovi kao čipovi (× makne), polje "Add trait…" s prijedlozima iz popisa traitova. from: 1 = bez prvog taga.
   // Popis prijedloga je naš (Marko 2026-11-05): Brave na Androidu ne pokazuje datalist. Otvori se na dodir,
   // filtrira dok se tipka, dodir ili Enter doda tag.
+  // Who may play the card (Marko 2026-11-14, mockup docs/private/mockups/tags): Any hero (General), One hero, or a
+  // Trait; a hero or a trait is picked from a list that only holds what the first tag rule allows (heroes of the
+  // card's colour with their aliases, any colour for a colorless card; the traits of the trait list). Typing filters
+  // the list in place; "A & B" names two heroes.
+  function firstTagField(w) {
+    const traitList = env.state.traits?.traits ?? [];
+    const tag = String(w.traits?.[0] ?? '').trim();
+    const k = firstTag({ ...db(), cards: allCards() }, { traits: w.traits }, traitList);
+    const kindNow = k.kind === GENERAL ? 'general' : k.kind === HEROES ? 'hero' : k.kind === TRAIT ? 'trait' : null;
+    if (ed.ftFor !== w.id) { ed.ftFor = w.id; ed.ftKind = kindNow ?? 'hero'; }
+    const pickFirst = v => { snap(true); w.traits = [v, ...(w.traits ?? []).slice(1)]; changed(); env.render(); };
+    const seg = h('div', { class: 'ce-seg ce-ft-seg' }, [['general', 'Any hero'], ['hero', 'One hero'], ['trait', 'Trait']].map(([key, label]) =>
+      h('button', { type: 'button', class: ed.ftKind === key ? 'active' : '', onclick: () => { ed.ftKind = key; if (key === 'general') pickFirst('General'); else env.render(); } }, label)));
+    const out = [h('span', {}, 'WHO MAY PLAY THE CARD'), seg];
+    if (ed.ftKind === 'general') {
+      out.push(h('small', { class: 'muted' }, w.color === 'None' ? 'General: any hero, of any colour.' : `General: any ${w.color} hero.`));
+    } else {
+      const items = ed.ftKind === 'hero'
+        ? allCards().filter(c => c.type === 'Hero' && (w.color === 'None' || c.color === w.color)).sort((a, b) => a.name.localeCompare(b.name))
+          .map(c => ({ value: c.name, words: [c.name, ...(c.aliases ?? [])], sub: (c.aliases ?? []).filter(a => a !== c.name).join(', '), color: c.color }))
+        : traitNames(traitList).map(t => ({ value: t, words: [t], sub: (traitList.find(x => (x?.name ?? x) === t)?.description ?? '') }));
+      const rows = items.map(it => h('li', { class: norm(it.value) === norm(tag) ? 'on' : '', role: 'option', onpointerdown: e => { e.preventDefault(); pickFirst(it.value); } },
+        h('span', {}, it.color ? h('span', { class: 'ce-ft-dot', style: `--sw: var(--c-${it.color})` }) : null, it.value), h('small', { class: 'muted' }, it.sub)));
+      const two = h('li', { role: 'option', hidden: true });
+      const none = h('li', { class: 'muted', hidden: true }, h('small', {}, ed.ftKind === 'hero' ? `No ${w.color === 'None' ? '' : w.color + ' '}hero by that name.` : 'No such trait: new traits are added on the Traits page.'));
+      const list = h('ul', { class: 'ce-ft-list', role: 'listbox' }, rows, two, none);
+      const filter = q => {
+        let shown = 0;
+        items.forEach((it, i) => { const ok = !q || it.words.some(x => norm(x).includes(q)); rows[i].hidden = !ok; if (ok) shown++; });
+        // "Shanks & Roger": two heroes in one first tag.
+        const pair = ed.ftKind === 'hero' && q.includes('&') ? String(search.value).trim() : '';
+        two.hidden = !pair;
+        if (pair) { two.replaceChildren(h('span', {}, `Use "${pair}"`), h('small', { class: 'muted' }, 'two heroes')); two.onpointerdown = e => { e.preventDefault(); pickFirst(pair); }; }
+        none.hidden = shown > 0 || !!pair;
+      };
+      const search = h('input', { placeholder: ed.ftKind === 'hero' ? 'Type a hero or an alias…' : 'Type a trait…', autocomplete: 'off',
+        oninput: e => filter(norm(e.target.value)),
+        onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); const first = rows.find(r => !r.hidden) ?? (two.hidden ? null : two); first?.dispatchEvent(new PointerEvent('pointerdown')); } } });
+      out.push(search, list);
+      const right = ed.ftKind === 'hero' ? kindNow === 'hero' : kindNow === 'trait';
+      out.push(h('small', { class: right ? 'muted' : 'warn' }, right ? `Picked: ${tag}` : tag ? `Now "${tag}": pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list` : `Pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list`));
+    }
+    if (tag && !kindNow) out.push(h('small', { class: 'warn' }, `"${tag}" is not a hero, alias or trait: pick who plays the card.`));
+    return h('div', { class: 'ce-field ce-first-tag' }, ...out);
+  }
+
   function chips(w, from, traits, accent) {
     const addTag = value => {
       const t = String(value ?? add.value).trim();
@@ -1671,17 +1722,29 @@ export function createEditor(env) {
     const pop = h('ul', { class: 'ce-ac ce-tag-ac', hidden: true, role: 'listbox' });
     let items = [];
     let pick = -1;
+    const inSet = traits.inSet ?? {};
     const paint = () => {
-      pop.replaceChildren(...items.map((t, i) => h('li', { class: i === pick ? 'on' : '', role: 'option',
-        onpointerdown: e => { e.preventDefault(); addTag(t); } }, t)));
+      const lis = [];
+      let group = null;
+      items.forEach((t, i) => {
+        const g = inSet[t] ? 'set' : 'other';
+        if (g !== group && Object.keys(inSet).length) {
+          lis.push(h('li', { class: 'ce-ac-head', 'aria-hidden': 'true' }, g === 'set' ? `IN ${traits.setCode ?? 'THIS SET'}` : 'OTHER SETS'));
+          group = g;
+        }
+        lis.push(h('li', { class: i === pick ? 'on' : '', role: 'option', 'data-i': i, onpointerdown: e => { e.preventDefault(); addTag(t); } },
+          h('span', {}, t), inSet[t] ? h('small', { class: 'muted' }, `${inSet[t]} ${inSet[t] === 1 ? 'card' : 'cards'}`) : null));
+      });
+      pop.replaceChildren(...lis);
       pop.hidden = !items.length;
-      pop.children[pick]?.scrollIntoView({ block: 'nearest' });
+      pop.querySelector(`[data-i="${pick}"]`)?.scrollIntoView({ block: 'nearest' });
     };
     const show = () => {
       const q = add.value.trim().toLowerCase();
       const have = new Set(w.traits);
+      // This set's tags first (most used first), then the rest; within each, what starts with the typed text first.
       items = traits.filter(t => !have.has(t) && (!q || t.toLowerCase().includes(q)))
-        .sort((a, b) => (b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q)) || a.localeCompare(b));
+        .sort((a, b) => ((inSet[b] ? 1 : 0) - (inSet[a] ? 1 : 0)) || (b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q)) || (inSet[b] ?? 0) - (inSet[a] ?? 0) || a.localeCompare(b));
       pick = q && items.length ? 0 : -1;
       paint();
     };

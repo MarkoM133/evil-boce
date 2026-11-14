@@ -563,6 +563,15 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
 /* Popis tagova (naš, ne datalist), i ikone Undo / Close: na računalu riječ, na mobitelu znak. */
 .ce-tag-add { position: relative; display: inline-block; }
 .ce-tag-ac { min-width: 220px; font-family: var(--text); }
+.ce-ac li.ce-ac-head { cursor: default; padding: 8px 12px 3px; font: 700 11px var(--text); letter-spacing: .1em; color: var(--muted); background: none; }
+/* Who may play the card (2026-11-14): Any hero / One hero / Trait, then a list that filters as you type. */
+.ce-first-tag { display: grid; gap: 8px; }
+.ce-ft-seg button { font-size: 14px; padding: 8px; }
+.ce-ft-list { margin: 0; padding: 4px 0; list-style: none; max-height: 220px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); }
+.ce-ft-list li { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 7px 12px; cursor: pointer; font: 500 15px var(--text); }
+.ce-ft-list li.on, .ce-ft-list li:hover { background: var(--surface-2); }
+.ce-ft-list li small { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.ce-ft-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--sw); margin-right: 8px; }
 .ce-tag-ac li { font: 500 15px var(--text); }
 .ce-act-ico { display: none; }
 @media (max-width: 720px) {
