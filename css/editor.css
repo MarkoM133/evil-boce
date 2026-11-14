@@ -68,6 +68,9 @@ button.link.accent, .accent { color: var(--straw); }
 /* Each column scrolls on its own (Marko 2026-11-14: scrolling the form moved the whole page): the form stays under
    the bar like the side panels, and a column at its end does not pass the scroll on to the page. */
 .ce-cols > .ce-form { position: sticky; top: 86px; max-height: calc(100vh / var(--z) - 100px); overflow-y: auto; overscroll-behavior: contain; padding-right: 8px; padding-bottom: 24px; }
+/* A column that scrolls cuts what sticks out of it: room on the left for the focus ring of a field at its edge
+   (Marko 2026-11-14: the yellow ring of Add tag was cut on the left). */
+.ce-cols > .ce-form, .ce-cols > .ce-side { padding-left: 4px; }
 /* Uže (laptop, izbornik lijevo): karta i paneli lijevo, forma desno. Tri stupca drže do ~1000 px sadržaja
    (Marko 2026-11-03: na 100 % u Chromeu na laptopu bila su dva). U dva stupca karta više nije ljepljiva:
    klizila je preko panela ispod sebe (fx, Balance). */
@@ -693,3 +696,4 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
 .ce-diff { font: 15px/1.6 ui-monospace, Consolas, monospace; background: var(--black); border: 1px solid var(--line); padding: 10px 12px; white-space: normal; }
 .ce-diff s { color: #ff8a80; background: rgba(227, 18, 11, .15); }
 .ce-diff ins { color: #7fe08a; background: rgba(35, 177, 77, .18); text-decoration: none; }
+.ce-ft-picked { display: flex; align-items: baseline; gap: 4px; font-size: 15px; padding: 4px 0; }

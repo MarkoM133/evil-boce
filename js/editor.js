@@ -1744,10 +1744,18 @@ export function createEditor(env) {
     const tag = String(w.traits?.[0] ?? '').trim();
     const k = firstTag({ ...db(), cards: allCards() }, { traits: w.traits }, traitList);
     const kindNow = k.kind === GENERAL ? 'general' : k.kind === HEROES ? 'hero' : k.kind === TRAIT ? 'trait' : null;
-    if (ed.ftFor !== w.id) { ed.ftFor = w.id; ed.ftKind = kindNow ?? 'hero'; }
-    const pickFirst = v => { snap(true); w.traits = [v, ...(w.traits ?? []).slice(1)]; changed(); env.render(); };
+    // The list shows while a hero or a trait is being picked and closes once one is (Marko 2026-11-14): then only
+    // "Picked: X · change". It opens with One hero / Trait when nothing of that kind is picked, or with change.
+    if (ed.ftFor !== w.id) { ed.ftFor = w.id; ed.ftKind = kindNow ?? 'hero'; ed.ftOpen = false; }
+    const pickFirst = v => { snap(true); w.traits = [v, ...(w.traits ?? []).slice(1)]; ed.ftOpen = false; changed(); env.render(); };
+    const openList = () => { ed.ftOpen = true; ed.ftReveal = true; env.render(); };
     const seg = h('div', { class: 'ce-seg ce-ft-seg' }, [['general', 'Any hero'], ['hero', 'One hero'], ['trait', 'Trait']].map(([key, label]) =>
-      h('button', { type: 'button', class: ed.ftKind === key ? 'active' : '', onclick: () => { ed.ftKind = key; if (key === 'general') pickFirst('General'); else env.render(); } }, label)));
+      h('button', { type: 'button', class: ed.ftKind === key ? 'active' : '', onclick: () => {
+        if (ed.ftKind === key && key !== 'general') return;
+        ed.ftKind = key;
+        if (key === 'general') pickFirst('General');
+        else openList();
+      } }, label)));
     const out = [h('span', {}, 'WHO MAY PLAY THE CARD'), seg];
     if (ed.ftKind === 'general') {
       out.push(h('small', { class: 'muted' }, w.color === 'None' ? 'General: any hero, of any colour.' : `General: any ${w.color} hero.`));
@@ -1773,9 +1781,19 @@ export function createEditor(env) {
       const search = h('input', { placeholder: ed.ftKind === 'hero' ? 'Type a hero or an alias…' : 'Type a trait…', autocomplete: 'off',
         oninput: e => filter(norm(e.target.value)),
         onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); const first = rows.find(r => !r.hidden) ?? (two.hidden ? null : two); first?.dispatchEvent(new PointerEvent('pointerdown')); } } });
-      out.push(search, list);
       const right = ed.ftKind === 'hero' ? kindNow === 'hero' : kindNow === 'trait';
-      out.push(h('small', { class: right ? 'muted' : 'warn' }, right ? `Picked: ${tag}` : tag ? `Now "${tag}": pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list` : `Pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list`));
+      if (right && !ed.ftOpen) {
+        out.push(h('div', { class: 'ce-ft-picked' }, h('span', { class: 'muted' }, 'Picked: '), h('strong', {}, tag), ' · ',
+          h('button', { class: 'link accent', type: 'button', disabled: !canWrite(), onclick: openList }, 'change')));
+      } else {
+        out.push(search, list);
+        out.push(h('small', { class: right ? 'muted' : 'warn' }, right ? `Picked: ${tag}` : tag ? `Now "${tag}": pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list` : `Pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list`));
+        // Just opened: brought into view (the form scrolls on its own) and ready to type in.
+        if (ed.ftReveal) {
+          ed.ftReveal = false;
+          requestAnimationFrame(() => requestAnimationFrame(() => { list.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); search.focus({ preventScroll: true }); }));
+        }
+      }
     }
     if (tag && !kindNow) out.push(h('small', { class: 'warn' }, `"${tag}" is not a hero, alias or trait: pick who plays the card.`));
     return h('div', { class: 'ce-field ce-first-tag' }, ...out);
@@ -1807,7 +1825,10 @@ export function createEditor(env) {
           h('span', {}, t), inSet[t] ? h('small', { class: 'muted' }, `${inSet[t]} ${inSet[t] === 1 ? 'card' : 'cards'}`) : null));
       });
       pop.replaceChildren(...lis);
+      const was = pop.hidden;
       pop.hidden = !items.length;
+      // Opening below a field near the bottom of the form: the form scrolls so the list is seen whole.
+      if (was && !pop.hidden) requestAnimationFrame(() => pop.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
       pop.querySelector(`[data-i="${pick}"]`)?.scrollIntoView({ block: 'nearest' });
     };
     const show = () => {
