@@ -2102,7 +2102,8 @@ export function createEditor(env) {
       const cols = w.bonusColors ?? [];
       const lines = [...(w.text ?? '').matchAll(/^(Cyan|Yellow|Purple|Red|Blue|Green)((?:\s*\/\s*(?:Cyan|Yellow|Purple|Red|Blue|Green))*)\s+Bonus\s*:/gim)]
         .flatMap(m => m[0].replace(/\s+Bonus\s*:$/i, '').split('/').map(x => x.trim().toLowerCase()));
-      if (!cols.length) out.push([false, 'Colorless without bonus colours']);
+      // A colorless card without a colour bonus is a card like any other (Marko 2026-11-15), not a warning.
+      if (!cols.length) out.push([true, 'Colorless, no colour bonus']);
       else if (cols.length > 2) out.push([false, 'More than 2 bonus colours: only as an exception, with the same bonus']);
       else out.push([true, `Colorless, bonus for ${cols.join(' / ')}`]);
       const missing = cols.filter(c => !lines.includes(c.toLowerCase()));

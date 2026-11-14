@@ -737,3 +737,6 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 /* The columns scroll without a visible bar (Marko 2026-11-15): the wheel, the touchpad and touch still scroll them. */
 .ce-cols, .ce-cols > .ce-side, .ce-cols > .ce-form, .ce-cols > .ce-centre { scrollbar-width: none; }
 .ce-cols::-webkit-scrollbar, .ce-cols > .ce-side::-webkit-scrollbar, .ce-cols > .ce-form::-webkit-scrollbar, .ce-cols > .ce-centre::-webkit-scrollbar { display: none; }
+/* Balance's arrow in the middle of its title, like the other blocks' (2026-11-15). */
+.ce-panel.ce-balance > summary h3 { display: flex; align-items: center; }
+.ce-panel.ce-balance > summary h3::before { vertical-align: baseline; line-height: 1; flex: none; }
