@@ -718,3 +718,9 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
 /* "+N more" under Same colour and cost: a link button takes its parent's font, so it says how big it is. */
 button.link.ce-bal-more { font: 600 13px var(--text); color: var(--straw); justify-self: start; text-decoration: none; }
 button.link.ce-bal-more:hover { color: var(--bone); }
+/* Card actions in More (2026-11-15): the one that throws work away is apart and red. */
+.ce-more-sep { height: 1px; background: var(--line); margin: 2px 0; }
+.ce-more-menu > button.ce-more-danger { color: #ff6b5f; }
+.ce-more-menu > button.ce-more-danger:hover:not(:disabled) { background: var(--red-wash, #1c0605); color: #ff8a80; }
+/* More sits under the card at the foot of its column: it opens upwards, over the card, so it is never cut off. */
+.ce-more-menu { top: auto; bottom: calc(100% + 6px); }

@@ -1008,11 +1008,7 @@ export function createEditor(env) {
       ...notes.map(n => h('div', { class: 'ce-note' }, h('p', { class: 'small' }, h('strong', { class: n.who === 'Marko' ? 'red' : '' }, n.who || 'Note'), n.at ? ` · ${when(n.at)}` : ''), h('p', {}, n.text))),
       canWrite() ? input : null,
       ...lines.map(x => h('p', { class: 'small' }, h('strong', {}, x.who || ''), `${x.who ? ' · ' : ''}${when(x.at)} · ${x.what}`)),
-      lines.length || notes.length ? null : h('p', { class: 'small muted' }, 'Nothing yet.'),
-      w.new && !w.token && ed.drafts?.cards?.[w.id] ? h('button', { class: 'link small', type: 'button', disabled: !canPublish() || ed.lock?.state === 'other',
-        title: canPublish() ? 'Give this card another code in its set; the unpublished cards in between move one place' : 'Moving a card needs the shared folder open on a computer',
-        onclick: () => env.guard(moveCard) }, 'Move to another code…') : null,
-      ed.drafts?.cards?.[w.id] ? h('button', { class: 'link small', type: 'button', disabled: !canWrite(), onclick: () => env.guard(discardDraft) }, w.new ? 'Throw away this new card' : 'Discard the unpublished changes') : null);
+      lines.length || notes.length ? null : h('p', { class: 'small muted' }, 'Nothing yet.'));
   }
 
   // Move an unpublished card to another code in its set (Marko 2026-11-14; js/card-move.js). Everything
@@ -1112,8 +1108,9 @@ export function createEditor(env) {
       h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => fileIn.click() }, w.art ? 'Replace art' : 'Add art'),
       w.type === 'Stage' ? null : h('button', { class: 'ghost', type: 'button', onclick: () => { if (!leaveOk()) return; ed.work = null; ed.id = null; env.toast('Remove background works on a plain background colour: save the PNG there, then Replace art.'); env.openTab('tools'); } }, 'Remove background'),
     ];
-    // Rijetki gumbi u izborniku ⋯ (Marko 2026-11-06): Remove background, Duplicate, Download PNG.
-    if (buttons.length) {
+    // Rijetki gumbi u izborniku ⋯ (Marko 2026-11-06): Remove background, Duplicate, Download PNG. Radnje nad kartom
+    // (Marko 2026-11-15): Move to another code i Throw away / Discard su tu, ne u Notes & history; i Core ga dobije.
+    if (!ed.artMode) {
       const rare = buttons.splice(2).filter(Boolean);
       rare.push(h('button', { class: 'ghost', type: 'button', title: 'A new card with the next code in this set', onclick: duplicate }, 'Duplicate'),
         h('button', { class: 'ghost', type: 'button', onclick: downloadPng }, 'Download PNG'),
@@ -1121,6 +1118,12 @@ export function createEditor(env) {
         // ostane stara kad se promijeni samo renderer (Onigashima: "most Power" kao ikona).
         h('button', { class: 'ghost', type: 'button', title: 'Draw the published picture again with the current card look (no draft needed)',
           disabled: !canPublish() || w.new || !!ed.drafts?.cards?.[w.id], onclick: () => env.guard(redrawPicture) }, 'Redraw picture'));
+      if (w.new && !w.token && ed.drafts?.cards?.[w.id]) rare.push(h('button', { class: 'ghost', type: 'button', disabled: !canPublish() || ed.lock?.state === 'other',
+        title: canPublish() ? 'Give this card another code in its set; the unpublished cards in between move one place' : 'Moving a card needs the shared folder open on a computer',
+        onclick: () => env.guard(moveCard) }, 'Move to another code…'));
+      if (ed.drafts?.cards?.[w.id]) rare.push(h('div', { class: 'ce-more-sep', 'aria-hidden': 'true' }),
+        h('button', { class: 'ghost ce-more-danger', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(discardDraft) },
+          w.new ? 'Throw away this new card' : 'Discard the unpublished changes'));
       const menu = h('div', { class: 'ce-more-menu', hidden: true }, rare);
       const close = () => { menu.hidden = true; };
       for (const b of rare) b.addEventListener('click', close);
