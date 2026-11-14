@@ -724,3 +724,16 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-more-menu > button.ce-more-danger:hover:not(:disabled) { background: var(--red-wash, #1c0605); color: #ff8a80; }
 /* More sits under the card at the foot of its column: it opens upwards, over the card, so it is never cut off. */
 .ce-more-menu { top: auto; bottom: calc(100% + 6px); }
+/* Side blocks fold (2026-11-15): an arrow at the start of the head; a folded block keeps only its head. */
+.ce-panel-fold { background: none; border: 0; clip-path: none; padding: 0 2px; width: 20px; color: var(--muted); font: 14px var(--text); cursor: pointer; transition: transform .15s; flex: none; }
+.ce-panel-fold:hover { background: none; color: var(--bone); }
+.ce-foldable.folded .ce-panel-fold { transform: rotate(-90deg); }
+.ce-foldable.folded > :not(:first-child) { display: none; }
+.ce-foldable > .ce-panel-head { justify-content: flex-start; }
+.ce-foldable > .ce-panel-head > :last-child { margin-left: auto; }
+.ce-foldable > .ce-panel-head > h3:last-child { margin-left: 0; }
+.ce-panel.ce-balance > summary h3::before { content: "▾"; display: inline-block; width: 22px; font: 14px var(--text); color: var(--muted); font-style: normal; vertical-align: middle; transition: transform .15s; }
+.ce-panel.ce-balance:not([open]) > summary h3::before { transform: rotate(-90deg); }
+/* The columns scroll without a visible bar (Marko 2026-11-15): the wheel, the touchpad and touch still scroll them. */
+.ce-cols, .ce-cols > .ce-side, .ce-cols > .ce-form, .ce-cols > .ce-centre { scrollbar-width: none; }
+.ce-cols::-webkit-scrollbar, .ce-cols > .ce-side::-webkit-scrollbar, .ce-cols > .ce-form::-webkit-scrollbar, .ce-cols > .ce-centre::-webkit-scrollbar { display: none; }

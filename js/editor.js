@@ -388,7 +388,34 @@ export function createEditor(env) {
     if (w.type !== 'Core') parts.push(fxPanel(w));
     if (PORTRAIT.includes(w.type)) { ed.balBox = h('div', {}); parts.push(ed.balBox); } else ed.balBox = null;
     parts.push(notesPanel(w));
+    // Every block folds (Marko 2026-11-15): an arrow at the start of its head, remembered per block; Balance folds
+    // by its own title (a details element).
+    foldable(parts[0], 'checks');
+    if (w.type !== 'Core') foldable(parts[1], 'fx');
+    foldable(parts[parts.length - 1], 'notes');
     return h('aside', { class: 'ce-side' }, ...parts);
+  }
+
+  const FOLD_KEY = 'evil-boce-fold-';
+  function foldable(section, key) {
+    const head = section?.firstElementChild;
+    if (!head) return section;
+    let folded = false;
+    try { folded = localStorage.getItem(FOLD_KEY + key) === '1'; } catch {}
+    section.classList.add('ce-foldable');
+    section.classList.toggle('folded', folded);
+    const chev = h('button', { class: 'ce-panel-fold', type: 'button', 'aria-label': 'Fold', 'aria-expanded': String(!folded), onclick: e => {
+      e.stopPropagation();
+      const now = !section.classList.contains('folded');
+      section.classList.toggle('folded', now);
+      chev.setAttribute('aria-expanded', String(!now));
+      try { localStorage.setItem(FOLD_KEY + key, now ? '1' : '0'); } catch {}
+    } }, '▾');
+    if (head.tagName === 'H3') {
+      const row = h('div', { class: 'ce-panel-head' }, chev, head.cloneNode(true));
+      head.replaceWith(row);
+    } else head.prepend(chev);
+    return section;
   }
 
   // ---------- token karte (GDD 10, Marko 2026-11-14) ----------
