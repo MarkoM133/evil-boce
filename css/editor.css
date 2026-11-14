@@ -619,6 +619,10 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
 
 /* Intent (2026-11-14): what the card should do, for Claude; above the text, folds to one line. */
 .ce-intent { border: 1px solid #6b3fc4; border-radius: 3px; background: linear-gradient(#1a1030, var(--surface) 80%); padding: 8px 10px; display: grid; gap: 6px; }
+/* No hover band on the fold headers (Marko 2026-11-14): only the arrow and the title light up. */
+.ce-intent-head:hover, .ce-ct-head:hover, .ce-intent-head:focus, .ce-ct-head:focus { background: none; }
+.ce-intent-head:hover .ce-fold-chev, .ce-ct-head:hover .ce-fold-chev, .ce-intent-head:hover .ce-intent-title { color: var(--bone); }
+.ce-intent-foot { justify-content: space-between; }
 .ce-intent-head, .ce-ct-head { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; padding: 2px 0; color: inherit; cursor: pointer; text-align: left; font: inherit; clip-path: none; }
 .ce-intent-title { font: 700 12px var(--text); letter-spacing: .1em; color: #c9b3ff; margin-right: auto; }
 .ce-intent-pill { font: 700 11px var(--text); letter-spacing: .06em; padding: 3px 8px; border-radius: 999px; background: #6b3fc4; color: #f1e6ff; }

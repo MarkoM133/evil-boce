@@ -507,11 +507,11 @@ export function createEditor(env) {
     if (res) { ed.textCheck[id] = { waiting: false, at: res.askedAt, res }; if (ed.id === id) env.render(); }
   }
 
-  function checkTextButton(w) {
+  function checkTextButton(w, label = 'Check text') {
     const st = ed.textCheck[w.id] ?? {};
     return h('button', { class: 'ce-add-effect ce-text-ask', type: 'button', disabled: !canWrite() || st.waiting || (!claudeText(w).trim() && !intentNow(w)),
       title: !canWrite() ? 'Open the shared folder to ask Claude' : 'Claude reads the text and the Intent against the text guide on Marko\'s computer, asks what is unclear and proposes a rewrite',
-      onmousedown: e => e.preventDefault(), onclick: () => env.guard(() => checkText(w)) }, st.waiting ? '✦ Checking…' : '✦ Check text');
+      onmousedown: e => e.preventDefault(), onclick: () => env.guard(() => checkText(w)) }, st.waiting ? '✦ Checking…' : `✦ ${label}`);
   }
 
   // ---------- Intent (Marko 2026-11-14) ----------
@@ -586,7 +586,10 @@ export function createEditor(env) {
           h('div', { class: 'ce-intent-row' },
             h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(async () => { await intentHolds(w.id, claudeText(w)); env.render(); }) }, 'Still holds'),
             h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => env.guard(() => checkText(w)) }, '✦ Check text'))) : null,
-        e ? h('small', { class: 'muted' }, `${e.who || '–'} · ${when(e.at)}`) : null) : null);
+        // Sending it (Marko 2026-11-14: how does it get to Claude?): Check text right here; Ask Claude by the fx sends it too.
+        h('div', { class: 'ce-intent-row ce-intent-foot' },
+          e ? h('small', { class: 'muted' }, `${e.who || '–'} · ${when(e.at)}`) : h('small', { class: 'muted' }, 'Saved when you click outside the box.'),
+          checkTextButton(w, 'Check text with this'))) : null);
   }
 
   // Odgovor ispod teksta: prijepis s Use this, što se mijenja i zašto, i pitanja za autora (ona se ne prepisuju).
