@@ -65,6 +65,9 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-cols > .ce-side { grid-area: side; }
 .ce-cols > .ce-centre { grid-area: centre; }
 .ce-cols > .ce-form { grid-area: form; }
+/* Each column scrolls on its own (Marko 2026-11-14: scrolling the form moved the whole page): the form stays under
+   the bar like the side panels, and a column at its end does not pass the scroll on to the page. */
+.ce-cols > .ce-form { position: sticky; top: 86px; max-height: calc(100vh / var(--z) - 100px); overflow-y: auto; overscroll-behavior: contain; padding-right: 8px; padding-bottom: 24px; }
 /* Uže (laptop, izbornik lijevo): karta i paneli lijevo, forma desno. Tri stupca drže do ~1000 px sadržaja
    (Marko 2026-11-03: na 100 % u Chromeu na laptopu bila su dva). U dva stupca karta više nije ljepljiva:
    klizila je preko panela ispod sebe (fx, Balance). */
@@ -76,8 +79,9 @@ button.link.accent, .accent { color: var(--straw); }
 @container (max-width: 720px) {
   .ce-cols, .ce-cols.wide { grid-template-columns: minmax(0, 1fr); grid-template-areas: "centre" "form" "side"; }
   .ce-cols > .ce-centre { position: static; }
+  .ce-cols > .ce-form { position: static; max-height: none; overflow-y: visible; }
 }
-.ce-side { display: grid; gap: 18px; position: sticky; top: 86px; max-height: calc(100vh / var(--z) - 100px); overflow-y: auto; }
+.ce-side { display: grid; gap: 18px; position: sticky; top: 86px; max-height: calc(100vh / var(--z) - 100px); overflow-y: auto; overscroll-behavior: contain; }
 .ce-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 15px; }
 .ce-checks li { display: grid; grid-template-columns: 20px 1fr; gap: 6px; }
 .ce-checks .mark { font-weight: 800; }
@@ -488,7 +492,7 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
      block, so the bar sticks to the screen; the one-column layout comes from here instead of the container query. */
   .ce-full { container-type: normal; }
   .ce-cols, .ce-cols.wide { grid-template-columns: minmax(0, 1fr); grid-template-areas: "centre" "form" "side"; }
-  .ce-cols > .ce-side, .ce-cols > .ce-centre { position: static; max-height: none; }
+  .ce-cols > .ce-side, .ce-cols > .ce-centre, .ce-cols > .ce-form { position: static; max-height: none; overflow-y: visible; }
   .ce-top-actions { flex-wrap: nowrap; gap: 6px; }
   .ce-top-actions > button { font-size: 14px; padding: 9px 10px; flex: none; }
   .ce-review > button { min-width: 34px; padding: 9px 8px; }
