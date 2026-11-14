@@ -774,7 +774,7 @@ export function createEditor(env) {
       ed.drafts?.cards?.[w.id] ? h('button', { class: 'link small', type: 'button', disabled: !canWrite(), onclick: () => env.guard(discardDraft) }, w.new ? 'Throw away this new card' : 'Discard the unpublished changes') : null);
   }
 
-  // Move an unpublished card to another code in its set (Marko and Tarik 2026-11-14; js/card-move.js). Everything
+  // Move an unpublished card to another code in its set (Marko 2026-11-14; js/card-move.js). Everything
   // kept under the code follows it: the draft, notes, history and Claude's answers; Combo drafts follow by ingredient.
   // Art files keep their names (the draft points at them). Computer with the folder only: Claude's answers are files.
   async function moveCard() {
@@ -2297,7 +2297,7 @@ export function createEditor(env) {
           h('div', { class: 'ce-pub-body' }, h('h3', {}, card.name || id, h('small', {}, ` ${id}`)),
             h('p', { class: 'warn' }, `${l.who} is editing it now. It can be published after they save and close it.`)));
       }
-      // Work in progress (Marko and Tarik 2026-11-14): the whole set waits until the switch is off.
+      // Work in progress (Marko 2026-11-14): the whole set waits until the switch is off.
       if (held(id)) {
         return h('div', { class: 'ce-pub-row locked' },
           h('span', { class: 'ce-pub-check', title: 'Work in progress' }, 'WIP'),

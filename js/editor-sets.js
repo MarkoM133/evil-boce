@@ -68,7 +68,7 @@ export function createSetsView(ctx) {
     try { fresh = text?.trim() ? JSON.parse(text) : { sets: [] }; } catch { throw new Error('sets.json is being written right now. Try again in a moment.'); }
     fresh.sets ??= [];
     if (one) {
-      // wip: Work in progress (Marko and Tarik 2026-11-14), the set's cards stay out of Publish.
+      // wip: Work in progress (Marko 2026-11-14), the set's cards stay out of Publish.
       const row = { code: one.code, name: one.name, number: one.number, packSize: one.packSize, ...(one.wip ? { wip: true } : {}) };
       const i = fresh.sets.findIndex(x => x.code === one.code);
       if (i >= 0) fresh.sets[i] = row; else fresh.sets.push(row);

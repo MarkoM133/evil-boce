@@ -1,4 +1,4 @@
-// Moving an unpublished card to another code in its set (Marko and Tarik 2026-11-14): heroes first in a set
+// Moving an unpublished card to another code in its set (Marko 2026-11-14): heroes first in a set
 // whose cards are made in any order. A code is free until Publish fixes it: published cards never move, and the
 // unpublished cards between the old and the new place shift one place along (an empty code stops the shift).
 // Pure: the Card editor applies the plan to drafts, notes, history and Claude's answers.
