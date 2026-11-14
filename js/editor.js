@@ -2170,7 +2170,7 @@ export function createEditor(env) {
       return [head, tiles];
     }).flat();
     const simList = h('ul', { class: 'small ce-similar' }, similar.slice(0, 3).map(c => h('li', {}, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, c.name), ` · ${c.type}`)));
-    const simMore = similar.length > 3 ? h('button', { class: 'link small accent', type: 'button', onclick: ev => {
+    const simMore = similar.length > 3 ? h('button', { class: 'link ce-bal-more', type: 'button', onclick: ev => {
       simList.replaceChildren(...similar.map(c => h('li', {}, h('button', { class: 'link', type: 'button', onclick: () => go(c.id) }, c.name), ` · ${c.type}`)));
       ev.currentTarget.remove();
     } }, `+${similar.length - 3} more`) : null;

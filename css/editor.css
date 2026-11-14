@@ -715,3 +715,6 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
 .ce-bal-tile b { font-variant-numeric: tabular-nums; }
 .ce-bal-tile b.low { color: var(--straw); }
 .ce-bal-tile .ce-ft-dot { margin-right: 0; }
+/* "+N more" under Same colour and cost: a link button takes its parent's font, so it says how big it is. */
+button.link.ce-bal-more { font: 600 13px var(--text); color: var(--straw); justify-self: start; text-decoration: none; }
+button.link.ce-bal-more:hover { color: var(--bone); }
