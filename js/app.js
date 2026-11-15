@@ -19,7 +19,8 @@ const state = {
   db: null,
   logo: null,
   analysis: null,
-  tab: 'browse',
+  // Card Studio otvara Card editor (Marko 2026-11-15).
+  tab: 'editor',
   // Brzi filteri: unutar skupine "ili", između skupina "i".
   filter: { q: '', types: [], colors: [], sets: [], specials: [], sort: 'id', since: 0 },
   changelog: null,
@@ -398,7 +399,7 @@ async function pickFolder() {
   const handle = await fs.pickRoot();
   state.savedRoot = handle;
   await useStore(folderStore(handle));
-  state.tab = 'browse';
+  state.tab = 'editor';
   if (!(await fs.getDir(handle, 'export')) && !(await fs.getDir(handle, 'data'))) {
     toast(`The folder "${handle.name}" has neither export/ nor data/. Is it the "Evil Boce" folder?`, 'warn');
   }
@@ -864,7 +865,7 @@ function navSub(key) {
   if (!items) return null;
   return h('div', { class: 'tabs-sub' }, items.map(([k, label]) => {
     const id = state.editId ?? 'sets';
-    const active = key === 'editor' ? (EDITOR_GROUP[id] ?? id) === k : state.tab === k;
+    const active = key === 'editor' ? state.tab === 'editor' && (EDITOR_GROUP[id] ?? id) === k : state.tab === k;
     const n = key === 'editor' && k === 'publish' ? cardEditor.waiting() : 0;
     // Publish: nacrti koji čekaju Objavu; Words: riječi koje čekaju igru (fx wishlist), obrubljeno (Marko 2026-11-15).
     const wish = key === 'editor' && k === 'traits' ? cardEditor.wishes() : 0;
@@ -886,7 +887,8 @@ function renderNav() {
       replaceNext = false;
       render();
     } }, label),
-    items && cur === key ? navSub(key) : null,
+    // Card editor keeps its pages open in the menu wherever you are (Marko 2026-11-15); the others only while open.
+    items && (cur === key || key === 'editor') ? navSub(key) : null,
   ]).flat());
 }
 
@@ -2223,7 +2225,7 @@ if (state.savedRoot && (await fs.permission(state.savedRoot).catch(() => 'denied
   await applyHash().catch(e => toast(e.message || String(e), 'error'));
 } else if (info) {
   await useStore(serverStore(info));
-  state.tab = 'decks';
+  state.tab = 'editor';
   await applyHash().catch(e => toast(e.message || String(e), 'error'));
 }
 render();
