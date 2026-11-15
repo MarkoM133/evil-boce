@@ -79,3 +79,40 @@ func test_it_goes_only_when_its_last_turn_ends() -> void:
 	assert_eq(str(last.get("type", "")), "evolution_removed")
 	assert_eq(str(last.get("why", "")), "expired")
 	assert_true(JsonUtil.as_bool(last.get("temporary", false)))
+
+
+func test_the_damage_is_remembered_when_it_goes() -> void:
+	var s: GameState = _state()
+	var h: HeroState = s.hero("p0:TA-001")
+	# Evolved (max 12) with 2 damage, in a form of max 8: 6 HP there, 10 again after.
+	h.evolutions = PackedStringArray([EVO])
+	h.temp_evo = TEMP
+	h.temp_until = s.turn
+	h.hp = 6
+	engine._drop_temp_evolution(s, h, "expired")
+	assert_eq(h.hp, 10, "12 max with the same 2 damage")
+	# A form with more HP than the hero under it: the damage it took there may be more than that hero has.
+	h.evolutions = PackedStringArray()
+	h.temp_evo = "TA-062"
+	h.hp = 1
+	engine._drop_temp_evolution(s, h, "expired")
+	assert_eq(h.hp, 1, "11 damage on a hero of 10: the end of the form never kills")
+
+
+func test_equipment_the_form_does_not_fit_stays_without_working() -> void:
+	var s: GameState = _state()
+	var h: HeroState = s.hero("p0:TA-001")
+	h.evolutions = PackedStringArray([EVO])
+	# Gear Armor is for a hero with Gear Second (the evolution has it): +1000 PWR. A General piece: +1000 PWR too.
+	h.equipment = PackedStringArray(["TF-003", "TA-020"])
+	assert_eq(engine.stat(s, h, "pwr"), 3000 + 1000 + 1000)
+	h.temp_evo = TEMP
+	h.temp_until = s.turn + 1
+	engine._drop_unfit_equipment(s, h)
+	assert_eq(h.equipment, PackedStringArray(["TF-003", "TA-020"]), "nothing falls while the form lasts")
+	assert_false(engine.equipment_works(h, "TF-003"), "the form (Dragon) has no Gear Second")
+	assert_true(engine.equipment_works(h, "TA-020"), "a General piece works for any form")
+	assert_eq(engine.stat(s, h, "pwr"), 5000 + 1000, "the form's power and the General piece only")
+	engine._drop_temp_evolution(s, h, "expired")
+	assert_eq(h.equipment, PackedStringArray(["TF-003", "TA-020"]), "back on the evolution, it fits again")
+	assert_eq(engine.stat(s, h, "pwr"), 3000 + 1000 + 1000)

@@ -1,5 +1,5 @@
 {
-  "name": "Temporary evolution (GDD 10, 2026-11-15): on an evolved hero it lasts its turns and goes at the end of the last one, the level under it is back; Remove Evolution takes the temporary one first",
+  "name": "Temporary evolution (GDD 10, 2026-11-15): on an evolved hero it lasts its turns and goes at the end of the last one, the level under it is back with the damage it had; Remove Evolution takes the temporary one first",
   "steps": [
     {
       "setup": {
@@ -133,7 +133,7 @@
         "heroes.p0:TA-001.evolutions": [
           "TA-012"
         ],
-        "heroes.p0:TA-001.hp": 6,
+        "heroes.p0:TA-001.hp": 10,
         "players.p0.graveyard": [
           "TA-061"
         ]
@@ -176,7 +176,7 @@
       "expect": {
         "heroes.p0:TA-001.temp_evo": "TA-062",
         "heroes.p0:TA-001.temp_until": 3,
-        "heroes.p0:TA-001.hp": 6
+        "heroes.p0:TA-001.hp": 10
       }
     },
     {
@@ -198,7 +198,7 @@
         "heroes.p0:TA-001.evolutions": [
           "TA-012"
         ],
-        "heroes.p0:TA-001.hp": 6
+        "heroes.p0:TA-001.hp": 10
       }
     },
     {
@@ -217,7 +217,7 @@
     {
       "expect": {
         "heroes.p0:TA-001.evolutions": [],
-        "heroes.p0:TA-001.hp": 6
+        "heroes.p0:TA-001.hp": 10
       }
     }
   ]

@@ -1817,15 +1817,17 @@ func _expire_temp_evolutions(s: GameState) -> void:
 
 
 ## Takes a hero's temporary evolution off (card to the graveyard): the hero is back on the level under it.
-## Damage stays; HP only drops to the new max. `why`: expired | replaced | evolved | removed.
+## The damage is remembered (Marko 2026-11-15): 10/12 that was 6/8 in the form is 10/12 again; the change
+## itself never kills (1 HP at least). `why`: expired | replaced | evolved | removed.
 func _drop_temp_evolution(s: GameState, h: HeroState, why: String) -> void:
 	if h.temp_evo.is_empty():
 		return
 	var cid: String = h.temp_evo
+	var damage: int = max_hp(s, h) - h.hp
 	h.temp_evo = ""
 	h.temp_until = 0
 	s.player(h.owner).graveyard.append(cid)
-	clamp_hp(s, h)
+	h.hp = clampi(max_hp(s, h) - damage, 1, max_hp(s, h))
 	s.event("evolution_removed", {"card": cid, "hero": h.id, "temporary": true, "why": why})
 	_drop_unfit_equipment(s, h)
 
@@ -2252,7 +2254,7 @@ func stat_flat(s: GameState, h: HeroState, key: String) -> int:
 			base = card.kb
 	for eid: String in h.equipment:
 		var e: CardDef = catalog.get_card(eid)
-		if e != null:
+		if e != null and equipment_works(h, eid):
 			base += e.bonus.get(key, 0)
 	# A core counts while it sits in one of the hero's slots (GDD 7.4): a Debuff hurts whoever
 	# picked it up.
@@ -2421,7 +2423,8 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 			if card.temp_turns > 0:
 				target.temp_evo = cid
 				target.temp_until = s.turn + card.temp_turns - 1
-				target.hp = maxi(max_hp(s, target) - damage, 0)
+				# The form itself never kills: 1 HP at least.
+				target.hp = maxi(max_hp(s, target) - damage, 1)
 				s.event("evolved", {"card": cid, "hero": target.id, "level": target.evolutions.size(), "temporary": true, "until": target.temp_until})
 			else:
 				target.evolutions.append(cid)
@@ -2786,9 +2789,25 @@ func remove_evolution(s: GameState, h: HeroState) -> void:
 	_drop_unfit_equipment(s, h)
 
 
+## Whether a piece of equipment on the hero does anything now. In a temporary evolution the hero has that
+## form's traits; equipment whose first tag the form does not satisfy stays on the hero but does not work
+## until the form is gone (Marko 2026-11-15): no stat bonus, no effect of its own. It still is equipped
+## (the limit, and effects that count equipped cards).
+func equipment_works(h: HeroState, cid: String) -> bool:
+	if h.temp_evo.is_empty():
+		return true
+	var c: CardDef = catalog.get_card(cid)
+	if c == null:
+		return false
+	return JsonUtil.as_bool(FirstTag.play_verdict(catalog, c, catalog.get_card(h.card_id), stat_card(h))["ok"])
+
+
 ## Equipment whose first tag the hero no longer satisfies (an evolution came or went) falls
-## into the graveyard (GDD 10, 2026-10-26).
+## into the graveyard (GDD 10, 2026-10-26). Not while a temporary evolution lasts: then it only stops
+## working (equipment_works) and is looked at again when the form is gone.
 func _drop_unfit_equipment(s: GameState, h: HeroState) -> void:
+	if not h.temp_evo.is_empty():
+		return
 	for cid: String in h.equipment.duplicate():
 		var c: CardDef = catalog.get_card(cid)
 		if c == null:

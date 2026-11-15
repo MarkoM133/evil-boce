@@ -39,7 +39,8 @@ func sources(s: GameState) -> Array[Dictionary]:
 				out.append({"card": card, "hero": h, "player": sl, "stage": null})
 			for eid: String in h.equipment:
 				var e: CardDef = engine.catalog.get_card(eid)
-				if e != null:
+				# Equipment a temporary form does not fit stays on, without its effect.
+				if e != null and engine.equipment_works(h, eid):
 					out.append({"card": e, "hero": h, "player": sl, "stage": null})
 		for aid: String in s.player(sl).assists:
 			var a: CardDef = engine.catalog.get_card(aid)

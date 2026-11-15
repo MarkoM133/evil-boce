@@ -347,8 +347,12 @@ g. (2026-10-26) A grid knockback stopped by a wall or a hero just stops (no dama
    replaces the old; an evolution that stays takes the temporary one off and goes on the level under it
    (`evolutions.size() + 1`, counted without it). `remove_evolution` (the REMOVE_EVO verb) takes the temporary
    one first. `_end_phase` drops those whose turn is up (`_expire_temp_evolutions`, before the tokens go); a KO
-   sends it to the graveyard. Coming and going is as for any evolution: damage is kept when it comes (new max −
-   damage), HP only drops to the new max when it goes, unfit equipment falls. Events: `evolved` with
+   sends it to the graveyard. HP (Marko 2026-11-15): the damage is remembered both ways (new max − damage when it
+   comes and when it goes, so 10/12 → 6/8 → 10/12), and the change itself never kills (1 HP at least).
+   Equipment (Marko 2026-11-15): while the form lasts nothing falls; equipment whose first tag the form does
+   not satisfy stays on but does not work (`equipment_works`: no stat bonus, not a source of effects), and
+   `_drop_unfit_equipment` looks again when the form is gone. Assumption: such equipment still counts as
+   equipped (the limit of 3, TRAIT_EQUIPPED and the like). Events: `evolved` with
    `temporary: true, until`; `evolution_removed` with `temporary: true, why` (expired, replaced, evolved, removed).
    Scenarios 83 and 84, tests/test_temp_evolution.gd.
 10. (confirmed 2026-11-11) `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
