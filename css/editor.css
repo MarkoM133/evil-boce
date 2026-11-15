@@ -116,7 +116,10 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-views { display: inline-flex; background: var(--surface); padding: 4px; gap: 2px; }
 .ce-views button { clip-path: none; background: none; font-size: 15px; padding: 8px 12px; }
 .ce-views button.active { background: var(--surface-2); }
-.ce-stage { width: 100%; max-width: 380px; display: grid; justify-items: center; }
+.ce-stage { width: 100%; max-width: 380px; display: grid; justify-items: center; position: relative; }
+.ce-centre.ce-drop-over { outline: 2px dashed var(--red); outline-offset: -2px; background: var(--red-wash); }
+.ce-drop-over .ce-stage > * { opacity: .45; }
+.ce-drop-over .ce-stage::after { content: "Drop to replace art"; position: absolute; inset: 0; display: grid; place-items: center; font: 700 italic 26px var(--display); color: var(--bone); pointer-events: none; }
 .ce-stage.wide { max-width: 560px; }
 .ce-stage.art-mode { max-width: 440px; }
 .ce-stage.wide.art-mode { max-width: 640px; }

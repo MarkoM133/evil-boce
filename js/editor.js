@@ -1168,7 +1168,7 @@ export function createEditor(env) {
     const fileIn = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', hidden: true, onchange: e => env.guard(() => uploadArt(e.target.files[0])) });
     const buttons = w.type === 'Core' ? [] : ed.artMode ? [] : [
       h('button', { class: 'ghost', type: 'button', disabled: !ed.artFor && !w.art, onclick: startArt }, 'Edit art'),
-      h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), onclick: () => fileIn.click() }, w.art ? 'Replace art' : 'Add art'),
+      h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), title: 'Choose a picture, or drag one from a folder onto the card', onclick: () => fileIn.click() }, w.art ? 'Replace art' : 'Add art'),
       w.type === 'Stage' ? null : h('button', { class: 'ghost', type: 'button', onclick: () => { if (!leaveOk()) return; ed.work = null; ed.id = null; env.toast('Remove background works on a plain background colour: save the PNG there, then Replace art.'); env.openTab('tools'); } }, 'Remove background'),
     ];
     // Rijetki gumbi u izborniku ⋯ (Marko 2026-11-06): Remove background, Duplicate, Download PNG. Radnje nad kartom
@@ -1193,7 +1193,7 @@ export function createEditor(env) {
       buttons.push(h('div', { class: 'ce-more' }, h('button', { class: 'ghost', type: 'button', title: 'More: Remove background, Duplicate, Download PNG, Redraw picture', 'aria-haspopup': 'menu',
         onclick: e => { e.stopPropagation(); menu.hidden = !menu.hidden; if (!menu.hidden) setTimeout(() => document.addEventListener('click', close, { once: true })); } }, 'More ▾'), menu));
     }
-    return h('section', { class: 'ce-centre' },
+    return artDrop(h('section', { class: 'ce-centre' },
       views.length > 1 && !ed.artMode ? h('div', { class: 'ce-views' }, views.map(([k, label]) => h('button', { type: 'button', class: ed.view === k ? 'active' : '', onclick: e => {
         ed.view = k;
         for (const b of e.currentTarget.parentNode.children) b.classList.toggle('active', b === e.currentTarget);
@@ -1207,8 +1207,31 @@ export function createEditor(env) {
       ed.artMode ? h('p', { class: 'muted small ce-hint' }, HEROISH.includes(w.type) ? 'Drag the art to move it, scroll to zoom. The frame covers the right edge of the art. Esc cancels.' : 'Drag the art to move it, scroll to zoom. The dashed line is the art window. Esc cancels.') : null,
       w.type === 'Core' ? h('p', { class: 'muted small ce-hint' }, 'Image only, no frame') : null,
       buttons.length ? h('div', { class: 'ce-art-buttons' }, buttons, fileIn) : null,
-      ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.'));
+      ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.')));
   }
+
+  // Slika povučena iz foldera na kartu (stupac sa slikom) radi isto što i Replace art (Marko 2026-11-15).
+  const draggingFile = e => [...(e.dataTransfer?.types ?? [])].includes('Files');
+  function artDrop(el) {
+    if (!canWrite() || ed.artMode) return el;
+    let depth = 0;
+    const off = () => { depth = 0; el.classList.remove('ce-drop-over'); };
+    el.addEventListener('dragenter', e => { if (!draggingFile(e)) return; e.preventDefault(); depth++; el.classList.add('ce-drop-over'); });
+    el.addEventListener('dragover', e => { if (!draggingFile(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    el.addEventListener('dragleave', () => { if (--depth <= 0) off(); });
+    el.addEventListener('drop', e => {
+      if (!draggingFile(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      off();
+      const file = [...e.dataTransfer.files].find(f => /^image\/(png|jpeg|webp)$/.test(f.type));
+      env.guard(() => { if (!file) throw new Error('Drop a PNG, JPEG or WebP picture.'); return uploadArt(file); });
+    });
+    return el;
+  }
+  // Slika ispuštena drugdje na stranici karte ne smije otvoriti sliku u pregledniku (i izgubiti nespremljeno).
+  window.addEventListener('dragover', e => { if (ed.id && draggingFile(e)) e.preventDefault(); });
+  window.addEventListener('drop', e => { if (ed.id && draggingFile(e)) e.preventDefault(); });
 
   // Više izmjena u istom trenutku daje jedno crtanje.
   function queueDraw() {
