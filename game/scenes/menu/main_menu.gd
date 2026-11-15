@@ -37,7 +37,7 @@ func _ready() -> void:
 	theme = UiTheme.get_theme()
 	GameSettings.apply(get_tree())
 	db = CardDb.load_from(GameSettings.data_path())
-	Sound.reload()
+	Sound.rescan()
 	Sound.music(get_tree(), "menu")
 	ReplayStore.drop_stale(str(ProjectSettings.get_setting("application/config/version", "")))
 	var logo: Texture2D = db.logo()

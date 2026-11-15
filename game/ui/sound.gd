@@ -11,6 +11,8 @@ extends Node
 const EXTS: Array[String] = ["ogg", "wav", "mp3"]
 const VOICES: int = 14
 const FADE: float = 0.8
+## The softest a sound gets for a weak hit (a share of full volume; Marko 2026-11-15: gentle bumps were not heard).
+const SOFTEST: float = 0.35
 ## What a sound does by default; sounds.json overrides it per key.
 const DEFAULTS: Dictionary = {
 	"bump_ball": {"cooldown": 0.04, "pitch": 0.08},
@@ -64,7 +66,7 @@ static func instance(tree: SceneTree) -> Sound:
 	return _node
 
 
-## Plays `key` (strength 0..1 makes it softer). Nothing happens without a file for it.
+## Plays `key` (strength 0..1 makes it softer, down to SOFTEST of full). Nothing happens without a file for it.
 static func play(tree: SceneTree, key: String, strength: float = 1.0) -> void:
 	if tree == null:
 		return
@@ -102,8 +104,8 @@ static func log_keys(entries: Array[Dictionary], me: int) -> Array[String]:
 	return keys.slice(0, LOG_BURST)
 
 
-## Reads the folder again (new files dropped in while the game runs).
-static func reload() -> void:
+## Reads the folder again (new files dropped in while the game runs). Not "reload": that is the script's own.
+static func rescan() -> void:
 	if _node != null and is_instance_valid(_node):
 		_node._scan()
 
@@ -193,7 +195,7 @@ func _play(key: String, strength: float) -> void:
 	var p: AudioStreamPlayer = _players[_next]
 	_next = (_next + 1) % _players.size()
 	p.stream = s
-	p.volume_db = _setting(key, "volume", 0.0) + linear_to_db(clampf(strength, 0.05, 1.0))
+	p.volume_db = _setting(key, "volume", 0.0) + linear_to_db(lerpf(SOFTEST, 1.0, clampf(strength, 0.0, 1.0)))
 	var spread: float = _setting(key, "pitch", 0.0)
 	p.pitch_scale = 1.0 + randf_range(-spread, spread)
 	p.play()
