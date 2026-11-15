@@ -75,3 +75,12 @@ test('token mark: as much as fits before the first stat box in the row under the
   assert.deepEqual(tokenMarkParts({ hp: 2 }, L).parts, ['icon']);
   assert.deepEqual(tokenMarkParts({ kb: 1, rng: 2 }, L).parts, ['icon', 'word', 'rule'], 'KB and RNG sit in the bottom row');
 });
+
+test('a temporary evolution says how long it lasts (2026-11-15)', async () => {
+  const { tempEvolutionLine } = await import('../js/render.js');
+  assert.equal(tempEvolutionLine(0), '');
+  assert.equal(tempEvolutionLine(undefined), '');
+  assert.equal(tempEvolutionLine(1), 'Temporary: lasts until the end of this turn.');
+  assert.equal(tempEvolutionLine(2), 'Temporary: lasts until the end of the next turn.');
+  assert.equal(tempEvolutionLine(3), 'Temporary: lasts 3 turns, this one counted.');
+});

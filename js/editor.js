@@ -1690,7 +1690,13 @@ export function createEditor(env) {
         evo ? h('div', { class: 'ce-row' },
           field('BASE HERO', h('select', { onchange: e => { const x = heroes.find(c => c.name === e.target.value); snap(true); w.hero = e.target.value; if (x) w.color = x.color; changed(); env.render(); } },
             h('option', { value: '' }, '–'), heroes.map(x => h('option', { value: x.name, selected: x.name === w.hero }, heroLabel(x))))),
-          field('LEVEL', h('select', { onchange: e => set('evo', Number(e.target.value)) }, ROMAN.map((r, i) => h('option', { value: i + 1, selected: i + 1 === (w.evo ?? 1) }, r))))) : null,
+          // A temporary evolution (2026-11-15) goes on any level for a number of turns; the level does not count then.
+          field('LEVEL', h('select', { disabled: Number(w.tempTurns) > 0, title: Number(w.tempTurns) > 0 ? 'A temporary evolution goes on any level' : '',
+            onchange: e => set('evo', Number(e.target.value)) }, ROMAN.map((r, i) => h('option', { value: i + 1, selected: i + 1 === (w.evo ?? 1) }, Number(w.tempTurns) > 0 ? 'any' : r)))),
+          field('TEMPORARY', h('select', { title: 'For how many turns, this one counted; it goes on any level of the hero',
+            onchange: e => { snap(true); if (e.target.value) w.tempTurns = Number(e.target.value); else delete w.tempTurns; changed(); env.render(); } },
+            [['', 'No, it stays'], ['1', '1 turn (this one)'], ['2', '2 turns (to the next one\'s end)'], ['3', '3 turns'], ['4', '4 turns']]
+              .map(([v, l]) => h('option', { value: v, selected: String(w.tempTurns ?? '') === v }, l))))) : null,
         h('div', { class: 'ce-row' },
           evo ? field('COST', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 }))
             : field('COLOR', h('select', { onchange: e => { set('color', e.target.value); env.render(); } }, COLORS.map(c => h('option', { value: c, selected: c === w.color }, c)))),
@@ -2186,6 +2192,12 @@ export function createEditor(env) {
       if (w.type === 'Evolution') {
         const hc = heroCard(w);
         out.push(hc ? [true, `Base hero ${hc.name} is in the set`] : [false, 'Pick the base hero']);
+        // The card writes how long a temporary evolution lasts; a typed line would say it twice.
+        if (Number(w.tempTurns) > 0) {
+          out.push(/remove this evolution|until the end of (this|the next) turn|\bnext turn\b/i.test(w.text ?? '')
+            ? [false, 'The card says how long it lasts by itself (Temporary): take that line out of the text']
+            : [true, `Temporary: ${w.tempTurns} ${Number(w.tempTurns) === 1 ? 'turn' : 'turns'}, on any level`]);
+        }
       }
       const names = traitNames(traitList).map(norm);
       for (const t of w.traits.filter(t => names.includes(norm(t))).slice(0, 2)) out.push([true, `Trait "${t}" known`]);

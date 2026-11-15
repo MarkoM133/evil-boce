@@ -848,6 +848,16 @@ function renderImage(canvas, card, tpl, art) {
 export const FRAME_LETTER = { Cyan: 'C', Yellow: 'Y', Purple: 'M', Red: 'R', Blue: 'B', Green: 'G' };
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 
+// A temporary evolution (GDD 10, 2026-11-15): the card says how long it lasts, written from its tempTurns
+// (the turn it is played in counted). The game reads the field, not this line.
+export function tempEvolutionLine(n) {
+  const t = Number(n) || 0;
+  if (t <= 0) return '';
+  if (t === 1) return 'Temporary: lasts until the end of this turn.';
+  if (t === 2) return 'Temporary: lasts until the end of the next turn.';
+  return `Temporary: lasts ${t} turns, this one counted.`;
+}
+
 // Heroj ili evolucija: boja pozadine i art u prozoru, okvir u boji heroja, pločica s amblemom, oznakom
 // (HERO, ili EVOLUTION i razina) i nazivom, statsi u kućicama, naziv sposobnosti i tekst, RNG/KB,
 // tagovi, kod. Evolucija ima i cost u pločici.
@@ -1019,8 +1029,27 @@ function renderHero(canvas, card, tpl, art, emblem) {
   const plateText = plate;
   ctx.save();
   ctx.letterSpacing = `${L.label.spacing ?? 0}px`;
-  // Gore između strelica: HERO, ili EVOLUTION i razina rimskim brojem (kao Card Engine).
-  fitLine(ctx, evo ? `EVOLUTION ${ROMAN[card.evo ?? 1] ?? card.evo}` : 'HERO', L.label, { font: TITLE_FONT, color: plateText, bold: true });
+  // Gore između strelica: HERO, ili EVOLUTION i razina rimskim brojem (kao Card Engine). Privremena evolucija
+  // (2026-11-15) ide na bilo koju razinu: umjesto broja pješčani sat, kao na tokenu.
+  const temp = evo && Number(card.tempTurns) > 0;
+  if (temp) {
+    const [lx, ly, lw, lh] = L.label.box;
+    const icon = Math.round(lh * 0.8);
+    const gap = Math.round(icon * 0.35);
+    fitLine(ctx, 'EVOLUTION', { ...L.label, box: [lx - (icon + gap) / 2, ly, lw, lh] }, { font: TITLE_FONT, color: plateText, bold: true });
+    const tw = ctx.measureText('EVOLUTION').width;
+    const ix = lx + lw / 2 - (icon + gap) / 2 + tw / 2 + gap;
+    ctx.save();
+    ctx.translate(ix, ly + (lh - icon) / 2);
+    ctx.scale(icon / 24, icon / 24);
+    ctx.strokeStyle = plateText;
+    ctx.lineWidth = 2.6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke(new Path2D(HOURGLASS));
+    ctx.stroke(new Path2D('M9.5 18.5h5'));
+    ctx.restore();
+  } else fitLine(ctx, evo ? `EVOLUTION ${ROMAN[card.evo ?? 1] ?? card.evo}` : 'HERO', L.label, { font: TITLE_FONT, color: plateText, bold: true });
   ctx.restore();
   // Naslov je puno ime karte ("Luffy, Gear Second").
   if (!fitLine(ctx, card.name ?? '', L.title, { font: TITLE_FONT, color: plateText, bold: true })) warnings.push('The name is too long for the plate.');
@@ -1038,7 +1067,9 @@ function renderHero(canvas, card, tpl, art, emblem) {
     fitLine(ctx, String(v), { box: slot.value, size: L.statSize ?? 84, min: 40 }, { font: TITLE_FONT, color: '#ffffff' });
   }
   const ability = card.ability ?? card.abilityNames?.[0] ?? '';
-  const t = drawEffect(ctx, card.text ?? '', color, L.effect, tpl.icons, ability, PASSIVE_TYPES.includes(card.type));
+  // A temporary evolution's last line says how long it lasts (from the field, never typed).
+  const body = temp ? [String(card.text ?? '').trim(), tempEvolutionLine(card.tempTurns)].filter(Boolean).join('\n') : card.text ?? '';
+  const t = drawEffect(ctx, body, color, L.effect, tpl.icons, ability, PASSIVE_TYPES.includes(card.type));
   if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
   if (!drawTags(ctx, card.traits ?? [], L.tags)) warnings.push('The tags are too long for the tag box.');
   fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: plate, bold: true });

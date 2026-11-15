@@ -1614,7 +1614,7 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		bottom.add_child(gap)
 		for i: int in state.settings.equipment_limit:
-			bottom.add_child(_equip_mini(h.equipment[i] if i < h.equipment.size() else ""))
+			bottom.add_child(_equip_mini(h.equipment[i] if i < h.equipment.size() else "", h))
 	extra.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
 	bottom.add_child(extra)
 	if expanded and not ko:
@@ -6352,7 +6352,8 @@ func hide_ball_choice(force: bool = false) -> void:
 
 
 ## One equipment slot in a hero panel: the card's picture, small, or a dashed empty slot.
-func _equip_mini(cid: String) -> Control:
+## `h`: the hero it is on; equipment a temporary evolution does not fit is dimmed and says so (Marko 2026-11-15).
+func _equip_mini(cid: String, h: HeroState = null) -> Control:
 	var box := PanelContainer.new()
 	# Clear of the panel's bottom edge (Marko 2026-11-01: a 30 px card ran out of the panel;
 	# 2026-11-02: 22 px still touched it).
@@ -6384,8 +6385,14 @@ func _equip_mini(cid: String) -> Control:
 		var l: Label = UiTheme.label((card.name if card != null else cid).left(2).to_upper(), 11)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(l)
+	var idle: bool = h != null and not engine.equipment_works(h, cid)
+	if idle:
+		box.modulate = Color(0.45, 0.45, 0.45)
+		sb.border_color = Color(Palette.GOLD, 0.8)
 	if card != null:
-		box.tooltip_text = _card_tip("%s\n%s" % [card.name, card.text])
+		var form: CardDef = engine.catalog.get_card(h.temp_evo) if idle else null
+		var why: String = ("\n\nNot working while %s lasts." % (form.name if form != null else "the temporary evolution")) if idle else ""
+		box.tooltip_text = _card_tip("%s\n%s%s" % [card.name, card.text, why])
 	box.mouse_entered.connect(func() -> void: _hovered(cid))
 	box.gui_input.connect(func(e: InputEvent) -> void: _card_click(e, cid))
 	return box
