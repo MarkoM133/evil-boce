@@ -27,6 +27,8 @@ const DEFAULTS: Dictionary = {
 	"energy": {"cooldown": 0.12, "pitch": 0.05},
 	"damage": {"cooldown": 0.08, "pitch": 0.05},
 	"timer_tick": {"volume": -4.0},
+	"nope": {"volume": -4.0, "cooldown": 0.25},
+	"your_turn": {"cooldown": 1.0},
 }
 ## Rules events (the match log) and the sound each one plays.
 const LOG_SOUNDS: Dictionary = {

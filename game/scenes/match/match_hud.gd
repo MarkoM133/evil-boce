@@ -190,6 +190,10 @@ const DRAG_START: float = 14.0
 var rolling: bool = false
 ## Watching a recorded match: no prompts, buttons or end screen, only the table and panels.
 var replay: bool = false
+## When the game began waiting on a player who is not at this screen (ms), 0 while it is not.
+var _other_since: int = 0
+## The "your move" chime only after the other side took at least this long (a bot's quick answer is no news).
+const YOUR_MOVE_AFTER_MS: int = 1500
 ## Online: who paused the match ("" when it runs); shown instead of the prompt.
 var net_paused: String = ""
 var _ping: UiShape
@@ -415,6 +419,7 @@ func setup(engine_: RulesEngine, state_: GameState, db_: CardDb, local: PackedIn
 func refresh() -> void:
 	if state == null:
 		return
+	_your_move_chime()
 	# A chosen but unconfirmed hero only lasts the Select phase.
 	if state.phase != GameState.PHASE_START and not picks.is_empty():
 		picks.clear()
@@ -1269,6 +1274,20 @@ func _status_tag() -> UiShape:
 		var text: String = "YOUR MOVE" if local_slots.size() == 1 else "%s · YOUR MOVE" % player_name(waiting).to_upper()
 		return UiShape.chip(text, Palette.GOLD, Color.BLACK, 16, 30.0)
 	return UiShape.chip("%s IS PLAYING…" % player_name(waiting).to_upper(), Palette.PANEL_SOLID, Palette.MUTED, 16, 30.0)
+
+
+## "Your move" (Marko 2026-11-15): a chime when the game comes back to the player at this screen after waiting on
+## the other side a while (online, or a slow bot). Not in a replay, not when everyone plays at this screen.
+func _your_move_chime() -> void:
+	var w: int = _waiting_for()
+	var now: int = Time.get_ticks_msec()
+	if w >= 0 and not local_slots.has(w):
+		if _other_since == 0:
+			_other_since = now
+	elif local_slots.has(w):
+		if _other_since > 0 and now - _other_since >= YOUR_MOVE_AFTER_MS and not replay and local_slots.size() == 1:
+			Sound.play(get_tree(), "your_turn")
+		_other_since = 0
 
 
 ## The slot the game waits for now, or -1.
@@ -3023,7 +3042,11 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 				# A click (let go where pressed) plays as before; a drag carries it to a hero (_input).
 				_drag = {"slot": slot, "cid": cid, "index": index, "heroes": heroes, "from": get_global_mouse_position()}
-				_dragging = false)
+				_dragging = false
+		# A grey card answers a click with "no" (Marko 2026-11-15): why shows above it on hover.
+		elif e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT \
+				and not replay and local_slots.has(slot):
+			Sound.play(get_tree(), "nope"))
 	return root
 
 
