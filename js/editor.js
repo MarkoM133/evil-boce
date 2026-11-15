@@ -201,7 +201,7 @@ export function createEditor(env) {
       if (Date.now() - ed.locksAt > HEARTBEAT_MS) {
         Promise.all([readLocks(), refreshDb()]).then(([a, b]) => { if (a || b) env.render(); }).catch(() => {});
       }
-      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), pageTabs(want), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, words: renderTraitsPage, frames: frames.render, publish: renderPublishPage, wishlist: renderPublishPage }[want]());
+      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), pageTabs(want), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, words: renderTraitsPage, frames: frames.render, publish: renderPublish, wishlist: renderFxPage }[want]());
     }
     if (want !== ed.id) {
       if (!leaveOk()) return renderCardPage();
@@ -866,11 +866,12 @@ export function createEditor(env) {
     return parts.length ? h('div', { class: 'ce-claude-box' }, parts) : null;
   }
 
-  // Kartice na vrhu spojenih stranica: Publish | Waiting for the game, Tags | Phrases (Marko 2026-11-03).
+  // Kartice na vrhu Words: Tags | Phrases (Marko 2026-11-03) | fx (2026-11-15).
   function pageTabs(want) {
-    // Publish i Waiting for the game su jedna stranica od 2026-11-06; kartice ostaju samo za Words.
+    // Words: Tags, Phrases i fx (Marko 2026-11-15: ono što čeka igru ide s Publisha ovamo, adresa wishlist).
+    const wishes = (ed.wishlist?.items ?? []).filter(i => i.status === 'open').length;
     const groups = [
-      [['traits', 'Tags'], ['guide', 'Phrases']],
+      [['traits', 'Tags'], ['guide', 'Phrases'], ['wishlist', wishes ? `fx (${wishes})` : 'fx']],
     ];
     const cur = want === 'words' ? 'traits' : want;
     const group = groups.find(g => g.some(([k]) => k === cur));
@@ -964,7 +965,7 @@ export function createEditor(env) {
     const closed = items.filter(i => i.status !== 'open');
     // Prazni dijelovi se ne pokazuju (Marko 2026-11-06).
     return h('section', { class: 'ce-wishlist', id: 'ce-wish' },
-      h('h2', {}, 'Waiting for the game'),
+      h('header', { class: 'ce-page-head' }, h('div', {}, h('h1', {}, 'fx'), h('p', { class: 'muted' }, 'What the game runs: each card\'s fx, and the words the fx language does not have yet.'))),
       claudeCheckSection(),
       words.length || rules.length ? h('p', { class: 'muted small' }, 'Words the fx language does not have yet, from Ask Claude. Verbs, conditions and targets wait for Claude Code ("napravi wishlist"); rules are questions for Marko.')
         : h('p', { class: 'muted small' }, 'No words wait for the game.'),
@@ -974,13 +975,9 @@ export function createEditor(env) {
   }
 
   // Publish i ono što čeka igru na jednoj stranici; s adrese wishlist stranica skoči na taj dio.
-  function renderPublishPage() {
-    const page = h('div', { class: 'ce-publish-page' }, renderPublish(), renderWishlist());
-    // Skok samo jednom po dolasku na adresu wishlist (stranica se ponovo crta dok se lista osvježava).
-    const atWish = location.hash.endsWith('/wishlist');
-    if (atWish && !ed.wishJumped) requestAnimationFrame(() => page.querySelector('#ce-wish')?.scrollIntoView({ block: 'start' }));
-    ed.wishJumped = atWish;
-    return page;
+  // Words › fx: Claude reads every card and the fx wishlist (words the game does not have yet, rule questions).
+  function renderFxPage() {
+    return h('div', { class: 'ce-page ce-fx-page' }, renderWishlist());
   }
 
   // fx za igru (Marko 2026-11-05): svaka karta ima zapisan fx i igra radi po njemu. Parser igre (data/fx-proposals.json,

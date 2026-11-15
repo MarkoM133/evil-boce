@@ -839,10 +839,10 @@ function importButton() {
 
 // Izbornik kao u mockupu Card editora: Cards, Card editor (Sets, Publish, Traits & aliases, Text guide, Frames),
 // Decks, Balance (i Coverage), Tools. Podstavke se vide dok je njihova stavka otvorena.
-// Četiri podstranice (Marko 2026-11-03): Publish drži i fx wishlist (ispod Objave od 2026-11-06), Words drži
-// Traits & aliases (kartica Tags) i Text guide (kartica Phrases). Stare adrese (traits, guide, wishlist) i dalje rade.
+// Četiri podstranice: Words drži Tags (Traits & aliases), Phrases (Text guide) i fx (Claude i fx wishlist, s Publisha
+// 2026-11-15). Stare adrese (traits, guide, wishlist) i dalje rade.
 const EDITOR_PAGES = [['sets', 'Sets'], ['publish', 'Publish'], ['traits', 'Words'], ['frames', 'Frames']];
-const EDITOR_GROUP = { wishlist: 'publish', guide: 'traits', words: 'traits' };
+const EDITOR_GROUP = { wishlist: 'traits', guide: 'traits', words: 'traits' };
 // Gledanje gore, izrada dolje (Marko 2026-11-03): Cards, Decks, Balance, crta, Card editor, Tools.
 const NAV = [
   // Combos (2026-11-07): the combo list, for the phone beside a match too.
@@ -866,8 +866,8 @@ function navSub(key) {
     const id = state.editId ?? 'sets';
     const active = key === 'editor' ? (EDITOR_GROUP[id] ?? id) === k : state.tab === k;
     const n = key === 'editor' && k === 'publish' ? cardEditor.waiting() : 0;
-    // Publish: nacrti koji čekaju Objavu, a uz njih riječi koje čekaju igru (fx wishlist), obrubljeno.
-    const wish = key === 'editor' && k === 'publish' ? cardEditor.wishes() : 0;
+    // Publish: nacrti koji čekaju Objavu; Words: riječi koje čekaju igru (fx wishlist), obrubljeno (Marko 2026-11-15).
+    const wish = key === 'editor' && k === 'traits' ? cardEditor.wishes() : 0;
     return h('button', { class: active ? 'active' : '', onclick: () => {
       if (key === 'editor') { state.tab = 'editor'; state.editId = k; } else state.tab = k;
       replaceNext = false;
