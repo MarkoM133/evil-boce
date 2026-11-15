@@ -1042,7 +1042,8 @@ function renderHero(canvas, card, tpl, art, emblem) {
     const marks = L.labelMarks ?? [[1272, 100], [1733, 100]];
     for (const [cx, cy] of marks) {
       const half = 22;
-      ctx.drawImage(ctx.canvas, cx - half - 2 * half, cy - half, 2 * half, 2 * half, cx - half, cy - half, 2 * half, 2 * half);
+      // The sheen runs diagonally: the patch comes from down-left along it, clear of the arrow, a little taller than it.
+      ctx.drawImage(ctx.canvas, cx - half - 50, cy - 28 + 50, 2 * half, 50, cx - half, cy - 28, 2 * half, 50);
     }
     {
       const [rx, ry] = marks[1];
