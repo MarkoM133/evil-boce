@@ -77,6 +77,8 @@ test('a tag may not be a word of the rules (Marko 2026-11-15)', () => {
   assert.equal(ruleWord('Cores'), 'Core');
   assert.equal(ruleWord('HP'), 'HP');
   assert.equal(ruleWord('Brave Hero'), null);
+  assert.equal(ruleWord('Mage & Hero'), 'Hero');
+  assert.equal(ruleWord('Mage & Brave Hero'), null);
   assert.equal(ruleWord('Haki'), null);
   assert.equal(ruleWord('General'), null);
   assert.equal(ruleWord(''), null);

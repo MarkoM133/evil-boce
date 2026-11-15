@@ -25,11 +25,13 @@ export const RULE_WORDS = [
 ];
 const RULE_SET = new Map(RULE_WORDS.map(w => [norm(w), w]));
 
-// The rule word a tag is ("Heroes" → "Hero"), or null.
+// The rule word a tag is ("Heroes" → "Hero"), or null; each part of "Mage & Hero" counts on its own.
 export function ruleWord(tag) {
-  const w = norm(tag);
-  if (!w) return null;
-  for (const f of [w, w.replace(/s$/, ''), w.replace(/es$/, '')]) if (RULE_SET.has(f)) return RULE_SET.get(f);
+  for (const part of String(tag ?? '').split('&')) {
+    const w = norm(part);
+    if (!w) continue;
+    for (const f of [w, w.replace(/s$/, ''), w.replace(/es$/, '')]) if (RULE_SET.has(f)) return RULE_SET.get(f);
+  }
   return null;
 }
 
