@@ -95,6 +95,18 @@ input, select {
   padding: 9px 12px;
 }
 input[type=checkbox] { accent-color: var(--red); width: 17px; height: 17px; }
+/* Our own arrow, clear of the edge (Marko 2026-11-16: the browser's sat right against it). */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23b9b4ac' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 15px center;
+  background-size: 12px 8px;
+}
+select:disabled { opacity: .6; }
+select option { background: var(--surface); color: var(--bone); }
 
 #app { padding: 0 32px 64px; }
 
