@@ -35,7 +35,8 @@ const HEROISH = ['Hero', 'Evolution'];
 // Vodoravne karte: heroji, evolucije i Combo karte (2026-11-07).
 const WIDE = ['Hero', 'Evolution', 'Combo'];
 const COLORS = Object.keys(TINTS);
-// Karta je Draft ili Done (Marko 2026-11-15): pločica u traci karte je prebacuje; Publish pušta samo Done.
+// Karta je Ready ili Not ready (u podacima status done / draft; Marko 2026-11-15): prekidač ☐ Ready u traci karte,
+// Publish pušta samo Ready.
 const CORE_KINDS = ['Buff', 'Major', 'Debuff'];
 const ROMAN = ['I', 'II', 'III'];
 const WHO_KEY = 'evil-boce-who';
@@ -351,8 +352,8 @@ export function createEditor(env) {
         h('button', { class: 'link', type: 'button', onclick: () => { sets.pick(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id)); go('sets'); } }, setName), ' / ',
         h('strong', {}, `${w.id} ${w.name || 'New card'}`),
         h('span', { class: `ce-badge ${TYPE_BADGE[w.type]}${w.type === 'Action' || w.type === 'Equipment' || w.type === 'Assist' ? ` c-bg-${w.color}` : ''}` }, w.type.toUpperCase()),
-        statusPill(w), wipBadge(w.id), lockMini),
-      h('div', { class: 'ce-top-actions' }, lockChip, reviewNav(w),
+        wipBadge(w.id), lockMini),
+      h('div', { class: 'ce-top-actions' }, lockChip, reviewNav(w), readyToggle(w),
         w.type === 'Core' ? null : h('button', { class: 'ghost ce-act', type: 'button', title: 'Undo', 'aria-label': 'Undo', disabled: !ed.undo.length, onclick: undo }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '↶'), h('span', { class: 'ce-act-lbl' }, 'Undo')),
         h('button', { class: 'ghost ce-act', type: 'button', title: 'Close', 'aria-label': 'Close', onclick: () => go(ed.from) }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'ce-act-lbl' }, 'Close')),
         h('button', { class: 'primary', type: 'button', disabled: !canWrite() || lockBusy(), onclick: () => env.guard(saveDraft) }, 'Save')));
@@ -370,14 +371,15 @@ export function createEditor(env) {
       h('button', { class: 'ghost', type: 'button', disabled: i >= ids.length - 1, title: 'Next card (→)', onclick: () => step(1) }, '›'));
   }
 
-  // Draft / Done on the card's bar (Marko 2026-11-15, in place of Looks good and the form's STATUS switch): a click
-  // flips it like any edit (Undo, Save). Publish lets only Done cards go; a Core has no status.
-  function statusPill(w) {
+  // ☐ Ready / ☑ Ready among the bar's actions (Marko 2026-11-15, in place of Looks good and the form's STATUS switch;
+  // a toggle, not a tag): a click flips it like any edit (Undo, Save). Publish lets only Ready cards go; a Core has none.
+  function readyToggle(w) {
     if (w.type === 'Core') return null;
-    const done = (w.status ?? 'draft') === 'done';
-    return h('button', { class: `ce-status-pill ${done ? 'done' : 'draft'}`, type: 'button', disabled: !canWrite() || lockBusy(),
-      title: done ? 'Done: Publish may take it. Click to make it a draft again' : 'Draft: it waits under Publish › Not done. Click when the card is finished',
-      onclick: () => { snap(true); w.status = done ? 'draft' : 'done'; changed(); env.render(); } }, done ? '✓ DONE' : 'DRAFT');
+    const ready = (w.status ?? 'draft') === 'done';
+    return h('button', { class: `ce-ready-toggle${ready ? ' on' : ''}`, type: 'button', role: 'switch', 'aria-checked': String(ready), disabled: !canWrite() || lockBusy(),
+      title: ready ? 'Ready: Publish may take it. Click if it is not finished after all' : 'Not ready: it waits under Publish › Not ready. Click when the card is finished',
+      onclick: () => { snap(true); w.status = ready ? 'draft' : 'done'; changed(); env.render(); } },
+      h('span', { class: 'ce-ready-box', 'aria-hidden': 'true' }, ready ? '✓' : ''), 'Ready');
   }
 
   // Podaci preko servera su samo za gledanje: spremanje, upload i Objava trebaju otvoren zajednički folder.
@@ -2776,7 +2778,7 @@ export function createEditor(env) {
     else if ('artCrop' in d) out.push(chip('ART', 'art crop'));
     if ('emblem' in d || 'bg' in d) out.push(chip('PLATE', [d.emblem ? 'emblem' : null, d.bg ? `background ${d.bg}` : null].filter(Boolean).join(', ')));
     if ('coreImage' in d) out.push(chip('IMAGE', d.coreImage === 'effect' ? 'drawn from the effect' : 'uploaded'));
-    if ('status' in d && Object.keys(d).length <= 4) out.push(chip('STATUS', d.status));
+    if ('status' in d && Object.keys(d).length <= 4) out.push(chip('STATUS', d.status === 'done' ? 'ready' : 'not ready'));
     return out;
   }
 
@@ -2785,7 +2787,7 @@ export function createEditor(env) {
   // WIP on the card itself (Marko 2026-11-15): the set is Work in progress, so this card waits for Publish.
   function wipBadge(id) {
     const code = wipSetOf(id, c => sets.isWip(c));
-    return code ? h('span', { class: 'ce-st review ce-wip', title: `Set ${code} is Work in progress: this card stays out of Publish until it is finished.` }, 'WIP') : null;
+    return code ? h('span', { class: 'ce-st review ce-wip', title: `Set ${code} is Work in progress: this card stays out of Publish until the set is finished.` }, `${code} WIP`) : null;
   }
 
   // Introduced in for a Stage or Core (Marko 2026-11-15): optional; a card of a Work in progress set waits with it.
@@ -2804,7 +2806,7 @@ export function createEditor(env) {
     return null;
   }
 
-  // Not done › Done: the card's draft gets status done without opening it (fresh read, so nothing else changes).
+  // Not ready › Ready: the card's draft gets status done without opening it (fresh read, so nothing else changes).
   async function markDone(id) {
     await readLocks();
     if (ed.locks[id]) throw new Error(`${ed.locks[id].who} has ${id} open. Try again after they close it.`);
@@ -2813,8 +2815,8 @@ export function createEditor(env) {
     fresh.cards[id] = { ...fresh.cards[id], status: 'done', updated: new Date().toISOString(), who: who() || undefined };
     await writeJson(DRAFTS_PATH, fresh);
     ed.drafts = fresh;
-    await logHistory(id, 'marked done').catch(() => {});
-    env.toast(`${id} is done: it is in Ready.`);
+    await logHistory(id, 'marked ready').catch(() => {});
+    env.toast(`${id} is ready: it is in the Ready tab.`);
     env.render();
   }
 
@@ -2825,7 +2827,7 @@ export function createEditor(env) {
     const held = id => wipSetOf(id, id => sets.isWip(id));
     // A new card without art waits (Publish keeps it back), so it is not "ready".
     const noArt = ({ id, d, base }) => { const c = { ...(base ?? {}), ...d, id }; return !!d.new && !c.art && c.type !== 'Core'; };
-    // Draft (not finished) waits under Not done (Marko 2026-11-15); a Core has no status.
+    // Not ready (status draft) waits under Not ready (Marko 2026-11-15); a Core has no status.
     const notDone = ({ id, d, base }) => { const c = { ...(base ?? {}), ...d, id }; return c.type !== 'Core' && (c.status ?? 'draft') !== 'done'; };
     const ready = list.filter(x => !locked(x.id) && !held(x.id) && !noArt(x) && !notDone(x));
     const selected = ready.filter(x => !ed.pubOff.has(x.id));
@@ -2846,7 +2848,7 @@ export function createEditor(env) {
     const artList = list.filter(x => !locked(x.id) && !held(x.id) && noArt(x));
     const draftList2 = list.filter(x => !locked(x.id) && !held(x.id) && !noArt(x) && notDone(x));
     const lockList = list.filter(x => locked(x.id));
-    const tabs = [['ready', 'Ready', ready.length, 't-ok'], ['draft', 'Not done', draftList2.length, 't-wait'], ['wip', 'Work in progress', wipList.length, 't-wait'], ['art', 'No art', artList.length, 't-wait'], ['lock', 'Being edited', lockList.length, 't-lock']]
+    const tabs = [['ready', 'Ready', ready.length, 't-ok'], ['draft', 'Not ready', draftList2.length, 't-wait'], ['wip', 'Work in progress', wipList.length, 't-wait'], ['art', 'No art', artList.length, 't-wait'], ['lock', 'Being edited', lockList.length, 't-lock']]
       .filter(([k, , n]) => k === 'ready' || n);
     if (!tabs.some(([k]) => k === ed.pubTab)) ed.pubTab = 'ready';
     const cardOfRow = ({ id, d, base }) => ({ ...(base ?? {}), ...d, id });
@@ -2888,10 +2890,10 @@ export function createEditor(env) {
           ? `${x.d.who || '–'} · ${when(x.d.updated)}${noArt(x) ? ' · no art yet' : ''}`
           : `It uses a card of ${code}, so it waits with that set.`)))));
     } else if (ed.pubTab === 'draft') {
-      body = [h('p', { class: 'muted small' }, 'Cards still marked Draft. Done when it is finished: it moves to Ready.'),
+      body = [h('p', { class: 'muted small' }, 'Cards not marked Ready yet. ✓ Ready when one is finished: it moves to the Ready tab.'),
         h('div', { class: 'ce-pub-minis' }, draftList2.map(x => mini(x, `${x.d.who || '–'} · ${when(x.d.updated)}`,
-          h('button', { class: 'ghost ce-pub-done', type: 'button', disabled: !canWrite(), title: 'Mark it Done: it moves to Ready',
-            onclick: e => { e.stopPropagation(); env.guard(() => markDone(x.id)); } }, '✓ Done'))))];
+          h('button', { class: 'ghost ce-pub-done', type: 'button', disabled: !canWrite(), title: 'Mark it Ready: it moves to the Ready tab',
+            onclick: e => { e.stopPropagation(); env.guard(() => markDone(x.id)); } }, '✓ Ready'))))];
     } else if (ed.pubTab === 'art') {
       body = [h('p', { class: 'muted small' }, 'A new card waits until it has art: open it and add the art (or drag a picture onto it).'),
         h('div', { class: 'ce-pub-minis' }, artList.map(x => mini(x, `${x.d.who || '–'} · ${when(x.d.updated)}`)))];

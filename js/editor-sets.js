@@ -1,5 +1,5 @@
 // Card editor › Sets (mockup "06 Card editor - Sets"): kartice setova sa sličicom paketa, zaglavlje seta,
-// filteri i mreža nacrtanih karata sa statusom (DONE, REVIEW, NEEDS FX, lock), pločica "New card" s idućim kodom.
+// filteri i mreža nacrtanih karata sa statusom (READY / NOT READY, NEEDS FX, lock), pločica "New card" s idućim kodom.
 // Stageovi i Coreovi imaju svoje kartice. Postavke seta su u data/sets/sets.json, slike u data/sets/<kod>/
 // (Syncthing, ne git); "default" je paket za Draft iz više setova. Igra će ih čitati u Draftu.
 import * as fs from './fsdir.js';
@@ -13,7 +13,7 @@ const DEFAULT_PACK = 10;
 const TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist'];
 const NEW_TYPES = TYPES;
 const COLORS = ['Cyan', 'Yellow', 'Purple', 'Red', 'Blue', 'Green'];
-const STATUS_FILTERS = [['', 'All statuses'], ['draft', 'Draft'], ['done', 'Done'], ['fx', 'Needs fx'], ['claude', 'Changed by Claude'], ['edited', 'Unpublished changes'], ['noart', 'No art'], ['redraw', 'Needs redraw']];
+const STATUS_FILTERS = [['', 'All statuses'], ['draft', 'Not ready'], ['done', 'Ready'], ['fx', 'Needs fx'], ['claude', 'Changed by Claude'], ['edited', 'Unpublished changes'], ['noart', 'No art'], ['redraw', 'Needs redraw']];
 // Nacrt koji je zadnji spremio Claude Code: Marko ga treba pogledati (oznaka nestane kad netko spremi kartu).
 const byClaude = d => d?.who === 'Claude Code';
 
@@ -256,12 +256,12 @@ export function createSetsView(ctx) {
     const badge = lock ? h('span', { class: 'ce-st lock' }, `🔒 ${lock.who.toUpperCase()}`)
       : needsFx(c) ? h('span', { class: 'ce-st fx' }, 'NEEDS FX')
         : ctx.pictureStale(c.id) ? h('span', { class: 'ce-st fx', title: 'The picture was drawn by an older renderer: Redraw picture, or Redraw all pictures' }, 'NEEDS REDRAW')
-        : h('span', { class: `ce-st ${c.status ?? 'draft'}` }, (c.status ?? 'draft').toUpperCase());
+        : h('span', { class: `ce-st ${c.status === 'done' ? 'done' : 'draft'}` }, c.type === 'Core' ? 'CORE' : c.status === 'done' ? 'READY' : 'NOT READY');
     const claude = byClaude(draft) ? h('span', { class: 'ce-st claude', title: 'Changed by Claude Code: have a look, then Save' }, 'CLAUDE') : null;
     const token = c.token ? h('span', { class: 'ce-st token', title: 'A token: made by another card, never in a deck' }, 'TOKEN') : null;
     // WIP beside the status (Marko 2026-11-15): the card waits with its Work in progress set.
     const held = ctx.heldBy(c.id);
-    const wip = held ? h('span', { class: 'ce-st review', title: `Set ${held} is Work in progress: this card stays out of Publish` }, 'WIP') : null;
+    const wip = held ? h('span', { class: 'ce-st review', title: `Set ${held} is Work in progress: this card stays out of Publish` }, `${held} WIP`) : null;
     return h('button', { class: `ce-tile${c.type === 'Hero' || c.type === 'Evolution' ? ' wide' : ''}`, type: 'button', onclick: () => ctx.go(c.id) },
       canvas,
       h('span', { class: 'ce-tile-name' }, h('strong', {}, c.name || 'New card'), h('span', { class: 'ce-tile-badges' }, token, claude, wip, badge)),
