@@ -1793,7 +1793,7 @@ export function createEditor(env) {
       body = [
         h('h2', {}, 'Stage'),
         field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
-        h('div', { class: 'ce-row' }, field('TERRAIN', h('select', { onchange: e => set('terrain', e.target.value) }, TERRAINS.map(t => h('option', { value: t, selected: t === (w.terrain ?? 'None') }, t)))), code),
+        h('div', { class: 'ce-row' }, field('TERRAIN', h('select', { onchange: e => set('terrain', e.target.value) }, TERRAINS.map(t => h('option', { value: t, selected: t === (w.terrain ?? 'None') }, t)))), code, introducedField(w)),
         h('p', { class: 'small muted' }, 'No cost, color or tags on Stage cards.'),
         h('h2', {}, 'Effect text'),
         ...text,
@@ -1806,7 +1806,7 @@ export function createEditor(env) {
       body = [
         h('h2', {}, 'Core'),
         field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
-        code,
+        h('div', { class: 'ce-row' }, code, introducedField(w)),
         field('KIND', seg(CORE_KINDS.map(k => [k, k]), w.traits[0], v => { set('traits', [v]); env.render(); })),
         h('h2', {}, 'Effect'),
         h('div', { class: 'ce-tools' }, TOKENS.map(t => h('button', { type: 'button', class: `tok tok-${t.toLowerCase()}`, onclick: () => tok(t) }, `[${t}]`))),
@@ -2796,9 +2796,18 @@ export function createEditor(env) {
 
   // The Work-in-progress set that holds a card back from Publish: its own set, or for a Combo the set of an
   // ingredient (a published Combo must not name a card the game does not have). null when nothing holds it.
+  // Introduced in for a Stage or Core (Marko 2026-11-15): optional; a card of a Work in progress set waits with it.
+  function introducedField(w) {
+    return h('label', { class: 'ce-field' }, h('span', {}, 'INTRODUCED IN'), h('select', { title: 'The set it comes out with. While that set is Work in progress, this card waits with it.',
+      onchange: e => { snap(true); w.introducedIn = e.target.value || undefined; changed(); } }, h('option', { value: '' }, '–'),
+      sets.list().map(s => h('option', { value: s.code, selected: s.code === w.introducedIn }, s.code))));
+  }
+
   function wipSetOf(id, isWip) {
     if (isWip(setOf(id))) return setOf(id);
     const card = merged(db().cards.find(c => c.id === id) ?? { id });
+    // A Stage or Core has no set in its code: it waits with the set it comes out with (Marko 2026-11-15).
+    if (!/^[A-Z]+\d+$/.test(setOf(id)) && card.introducedIn && isWip(card.introducedIn)) return card.introducedIn;
     for (const ing of card.ingredients ?? []) if (ing && isWip(setOf(ing))) return setOf(ing);
     return null;
   }
@@ -2808,7 +2817,10 @@ export function createEditor(env) {
     const marko = who() === 'Marko';
     const locked = id => ed.locks[id] && lockState(ed.locks[id], who()) === 'other';
     const held = id => wipSetOf(id, id => sets.isWip(id));
-    const selected = list.filter(x => !locked(x.id) && !held(x.id) && !ed.pubOff.has(x.id));
+    // A new card without art waits (Publish keeps it back), so it is not "ready".
+    const noArt = ({ id, d, base }) => { const c = { ...(base ?? {}), ...d, id }; return !!d.new && !c.art && c.type !== 'Core'; };
+    const ready = list.filter(x => !locked(x.id) && !held(x.id) && !noArt(x));
+    const selected = ready.filter(x => !ed.pubOff.has(x.id));
     const why = !canPublish() ? 'Publish runs on a computer with the shared folder open (Chrome or Edge).'
       : !marko ? 'Only Marko publishes (Signed in as Marko).'
         : !ed.agency ? 'Agency FB is not on this computer: the card PNGs must be made on a computer that has it.'
@@ -2820,49 +2832,73 @@ export function createEditor(env) {
       store().imageUrl(base, { thumb: true }).then(u => { if (u) img.src = u; });
       return img;
     };
-    const rows = list.map(({ id, d, base }) => {
+    // Kartice (Marko 2026-11-15, mockup docs/private/mockups/publish, varijanta B): Ready s kvačicama je otvorena;
+    // Work in progress (po setu, s "Set is finished"), No art i Being edited su kratki retci na svojim karticama.
+    const wipList = list.filter(x => !locked(x.id) && held(x.id));
+    const artList = list.filter(x => !locked(x.id) && !held(x.id) && noArt(x));
+    const lockList = list.filter(x => locked(x.id));
+    const tabs = [['ready', 'Ready', ready.length, 't-ok'], ['wip', 'Work in progress', wipList.length, 't-wait'], ['art', 'No art', artList.length, 't-wait'], ['lock', 'Being edited', lockList.length, 't-lock']]
+      .filter(([k, , n]) => k === 'ready' || n);
+    if (!tabs.some(([k]) => k === ed.pubTab)) ed.pubTab = 'ready';
+    const cardOfRow = ({ id, d, base }) => ({ ...(base ?? {}), ...d, id });
+    const mini = (x, note) => {
+      const card = cardOfRow(x);
+      return h('div', { class: 'ce-pub-mini' },
+        h('figure', {}, thumb(card, WIDE.includes(card.type) ? 84 : 60)),
+        h('div', { class: 'ce-pub-body' }, h('h4', {}, card.name || x.id, h('small', {}, ` ${x.id}`)), h('p', { class: 'muted small' }, note)),
+        h('button', { class: 'link accent', type: 'button', onclick: () => go(x.id) }, 'Open'));
+    };
+    const readyRow = ({ id, d, base }) => {
       const card = { ...(base ?? {}), ...d, id };
       const px = WIDE.includes(card.type) ? 168 : 120;
-      if (locked(id)) {
-        const l = ed.locks[id];
-        return h('div', { class: 'ce-pub-row locked' },
-          h('span', { class: 'ce-pub-check' }, '🔒'),
-          h('div', { class: 'ce-pub-imgs' }, h('figure', {}, thumb(card, px))),
-          h('div', { class: 'ce-pub-body' }, h('h3', {}, card.name || id, h('small', {}, ` ${id}`)),
-            h('p', { class: 'warn' }, `${l.who} is editing it now. It can be published after they save and close it.`)));
-      }
-      // Work in progress (Marko 2026-11-14): the whole set waits until the switch is off.
-      if (held(id)) {
-        return h('div', { class: 'ce-pub-row locked' },
-          h('span', { class: 'ce-pub-check', title: 'Work in progress' }, 'WIP'),
-          h('div', { class: 'ce-pub-imgs' }, h('figure', {}, thumb(card, px))),
-          h('div', { class: 'ce-pub-body' }, h('h3', {}, card.name || id, h('small', {}, ` ${id}`)),
-            h('p', { class: 'muted small' }, held(id) === setOf(id) ? `Set ${setOf(id)} is Work in progress: its cards wait until that is switched off in ⚙ Sets & packs.`
-              : `It uses a card of set ${held(id)}, which is Work in progress: it waits with that set.`)),
-          h('button', { class: 'link accent', type: 'button', onclick: () => go(id) }, 'Open in editor'));
-      }
       return h('div', { class: 'ce-pub-row' },
         h('label', { class: 'ce-pub-check' }, h('input', { type: 'checkbox', checked: !ed.pubOff.has(id), onchange: e => { if (e.target.checked) ed.pubOff.delete(id); else ed.pubOff.add(id); env.render(); } })),
         h('div', { class: 'ce-pub-imgs' },
           base?.image ? h('figure', {}, oldThumb(base, px), h('figcaption', { class: 'muted small' }, 'Published')) : null,
           base?.image ? h('span', { class: 'ce-arrow' }, '→') : null,
-          h('figure', {}, thumb(card, px), h('figcaption', { class: 'muted small' }, 'New'))),
+          h('figure', {}, thumb(card, px), h('figcaption', { class: 'muted small' }, base?.image ? 'New' : 'New card'))),
         h('div', { class: 'ce-pub-body' },
           h('h3', {}, card.name || id, h('small', {}, ` ${id}`)),
           h('p', { class: 'muted small' }, `${d.who || '–'} · ${when(d.updated)}`),
           ...changeChips(d, base),
-          !card.art && card.type !== 'Core' ? h('p', { class: d.new ? 'warn small' : 'muted small' }, d.new ? 'No art: a new card waits until it has art.' : 'No art: the old picture stays.') : null),
+          !card.art && card.type !== 'Core' ? h('p', { class: 'muted small' }, 'No art: the old picture stays.') : null),
         h('button', { class: 'link accent', type: 'button', onclick: () => go(id) }, 'Open in editor'));
-    });
+    };
+    const toTab = k => () => { ed.pubTab = k; env.render(); };
+    let body;
+    if (ed.pubTab === 'wip') {
+      const bySet = new Map();
+      for (const x of wipList) { const s = held(x.id); if (!bySet.has(s)) bySet.set(s, []); bySet.get(s).push(x); }
+      body = [...bySet].map(([code, xs]) => h('section', { class: 'ce-pub-set' },
+        h('div', { class: 'ce-pub-set-head' }, h('h3', {}, sets.nameOf(code) === code ? code : sets.nameOf(code), h('small', {}, ` ${code} · ${xs.length} ${xs.length === 1 ? 'card' : 'cards'}`)),
+          h('button', { class: 'ghost', type: 'button', disabled: !canWrite(), title: 'Switch Work in progress off: these cards move to Ready',
+            onclick: () => env.guard(async () => { await sets.setWip(code, false); env.toast(`${code} is finished: its cards are in Ready.`); ed.pubTab = 'ready'; env.render(); }) }, 'Set is finished')),
+        h('p', { class: 'muted small' }, `Set ${code} is Work in progress: its cards wait until it is finished.`),
+        h('div', { class: 'ce-pub-minis' }, xs.map(x => mini(x, held(x.id) === setOf(x.id) || held(x.id) === cardOfRow(x).introducedIn && !cardOfRow(x).ingredients?.length
+          ? `${x.d.who || '–'} · ${when(x.d.updated)}${noArt(x) ? ' · no art yet' : ''}`
+          : `It uses a card of ${code}, so it waits with that set.`)))));
+    } else if (ed.pubTab === 'art') {
+      body = [h('p', { class: 'muted small' }, 'A new card waits until it has art: open it and add the art (or drag a picture onto it).'),
+        h('div', { class: 'ce-pub-minis' }, artList.map(x => mini(x, `${x.d.who || '–'} · ${when(x.d.updated)}`)))];
+    } else if (ed.pubTab === 'lock') {
+      body = [h('div', { class: 'ce-pub-minis' }, lockList.map(x => mini(x, `🔒 ${ed.locks[x.id].who} is editing it now. It can be published after they save and close it.`)))];
+    } else {
+      const others = tabs.filter(([k]) => k !== 'ready');
+      body = [...(ready.length ? ready.map(readyRow) : [h('p', { class: 'muted' }, list.length ? 'Nothing is ready to publish.' : 'Nothing waits for Publish.')]),
+        others.length ? h('p', { class: 'small muted ce-pub-also' }, 'Also waiting: ', others.map(([k, label, n], i) => [i ? ' · ' : '',
+          h('button', { class: 'link', type: 'button', onclick: toTab(k) }, k === 'wip' ? `${n} in ${[...new Set(wipList.map(x => held(x.id)))].join(', ')} (Work in progress)` : `${n} ${label.toLowerCase()}`)]).flat(), ' →') : null];
+    }
     return h('div', { class: 'ce-page ce-publish' },
       h('header', { class: 'ce-page-head' },
         h('div', {}, h('h1', {}, 'Publish'), h('p', { class: 'muted' }, 'Changes saved in the editor. The game sees them only after you publish.')),
         h('div', { class: 'ce-page-actions' },
           sets.newCardButton(sets.current() ?? 'OP1', ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist'], 'ghost'),
           h('button', { class: 'publish', type: 'button', disabled: !!why, title: why ?? '', onclick: () => env.guard(() => publishAll(selected.map(x => x.id))) }, `Publish ${selected.length} ${selected.length === 1 ? 'card' : 'cards'}`))),
-      why && list.length ? h('p', { class: 'muted small' }, why) : null,
-      renderLast(marko),
-      list.length ? rows : h('p', { class: 'muted' }, 'Nothing waits for Publish.'));
+      why && ready.length ? h('p', { class: 'muted small' }, why) : null,
+      list.length ? h('div', { class: 'ce-pub-tabs', role: 'tablist' }, tabs.map(([k, label, n, kind]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(ed.pubTab === k),
+        class: `${kind}${ed.pubTab === k ? ' on' : ''}`, onclick: toTab(k) }, label, h('span', { class: 'n' }, String(n))))) : null,
+      h('div', { class: 'ce-pub-list' }, body),
+      renderLast(marko));
   }
 
   // Riječi koje su otpale precrtane, nove zelene; isti dio sažet na "…" s ponešto riječi oko izmjene.

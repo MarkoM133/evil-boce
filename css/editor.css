@@ -266,7 +266,6 @@ button.link.accent, .accent { color: var(--straw); }
 /* Publish */
 .ce-publish h1 { font-size: 48px; }
 .ce-pub-row { background: var(--surface); padding: 18px 20px; display: grid; grid-template-columns: 40px auto 1fr auto; gap: 22px; align-items: center; }
-.ce-pub-row.locked { background: none; border: 1px dashed var(--line); grid-template-columns: 40px auto 1fr; }
 .ce-pub-check input { accent-color: var(--straw); width: 22px; height: 22px; }
 .ce-pub-imgs { display: flex; align-items: center; gap: 14px; }
 .ce-pub-imgs figure { margin: 0; display: grid; gap: 4px; justify-items: center; }
@@ -280,7 +279,31 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-change-tag { font: 700 11px var(--text); letter-spacing: .08em; padding: 3px 7px; background: var(--surface-2); color: var(--muted); flex: none; }
 .ce-change s { color: var(--muted); }
 .ce-change .add { color: var(--c-Green); }
-.ce-last { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: var(--surface); padding: 10px 14px; }
+.ce-last { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 0 0; border-top: 1px solid var(--line); color: var(--muted); }
+/* Publish tabs (Marko 2026-11-15, mockup B) */
+.ce-pub-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.ce-pub-tabs button { font: 700 italic 18px var(--display); color: var(--muted); background: none; border: 0; border-bottom: 3px solid transparent; padding: 8px 16px; display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+.ce-pub-tabs button.on { color: var(--bone); border-bottom-color: var(--red); }
+.ce-pub-tabs .n { font: 700 12px var(--text); font-style: normal; padding: 2px 7px; background: var(--surface-2); color: var(--bone); }
+.ce-pub-tabs .t-ok .n { background: var(--c-Green); color: #031; }
+.ce-pub-tabs .t-wait .n { background: var(--straw); color: var(--black); }
+.ce-pub-tabs .t-lock .n { background: var(--red); color: #fff; }
+.ce-pub-list { display: grid; gap: 10px; }
+.ce-pub-also { margin: 4px 0 0; }
+.ce-pub-also .link { font-size: inherit; }
+.ce-pub-set { display: grid; gap: 8px; }
+.ce-pub-set + .ce-pub-set { margin-top: 14px; }
+.ce-pub-set-head { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.ce-pub-set-head h3 { margin: 0; font-size: 24px; }
+.ce-pub-set-head h3 small { font: 600 13px var(--text); color: var(--muted); font-style: normal; }
+.ce-pub-set-head button { margin-left: auto; }
+.ce-pub-set > p { margin: 0; }
+.ce-pub-minis { display: grid; gap: 6px; }
+.ce-pub-mini { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; gap: 16px; align-items: center; background: var(--surface); padding: 8px 16px; }
+.ce-pub-mini figure { margin: 0; display: grid; justify-items: center; }
+.ce-pub-mini h4 { margin: 0; font: 700 italic 19px var(--display); }
+.ce-pub-mini h4 small { font: 600 13px var(--text); color: var(--muted); font-style: normal; }
+.ce-pub-mini p { margin: 2px 0 0; }
 
 /* Text guide, Frames */
 .ce-guide input { width: 100%; }

@@ -325,6 +325,12 @@ export function createSetsView(ctx) {
     render, nameOf, newCardButton, ensure: () => (v.saved ? null : load()),
     list: () => sets(),
     isWip,
+    // Work in progress on or off from elsewhere (Publish: "Set is finished").
+    setWip: async (code, on) => {
+      const s = sets().find(x => x.code === code);
+      if (!s) throw new Error(`No set ${code}.`);
+      await save({ ...s, wip: on });
+    },
     // Codes of the sets in Work in progress, read from the file now (Publish: the other computer may have changed it).
     freshWip: async () => {
       const text = await fs.readText(ctx.store().root, SETS_PATH);
