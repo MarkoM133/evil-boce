@@ -3,12 +3,17 @@
 // samo ti heroji (ime iza "&" koje još nije heroj se preskače: "Shanks & Roger" je Shanksova dok
 // Roger ne dođe); trait s popisa (data/traits.json) = heroj boje karte koji ima taj trait, sam ili
 // kroz Evolution kartu u decku. Sve ostalo je nevažeće. Usporedba bez velikih slova i rubnih razmaka.
+// "&" spaja i traitove, i heroje s traitovima (Marko 2026-11-15): "Mage & Brave Hero" = heroj s bilo kojim od ta
+// dva traita, "Dai & Mage" = Dai ili heroj s traitom Mage. Svaki dio je prvo heroj, inače trait; dio koji nije
+// ni jedno ni drugo se preskače dok drugi dio vrijedi.
 // Isto pravilo ima igra (game/rules/first_tag.gd); zajednički testovi: game/tests/fixtures/first_tag_cases.json.
 // Bez I/O, isto za app i testove.
 
 export const GENERAL = 'general';
 export const HEROES = 'heroes';
 export const TRAIT = 'trait';
+// Heroes and traits in one tag ("Dai & Mage").
+export const MIXED = 'mixed';
 export const INVALID = 'invalid';
 export const HERO_JOIN = '&';
 
@@ -47,23 +52,47 @@ export function heroAliases(hero) {
 
 const heroesOf = db => db.cards.filter(c => c.type === 'Hero' && !c.deleted);
 
-// Što prvi tag znači: { kind: general | heroes | trait | invalid, tag, heroes?: [ime], trait?: ime }.
+// Što prvi tag znači: { kind, tag, heroes: [ime], traits: [ime], unknown: [dio], trait? }.
+// kind: general | heroes (samo heroji) | trait (samo traitovi, jedan ili više; trait je prvi) | mixed (oboje) |
+// invalid. Zadovoljava ga heroj naveden u heroes ili heroj s nekim od traits.
 export function firstTag(db, card, traits) {
   const tag = String(card.traits?.[0] ?? '').trim();
   if (!tag) return { kind: INVALID, tag };
   if (norm(tag) === GENERAL) return { kind: GENERAL, tag };
   const parts = tag.split(HERO_JOIN).map(norm).filter(Boolean);
   const heroes = heroesOf(db);
-  const named = parts.map(p => heroes.find(h => heroAliases(h).includes(p)));
-  // "Shanks & Roger": ime koje još nije heroj se preskače, pa je karta Shanksova dok Roger ne dođe
-  // (tagWarnings ga i dalje navede). Tag bez "&" mora biti heroj ili trait kakav jest.
-  const found = named.filter(Boolean);
-  if (parts.length && (found.length === parts.length || (parts.length > 1 && found.length))) {
-    return { kind: HEROES, tag, heroes: [...new Set(found.map(h => h.name))], unknown: parts.filter((p, i) => !named[i]) };
+  const list = traitNames(traits);
+  const named = [];
+  const got = [];
+  const unknown = [];
+  for (const p of parts) {
+    const hero = heroes.find(h => heroAliases(h).includes(p));
+    if (hero) { if (!named.includes(hero.name)) named.push(hero.name); continue; }
+    const t = list.find(x => norm(x) === p);
+    if (!t) unknown.push(p);
+    else if (!got.includes(t)) got.push(t);
   }
-  const trait = traitNames(traits).find(t => norm(t) === norm(tag));
-  if (trait) return { kind: TRAIT, tag, trait };
+  // "Shanks & Roger": dio koji još nije ni heroj ni trait se preskače, pa je karta Shanksova dok Roger ne dođe
+  // (tagWarnings ga i dalje navede). Tag bez "&" mora biti heroj ili trait kakav jest.
+  if ((named.length || got.length) && (!unknown.length || parts.length > 1)) {
+    const kind = !got.length ? HEROES : !named.length ? TRAIT : MIXED;
+    return { kind, tag, heroes: named, traits: got, unknown, ...(kind === TRAIT ? { trait: got[0] } : {}) };
+  }
+  // A trait whose own name holds an "&".
+  const whole = list.find(t => norm(t) === norm(tag));
+  if (whole) return { kind: TRAIT, tag, heroes: [], traits: [whole], unknown: [], trait: whole };
   return { kind: INVALID, tag };
+}
+
+// Ima li karta neki od traitova.
+export const hasAnyTrait = (card, traits) => (traits ?? []).some(t => hasTrait(card, t));
+
+// Who the tag is for, for a refusal (the same words as FirstTag._who in the game).
+function whoFor(card, kind) {
+  const withT = isColorless(card) ? `a hero with ${kind.traits.join(' or ')}` : `a ${card.color} hero with ${kind.traits.join(' or ')}`;
+  if (!kind.traits.length) return `only for ${kind.heroes.join(' or ')}`;
+  if (!kind.heroes.length) return `needs ${withT}`;
+  return `only for ${kind.heroes.join(' or ')}, or ${withT}`;
 }
 
 // Ima li karta (heroj ili Evolution) trait: neki tag točno jednak imenu traita.
@@ -75,7 +104,8 @@ export function hasTrait(card, trait) {
 export function tagLabel(kind) {
   if (kind.kind === GENERAL) return 'General';
   if (kind.kind === HEROES) return `Signature: ${kind.heroes.join(' & ')}`;
-  if (kind.kind === TRAIT) return `Trait: ${kind.trait}`;
+  if (kind.kind === TRAIT) return `Trait: ${kind.traits.join(' or ')}`;
+  if (kind.kind === MIXED) return `Signature: ${kind.heroes.join(' & ')}, or trait ${kind.traits.join(' or ')}`;
   return kind.tag ? `Invalid: ${kind.tag}` : 'Invalid: no tag';
 }
 
@@ -103,18 +133,15 @@ export function deckVerdict(db, traits, card, heroIds, evolutionIds = []) {
   const kind = firstTag(db, card, traits);
   const same = colorless ? heroes : heroes.filter(h => h.color === card.color);
   if (kind.kind === GENERAL) return { ok: true, why: '', needs: [] };
-  if (kind.kind === HEROES) {
-    return same.some(h => kind.heroes.includes(h.name))
-      ? { ok: true, why: '', needs: [] }
-      : { ok: false, why: `only for ${kind.heroes.join(' or ')}`, needs: [] };
-  }
-  if (kind.kind === TRAIT) {
-    if (same.some(h => hasTrait(h, kind.trait))) return { ok: true, why: '', needs: [] };
+  if (kind.kind === HEROES || kind.kind === TRAIT || kind.kind === MIXED) {
+    // A hero named in the tag, or one that carries one of its traits (on its card or on an Evolution in the deck).
+    if (same.some(h => kind.heroes.includes(h.name))) return { ok: true, why: '', needs: [] };
+    if (same.some(h => hasAnyTrait(h, kind.traits))) return { ok: true, why: '', needs: [] };
     const names = new Set(same.map(h => h.name));
-    if (evos.some(e => names.has(e.hero) && hasTrait(e, kind.trait))) return { ok: true, why: '', needs: [] };
-    const needs = db.cards.filter(e => !e.deleted && e.type === 'Evolution' && names.has(e.hero) && hasTrait(e, kind.trait));
+    if (evos.some(e => names.has(e.hero) && hasAnyTrait(e, kind.traits))) return { ok: true, why: '', needs: [] };
+    const needs = db.cards.filter(e => !e.deleted && e.type === 'Evolution' && names.has(e.hero) && hasAnyTrait(e, kind.traits));
     if (needs.length) return { ok: false, why: `Requires ${needs.map(e => e.name).join(' or ')}`, needs: needs.map(e => e.id) };
-    return { ok: false, why: colorless ? `needs a hero with ${kind.trait}` : `needs a ${card.color} hero with ${kind.trait}`, needs: [] };
+    return { ok: false, why: whoFor(card, kind), needs: [] };
   }
   return { ok: false, why: kind.tag ? `first tag "${kind.tag}" is not General, a hero or a known trait` : 'the card has no tags', needs: [] };
 }

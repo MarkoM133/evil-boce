@@ -5,6 +5,9 @@ extends RefCounted
 ## Bucciarati"): only those heroes; a name after "&" that is no hero yet is skipped ("Shanks &
 ## Roger" is Shanks's until Roger comes). A trait from the trait list (data/traits.json): a hero of the
 ## card's colour that has the trait, on its own card or on an Evolution card in the deck.
+## "&" joins traits too, and heroes with traits (Marko, 2026-11-15): "Mage & Brave Hero" is a hero with
+## either trait, "Dai & Mage" is Dai or any hero with Mage. Each part is a hero first, else a trait; a part
+## that is neither is skipped while another part counts.
 ## A colorless card (color "None", 2026-11-01) is for a hero of any colour; its first tag still counts.
 ## Anything else is not valid. Case and edge spaces do not count. The web app has the same rule
 ## (js/tags.js); both run the cases in tests/fixtures/first_tag_cases.json.
@@ -12,6 +15,8 @@ extends RefCounted
 const GENERAL: String = "general"
 const HEROES: String = "heroes"
 const TRAIT: String = "trait"
+## Heroes and traits in one tag ("Dai & Mage").
+const MIXED: String = "mixed"
 const INVALID: String = "invalid"
 const HERO_JOIN: String = "&"
 
@@ -29,7 +34,9 @@ static func aliases_of(hero: CardDef) -> PackedStringArray:
 	return out
 
 
-## What the first tag means: {kind, tag, heroes: [names], trait}.
+## What the first tag means: {kind, tag, heroes: [names], traits: [names], unknown: [parts], trait}.
+## kind: general | heroes (only heroes named) | trait (only traits, one or more; `trait` is the first) |
+## mixed (both) | invalid. Whoever is named in `heroes` or carries one of `traits` satisfies it.
 static func kind_of(catalog: CardCatalog, card: CardDef) -> Dictionary:
 	var tag: String = card.traits[0].strip_edges() if not card.traits.is_empty() else ""
 	if tag.is_empty():
@@ -38,6 +45,7 @@ static func kind_of(catalog: CardCatalog, card: CardDef) -> Dictionary:
 		return {"kind": GENERAL, "tag": tag}
 	var heroes: Array[CardDef] = catalog.of_type("Hero")
 	var named := PackedStringArray()
+	var traits := PackedStringArray()
 	var unknown := PackedStringArray()
 	var parts: int = 0
 	for part: String in tag.split(HERO_JOIN, false):
@@ -50,18 +58,56 @@ static func kind_of(catalog: CardCatalog, card: CardDef) -> Dictionary:
 			if aliases_of(h).has(p):
 				found = h
 				break
-		if found == null:
+		if found != null:
+			if not named.has(found.name):
+				named.append(found.name)
+			continue
+		var t: String = _trait_named(catalog, p)
+		if t.is_empty():
 			unknown.append(p)
-		elif not named.has(found.name):
-			named.append(found.name)
-	# "Shanks & Roger": a name that is no hero yet is skipped, so the card is Shanks's until Roger
-	# comes. A tag without "&" must be a hero or a trait as it is.
-	if not named.is_empty() and (unknown.is_empty() or parts > 1):
-		return {"kind": HEROES, "tag": tag, "heroes": named, "unknown": unknown}
-	for t: String in catalog.trait_names:
-		if norm(t) == norm(tag):
-			return {"kind": TRAIT, "tag": tag, "trait": t}
+		elif not traits.has(t):
+			traits.append(t)
+	# "Shanks & Roger": a part that is no hero and no trait yet is skipped, so the card is Shanks's until
+	# Roger comes. A tag without "&" must be a hero or a trait as it is.
+	if (not named.is_empty() or not traits.is_empty()) and (unknown.is_empty() or parts > 1):
+		var kind: String = HEROES if traits.is_empty() else (TRAIT if named.is_empty() else MIXED)
+		var out: Dictionary = {"kind": kind, "tag": tag, "heroes": named, "traits": traits, "unknown": unknown}
+		if kind == TRAIT:
+			out["trait"] = traits[0]
+		return out
+	# A trait whose own name holds an "&".
+	var whole: String = _trait_named(catalog, norm(tag))
+	if not whole.is_empty():
+		return {"kind": TRAIT, "tag": tag, "heroes": PackedStringArray(), "traits": PackedStringArray([whole]), "unknown": PackedStringArray(), "trait": whole}
 	return {"kind": INVALID, "tag": tag}
+
+
+## The trait on the list that `normed` names ("" if none).
+static func _trait_named(catalog: CardCatalog, normed: String) -> String:
+	for t: String in catalog.trait_names:
+		if norm(t) == normed:
+			return t
+	return ""
+
+
+## Whether a card carries any of the traits.
+static func has_any_trait(card: CardDef, traits: PackedStringArray) -> bool:
+	for t: String in traits:
+		if has_trait(card, t):
+			return true
+	return false
+
+
+## Who the tag is for, for a refusal: "only for A or B", "needs a Red hero with X or Y", or both.
+static func _who(card: CardDef, k: Dictionary) -> String:
+	var only: PackedStringArray = k["heroes"]
+	var traits: PackedStringArray = k["traits"]
+	var with: String = ("a hero with %s" % " or ".join(traits)) if card.is_colorless() else ("a %s hero with %s" % [card.color, " or ".join(traits)])
+	if traits.is_empty():
+		return "only for %s" % " or ".join(only)
+	if only.is_empty():
+		return "needs %s" % with
+	return "only for %s, or %s" % [" or ".join(only), with]
 
 
 ## Whether a hero or Evolution card carries the trait (a tag equal to its name).
@@ -97,29 +143,28 @@ static func deck_verdict(catalog: CardCatalog, card: CardDef, heroes: Array[Card
 	match str(k["kind"]):
 		GENERAL:
 			return _ok()
-		HEROES:
+		HEROES, TRAIT, MIXED:
+			# A hero named in the tag, or one that carries one of its traits (on its card or on an Evolution in the deck).
 			var only: PackedStringArray = k["heroes"]
+			var traits: PackedStringArray = k["traits"]
 			for n: String in same_names:
 				if only.has(n):
 					return _ok()
-			return _no("only for %s" % " or ".join(only))
-		TRAIT:
-			var t: String = k["trait"]
 			for h: CardDef in same:
-				if has_trait(h, t):
+				if has_any_trait(h, traits):
 					return _ok()
 			for e: CardDef in evolutions:
-				if same_names.has(e.hero) and has_trait(e, t):
+				if same_names.has(e.hero) and has_any_trait(e, traits):
 					return _ok()
 			var needs := PackedStringArray()
 			var needs_names := PackedStringArray()
 			for e: CardDef in catalog.of_type("Evolution"):
-				if same_names.has(e.hero) and has_trait(e, t):
+				if same_names.has(e.hero) and has_any_trait(e, traits):
 					needs.append(e.id)
 					needs_names.append(e.name)
 			if not needs.is_empty():
 				return {"ok": false, "why": "Requires %s" % " or ".join(needs_names), "needs": needs}
-			return _no(("needs a hero with %s" % t) if card.is_colorless() else ("needs a %s hero with %s" % [card.color, t]))
+			return _no(_who(card, k))
 	var tag: String = str(k.get("tag", ""))
 	return _no(("first tag \"%s\" is not General, a hero or a known trait" % tag) if not tag.is_empty() else "the card has no tags")
 
@@ -152,15 +197,17 @@ static func play_verdict(catalog: CardCatalog, card: CardDef, base: CardDef, cur
 	match str(k["kind"]):
 		GENERAL:
 			return _ok()
-		HEROES:
+		HEROES, TRAIT, MIXED:
 			var only: PackedStringArray = k["heroes"]
+			var traits: PackedStringArray = k["traits"]
 			if base != null and only.has(base.name):
 				return _ok()
-			return _no("only for %s" % " or ".join(only))
-		TRAIT:
-			var t: String = k["trait"]
-			if current != null and has_trait(current, t):
+			if current != null and has_any_trait(current, traits):
 				return _ok()
-			return _no("Requires %s" % t)
+			if traits.is_empty():
+				return _no("only for %s" % " or ".join(only))
+			if only.is_empty():
+				return _no("Requires %s" % " or ".join(traits))
+			return _no("only for %s, or Requires %s" % [" or ".join(only), " or ".join(traits)])
 	var tag: String = str(k.get("tag", ""))
 	return _no(("first tag \"%s\" is not General, a hero or a known trait" % tag) if not tag.is_empty() else "the card has no tags")

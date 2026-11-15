@@ -14,6 +14,7 @@ test('prvi tag: vrsta (General, heroj, trait, nevažeći)', () => {
     assert.equal(got.kind, k.kind, k.card);
     if (k.heroes) assert.deepEqual(got.heroes, k.heroes, k.card);
     if (k.trait) assert.equal(got.trait, k.trait, k.card);
+    if (k.traits) assert.deepEqual(got.traits, k.traits, k.card);
   }
 });
 
@@ -22,6 +23,7 @@ test('prvi tag: smije li karta u deck (isti slučajevi kao u igri)', () => {
     const v = deckVerdict(db, fx.traits, byId.get(c.card), c.heroes, c.evolutions ?? []);
     assert.equal(v.ok, c.ok, `${c.card}: ${c.why} (${v.why})`);
     if (c.needs) assert.deepEqual(v.needs, [c.needs], c.card);
+    if (c.says) assert.equal(v.why, c.says, c.card);
   }
 });
 

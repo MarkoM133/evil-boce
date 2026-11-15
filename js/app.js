@@ -1041,7 +1041,7 @@ function renderTraits() {
   const work = (state.traitWork ??= structuredClone(state.traits ?? emptyTraits()));
   const live = state.db.cards.filter(c => !c.deleted);
   const holders = t => live.filter(c => (c.type === 'Hero' || c.type === 'Evolution') && hasTrait(c, t));
-  const firstOf = t => live.filter(c => DECK_TYPES.includes(c.type) && norm(c.traits?.[0]) === norm(t));
+  const firstOf = t => live.filter(c => DECK_TYPES.includes(c.type) && String(c.traits?.[0] ?? '').split('&').some(p => norm(p) === norm(t)));
   const dirty = JSON.stringify(work) !== JSON.stringify(state.traits ?? emptyTraits());
   const nameIn = h('input', { placeholder: 'New trait, e.g. Rokushiki', disabled: !canEdit });
   const add = () => {

@@ -1,5 +1,5 @@
 {
-  "about": "The first tag rule (2026-10-26) on invented cards: the game (test_first_tag.gd) and the web app (test/tags.test.mjs) must give the same answers. Colorless cards (color None, 2026-11-01) go with heroes of any colour; the first tag still counts.",
+  "about": "The first tag rule (2026-10-26) on invented cards: the game (test_first_tag.gd) and the web app (test/tags.test.mjs) must give the same answers. Colorless cards (color None, 2026-11-01) go with heroes of any colour; the first tag still counts. \"&\" joins traits and heroes with traits too (2026-11-15): any one of the parts is enough.",
   "traits": [
     {
       "name": "Haki",
@@ -217,6 +217,51 @@
       "traits": [
         "Haki"
       ]
+    },
+    {
+      "id": "C-HS",
+      "name": "Will or Blade",
+      "type": "Action",
+      "color": "Red",
+      "traits": [
+        "Haki & Sword"
+      ]
+    },
+    {
+      "id": "C-SS-N",
+      "name": "Grey Blade or Stand",
+      "type": "Action",
+      "color": "None",
+      "traits": [
+        "Sword & Stand"
+      ]
+    },
+    {
+      "id": "C-MIX",
+      "name": "Delta or a Stand",
+      "type": "Action",
+      "color": "Blue",
+      "traits": [
+        "Delta & Stand"
+      ]
+    },
+    {
+      "id": "C-SZ",
+      "name": "Blade or Nobody",
+      "type": "Action",
+      "color": "Red",
+      "traits": [
+        "Sword & Zulu"
+      ]
+    },
+    {
+      "id": "C-AG",
+      "name": "Alfa or Second Gear",
+      "type": "Action",
+      "color": "Blue",
+      "traits": [
+        "Alfa & Gear Second"
+      ]
     }
   ],
   "kinds": [
@@ -275,6 +320,50 @@
     {
       "card": "C-COL",
       "kind": "general"
+    },
+    {
+      "card": "C-HS",
+      "kind": "trait",
+      "trait": "Haki",
+      "traits": [
+        "Haki",
+        "Sword"
+      ]
+    },
+    {
+      "card": "C-SS-N",
+      "kind": "trait",
+      "traits": [
+        "Sword",
+        "Stand"
+      ]
+    },
+    {
+      "card": "C-MIX",
+      "kind": "mixed",
+      "heroes": [
+        "Delta"
+      ],
+      "traits": [
+        "Stand"
+      ]
+    },
+    {
+      "card": "C-SZ",
+      "kind": "trait",
+      "traits": [
+        "Sword"
+      ]
+    },
+    {
+      "card": "C-AG",
+      "kind": "mixed",
+      "heroes": [
+        "Alfa Prime"
+      ],
+      "traits": [
+        "Gear Second"
+      ]
     }
   ],
   "cases": [
@@ -486,6 +575,143 @@
       "card": "C-COLH",
       "ok": true,
       "why": "colorless Haki: a Haki hero of any colour"
+    },
+    {
+      "heroes": [
+        "H-BRA",
+        "H-CHA",
+        "H-DEL"
+      ],
+      "evolutions": [],
+      "card": "C-HS",
+      "ok": true,
+      "why": "Haki & Sword: Bravo is Red with Sword"
+    },
+    {
+      "heroes": [
+        "H-ALF",
+        "H-CHA",
+        "H-DEL"
+      ],
+      "evolutions": [],
+      "card": "C-HS",
+      "ok": true,
+      "why": "Haki & Sword: Alfa is Red with Haki"
+    },
+    {
+      "heroes": [
+        "H-CHA",
+        "H-DEL"
+      ],
+      "evolutions": [],
+      "card": "C-SS-N",
+      "ok": true,
+      "why": "colorless Sword & Stand: Charlie has Stand"
+    },
+    {
+      "heroes": [
+        "H-DEL",
+        "H-ECH"
+      ],
+      "evolutions": [],
+      "card": "C-SS-N",
+      "ok": false,
+      "why": "colorless Sword & Stand: neither hero has either",
+      "says": "needs a hero with Sword or Stand"
+    },
+    {
+      "heroes": [
+        "H-ALF",
+        "H-BRA",
+        "H-DEL"
+      ],
+      "evolutions": [],
+      "card": "C-MIX",
+      "ok": true,
+      "why": "Delta & Stand: Delta is named"
+    },
+    {
+      "heroes": [
+        "H-ALF",
+        "H-BRA",
+        "H-CHA"
+      ],
+      "evolutions": [],
+      "card": "C-MIX",
+      "ok": true,
+      "why": "Delta & Stand: Charlie has Stand"
+    },
+    {
+      "heroes": [
+        "H-ALF",
+        "H-BRA",
+        "H-ECH"
+      ],
+      "evolutions": [],
+      "card": "C-MIX",
+      "ok": false,
+      "why": "Delta & Stand: no Blue hero",
+      "says": "color Blue is not a color of the chosen heroes"
+    },
+    {
+      "heroes": [
+        "H-BRA",
+        "H-CHA",
+        "H-DEL"
+      ],
+      "evolutions": [],
+      "card": "C-SZ",
+      "ok": true,
+      "why": "Sword & Zulu: Zulu is nothing yet, Sword still counts"
+    },
+    {
+      "heroes": [
+        "H-ALF",
+        "H-CHA",
+        "H-DEL"
+      ],
+      "evolutions": [],
+      "card": "C-SZ",
+      "ok": false,
+      "why": "Sword & Zulu: Alfa has no Sword",
+      "says": "needs a Red hero with Sword"
+    },
+    {
+      "heroes": [
+        "H-ALF",
+        "H-CHA",
+        "H-DEL"
+      ],
+      "evolutions": [],
+      "card": "C-AG",
+      "ok": false,
+      "needs": "E-DEL",
+      "why": "Alfa & Gear Second on a Blue card: Alfa is Red, only the evolution has Gear Second",
+      "says": "Requires Delta, Gear Second"
+    },
+    {
+      "heroes": [
+        "H-ALF",
+        "H-CHA",
+        "H-DEL"
+      ],
+      "evolutions": [
+        "E-DEL"
+      ],
+      "card": "C-AG",
+      "ok": true,
+      "why": "Alfa & Gear Second: the evolution is in the deck"
+    },
+    {
+      "heroes": [
+        "H-ALF",
+        "H-CHA"
+      ],
+      "evolutions": [],
+      "card": "C-AG",
+      "ok": false,
+      "why": "Alfa & Gear Second: Alfa is Red, Charlie has no Gear Second and no evolution",
+      "says": "only for Alfa Prime, or a Blue hero with Gear Second"
     }
   ]
 }

@@ -1,6 +1,6 @@
 // Deck: pravila (§8 plana), random deck (§10) i deck kod. Bez I/O, isto za app i testove.
 import { DECK_TYPES } from './parse.js';
-import { deckVerdict, firstTag, traitNames, hasTrait, heroAliases, norm, isColorless, HEROES, TRAIT, INVALID } from './tags.js';
+import { deckVerdict, firstTag, traitNames, hasTrait, heroAliases, norm, isColorless, HEROES, TRAIT, INVALID, MIXED } from './tags.js';
 
 export const DECK_SIZE = 40;
 export const LIMITS = { Action: 4, Equipment: 4, Assist: 2, Evolution: 2 };
@@ -197,9 +197,14 @@ export function tagWarnings(db) {
       out.push({ id: c.id, msg: k.tag ? `first tag "${k.tag}" is not General, a hero alias or a trait from the list` : 'no tags: the first tag says who may take the card' });
     } else if (k.kind === HEROES && k.unknown?.length) {
       out.push({ id: c.id, msg: `first tag "${k.tag}": ${k.unknown.map(u => `"${u}"`).join(', ')} is no hero yet, so the card counts for ${k.heroes.join(' and ')} only` });
-    } else if (k.kind === TRAIT) {
-      const holders = live.filter(x => (x.type === 'Hero' || x.type === 'Evolution') && (isColorless(c) || x.color === c.color) && hasTrait(x, k.trait));
-      if (!holders.length) out.push({ id: c.id, msg: `first tag ${k.trait}: no ${c.color} hero or Evolution has it, so nobody can take the card` });
+    } else if (k.kind === TRAIT || k.kind === MIXED) {
+      // "&" with traits (2026-11-15): a part that is nothing yet, and a trait nobody of that colour carries.
+      if (k.unknown?.length) out.push({ id: c.id, msg: `first tag "${k.tag}": ${k.unknown.map(u => `"${u}"`).join(', ')} is no hero or trait yet, so the card counts for ${[...k.heroes, ...k.traits].join(' and ')} only` });
+      const col = isColorless(c) ? '' : `${c.color} `;
+      const held = t => live.some(x => (x.type === 'Hero' || x.type === 'Evolution') && (isColorless(c) || x.color === c.color) && hasTrait(x, t));
+      const empty = k.traits.filter(t => !held(t));
+      if (empty.length === k.traits.length && !k.heroes.length) out.push({ id: c.id, msg: `first tag ${k.traits.join(' or ')}: no ${col}hero or Evolution has it, so nobody can take the card` });
+      else for (const t of empty) out.push({ id: c.id, msg: `first tag "${k.tag}": no ${col}hero or Evolution has ${t} yet` });
     }
     const later = (c.traits ?? []).slice(1).find(t => heroes.some(h => heroAliases(h).includes(norm(t))));
     if (later) out.push({ id: c.id, msg: `"${later}" is a hero's name but not the first tag; should it be first?` });
@@ -222,9 +227,10 @@ export function coverage(db) {
     const kinds = { signature: 0, trait: 0, general: 0, evolution: 0 };
     for (const c of own) {
       if (c.type === 'Evolution') { kinds.evolution++; continue; }
-      const k = firstTag(db, c, traits).kind;
-      if (k === HEROES) kinds.signature++;
-      else if (k === TRAIT) kinds.trait++;
+      const k = firstTag(db, c, traits);
+      // "Dai & Mage": Dai's signature card, a trait card for everyone else.
+      if (k.kind === HEROES || (k.kind === MIXED && k.heroes.includes(h.name))) kinds.signature++;
+      else if (k.kind === TRAIT || k.kind === MIXED) kinds.trait++;
       else kinds.general++;
     }
     let pairs = 0;

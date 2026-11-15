@@ -133,7 +133,7 @@ static func _used_cards(catalog: CardCatalog, decks: Array) -> Dictionary:
 				# So does a first tag naming heroes ("Giorno & Bucciarati"): a resumed match must
 				# still read it as a hero tag when one of them is in no deck.
 				var k: Dictionary = FirstTag.kind_of(catalog, c)
-				if str(k["kind"]) == FirstTag.HEROES:
+				if str(k["kind"]) == FirstTag.HEROES or str(k["kind"]) == FirstTag.MIXED:
 					for name: String in JsonUtil.as_strings(k.get("heroes", [])):
 						var h: CardDef = catalog.hero_named(name)
 						if h != null and not out.has(h.id):

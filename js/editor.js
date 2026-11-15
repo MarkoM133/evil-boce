@@ -5,7 +5,7 @@
 // Tekst je u editoru s tokenima ([HP], [PWR]…), u bazi riječima (js/card-text.js).
 import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, coreMode, TINTS, PHASE_COLORS } from './render.js';
 import { fxProblems } from './fx-grammar.js';
-import { firstTag, traitNames, norm, ruleWord, GENERAL, HEROES, TRAIT, INVALID } from './tags.js';
+import { firstTag, traitNames, norm, ruleWord, GENERAL, HEROES, TRAIT, MIXED, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
 import { applyDrafts, imageHashOf } from './importer.js';
 import { lockPath, lockState, newLock, pickLock, lockIdOf, isConflictCopy, isLive, LOCK_DIR, HEARTBEAT_MS, SETTLE_MS, IDLE_MS } from './locks.js';
@@ -1821,17 +1821,29 @@ export function createEditor(env) {
     const traitList = env.state.traits?.traits ?? [];
     const tag = String(w.traits?.[0] ?? '').trim();
     const k = firstTag({ ...db(), cards: allCards() }, { traits: w.traits }, traitList);
-    const kindNow = k.kind === GENERAL ? 'general' : k.kind === HEROES ? 'hero' : k.kind === TRAIT ? 'trait' : null;
+    const kindNow = k.kind === GENERAL ? 'general' : k.kind === HEROES ? 'hero' : k.kind === TRAIT ? 'trait' : k.kind === MIXED ? 'mixed' : null;
+    const parts = tag.split('&').map(p => p.trim()).filter(Boolean);
     // The list shows while a hero or a trait is being picked and closes once one is (Marko 2026-11-14): then only
     // "Picked: X · change". It opens with One hero / Trait when nothing of that kind is picked, or with change.
-    if (ed.ftFor !== w.id) { ed.ftFor = w.id; ed.ftKind = kindNow ?? 'hero'; ed.ftOpen = false; }
-    const pickFirst = v => { snap(true); w.traits = [v, ...(w.traits ?? []).slice(1)]; ed.ftOpen = false; changed(); env.render(); };
+    // "add another" (2026-11-15, "&" with traits): the next pick joins the tag ("Mage & Brave Hero", "Dai & Mage"),
+    // from either list; any one of them is enough to play the card.
+    if (ed.ftFor !== w.id) { ed.ftFor = w.id; ed.ftKind = kindNow === 'mixed' ? 'trait' : kindNow ?? 'hero'; ed.ftOpen = false; ed.ftAdd = false; }
+    const pickFirst = v => {
+      const join = ed.ftAdd && v !== 'General' && kindNow && kindNow !== 'general';
+      const next = !join ? v : parts.some(p => norm(p) === norm(v)) ? tag : [...parts, v].join(' & ');
+      snap(true);
+      w.traits = [next, ...(w.traits ?? []).slice(1)];
+      ed.ftOpen = false;
+      ed.ftAdd = false;
+      changed();
+      env.render();
+    };
     const openList = () => { ed.ftOpen = true; ed.ftReveal = true; env.render(); };
     const seg = h('div', { class: 'ce-seg ce-ft-seg' }, [['general', 'Any hero'], ['hero', 'One hero'], ['trait', 'Trait']].map(([key, label]) =>
       h('button', { type: 'button', class: ed.ftKind === key ? 'active' : '', onclick: () => {
         if (ed.ftKind === key && key !== 'general') return;
         ed.ftKind = key;
-        if (key === 'general') pickFirst('General');
+        if (key === 'general') { ed.ftAdd = false; pickFirst('General'); }
         else openList();
       } }, label)));
     const out = [h('span', {}, 'WHO MAY PLAY THE CARD'), seg];
@@ -1842,7 +1854,7 @@ export function createEditor(env) {
         ? allCards().filter(c => c.type === 'Hero' && (w.color === 'None' || c.color === w.color)).sort((a, b) => a.name.localeCompare(b.name))
           .map(c => ({ value: c.name, words: [c.name, ...(c.aliases ?? [])], sub: (c.aliases ?? []).filter(a => a !== c.name).join(', '), color: c.color }))
         : traitNames(traitList).map(t => ({ value: t, words: [t], sub: (traitList.find(x => (x?.name ?? x) === t)?.description ?? '') }));
-      const rows = items.map(it => h('li', { class: norm(it.value) === norm(tag) ? 'on' : '', role: 'option', onpointerdown: e => { e.preventDefault(); pickFirst(it.value); } },
+      const rows = items.map(it => h('li', { class: parts.some(p => norm(p) === norm(it.value)) ? 'on' : '', role: 'option', onpointerdown: e => { e.preventDefault(); pickFirst(it.value); } },
         h('span', {}, it.color ? h('span', { class: 'ce-ft-dot', style: `--sw: var(--c-${it.color})` }) : null, it.value), h('small', { class: 'muted' }, it.sub)));
       const two = h('li', { role: 'option', hidden: true });
       const none = h('li', { class: 'muted', hidden: true }, h('small', {}, ed.ftKind === 'hero' ? `No ${w.color === 'None' ? '' : w.color + ' '}hero by that name.` : 'No such trait: new traits are added on the Traits page.'));
@@ -1850,22 +1862,26 @@ export function createEditor(env) {
       const filter = q => {
         let shown = 0;
         items.forEach((it, i) => { const ok = !q || it.words.some(x => norm(x).includes(q)); rows[i].hidden = !ok; if (ok) shown++; });
-        // "Shanks & Roger": two heroes in one first tag.
-        const pair = ed.ftKind === 'hero' && q.includes('&') ? String(search.value).trim() : '';
+        // "Shanks & Roger", "Mage & Brave Hero", "Dai & Mage": several in one first tag, typed with "&".
+        const pair = q.includes('&') ? String(search.value).trim() : '';
         two.hidden = !pair;
-        if (pair) { two.replaceChildren(h('span', {}, `Use "${pair}"`), h('small', { class: 'muted' }, 'two heroes')); two.onpointerdown = e => { e.preventDefault(); pickFirst(pair); }; }
+        if (pair) { two.replaceChildren(h('span', {}, `Use "${pair}"`), h('small', { class: 'muted' }, 'any one of them')); two.onpointerdown = e => { e.preventDefault(); ed.ftAdd = false; pickFirst(pair); }; }
         none.hidden = shown > 0 || !!pair;
       };
       const search = h('input', { placeholder: ed.ftKind === 'hero' ? 'Type a hero or an alias…' : 'Type a trait…', autocomplete: 'off',
         oninput: e => filter(norm(e.target.value)),
         onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); const first = rows.find(r => !r.hidden) ?? (two.hidden ? null : two); first?.dispatchEvent(new PointerEvent('pointerdown')); } } });
-      const right = ed.ftKind === 'hero' ? kindNow === 'hero' : kindNow === 'trait';
+      const right = kindNow === 'mixed' || (ed.ftKind === 'hero' ? kindNow === 'hero' : kindNow === 'trait') || (ed.ftAdd && !!kindNow && kindNow !== 'general');
       if (right && !ed.ftOpen) {
         out.push(h('div', { class: 'ce-ft-picked' }, h('span', { class: 'muted' }, 'Picked: '), h('strong', {}, tag), ' · ',
-          h('button', { class: 'link accent', type: 'button', disabled: !canWrite(), onclick: openList }, 'change')));
+          h('button', { class: 'link accent', type: 'button', disabled: !canWrite(), onclick: () => { ed.ftAdd = false; openList(); } }, 'change'), ' · ',
+          h('button', { class: 'link accent', type: 'button', disabled: !canWrite(), title: 'Another hero or trait that may play it too: any one of them is enough',
+            onclick: () => { ed.ftAdd = true; openList(); } }, 'add another')));
+        if (parts.length > 1) out.push(h('small', { class: 'muted' }, 'Any one of them is enough.'));
       } else {
         out.push(search, list);
-        out.push(h('small', { class: right ? 'muted' : 'warn' }, right ? `Picked: ${tag}` : tag ? `Now "${tag}": pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list` : `Pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list`));
+        out.push(h('small', { class: right ? 'muted' : 'warn' }, ed.ftAdd && right ? `Adding to "${tag}": pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} (or switch to ${ed.ftKind === 'hero' ? 'Trait' : 'One hero'} above)`
+          : right ? `Picked: ${tag}` : tag ? `Now "${tag}": pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list` : `Pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list`));
         // Just opened: brought into view (the form scrolls on its own) and ready to type in.
         if (ed.ftReveal) {
           ed.ftReveal = false;
@@ -2136,9 +2152,12 @@ export function createEditor(env) {
     if (PORTRAIT.includes(w.type)) {
       const k = firstTag(db(), card, traitList);
       if (k.kind === HEROES) out.push([true, `First tag "${k.tag}" is a hero${k.heroes.length > 1 ? 'es' : ''}${k.heroes.some(n => n !== k.tag) ? ' alias' : ''}`]);
-      else if (k.kind === TRAIT) out.push([true, `First tag "${k.tag}" is a trait`]);
+      else if (k.kind === TRAIT) out.push([true, k.traits.length > 1 ? `First tag "${k.tag}": a hero with ${k.traits.join(' or ')}` : `First tag "${k.tag}" is a trait`]);
+      else if (k.kind === MIXED) out.push([true, `First tag "${k.tag}": ${k.heroes.join(' or ')}, or a hero with ${k.traits.join(' or ')}`]);
       else if (k.kind === GENERAL) out.push([true, 'First tag General: any hero of this colour']);
       else out.push([false, k.tag ? `First tag "${k.tag}" is not a hero, alias or trait` : 'No first tag: who may play it?']);
+      // "Mage & Brave Hero" while Mage is not on the trait list: that part does not count yet.
+      if ((k.kind === TRAIT || k.kind === MIXED) && k.unknown?.length) out.push([false, `${k.unknown.map(u => `"${u}"`).join(', ')} in the first tag is no hero or trait yet: add the trait on Words › Tags, or it does not count`]);
       const avoid = avoidWarnings(ed.guide, card.text);
       out.push(avoid.length ? [false, avoid[0]] : [true, 'Phrases match the text guide']);
       gameReads();

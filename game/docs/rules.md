@@ -327,6 +327,12 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    ("only for X", "Requires T"); equipment whose tag the hero no longer fits falls into the
    graveyard when an evolution comes or goes (`_drop_unfit_equipment`). A record carries the
    trait list it played by. `{Sword}` effects count equipment cards, never a hero's trait.
+   (2026-11-15) "&" joins traits too, and heroes with traits: each part is a hero first, else a
+   trait, and any one of them is enough ("Mage & Brave Hero", "Dai & Mage"). `kind_of` gives
+   `heroes`, `traits` and `unknown` for every tag; the kinds are heroes (only heroes), trait (only
+   traits, one or more), mixed (both). A part that is neither is skipped while another counts.
+   Refusals: "only for X", "Requires T or U", "only for X, or Requires T" in play; in a deck
+   "needs a Red hero with T or U", "only for X, or a Red hero with T".
 9g. (2026-11-01) Colorless cards: `color: "None"` passes the colour check in `deck_verdict`
    and `_play` (the first tag still counts), and `bonusColors` on the card drive the fx
    `BONUS` / `INSTEAD` effects and `OWN_COST` (docs/fx-keywords.md). The Draft counts a
