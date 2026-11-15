@@ -1030,25 +1030,29 @@ function renderHero(canvas, card, tpl, art, emblem) {
   ctx.save();
   ctx.letterSpacing = `${L.label.spacing ?? 0}px`;
   // Gore između strelica: HERO, ili EVOLUTION i razina rimskim brojem (kao Card Engine). Privremena evolucija
-  // (2026-11-15) ide na bilo koju razinu: umjesto broja pješčani sat, kao na tokenu.
+  // (2026-11-15) ide na bilo koju razinu: piše samo EVOLUTION, a strelice okvira postanu pješčani satovi (Marko).
   const temp = evo && Number(card.tempTurns) > 0;
   if (temp) {
-    const [lx, ly, lw, lh] = L.label.box;
-    const icon = Math.round(lh * 0.8);
-    const gap = Math.round(icon * 0.35);
-    fitLine(ctx, 'EVOLUTION', { ...L.label, box: [lx - (icon + gap) / 2, ly, lw, lh] }, { font: TITLE_FONT, color: plateText, bold: true });
-    const tw = ctx.measureText('EVOLUTION').width;
-    const ix = lx + lw / 2 - (icon + gap) / 2 + tw / 2 + gap;
-    ctx.save();
-    ctx.translate(ix, ly + (lh - icon) / 2);
-    ctx.scale(icon / 24, icon / 24);
-    ctx.strokeStyle = plateText;
-    ctx.lineWidth = 2.6;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.stroke(new Path2D(HOURGLASS));
-    ctx.stroke(new Path2D('M9.5 18.5h5'));
+    fitLine(ctx, 'EVOLUTION', L.label, { font: TITLE_FONT, color: plateText, bold: true });
     ctx.restore();
+    ctx.save();
+    // The frame's two arrows (where they sit in the 2100 × 1500 frame): covered with the plate just left of each,
+    // then an hourglass in the plate's ink.
+    for (const [cx, cy] of L.labelMarks ?? [[1272, 100], [1733, 100]]) {
+      const half = 22;
+      ctx.drawImage(ctx.canvas, cx - half - 2 * half, cy - half, 2 * half, 2 * half, cx - half, cy - half, 2 * half, 2 * half);
+      const icon = 38;
+      ctx.save();
+      ctx.translate(cx - icon / 2, cy - icon / 2);
+      ctx.scale(icon / 24, icon / 24);
+      ctx.strokeStyle = plateText;
+      ctx.lineWidth = 2.6;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke(new Path2D(HOURGLASS));
+      ctx.stroke(new Path2D('M9.5 18.5h5'));
+      ctx.restore();
+    }
   } else fitLine(ctx, evo ? `EVOLUTION ${ROMAN[card.evo ?? 1] ?? card.evo}` : 'HERO', L.label, { font: TITLE_FONT, color: plateText, bold: true });
   ctx.restore();
   // Naslov je puno ime karte ("Luffy, Gear Second").
