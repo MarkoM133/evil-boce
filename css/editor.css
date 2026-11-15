@@ -467,12 +467,14 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
 /* Pregled karta po karta u traci stranice karte */
 .ce-review { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
 .ce-review > button { min-width: 36px; font-size: 18px; padding: 6px 10px; }
-/* ☐ Ready / ☑ Ready: a switch among the bar's actions, not a tag (Marko 2026-11-15) */
-.ce-ready-toggle { display: inline-flex; align-items: center; gap: 8px; clip-path: none; font: 700 italic 16px var(--display); padding: 8px 14px; border: 1px dashed var(--muted); background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap; }
-.ce-ready-toggle:hover:not(:disabled) { color: var(--bone); border-color: var(--bone); }
-.ce-ready-toggle.on { border-style: solid; border-color: #2f6b3d; background: #0d2014; color: var(--c-Green); }
-.ce-ready-box { width: 16px; height: 16px; border: 2px solid currentColor; border-radius: 2px; display: inline-grid; place-items: center; font: 700 12px/1 var(--text); font-style: normal; }
-.ce-ready-toggle.on .ce-ready-box { background: var(--c-Green); border-color: var(--c-Green); color: #041; }
+/* Ready: the app's ghost button when off, a green Save-like button when on (Marko 2026-11-15) */
+.ce-ready-toggle { display: inline-flex; align-items: center; gap: 8px; }
+.ce-ready-toggle.ghost { color: var(--muted); }
+.ce-ready-toggle.ghost:hover:not(:disabled) { color: var(--bone); }
+.ce-ready-toggle.on { background: var(--c-Green); color: #041; }
+.ce-ready-toggle.on:hover:not(:disabled) { background: #2fcc5c; }
+.ce-ready-mark { width: 13px; height: 13px; border: 2px solid currentColor; border-radius: 50%; display: inline-grid; place-items: center; font: 800 12px/1 var(--text); font-style: normal; }
+.ce-ready-toggle.on .ce-ready-mark { border: 0; width: auto; height: auto; font-size: 16px; }
 .ce-pub-done { color: var(--c-Green); border-color: #2f6b3d; }
 
 /* Crta u lijevoj navigaciji između gledanja (Cards, Decks, Balance) i izrade (Card editor, Tools). */
