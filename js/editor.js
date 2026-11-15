@@ -1239,10 +1239,7 @@ export function createEditor(env) {
     if (!w || !ed.canvas) return;
     const card = cardOf(w);
     const tpl = await templateFor(card);
-    // Forma heroja čita zadanu boju pozadine iz predloška: kad predložak stigne prvi put, nacrta se iznova.
-    const first = ed.tpl?.name !== tpl.name;
     ed.tpl = tpl;
-    if (first && HEROISH.includes(w.type) && !w.bg) { env.render(); return; }
     if (ed.artFor !== w.art) {
       const want = w.art;
       ed.artFor = want;
@@ -1680,7 +1677,6 @@ export function createEditor(env) {
       // Every hero, unpublished ones too; a hero of a Work in progress set says so.
       const heroes = allCards().filter(c => c.type === 'Hero');
       const heroLabel = x => { const wip = wipSetOf(x.id, code => sets.isWip(code)); return `${x.name} (${x.id})${wip ? ` · ${wip} WIP` : ''}`; };
-      const bgVal = w.bg || ed.tpl?.layout?.bg?.[w.color] || '';
       const hc = evo ? heroCard(w) : null;
       const emblemFile = h('input', { type: 'file', accept: 'image/png,image/webp', hidden: true, onchange: e => env.guard(() => uploadEmblem(e.target.files[0])) });
       const unlock = evo && hc ? w.traits.filter(t => !(hc.traits ?? []).some(x => norm(x) === norm(t))) : [];
@@ -1700,9 +1696,6 @@ export function createEditor(env) {
         h('div', { class: 'ce-row' },
           evo ? field('COST', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 }))
             : field('COLOR', h('select', { onchange: e => { set('color', e.target.value); env.render(); } }, COLORS.map(c => h('option', { value: c, selected: c === w.color }, c)))),
-          field('BACKGROUND', h('div', { class: 'ce-bg' },
-            h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(bgVal) ? bgVal : '#000000', oninput: e => { set('bg', e.target.value); const t = e.target.nextSibling; if (t) t.value = e.target.value; } }),
-            h('input', { value: bgVal, placeholder: 'colour default', oninput: e => { if (/^#[0-9a-f]{6}$/i.test(e.target.value)) set('bg', e.target.value); else if (!e.target.value) { snap(true); delete w.bg; changed(); } } }))),
           code),
         tokensRow(w),
         h('div', { class: 'ce-emblem' },

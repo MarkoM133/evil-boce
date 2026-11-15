@@ -155,8 +155,6 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-stats .ce-field > span { font-weight: 700; }
 .ce-row.ce-stats > .ce-field { min-width: 64px; }
 .stat-hp { color: var(--c-Green); } .stat-dmg { color: #ff5a4f; } .stat-pwr { color: var(--straw); } .stat-rng { color: var(--c-Cyan); } .stat-kb { color: #7fa2ff; }
-.ce-bg { display: flex; gap: 6px; }
-.ce-bg input[type=color] { width: 46px; padding: 2px; flex: none; }
 .ce-emblem { display: flex; gap: 14px; align-items: center; }
 .ce-emblem-dot { width: 56px; height: 56px; border-radius: 50%; background: var(--straw); color: var(--black); display: grid; place-items: center; font: 700 11px var(--text); overflow: hidden; flex: none; }
 .ce-emblem-dot img { width: 80%; height: 80%; object-fit: contain; }

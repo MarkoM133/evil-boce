@@ -1009,7 +1009,8 @@ function renderHero(canvas, card, tpl, art, emblem) {
   ctx.save();
   roundRect(ctx, wx, wy, ww, wh, wr);
   ctx.clip();
-  ctx.fillStyle = card.bg || L.bg[color];
+  // Behind the art: always the frame's own colour for the card's colour (Marko 2026-11-16: no background field).
+  ctx.fillStyle = L.bg[color];
   ctx.fillRect(wx, wy, ww, wh);
   if (art) {
     const [bx, by, bw, bh] = L.artBox;
