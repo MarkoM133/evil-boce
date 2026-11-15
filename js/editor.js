@@ -322,6 +322,23 @@ export function createEditor(env) {
     requestAnimationFrame(() => { for (const [sel, top] of Object.entries(was)) { const n = document.querySelector(sel); if (n) n.scrollTop = top; } });
   }
 
+  // The wheel over the empty space beside the card scrolls the column on that side (Marko 2026-11-15): left of the
+  // card the side blocks, right of it the form. Over the card, and over the columns themselves, as before.
+  function wheelToColumn(e) {
+    if (e.ctrlKey || e.target.closest('.ce-side, .ce-form')) return;
+    const cols = e.currentTarget;
+    const stage = cols.querySelector('.ce-stage')?.getBoundingClientRect();
+    const side = cols.querySelector('.ce-side');
+    const form = cols.querySelector('.ce-form');
+    if (!stage) return;
+    let to = null;
+    if (e.clientX < stage.left && side && side.getBoundingClientRect().right <= stage.left) to = side;
+    else if (e.clientX > stage.right && form && form.getBoundingClientRect().left >= stage.right) to = form;
+    if (!to || to.scrollHeight <= to.clientHeight) return;
+    e.preventDefault();
+    to.scrollTop += e.deltaY * (e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? to.clientHeight : 1);
+  }
+
   function renderCardPage() {
     const w = ed.work;
     keepScroll(w.id);
@@ -342,7 +359,7 @@ export function createEditor(env) {
         h('button', { class: 'ghost ce-act', type: 'button', title: 'Close', 'aria-label': 'Close', onclick: () => go(ed.from) }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'ce-act-lbl' }, 'Close')),
         h('button', { class: 'primary', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(saveDraft) }, 'Save')));
     return h('div', { class: 'ce-full' }, top, readOnlyNote(),
-      h('div', { class: `ce-cols${WIDE.includes(w.type) ? ' wide' : ''}` }, renderSide(), renderCentre(), renderForm()));
+      h('div', { class: `ce-cols${WIDE.includes(w.type) ? ' wide' : ''}`, onwheel: wheelToColumn }, renderSide(), renderCentre(), renderForm()));
   }
 
   function reviewNav(w) {
