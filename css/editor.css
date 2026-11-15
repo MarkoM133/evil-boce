@@ -300,6 +300,8 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-pub-set > p { margin: 0; }
 .ce-pub-minis { display: grid; gap: 6px; }
 .ce-pub-mini { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; gap: 16px; align-items: center; background: var(--surface); padding: 8px 16px; }
+.ce-pub-mini { cursor: pointer; }
+.ce-pub-mini:hover, .ce-pub-mini:focus-visible { background: var(--surface-2); }
 .ce-pub-mini figure { margin: 0; display: grid; justify-items: center; }
 .ce-pub-mini h4 { margin: 0; font: 700 italic 19px var(--display); }
 .ce-pub-mini h4 small { font: 600 13px var(--text); color: var(--muted); font-style: normal; }

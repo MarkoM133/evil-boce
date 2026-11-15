@@ -2843,10 +2843,11 @@ export function createEditor(env) {
     const cardOfRow = ({ id, d, base }) => ({ ...(base ?? {}), ...d, id });
     const mini = (x, note) => {
       const card = cardOfRow(x);
-      return h('div', { class: 'ce-pub-mini' },
+      // The whole row opens the card in the editor (Marko 2026-11-15).
+      return h('div', { class: 'ce-pub-mini', role: 'link', tabindex: 0, title: `Open ${x.id} in the editor`, onclick: () => go(x.id), onkeydown: e => { if (e.key === 'Enter') go(x.id); } },
         h('figure', {}, thumb(card, WIDE.includes(card.type) ? 84 : 60)),
         h('div', { class: 'ce-pub-body' }, h('h4', {}, card.name || x.id, h('small', {}, ` ${x.id}`)), h('p', { class: 'muted small' }, note)),
-        h('button', { class: 'link accent', type: 'button', onclick: () => go(x.id) }, 'Open'));
+        h('span', { class: 'link accent' }, 'Open'));
     };
     const readyRow = ({ id, d, base }) => {
       const card = { ...(base ?? {}), ...d, id };
