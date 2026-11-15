@@ -343,22 +343,29 @@ export function createEditor(env) {
     const w = ed.work;
     keepScroll(w.id);
     const setName = sets.nameOf(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id));
-    const lockChip = ed.lock?.state === 'other'
-      ? h('span', { class: 'ce-lockchip other' }, `🔒 ${ed.lock.other?.who ?? 'Someone'} is editing`,
+    // Lokot samo kad treba (Marko 2026-11-15, mockup docs/private/mockups/topbar): kad uređuješ ti, mala ikona uz
+    // naslov s tooltipom; kad uređuje netko drugi, crvena traka preko cijele širine ispod trake s Take over.
+    const lockChip = canWrite() && !who() ? h('span', { class: 'ce-lockchip muted' }, 'Set "Signed in as" to lock the card') : null;
+    const lockMini = ed.lock?.state === 'mine'
+      ? h('span', { class: 'ce-lock-mini', title: 'You are editing: the card is locked under your name until you close it', 'aria-label': 'You are editing this card' }, '🔒') : null;
+    const otherSince = ed.lock?.state === 'other' && Number.isFinite(Date.parse(ed.lock.other?.since ?? ''))
+      ? new Date(ed.lock.other.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+    const lockBand = ed.lock?.state === 'other'
+      ? h('div', { class: 'ce-lock-band', role: 'status' }, '🔒 ', h('b', {}, ed.lock.other?.who ?? 'Someone'),
+        ` is editing this card${otherSince ? ` (since ${otherSince})` : ''}. You can look; Save is off until they close it.`,
         h('button', { class: 'ghost', type: 'button', onclick: () => env.guard(() => { releaseLock(); return claimLock(ed.id, who(), true); }) }, 'Take over'))
-      : ed.lock?.state === 'mine' ? h('span', { class: 'ce-lockchip' }, '🔒 You are editing')
-        : canWrite() && !who() ? h('span', { class: 'ce-lockchip muted' }, 'Set "Signed in as" to lock the card') : null;
+      : null;
     const top = h('header', { class: 'ce-top' },
       h('nav', { class: 'ce-crumbs' },
         h('button', { class: 'link', type: 'button', onclick: () => go('sets') }, 'Card editor'), ' / ',
         h('button', { class: 'link', type: 'button', onclick: () => { sets.pick(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id)); go('sets'); } }, setName), ' / ',
         h('strong', {}, `${w.id} ${w.name || 'New card'}`),
-        h('span', { class: `ce-badge ${TYPE_BADGE[w.type]}${w.type === 'Action' || w.type === 'Equipment' || w.type === 'Assist' ? ` c-bg-${w.color}` : ''}` }, w.type.toUpperCase())),
+        h('span', { class: `ce-badge ${TYPE_BADGE[w.type]}${w.type === 'Action' || w.type === 'Equipment' || w.type === 'Assist' ? ` c-bg-${w.color}` : ''}` }, w.type.toUpperCase()), lockMini),
       h('div', { class: 'ce-top-actions' }, lockChip, reviewNav(w),
         w.type === 'Core' ? null : h('button', { class: 'ghost ce-act', type: 'button', title: 'Undo', 'aria-label': 'Undo', disabled: !ed.undo.length, onclick: undo }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '↶'), h('span', { class: 'ce-act-lbl' }, 'Undo')),
         h('button', { class: 'ghost ce-act', type: 'button', title: 'Close', 'aria-label': 'Close', onclick: () => go(ed.from) }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'ce-act-lbl' }, 'Close')),
         h('button', { class: 'primary', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(saveDraft) }, 'Save')));
-    return h('div', { class: 'ce-full' }, top, readOnlyNote(),
+    return h('div', { class: 'ce-full' }, top, lockBand, readOnlyNote(),
       h('div', { class: `ce-cols${WIDE.includes(w.type) ? ' wide' : ''}`, onwheel: wheelToColumn }, renderSide(), renderCentre(), renderForm()));
   }
 

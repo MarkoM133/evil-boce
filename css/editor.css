@@ -58,8 +58,11 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-badge.combo { background: linear-gradient(90deg, #2f6bff, #2ecc71); color: #fff; }
 .ce-top-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 .ce-lockchip { font: 600 14px var(--text); color: var(--straw); background: var(--straw-wash); padding: 9px 14px; display: inline-flex; gap: 10px; align-items: center; }
-.ce-lockchip.other { color: var(--bone); background: var(--red-wash); }
 .ce-lockchip.muted { color: var(--muted); background: none; }
+.ce-lock-mini { color: var(--muted); font-size: 15px; cursor: help; padding: 0 4px; }
+.ce-lock-band { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: -22px; padding: 9px 16px; background: var(--red-wash); border-bottom: 1px solid #4a1410; color: #ffb3ab; font-size: 14px; }
+.ce-lock-band b { color: var(--bone); }
+.ce-lock-band button { margin-left: auto; padding: 5px 12px; font-size: 14px; }
 .ce-cols { display: grid; grid-template-columns: minmax(240px, 280px) minmax(300px, 1fr) minmax(340px, 480px); grid-template-areas: "side centre form"; gap: 24px; align-items: start; }
 .ce-cols.wide { grid-template-columns: minmax(240px, 270px) minmax(380px, 1.3fr) minmax(340px, 440px); }
 .ce-cols > .ce-side { grid-area: side; }
@@ -464,6 +467,7 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
 .ce-form, .ce-side, .ce-centre { min-width: 0; }
 @media (max-width: 720px) {
   .ce-full { padding-bottom: 120px; gap: 16px; }
+  .ce-lock-band { margin-top: -16px; }
   .ce-top { position: static; padding: 8px 0 10px; gap: 8px; flex-wrap: wrap; }
   .ce-crumbs { font-size: 14px; gap: 4px 6px; }
   .ce-crumbs strong { font-size: 16px; }
