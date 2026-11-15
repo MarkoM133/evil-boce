@@ -651,6 +651,9 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
 .ce-combo-big-inner { display: grid; gap: 12px; justify-items: center; }
 .ce-combo-big-card { display: block; width: min(560px, 90vw) !important; height: auto; border-radius: 14px; }
 .ce-combo-big-actions { display: flex; gap: 10px; }
+.ce-pack-zoom { padding: 0; border: 0; background: none; cursor: zoom-in; display: block; line-height: 0; }
+.ce-pack-big { cursor: zoom-out; }
+.ce-pack-big img { max-width: min(90vw, 720px); max-height: 90vh; width: auto; height: auto; border-radius: 6px; box-shadow: 0 20px 60px rgba(0, 0, 0, .7); }
 @media (max-width: 700px) { .ce-combo-slots { grid-template-columns: minmax(0, 1fr); } .ce-combo-swap { justify-self: center; transform: rotate(90deg); } }
 /* The Combos tab's New card tile has the shape of a landscape combo card. */
 .ce-tile-new.wide { min-height: 0; aspect-ratio: 2100 / 1500; }

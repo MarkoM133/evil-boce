@@ -95,11 +95,23 @@ export function createSetsView(ctx) {
   const wipChip = code => (isWip(code) ? h('span', { class: 'ce-st review ce-wip', title: 'Work in progress: its cards stay out of Publish' }, 'WIP') : null);
   const nameOf = code => (code === 'Stage' ? 'Stages' : code === 'Core' ? 'Cores' : code === 'CB' ? 'Combos' : sets().find(s => s.code === code)?.name ?? code);
 
-  function packImg(code, cls) {
+  // zoom: a click shows the pack big over the page (Marko 2026-11-15); a click anywhere or Esc closes it.
+  function packImg(code, cls, zoom = false) {
     const img = h('img', { class: cls, alt: '' });
-    img.onerror = () => img.replaceWith(h('span', { class: `${cls} empty` }));
-    imageUrl(code, 'pack.png').then(u => { if (u) img.src = u; else img.onerror(); });
-    return img;
+    let url = null;
+    const wrap = zoom ? h('button', { type: 'button', class: 'ce-pack-zoom', title: 'See the pack big', onclick: () => { if (url) bigPack(url, nameOf(code)); } }, img) : img;
+    img.onerror = () => wrap.replaceWith(h('span', { class: `${cls} empty` }));
+    imageUrl(code, 'pack.png').then(u => { if (u) { url = u; img.src = u; } else img.onerror(); });
+    return wrap;
+  }
+
+  function bigPack(url, name) {
+    const close = () => { box.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    const box = h('div', { class: 'ce-combo-big ce-pack-big', role: 'dialog', 'aria-label': `${name} pack`, onclick: close },
+      h('img', { src: url, alt: `${name} pack` }));
+    document.addEventListener('keydown', onKey);
+    document.body.append(box);
   }
 
   function render() {
@@ -160,7 +172,7 @@ export function createSetsView(ctx) {
     const sel = (value, items, onpick) => h('select', { onchange: e => onpick(e.target.value) }, items.map(([val, label]) => h('option', { value: val, selected: val === value }, label)));
     return h('section', { class: 'ce-set' },
       h('header', { class: 'ce-set-head' },
-        special ? null : packImg(s.code, 'ce-set-pack'),
+        special ? null : packImg(s.code, 'ce-set-pack', true),
         h('div', { class: 'ce-set-title' },
           h('p', { class: 'muted small' }, `Card editor / Sets / ${s.code}`),
           h('h1', {}, s.name, wipChip(s.code)),
@@ -274,10 +286,10 @@ export function createSetsView(ctx) {
           h('p', { class: 'muted' }, 'Name, number and Draft pack of every set; the mixed pack is for a Draft whose cards come from several sets.')),
         h('div', { class: 'ce-page-actions' }, redrawButton('', 'Redraw all pictures'))),
       list.map(s => h('div', { class: 'ce-settings-block', id: `set-${s.code}` },
-        h('div', { class: 'ce-settings-head' }, packImg(s.code, 'ce-settab-pack'), h('h2', {}, `${s.name} · ${s.code}`, wipChip(s.code))),
+        h('div', { class: 'ce-settings-head' }, packImg(s.code, 'ce-settab-pack', true), h('h2', {}, `${s.name} · ${s.code}`, wipChip(s.code))),
         renderSettings(s, list))),
       h('div', { class: 'ce-settings-block', id: 'set-default' },
-        h('div', { class: 'ce-settings-head' }, packImg('default', 'ce-settab-pack'), h('h2', {}, 'Mixed packs')),
+        h('div', { class: 'ce-settings-head' }, packImg('default', 'ce-settab-pack', true), h('h2', {}, 'Mixed packs')),
         renderDefaultPanel()));
     if (v.focus) { const at = v.focus; v.focus = null; setTimeout(() => document.getElementById(`set-${at}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
     return page;
