@@ -4183,7 +4183,9 @@ func _scan_log() -> void:
 		return
 	var fresh: Array[Dictionary] = []
 	var banked: Array[Dictionary] = []
+	var heard: Array[Dictionary] = []
 	for i: int in range(_log_seen, n):
+		heard.append(state.log[i])
 		var e: Dictionary = state.log[i]
 		var t: String = str(e.get("type", ""))
 		if t == "stage_energy":
@@ -4208,6 +4210,8 @@ func _scan_log() -> void:
 			# A stage's bonus is easy to miss on the table: say it.
 			toast(_describe(e))
 	_log_seen = n
+	# The moment's sounds (Sound.LOG_SOUNDS): a few at most, so a replay jumping ahead stays quiet enough.
+	Sound.from_log(get_tree(), heard, local_slots[0] if not local_slots.is_empty() else 0)
 	# The moment's bands together, merged (a replay jumping ahead shows only the last few).
 	_grouping = true
 	# What a move made during a battle brought belongs to that battle, also when the move closed it

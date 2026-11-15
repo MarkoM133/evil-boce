@@ -352,6 +352,9 @@ func _ready() -> void:
 	add_child(_sling.make_instance())
 
 	_build_balls()
+	# The match's music: the set of the first hero on the table (music/match_op1.ogg), else music/match.*.
+	var first: String = state.heroes[0].card_id if not state.heroes.is_empty() else ""
+	Sound.music(get_tree(), ("match_" + first.get_slice("-", 0).to_lower()) if not first.is_empty() else "match")
 	_build_hud()
 	_build_bochet()
 	if net_role == "host" and net_host.paused:
@@ -439,6 +442,14 @@ func _build_balls() -> void:
 			# A ball in Evil Bochet's hand does not roll there.
 			if _bochet == null or not _bochet.holds(id):
 				v.roll(d))
+		# Sounds of the table (Marko 2026-11-15; files in data/audio/sfx/, see Sound).
+		b.motion_started.connect(func(_ball: BallBody, thrown: bool) -> void:
+			if thrown:
+				Sound.play(get_tree(), "launch"))
+		b.bumped.connect(func(_ball: BallBody, wall: bool, strength: float) -> void:
+			Sound.play(get_tree(), "bump_wall" if wall else "bump_ball", strength))
+		b.went_out.connect(func(_ball: BallBody, _reason: String) -> void:
+			Sound.play(get_tree(), "ring_out"))
 		v.settle()
 		_bodies[h.id] = b
 		_views[h.id] = v

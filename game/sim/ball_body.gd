@@ -10,6 +10,10 @@ extends RigidBody3D
 signal motion_started(ball: BallBody, thrown: bool)
 signal moved(delta: Vector3)
 signal roll_finished(ball: BallBody, result: RollResult)
+## A moving ball touched another ball or a wall; `strength` 0..1 of a full throw's speed (for sound).
+signal bumped(ball: BallBody, wall: bool, strength: float)
+## The ball left the table (`reason` as in RollResult.ring_out_reason).
+signal went_out(ball: BallBody, reason: String)
 
 enum Motion { RESTING, MOVING, SNAPPING, OUT }
 
@@ -253,6 +257,7 @@ func _go_out(reason: String) -> void:
 	_result.end_area = BallWorld.Area.VOID
 	_result.end_hex = _last_map_hex
 	_result.path.append(global_position)
+	went_out.emit(self, reason)
 	roll_finished.emit(self, _result)
 
 
@@ -302,10 +307,12 @@ func _kill_snap() -> void:
 func _on_body_entered(body: Node) -> void:
 	if _result == null or motion != Motion.MOVING:
 		return
+	var hit: float = clampf(Vector2(_prev_velocity.x, _prev_velocity.z).length() / maxf(tuning.launch_speed(wt), 0.001), 0.0, 1.0)
 	if body is BallBody:
 		var other := body as BallBody
 		if not other.in_play():
 			return
+		bumped.emit(self, false, hit)
 		if not _result.collisions.has(other.ball_id):
 			_result.collisions.append(other.ball_id)
 		# A planted ball barely gives: the one that hit it goes on with part of its speed.
@@ -316,5 +323,6 @@ func _on_body_entered(body: Node) -> void:
 		# meta; a seam, a scrape or a bounce back into the same wall is still one hit.
 		var key: String = str(body.get_meta("wall")) if body.has_meta("wall") else str(body.get_instance_id())
 		if not _walls_seen.has(key):
+			bumped.emit(self, true, hit)
 			_walls_seen.append(key)
 			_result.walls_hit += 1

@@ -446,6 +446,7 @@ func taken_off(id: String, from: Vector3, state: GameState, hp: int) -> bool:
 	if not _shown or _entering or _held.has(id) or not _bodies.has(id):
 		return false
 	_state = state
+	Sound.play(get_tree(), "bochet_catch")
 	var loc: Vector3 = to_local(from)
 	match _area(from):
 		BallWorld.Area.VOID:
@@ -998,6 +999,7 @@ func _drum(delta: float, clock_left: float) -> void:
 		t.tween_interval(0.06 * i)
 		t.tween_property(tip, "rotation:z", -h.side * 0.6, 0.07).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		t.parallel().tween_property(fin, "position:y", 0.3, 0.07)
+		t.tween_callback(func() -> void: Sound.play(get_tree(), "drum", 0.7))
 		t.tween_property(tip, "rotation:z", 0.0, 0.05).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		t.parallel().tween_property(fin, "position:y", 0.0, 0.05)
 	var done: Tween = _tw(h, h)
