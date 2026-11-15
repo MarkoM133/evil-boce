@@ -22,6 +22,9 @@ var kb: int = 0
 ## Evolution level (1, 2, 3) and the hero it evolves (card name).
 var evo: int = 0
 var hero: String = ""
+## A temporary evolution (GDD 10, 2026-11-15): how many turns it lasts, the turn it is played in counted
+## (1 = gone at the end of that turn); 0 = an evolution that stays. It goes on any level of its hero.
+var temp_turns: int = 0
 ## Core kind: "Buff", "Major" or "Debuff".
 var kind: String = ""
 const CORE_KINDS: Array[String] = ["Buff", "Major", "Debuff"]
@@ -142,6 +145,7 @@ static func from_card(c: Dictionary) -> CardDef:
 	d.rng = JsonUtil.as_int(stats.get("rng", 0))
 	d.kb = JsonUtil.as_int(stats.get("kb", 0))
 	d.evo = JsonUtil.as_int(c.get("evo", 0))
+	d.temp_turns = maxi(JsonUtil.as_int(c.get("tempTurns", 0)), 0) if d.type == "Evolution" else 0
 	d.hero = str(c.get("hero", "")) if c.get("hero") != null else ""
 	d.kind = str(c.get("kind", "")) if c.get("kind") != null else ""
 	d.text = str(c.get("text", "")) if c.get("text") != null else ""
@@ -188,6 +192,8 @@ func to_record() -> Dictionary:
 		rec["stats"] = {"hp": hp, "dmg": dmg, "pwr": pwr, "rng": rng, "kb": kb}
 	if evo > 0:
 		rec["evo"] = evo
+		if temp_turns > 0:
+			rec["tempTurns"] = temp_turns
 	if not hero.is_empty():
 		rec["hero"] = hero
 	if not kind.is_empty():

@@ -1639,8 +1639,12 @@ func knock_out(s: GameState, h: HeroState) -> void:
 		p.graveyard.append(cid)
 	for cid: String in h.evolutions:
 		p.graveyard.append(cid)
+	if not h.temp_evo.is_empty():
+		p.graveyard.append(h.temp_evo)
 	h.equipment = PackedStringArray()
 	h.evolutions = PackedStringArray()
+	h.temp_evo = ""
+	h.temp_until = 0
 	_drop_cores(s, h)
 	h.statuses.clear()
 	h.tie_turns = 0
@@ -1798,10 +1802,32 @@ func _end_phase(s: GameState) -> void:
 	_check_win(s)
 	if s.is_over():
 		return
+	_expire_temp_evolutions(s)
 	_drop_tokens(s)
 	s.event("turn_end")
 	s.turn += 1
 	s.initiative = _next_slot(s, s.initiative)
+
+
+## Temporary evolutions whose last turn this was go to the graveyard (GDD 10, 2026-11-15).
+func _expire_temp_evolutions(s: GameState) -> void:
+	for h: HeroState in s.heroes:
+		if not h.temp_evo.is_empty() and s.turn >= h.temp_until:
+			_drop_temp_evolution(s, h, "expired")
+
+
+## Takes a hero's temporary evolution off (card to the graveyard): the hero is back on the level under it.
+## Damage stays; HP only drops to the new max. `why`: expired | replaced | evolved | removed.
+func _drop_temp_evolution(s: GameState, h: HeroState, why: String) -> void:
+	if h.temp_evo.is_empty():
+		return
+	var cid: String = h.temp_evo
+	h.temp_evo = ""
+	h.temp_until = 0
+	s.player(h.owner).graveyard.append(cid)
+	clamp_hp(s, h)
+	s.event("evolution_removed", {"card": cid, "hero": h.id, "temporary": true, "why": why})
+	_drop_unfit_equipment(s, h)
 
 
 ## Claims (GDD 6): activated hero stayed on the stage; two heroes on it without a battle;
@@ -2167,8 +2193,12 @@ func _end_match(s: GameState, winner_slot: int, reason: String) -> void:
 # Queries
 # =====================================================================================
 
-## The card whose stats the hero uses: its own, or the top evolution's.
+## The card whose stats the hero uses: its own, or the top evolution's; a temporary evolution is over both.
 func stat_card(h: HeroState) -> CardDef:
+	if not h.temp_evo.is_empty():
+		var temp: CardDef = catalog.get_card(h.temp_evo)
+		if temp != null:
+			return temp
 	if not h.evolutions.is_empty():
 		var evo: CardDef = catalog.get_card(h.evolutions[h.evolutions.size() - 1])
 		if evo != null:
@@ -2374,13 +2404,29 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 			var hero_card: CardDef = catalog.get_card(target.card_id)
 			if hero_card == null or hero_card.name != card.hero:
 				return "this evolution is for %s" % card.hero
-			if card.evo != target.evolutions.size() + 1:
+			# A temporary evolution goes on any level (GDD 10, 2026-11-15); one that stays goes level by level,
+			# counted without the temporary one that may sit on top.
+			if card.temp_turns <= 0 and card.evo != target.evolutions.size() + 1:
 				return "needs evolution level %d first" % (card.evo - 1)
 			_take_from_hand(p, cid)
 			var damage: int = max_hp(s, target) - target.hp
-			target.evolutions.append(cid)
-			target.hp = maxi(max_hp(s, target) - damage, 0)
-			s.event("evolved", {"card": cid, "hero": target.id, "level": card.evo})
+			# Either kind takes the temporary one off first: a new temporary replaces it, an evolution that
+			# stays goes on the level under it.
+			if not target.temp_evo.is_empty():
+				var old: String = target.temp_evo
+				target.temp_evo = ""
+				target.temp_until = 0
+				s.player(target.owner).graveyard.append(old)
+				s.event("evolution_removed", {"card": old, "hero": target.id, "temporary": true, "why": "replaced" if card.temp_turns > 0 else "evolved"})
+			if card.temp_turns > 0:
+				target.temp_evo = cid
+				target.temp_until = s.turn + card.temp_turns - 1
+				target.hp = maxi(max_hp(s, target) - damage, 0)
+				s.event("evolved", {"card": cid, "hero": target.id, "level": target.evolutions.size(), "temporary": true, "until": target.temp_until})
+			else:
+				target.evolutions.append(cid)
+				target.hp = maxi(max_hp(s, target) - damage, 0)
+				s.event("evolved", {"card": cid, "hero": target.id, "level": card.evo})
 			_drop_unfit_equipment(s, target)
 		"Assist":
 			if p.assists.has(cid):
@@ -2724,8 +2770,12 @@ static func _ids(list: Array[HeroState]) -> PackedStringArray:
 	return out
 
 
-## Takes the top evolution off (card to the graveyard); HP only drops to the new max.
+## Takes the top evolution off (card to the graveyard); HP only drops to the new max. A temporary
+## evolution is the top one while it lasts.
 func remove_evolution(s: GameState, h: HeroState) -> void:
+	if not h.temp_evo.is_empty():
+		_drop_temp_evolution(s, h, "removed")
+		return
 	if h.evolutions.is_empty():
 		return
 	var cid: String = h.evolutions[h.evolutions.size() - 1]

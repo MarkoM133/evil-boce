@@ -1447,7 +1447,8 @@ func _sync_hero(h: HeroState) -> void:
 	var figure: Texture2D = db.sprite_of(top.id) if top != null else null
 	v.set_figure(figure if figure != null else db.sprite_of(h.card_id))
 	var animate: bool = not first and not _quiet
-	v.set_evolved(h.evolutions.size() if not h.is_ko() else 0, animate)
+	# A temporary evolution shows as one more level while it lasts.
+	v.set_evolved((h.evolutions.size() + (0 if h.temp_evo.is_empty() else 1)) if not h.is_ko() else 0, animate)
 	if h.is_ko():
 		if not _ko_shown.has(h.id):
 			_ko_shown[h.id] = true

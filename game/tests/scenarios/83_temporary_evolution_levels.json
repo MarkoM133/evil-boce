@@ -1,0 +1,167 @@
+{
+  "name": "Temporary evolution (GDD 10, 2026-11-15): it goes on any level, a new one replaces it, and an evolution that stays takes it off and goes on the level under it",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "heroes.p1:TB-001.zone": "map",
+        "heroes.p1:TB-001.hex": [
+          16,
+          12
+        ],
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          4,
+          10
+        ],
+        "heroes.p0:TA-001.hp": 6,
+        "players.p0.hand": [
+          "TA-061",
+          "TA-062",
+          "TA-012",
+          "TA-013"
+        ],
+        "players.p0.energy": 12,
+        "players.p0.graveyard": [],
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-013"
+      },
+      "error": "needs evolution level 1"
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-061"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.temp_evo": "TA-061",
+        "heroes.p0:TA-001.temp_until": 2,
+        "heroes.p0:TA-001.evolutions": [],
+        "heroes.p0:TA-001.hp": 4,
+        "players.p0.energy": 11
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-013"
+      },
+      "error": "needs evolution level 1"
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-062"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.temp_evo": "TA-062",
+        "heroes.p0:TA-001.temp_until": 1,
+        "heroes.p0:TA-001.hp": 8,
+        "players.p0.graveyard": [
+          "TA-061"
+        ]
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-012"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.temp_evo": "",
+        "heroes.p0:TA-001.evolutions": [
+          "TA-012"
+        ],
+        "heroes.p0:TA-001.hp": 8,
+        "players.p0.graveyard": [
+          "TA-061",
+          "TA-062"
+        ]
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-013"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.evolutions": [
+          "TA-012",
+          "TA-013"
+        ],
+        "heroes.p0:TA-001.hp": 10
+      }
+    }
+  ]
+}

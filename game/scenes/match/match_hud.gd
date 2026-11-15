@@ -1546,6 +1546,14 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		evo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		evo.tooltip_text = "Evolved %d time%s" % [h.evolutions.size(), "" if h.evolutions.size() == 1 else "s"]
 		top.add_child(evo)
+	# A temporary evolution (GDD 10, 2026-11-15): how many turns it still lasts, this one counted.
+	if not h.temp_evo.is_empty() and not ko:
+		var left: int = maxi(h.temp_until - state.turn + 1, 1)
+		var temp: UiShape = UiShape.chip("TEMP %d" % left, Palette.GOLD, Color.BLACK, 12, 20.0, 8.0)
+		temp.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var tc: CardDef = engine.catalog.get_card(h.temp_evo)
+		temp.tooltip_text = "%s: gone at the end of %s" % [tc.name if tc != null else "Temporary evolution", "this turn" if left == 1 else ("the next turn" if left == 2 else "%d turns" % left)]
+		top.add_child(temp)
 	var tag: UiShape = _hero_tag(h, active, pickable, in_battle)
 	# A card effect asks for a hero (heal, swap…): the ones it may take are lit, the rest fade.
 	if not choice_heroes.is_empty() and not ko:
@@ -5134,11 +5142,16 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			if t == "action":
 				return dot + "%s plays %s on %s." % [_who(h.owner) if h != null else "?", _card_b(str(e.get("card", ""))), _hero_b(hero)]
 			if t == "evolved":
+				if JsonUtil.as_bool(e.get("temporary", false)):
+					var n: int = JsonUtil.as_int(e.get("until", 0)) - JsonUtil.as_int(e.get("turn", 0)) + 1
+					return dot + "%s becomes %s until the end of %s." % [_hero_b(hero), _card_b(str(e.get("card", ""))), "this turn" if n <= 1 else ("the next turn" if n == 2 else "turn %d" % JsonUtil.as_int(e.get("until", 0)))]
 				return dot + "%s evolves into %s." % [_hero_b(hero), _card_b(str(e.get("card", "")))]
 			return dot + "%s %s %s." % [_hero_b(hero), verb, _card_b(str(e.get("card", "")))]
 		"assist":
 			return dot + "Assist: %s." % _card_b(str(e.get("card", "")))
 		"equipment_removed", "evolution_removed":
+			if str(e.get("why", "")) == "expired":
+				return dot + "%s is over: %s is back as before." % [_card_b(str(e.get("card", ""))), _hero_b(hero)]
 			return dot + "%s loses %s." % [_hero_b(hero), _card_b(str(e.get("card", "")))]
 		"equipment_unfit":
 			return dot + "%s drops %s (%s)." % [_hero_b(hero), _card_b(str(e.get("card", ""))), _esc(str(e.get("why", "")))]

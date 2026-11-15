@@ -1250,7 +1250,7 @@ func _hero_options(s: GameState, ctx: Dictionary, e: FxEffect, target: String, v
 			continue
 		if not in_battle.is_empty() and not in_battle.has(h.id):
 			continue
-		if verb == "REMOVE_EVO" and h.evolutions.is_empty():
+		if verb == "REMOVE_EVO" and h.evolutions.is_empty() and h.temp_evo.is_empty():
 			continue
 		var enemy: bool = s.team_of(h.owner) != s.team_of(player)
 		if (target == "ENEMY") != enemy:

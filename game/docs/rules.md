@@ -340,6 +340,17 @@ Things the GDD does not spell out; each is one line to confirm or veto.
 g. (2026-10-26) A grid knockback stopped by a wall or a hero just stops (no damage since
    2026-11-07). A Wind stage draws its direction (`StageState.wind_dir`, one of six) when it is
    revealed; `terrain()` blows that way and the state and the replay keep it.
+9h. (2026-11-15) Temporary evolutions: an Evolution card with `tempTurns` n (`CardDef.temp_turns`) is not a
+   level. It sits in `HeroState.temp_evo` over whatever `evolutions` holds, with `temp_until` = the turn at whose
+   end it goes (played in turn t: t + n − 1, so 1 = this turn). `stat_card` reads it first, so stats, ability and
+   traits are its own while it lasts. Playing: any level of its hero (no level check); a new temporary one
+   replaces the old; an evolution that stays takes the temporary one off and goes on the level under it
+   (`evolutions.size() + 1`, counted without it). `remove_evolution` (the REMOVE_EVO verb) takes the temporary
+   one first. `_end_phase` drops those whose turn is up (`_expire_temp_evolutions`, before the tokens go); a KO
+   sends it to the graveyard. Coming and going is as for any evolution: damage is kept when it comes (new max −
+   damage), HP only drops to the new max when it goes, unfit equipment falls. Events: `evolved` with
+   `temporary: true, until`; `evolution_removed` with `temporary: true, why` (expired, replaced, evolved, removed).
+   Scenarios 83 and 84, tests/test_temp_evolution.gd.
 10. (confirmed 2026-11-11) `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
    (`GameState.roll_snapshot`); pushed heroes, picked cores and revealed stages stay.
 11. (confirmed 2026-11-11) A hero in the start zone can be activated at any time, and a stunned or locked hero

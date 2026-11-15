@@ -22,6 +22,10 @@ var cores: PackedStringArray = PackedStringArray()
 var equipment: PackedStringArray = PackedStringArray()
 ## Evolution card ids, level 1 first.
 var evolutions: PackedStringArray = PackedStringArray()
+## A temporary evolution on top of whatever level the hero has ("" = none), and the turn at whose end it
+## goes (GDD 10, 2026-11-15). Not a level: `evolutions` stays what it was under it.
+var temp_evo: String = ""
+var temp_until: int = 0
 ## Status name -> turns left (-1 = until removed).
 var statuses: Dictionary[String, int] = {}
 ## Stat bonuses that end with the phase / with the turn: {"pwr": 2000, ...}.
@@ -61,6 +65,8 @@ func to_dict() -> Dictionary:
 		"cores": Array(cores),
 		"equipment": Array(equipment),
 		"evolutions": Array(evolutions),
+		"temp_evo": temp_evo,
+		"temp_until": temp_until,
 		"statuses": statuses.duplicate(),
 		"phase_bonus": phase_bonus.duplicate(),
 		"turn_bonus": turn_bonus.duplicate(),
@@ -89,6 +95,8 @@ static func from_dict(d: Dictionary) -> HeroState:
 	h.cores = JsonUtil.as_strings(d.get("cores", []))
 	h.equipment = JsonUtil.as_strings(d.get("equipment", []))
 	h.evolutions = JsonUtil.as_strings(d.get("evolutions", []))
+	h.temp_evo = str(d.get("temp_evo", ""))
+	h.temp_until = JsonUtil.as_int(d.get("temp_until", 0))
 	h.statuses = _int_dict(d.get("statuses", {}), -1)
 	h.phase_bonus = _int_dict(d.get("phase_bonus", {}), 0)
 	h.turn_bonus = _int_dict(d.get("turn_bonus", {}), 0)

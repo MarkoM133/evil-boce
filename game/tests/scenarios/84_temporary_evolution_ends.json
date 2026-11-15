@@ -1,0 +1,224 @@
+{
+  "name": "Temporary evolution (GDD 10, 2026-11-15): on an evolved hero it lasts its turns and goes at the end of the last one, the level under it is back; Remove Evolution takes the temporary one first",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "heroes.p1:TB-001.zone": "map",
+        "heroes.p1:TB-001.hex": [
+          16,
+          12
+        ],
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          4,
+          10
+        ],
+        "heroes.p0:TA-001.evolutions": [
+          "TA-012"
+        ],
+        "heroes.p0:TA-001.hp": 10,
+        "players.p0.hand": [
+          "TA-061",
+          "TA-062",
+          "TF-005",
+          "TF-005"
+        ],
+        "players.p0.energy": 8,
+        "players.p0.graveyard": [],
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-061"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.temp_evo": "TA-061",
+        "heroes.p0:TA-001.temp_until": 2,
+        "heroes.p0:TA-001.evolutions": [
+          "TA-012"
+        ],
+        "heroes.p0:TA-001.hp": 6
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "turn": 2,
+        "heroes.p0:TA-001.temp_evo": "TA-061",
+        "heroes.p0:TA-001.hp": 6
+      }
+    },
+    {
+      "set": {
+        "players.p0.hand": [
+          "TA-062",
+          "TF-005",
+          "TF-005"
+        ],
+        "players.p0.energy": 8
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-001",
+        "roll": false
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "turn": 3,
+        "heroes.p0:TA-001.temp_evo": "",
+        "heroes.p0:TA-001.temp_until": 0,
+        "heroes.p0:TA-001.evolutions": [
+          "TA-012"
+        ],
+        "heroes.p0:TA-001.hp": 6,
+        "players.p0.graveyard": [
+          "TA-061"
+        ]
+      }
+    },
+    {
+      "set": {
+        "players.p0.hand": [
+          "TA-062",
+          "TF-005",
+          "TF-005"
+        ],
+        "players.p0.energy": 8
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TA-062"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.temp_evo": "TA-062",
+        "heroes.p0:TA-001.temp_until": 3,
+        "heroes.p0:TA-001.hp": 6
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TF-005"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.temp_evo": "",
+        "heroes.p0:TA-001.evolutions": [
+          "TA-012"
+        ],
+        "heroes.p0:TA-001.hp": 6
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TF-005"
+      }
+    },
+    {
+      "expect": {
+        "heroes.p0:TA-001.evolutions": [],
+        "heroes.p0:TA-001.hp": 6
+      }
+    }
+  ]
+}

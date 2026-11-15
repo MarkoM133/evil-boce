@@ -1050,6 +1050,45 @@
       "fx": "PREROLL: HEAL SELF 2"
     },
     {
+      "id": "TA-061",
+      "name": "Alpha, Dragon",
+      "type": "Evolution",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "Dragon"
+      ],
+      "evo": 1,
+      "hero": "Alpha",
+      "tempTurns": 2,
+      "stats": {
+        "hp": 8,
+        "dmg": 3,
+        "pwr": 5000,
+        "rng": 3,
+        "kb": 3
+      },
+      "text": ""
+    },
+    {
+      "id": "TA-062",
+      "name": "Alpha, Flash",
+      "type": "Evolution",
+      "color": "Red",
+      "cost": 1,
+      "evo": 1,
+      "hero": "Alpha",
+      "tempTurns": 1,
+      "stats": {
+        "hp": 12,
+        "dmg": 2,
+        "pwr": 2000,
+        "rng": 2,
+        "kb": 2
+      },
+      "text": ""
+    },
+    {
       "id": "TA-061-1",
       "name": "Battle Spark",
       "type": "Action",

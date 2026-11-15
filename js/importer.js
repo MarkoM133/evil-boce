@@ -13,7 +13,7 @@ export const APP_FIELDS = ['wt', 'aliases', 'fx', 'fxStatus', 'fxRead', 'terrain
 // fxStatus je samo oznaka za pregled, pa ni on ne diže verziju.
 // fxRead: čitanje parsera igre koje je čovjek potvrdio (karta bez ručnog fx-a); samo oznaka, kao fxStatus.
 export const LOOK_FIELDS = ['fxStatus', 'fxRead', 'figure', 'ballColor', 'ballColor2', 'heroSfx'];
-const FIELD_ORDER = ['id', 'name', 'type', 'token', 'color', 'bonusColors', 'cost', 'extraCost', 'ingredients', 'introducedIn', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'fxRead', 'landscape', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
+const FIELD_ORDER = ['id', 'name', 'type', 'token', 'color', 'bonusColors', 'cost', 'extraCost', 'ingredients', 'introducedIn', 'evo', 'tempTurns', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'fxStatus', 'fxRead', 'landscape', 'ballColor', 'ballColor2', 'figure', 'heroSfx', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes', 'image', 'imageHash', 'imageRot', 'imageRotHash', 'sprite', 'spriteHash', 'rev', 'deleted'];
 
 export const DEFAULT_WT = 2;
 
@@ -433,7 +433,7 @@ export function applyAppEdits(db, edits, now = new Date()) {
 // images: { id: imageHash } za karte kojima je Objava nacrtala novi PNG (data/images/ID.hash.png).
 // Nacrt s new: true i kodom kojeg nema u bazi je nova karta (dodaje se na kraj, rev 1).
 // token (GDD 10, 2026-11-14): an Action another card makes; the game reads it (CardDef.token).
-export const DRAFT_GAME_FIELDS = ['name', 'type', 'token', 'color', 'bonusColors', 'cost', 'evo', 'hero', 'stats', 'bonus', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'ingredients', 'extraCost', 'introducedIn'];
+export const DRAFT_GAME_FIELDS = ['name', 'type', 'token', 'color', 'bonusColors', 'cost', 'evo', 'tempTurns', 'hero', 'stats', 'bonus', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'ingredients', 'extraCost', 'introducedIn'];
 export const DRAFT_LOOK_FIELDS = ['fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes'];
 
 export function applyDrafts(db, drafts, images = {}, now = new Date()) {

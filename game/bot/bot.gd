@@ -89,7 +89,7 @@ func evaluate(engine: RulesEngine, s: GameState, slot: int) -> float:
 		if h.is_ko():
 			score -= sign * 40.0
 			continue
-		score += sign * (h.hp + h.cores.size() * 4.0 + h.equipment.size() * 3.0 + h.evolutions.size() * 5.0)
+		score += sign * (h.hp + h.cores.size() * 4.0 + h.equipment.size() * 3.0 + (h.evolutions.size() + (0 if h.temp_evo.is_empty() else 1)) * 5.0)
 	for p: PlayerState in s.players:
 		var sign: float = 1.0 if p.team == team else -1.0
 		score += sign * (engine.claimed_count(s, p.slot) * 30.0 + mini(p.hand.size(), 8) * 0.5)
