@@ -1045,12 +1045,9 @@ function renderHero(canvas, card, tpl, art, emblem) {
       // The sheen runs diagonally: the patch comes from down-left along it, clear of the arrow, a little taller than it.
       ctx.drawImage(ctx.canvas, cx - half - 50, cy - 28 + 50, 2 * half, 50, cx - half, cy - 28, 2 * half, 50);
     }
-    {
-      const [rx, ry] = marks[1];
-      fitLine(ctx, String(Number(card.tempTurns)), { box: [rx - 22, ry - 24, 44, 48], size: 46, min: 30 }, { font: TITLE_FONT, color: plateText, bold: true });
-    }
-    for (const [cx, cy] of marks.slice(0, 1)) {
-      const icon = 38;
+    // Left an hourglass (it is temporary); right "2⧗": how many turns, the number before a smaller hourglass
+    // (Marko 2026-11-16, mockup G2).
+    const glass = (cx, cy, icon) => {
       ctx.save();
       ctx.translate(cx - icon / 2, cy - icon / 2);
       ctx.scale(icon / 24, icon / 24);
@@ -1061,7 +1058,11 @@ function renderHero(canvas, card, tpl, art, emblem) {
       ctx.stroke(new Path2D(HOURGLASS));
       ctx.stroke(new Path2D('M9.5 18.5h5'));
       ctx.restore();
-    }
+    };
+    glass(marks[0][0], marks[0][1], 38);
+    const [rx, ry] = marks[1];
+    fitLine(ctx, String(Number(card.tempTurns)), { box: [rx - 64, ry - 24, 54, 48], size: 40, min: 28, align: 'right' }, { font: TITLE_FONT, color: plateText, bold: true });
+    glass(rx + 12, ry, 34);
   } else fitLine(ctx, evo ? `EVOLUTION ${ROMAN[card.evo ?? 1] ?? card.evo}` : 'HERO', L.label, { font: TITLE_FONT, color: plateText, bold: true });
   ctx.restore();
   // Naslov je puno ime karte ("Luffy, Gear Second").
