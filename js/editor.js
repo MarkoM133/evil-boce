@@ -871,12 +871,14 @@ export function createEditor(env) {
     // Words: Tags, Phrases i fx (Marko 2026-11-15: ono što čeka igru ide s Publisha ovamo, adresa wishlist).
     const wishes = (ed.wishlist?.items ?? []).filter(i => i.status === 'open').length;
     const groups = [
-      [['traits', 'Tags'], ['guide', 'Phrases'], ['wishlist', wishes ? `fx (${wishes})` : 'fx']],
+      [['traits', 'Tags', 0], ['guide', 'Phrases', 0], ['wishlist', 'fx', wishes]],
     ];
     const cur = want === 'words' ? 'traits' : want;
     const group = groups.find(g => g.some(([k]) => k === cur));
     if (!group) return null;
-    return h('div', { class: 'ce-views ce-page-tabs' }, group.map(([k, label]) => h('button', { type: 'button', class: k === cur ? 'active' : '', onclick: () => go(k) }, label)));
+    // Same tabs as Publish (Marko 2026-11-15: the grey switch did not look like the app).
+    return h('div', { class: 'ce-pub-tabs ce-page-tabs', role: 'tablist' }, group.map(([k, label, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === cur),
+      class: `t-wait${k === cur ? ' on' : ''}`, onclick: () => go(k) }, label, n ? h('span', { class: 'n', title: 'Words waiting for the game' }, String(n)) : null)));
   }
 
   // fx wishlist (Marko 2026-11-03): riječi koje fx jeziku fale, iz Claude prijedloga (server/fx-claude.mjs).

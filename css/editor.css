@@ -461,8 +461,7 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
 .ce-wish-cards { margin: 0; padding-left: 18px; }
 
 /* Kartice spojenih podstranica (Publish | Waiting for the game, Tags | Phrases) i drugi brojač u izborniku. */
-.ce-page-tabs { margin-bottom: 18px; justify-self: start; width: max-content; }
-.ce-page-tabs .tab-badge { margin-left: 8px; background: var(--straw); color: var(--black); border-radius: 999px; min-width: 20px; height: 20px; display: inline-grid; place-items: center; font: 700 13px var(--text); padding: 0 6px; }
+.ce-page-tabs { margin-bottom: 18px; }
 .tabs-sub .tab-badge.alt { background: none; color: var(--straw); box-shadow: inset 0 0 0 2px var(--straw); margin-left: 4px; }
 
 /* Pregled karta po karta u traci stranice karte */
@@ -555,7 +554,7 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
   .ce-page-actions { flex-wrap: wrap; margin-left: 0; }
   .ce-page-head h1, .ce-publish h1 { font-size: 36px; }
   .ce-change { flex-wrap: wrap; }
-  .ce-page-tabs { width: auto; max-width: 100%; overflow-x: auto; }
+  .ce-page-tabs { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 }
 /* Art na dodir: povlačenje prstom pomiče art, ne stranicu. Pogledi karte nikad širi od ekrana. */
 .ce-artcanvas { touch-action: none; }
