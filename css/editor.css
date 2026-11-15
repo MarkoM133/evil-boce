@@ -746,3 +746,6 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-panel-fold::before { content: ""; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid currentColor; }
 .ce-panel.ce-balance > summary h3::before { content: ""; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--muted);
   margin: 0 12px 0 5px; align-self: center; }
+.ce-fold-head { cursor: pointer; user-select: none; }
+.ce-fold-head:hover h3, .ce-fold-head:hover .ce-panel-fold { color: var(--bone); }
+.ce-check-pill { cursor: pointer; }

@@ -380,9 +380,10 @@ export function createEditor(env) {
     // Stanje u naslovu kao kod fx (Marko 2026-11-06): Ready ili Not ready; klik pokaže i zelene kvačice.
     // Cijeli red naslova je gumb (mobitel: dodir bilo gdje u redu), pilula je samo oznaka.
     const toggleOks = () => { ed.oksOpen = !ed.oksOpen; queueDraw(); };
-    ed.checkPill = h('span', { class: 'ce-fx-state ce-check-pill' });
-    ed.checkHead = h('div', { class: 'ce-panel-head ce-check-head', role: 'button', tabindex: 0, 'aria-expanded': String(!!ed.oksOpen), onclick: toggleOks,
-      onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleOks(); } } }, h('h3', {}, 'Checks'), ed.checkPill);
+    // The head folds the block (Marko 2026-11-15); the pill shows or hides the green ticks.
+    ed.checkPill = h('span', { class: 'ce-fx-state ce-check-pill', role: 'button', tabindex: 0, title: 'Show or hide what is fine', onclick: e => { e.stopPropagation(); toggleOks(); },
+      onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleOks(); } } });
+    ed.checkHead = h('div', { class: 'ce-panel-head ce-check-head' }, h('h3', {}, 'Checks'), ed.checkPill);
     const parts = [h('section', { class: 'ce-panel' }, ed.checkHead, ed.checkBox)];
     // Same frame, Hero cards, Terrain i Cores su maknuti 2026-11-06: tip je u obrascu, evolucije ispod Aliasa.
     if (w.type !== 'Core') parts.push(fxPanel(w));
@@ -404,17 +405,21 @@ export function createEditor(env) {
     try { folded = localStorage.getItem(FOLD_KEY + key) === '1'; } catch {}
     section.classList.add('ce-foldable');
     section.classList.toggle('folded', folded);
-    const chev = h('button', { class: 'ce-panel-fold', type: 'button', 'aria-label': 'Fold', 'aria-expanded': String(!folded), onclick: e => {
-      e.stopPropagation();
+    const flip = () => {
       const now = !section.classList.contains('folded');
       section.classList.toggle('folded', now);
       chev.setAttribute('aria-expanded', String(!now));
       try { localStorage.setItem(FOLD_KEY + key, now ? '1' : '0'); } catch {}
-    } }, '▾');
+    };
+    const chev = h('button', { class: 'ce-panel-fold', type: 'button', 'aria-label': 'Fold', 'aria-expanded': String(!folded), onclick: e => { e.stopPropagation(); flip(); } }, '▾');
+    let row = head;
     if (head.tagName === 'H3') {
-      const row = h('div', { class: 'ce-panel-head' }, chev, head.cloneNode(true));
+      row = h('div', { class: 'ce-panel-head' }, chev, head.cloneNode(true));
       head.replaceWith(row);
     } else head.prepend(chev);
+    // The whole head folds (Marko 2026-11-15), not only the arrow; what else is in it (a pill, a button) keeps its own click.
+    row.classList.add('ce-fold-head');
+    row.addEventListener('click', e => { if (e.target.closest('button, a, input, textarea, select, [role="button"]')) return; flip(); });
     return section;
   }
 
@@ -1216,8 +1221,8 @@ export function createEditor(env) {
       const oks = all.filter(([ok]) => ok);
       ed.checkPill.className = `ce-fx-state ce-check-pill ${bad.length ? 'check' : 'ok'}`;
       ed.checkPill.textContent = bad.length ? '! Not ready' : '✓ Ready';
-      ed.checkHead.title = ed.oksOpen ? 'Hide the checks that pass' : `Show the ${oks.length} checks that pass`;
-      ed.checkHead.setAttribute('aria-expanded', String(!!ed.oksOpen));
+      ed.checkPill.title = ed.oksOpen ? 'Hide the checks that pass' : `Show the ${oks.length} checks that pass`;
+      ed.checkPill.setAttribute('aria-expanded', String(!!ed.oksOpen));
       // Problemi uvijek, prolazne provjere samo kad je pilula otvorena (ostaje otvorena dok se karta crta).
       ed.checkBox.replaceChildren(...bad.map(li), ...(ed.oksOpen ? oks.map(li) : []));
       ed.checkBox.hidden = !bad.length && !ed.oksOpen;
