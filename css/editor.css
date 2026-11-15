@@ -467,8 +467,10 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
 /* Pregled karta po karta u traci stranice karte */
 .ce-review { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
 .ce-review > button { min-width: 36px; font-size: 18px; padding: 6px 10px; }
-.ce-review .ce-good { color: var(--straw); font-size: 15px; }
-.ce-review .ce-good.is-done { color: var(--c-Green); }
+.ce-status-pill { clip-path: none; font: 700 12px var(--text); font-style: normal; letter-spacing: .08em; padding: 4px 9px; margin-left: 8px; border-radius: 2px; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); cursor: pointer; }
+.ce-status-pill.done { background: #0d2014; border-color: #2f6b3d; color: var(--c-Green); }
+.ce-status-pill:hover:not(:disabled) { border-color: var(--bone); }
+.ce-pub-done { color: var(--c-Green); border-color: #2f6b3d; }
 
 /* Crta u lijevoj navigaciji između gledanja (Cards, Decks, Balance) i izrade (Card editor, Tools). */
 .tabs .tabs-sep { display: block; height: 1px; background: var(--line); margin: 10px 14px; }
@@ -509,7 +511,6 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
   .ce-top-actions .ce-lockchip { flex-basis: 100%; font-size: 13px; padding: 6px 10px; }
   .ce-review { margin-right: auto; gap: 4px; }
   .ce-review > button { min-width: 40px; padding: 9px 10px; }
-  .ce-review .ce-good { padding: 9px 10px; font-size: 14px; }
   .ce-stage { max-width: 100%; }
   .ce-art-buttons > button { font-size: 14px; padding: 9px 12px; }
   .ce-views button { font-size: 14px; padding: 8px 10px; }
@@ -534,8 +535,6 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
   .ce-top-actions { flex-wrap: nowrap; gap: 6px; }
   .ce-top-actions > button { font-size: 14px; padding: 9px 10px; flex: none; }
   .ce-review > button { min-width: 34px; padding: 9px 8px; }
-  .ce-review .ce-good { padding: 9px 10px; }
-  .ce-good-next { display: none; }
   .ce-top-actions:has(.ce-lockchip) { flex-wrap: wrap; }
 }
 /* Izbornik na mobitelu (2026-11-05): glavne kartice u jednom redu, podstranice otvorene grupe u redu ispod. */

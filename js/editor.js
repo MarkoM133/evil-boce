@@ -35,8 +35,7 @@ const HEROISH = ['Hero', 'Evolution'];
 // Vodoravne karte: heroji, evolucije i Combo karte (2026-11-07).
 const WIDE = ['Hero', 'Evolution', 'Combo'];
 const COLORS = Object.keys(TINTS);
-// Review je maknut 2026-11-06 (nije korišten): karta je Draft ili Done, a Looks good je stavlja na Done.
-const STATUSES = ['draft', 'done'];
+// Karta je Draft ili Done (Marko 2026-11-15): pločica u traci karte je prebacuje; Publish pušta samo Done.
 const CORE_KINDS = ['Buff', 'Major', 'Debuff'];
 const ROMAN = ['I', 'II', 'III'];
 const WHO_KEY = 'evil-boce-who';
@@ -242,7 +241,7 @@ export function createEditor(env) {
   // ---------- stranica karte ----------
 
   // Pregled karta po karta (Marko 2026-11-03, iz mockupa): Prev / Next idu redom kojim je karta otvorena (mreža seta s
-  // filterima, ili popis nacrta u Publishu), a "Looks good, next" označi kartu kao done, spremi je i otvori iduću.
+  // filterima, ili popis nacrta u Publishu). Looks good je maknut 2026-11-15: status je pločica u traci karte.
   function reviewOrder(id) {
     let ids = ed.from === 'publish' ? draftList().map(x => x.id) : sets.order();
     if (!ids.includes(id)) {
@@ -260,22 +259,6 @@ export function createEditor(env) {
     return !!to;
   }
 
-  // Status karte kako je spremljen (nacrt ili baza); otvorena karta po radnoj kopiji.
-  const statusOf = id => (id === ed.id && ed.work ? ed.work.status : merged(db().cards.find(c => c.id === id) ?? { id }).status) ?? 'draft';
-
-  // Looks good (Marko 2026-11-05): karta na Done, spremi, pa sljedeća karta koja još nije Done (strelica › ide redom).
-  async function looksGood() {
-    const w = ed.work;
-    if (w.type !== 'Core' && (w.status ?? 'draft') !== 'done') { snap(true); w.status = 'done'; changed(); }
-    // Pregledana kartu koju je mijenjao Claude Code: spremi je pod svojim imenom, pa oznaka CLAUDE nestane.
-    if (ed.drafts?.cards?.[w.id]?.who === 'Claude Code') changed();
-    if (ed.dirty) await saveDraft();
-    const ids = reviewOrder(ed.id);
-    const i = ids.indexOf(ed.id);
-    const next = [...ids.slice(i + 1), ...ids.slice(0, i)].find(id => statusOf(id) !== 'done');
-    if (next) go(next);
-    else { env.toast('Every card here is done.'); go(ed.from); }
-  }
 
   // ← i → listaju karte dok se ne tipka (polja, popisi, tekst).
   if (!globalThis.__ceArrows) {
@@ -368,7 +351,7 @@ export function createEditor(env) {
         h('button', { class: 'link', type: 'button', onclick: () => { sets.pick(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id)); go('sets'); } }, setName), ' / ',
         h('strong', {}, `${w.id} ${w.name || 'New card'}`),
         h('span', { class: `ce-badge ${TYPE_BADGE[w.type]}${w.type === 'Action' || w.type === 'Equipment' || w.type === 'Assist' ? ` c-bg-${w.color}` : ''}` }, w.type.toUpperCase()),
-        wipBadge(w.id), lockMini),
+        statusPill(w), wipBadge(w.id), lockMini),
       h('div', { class: 'ce-top-actions' }, lockChip, reviewNav(w),
         w.type === 'Core' ? null : h('button', { class: 'ghost ce-act', type: 'button', title: 'Undo', 'aria-label': 'Undo', disabled: !ed.undo.length, onclick: undo }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '↶'), h('span', { class: 'ce-act-lbl' }, 'Undo')),
         h('button', { class: 'ghost ce-act', type: 'button', title: 'Close', 'aria-label': 'Close', onclick: () => go(ed.from) }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'ce-act-lbl' }, 'Close')),
@@ -384,12 +367,17 @@ export function createEditor(env) {
     return h('span', { class: 'ce-review' },
       h('button', { class: 'ghost', type: 'button', disabled: i <= 0, title: 'Previous card (←)', onclick: () => step(-1) }, '‹'),
       h('span', { class: 'small muted' }, `${i + 1} / ${ids.length}`),
-      h('button', { class: 'ghost', type: 'button', disabled: i >= ids.length - 1, title: 'Next card (→)', onclick: () => step(1) }, '›'),
-      w.type === 'Core' ? null : (w.status ?? 'draft') === 'done'
-        ? h('button', { class: 'ghost ce-good is-done', type: 'button', disabled: !canWrite() || lockBusy(),
-          title: 'This card is done. Open the next card that is not done yet', onclick: () => env.guard(looksGood) }, '✓ Done', h('span', { class: 'ce-good-next' }, ', next'))
-        : h('button', { class: 'ghost ce-good', type: 'button', disabled: !canWrite() || lockBusy(),
-          title: 'Mark it done, save it and open the next card that is not done yet', onclick: () => env.guard(looksGood) }, 'Looks good', h('span', { class: 'ce-good-next' }, ', next')));
+      h('button', { class: 'ghost', type: 'button', disabled: i >= ids.length - 1, title: 'Next card (→)', onclick: () => step(1) }, '›'));
+  }
+
+  // Draft / Done on the card's bar (Marko 2026-11-15, in place of Looks good and the form's STATUS switch): a click
+  // flips it like any edit (Undo, Save). Publish lets only Done cards go; a Core has no status.
+  function statusPill(w) {
+    if (w.type === 'Core') return null;
+    const done = (w.status ?? 'draft') === 'done';
+    return h('button', { class: `ce-status-pill ${done ? 'done' : 'draft'}`, type: 'button', disabled: !canWrite() || lockBusy(),
+      title: done ? 'Done: Publish may take it. Click to make it a draft again' : 'Draft: it waits under Publish › Not done. Click when the card is finished',
+      onclick: () => { snap(true); w.status = done ? 'draft' : 'done'; changed(); env.render(); } }, done ? '✓ DONE' : 'DRAFT');
   }
 
   // Podaci preko servera su samo za gledanje: spremanje, upload i Objava trebaju otvoren zajednički folder.
@@ -1686,8 +1674,6 @@ export function createEditor(env) {
     const code = field('CODE', h('input', { value: w.id, disabled: true }));
     const seg = (items, value, onpick) => h('div', { class: 'ce-seg' }, items.map(([v, label]) => h('button', { type: 'button', class: v === value ? 'active' : '', onclick: () => onpick(v) }, label)));
     const text = textEditor(w);
-    const statusRow = w.type === 'Core' ? null : h('div', { class: 'ce-status' }, h('span', { class: 'small muted' }, 'STATUS'),
-      seg(STATUSES.map(s => [s, s]), w.status === 'done' ? 'done' : 'draft', v => { set('status', v); env.render(); }));
     let body;
     if (w.type === 'Hero' || w.type === 'Evolution') {
       const evo = w.type === 'Evolution';
@@ -1817,7 +1803,7 @@ export function createEditor(env) {
         fileIn,
       ];
     }
-    return h('section', { class: `ce-form c-tint-${w.color ?? 'none'}` }, ...body, statusRow,
+    return h('section', { class: `ce-form c-tint-${w.color ?? 'none'}` }, ...body,
       canWrite() ? null : h('p', { class: 'small muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer), or Card Studio opened through Marko\'s computer.'));
   }
 
@@ -2132,7 +2118,7 @@ export function createEditor(env) {
       if (w.fx && fxProblems(w.fx).length) out.push([false, 'The fx box holds something the game can\'t read']);
       else if (w.fx) out.push([w.fxStatus !== 'check', w.fxStatus === 'check' ? 'The fx is not confirmed yet' : 'fx confirmed for the game']);
       else out.push([false, 'No fx yet']);
-      if (ed.drafts?.cards?.[w.id]?.who === 'Claude Code') out.push([false, 'Changed by Claude Code: have a look, then Looks good or Save']);
+      if (ed.drafts?.cards?.[w.id]?.who === 'Claude Code') out.push([false, 'Changed by Claude Code: have a look, then Save']);
       // Pravilo B (2026-11-05): range uz metu u tekstu, ne na početku retka.
       if (/^\[RNG\]/m.test(w.text ?? '')) out.push([false, 'Range at the start of a line: write it next to its target ("in [RNG]")']);
     };
@@ -2818,6 +2804,20 @@ export function createEditor(env) {
     return null;
   }
 
+  // Not done › Done: the card's draft gets status done without opening it (fresh read, so nothing else changes).
+  async function markDone(id) {
+    await readLocks();
+    if (ed.locks[id]) throw new Error(`${ed.locks[id].who} has ${id} open. Try again after they close it.`);
+    const fresh = await readDrafts();
+    if (!fresh.cards?.[id]) throw new Error(`${id} has no draft any more.`);
+    fresh.cards[id] = { ...fresh.cards[id], status: 'done', updated: new Date().toISOString(), who: who() || undefined };
+    await writeJson(DRAFTS_PATH, fresh);
+    ed.drafts = fresh;
+    await logHistory(id, 'marked done').catch(() => {});
+    env.toast(`${id} is done: it is in Ready.`);
+    env.render();
+  }
+
   function renderPublish() {
     const list = draftList();
     const marko = who() === 'Marko';
@@ -2825,7 +2825,9 @@ export function createEditor(env) {
     const held = id => wipSetOf(id, id => sets.isWip(id));
     // A new card without art waits (Publish keeps it back), so it is not "ready".
     const noArt = ({ id, d, base }) => { const c = { ...(base ?? {}), ...d, id }; return !!d.new && !c.art && c.type !== 'Core'; };
-    const ready = list.filter(x => !locked(x.id) && !held(x.id) && !noArt(x));
+    // Draft (not finished) waits under Not done (Marko 2026-11-15); a Core has no status.
+    const notDone = ({ id, d, base }) => { const c = { ...(base ?? {}), ...d, id }; return c.type !== 'Core' && (c.status ?? 'draft') !== 'done'; };
+    const ready = list.filter(x => !locked(x.id) && !held(x.id) && !noArt(x) && !notDone(x));
     const selected = ready.filter(x => !ed.pubOff.has(x.id));
     const why = !canPublish() ? 'Publish runs on a computer with the shared folder open (Chrome or Edge).'
       : !marko ? 'Only Marko publishes (Signed in as Marko).'
@@ -2842,18 +2844,19 @@ export function createEditor(env) {
     // Work in progress (po setu, s "Set is finished"), No art i Being edited su kratki retci na svojim karticama.
     const wipList = list.filter(x => !locked(x.id) && held(x.id));
     const artList = list.filter(x => !locked(x.id) && !held(x.id) && noArt(x));
+    const draftList2 = list.filter(x => !locked(x.id) && !held(x.id) && !noArt(x) && notDone(x));
     const lockList = list.filter(x => locked(x.id));
-    const tabs = [['ready', 'Ready', ready.length, 't-ok'], ['wip', 'Work in progress', wipList.length, 't-wait'], ['art', 'No art', artList.length, 't-wait'], ['lock', 'Being edited', lockList.length, 't-lock']]
+    const tabs = [['ready', 'Ready', ready.length, 't-ok'], ['draft', 'Not done', draftList2.length, 't-wait'], ['wip', 'Work in progress', wipList.length, 't-wait'], ['art', 'No art', artList.length, 't-wait'], ['lock', 'Being edited', lockList.length, 't-lock']]
       .filter(([k, , n]) => k === 'ready' || n);
     if (!tabs.some(([k]) => k === ed.pubTab)) ed.pubTab = 'ready';
     const cardOfRow = ({ id, d, base }) => ({ ...(base ?? {}), ...d, id });
-    const mini = (x, note) => {
+    const mini = (x, note, action = null) => {
       const card = cardOfRow(x);
       // The whole row opens the card in the editor (Marko 2026-11-15).
       return h('div', { class: 'ce-pub-mini', role: 'link', tabindex: 0, title: `Open ${x.id} in the editor`, onclick: () => go(x.id), onkeydown: e => { if (e.key === 'Enter') go(x.id); } },
         h('figure', {}, thumb(card, WIDE.includes(card.type) ? 84 : 60)),
         h('div', { class: 'ce-pub-body' }, h('h4', {}, card.name || x.id, h('small', {}, ` ${x.id}`)), h('p', { class: 'muted small' }, note)),
-        h('span', { class: 'link accent' }, 'Open'));
+        action ?? h('span', { class: 'link accent' }, 'Open'));
     };
     const readyRow = ({ id, d, base }) => {
       const card = { ...(base ?? {}), ...d, id };
@@ -2884,6 +2887,11 @@ export function createEditor(env) {
         h('div', { class: 'ce-pub-minis' }, xs.map(x => mini(x, held(x.id) === setOf(x.id) || held(x.id) === cardOfRow(x).introducedIn && !cardOfRow(x).ingredients?.length
           ? `${x.d.who || '–'} · ${when(x.d.updated)}${noArt(x) ? ' · no art yet' : ''}`
           : `It uses a card of ${code}, so it waits with that set.`)))));
+    } else if (ed.pubTab === 'draft') {
+      body = [h('p', { class: 'muted small' }, 'Cards still marked Draft. Done when it is finished: it moves to Ready.'),
+        h('div', { class: 'ce-pub-minis' }, draftList2.map(x => mini(x, `${x.d.who || '–'} · ${when(x.d.updated)}`,
+          h('button', { class: 'ghost ce-pub-done', type: 'button', disabled: !canWrite(), title: 'Mark it Done: it moves to Ready',
+            onclick: e => { e.stopPropagation(); env.guard(() => markDone(x.id)); } }, '✓ Done'))))];
     } else if (ed.pubTab === 'art') {
       body = [h('p', { class: 'muted small' }, 'A new card waits until it has art: open it and add the art (or drag a picture onto it).'),
         h('div', { class: 'ce-pub-minis' }, artList.map(x => mini(x, `${x.d.who || '–'} · ${when(x.d.updated)}`)))];
@@ -2993,7 +3001,8 @@ export function createEditor(env) {
     // The other computer may have switched a set to Work in progress since this page was drawn.
     const wip = await sets.freshWip();
     const drafts = {};
-    for (const id of ids) if (fresh.cards?.[id] && !ed.locks[id] && !wipSetOf(id, code => wip.has(code))) drafts[id] = fresh.cards[id];
+    const isDraft = id => { const c = { ...(db().cards.find(x => x.id === id) ?? {}), ...fresh.cards[id] }; return c.type !== 'Core' && (c.status ?? 'draft') !== 'done'; };
+    for (const id of ids) if (fresh.cards?.[id] && !ed.locks[id] && !wipSetOf(id, code => wip.has(code)) && !isDraft(id)) drafts[id] = fresh.cards[id];
     const list = Object.keys(drafts);
     if (!list.length) throw new Error('Nothing to publish.');
     if (!confirm(`Publish ${list.length} ${list.length === 1 ? 'card' : 'cards'} into the game?`)) return;
