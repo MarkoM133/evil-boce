@@ -110,7 +110,7 @@ export async function writeFile(root, path, data) {
 
 export async function removeFile(root, path) {
   if (isRemote(root)) {
-    const r = await fetch(`api/fs?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+    const r = await fetch(`api/fs?path=${encodeURIComponent(path)}`, { method: 'DELETE', keepalive: true });
     if (!r.ok) throw await remoteFail(r, `Removing ${path}`);
     return;
   }

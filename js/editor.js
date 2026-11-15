@@ -8,7 +8,7 @@ import { fxProblems } from './fx-grammar.js';
 import { firstTag, traitNames, norm, GENERAL, HEROES, TRAIT, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
 import { applyDrafts, imageHashOf } from './importer.js';
-import { lockPath, lockState, newLock, LOCK_DIR, HEARTBEAT_MS, SETTLE_MS } from './locks.js';
+import { lockPath, lockState, newLock, pickLock, lockIdOf, isConflictCopy, isLive, LOCK_DIR, HEARTBEAT_MS, SETTLE_MS, IDLE_MS } from './locks.js';
 import { createSetsView } from './editor-sets.js';
 import { createGuideView, readGuide, avoidWarnings, suggest } from './editor-guide.js';
 import { createFramesView } from './editor-frames.js';
@@ -40,6 +40,7 @@ const STATUSES = ['draft', 'done'];
 const CORE_KINDS = ['Buff', 'Major', 'Debuff'];
 const ROMAN = ['I', 'II', 'III'];
 const WHO_KEY = 'evil-boce-who';
+const TAB_KEY = 'evil-boce-tab';
 const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'PWR'], ['rng', 'RNG'], ['kb', 'KB']];
 const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB', 'EN'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
@@ -168,6 +169,7 @@ export function createEditor(env) {
     ed.canvas = null;
     ed.artCv = null;
     ed.dirty = false;
+    ed.lastInput = Date.now();
     ed.undo = [];
     ed.artMode = false;
     ed.view = 'card';
@@ -348,13 +350,18 @@ export function createEditor(env) {
     const lockChip = canWrite() && !who() ? h('span', { class: 'ce-lockchip muted' }, 'Set "Signed in as" to lock the card') : null;
     const lockMini = ed.lock?.state === 'mine'
       ? h('span', { class: 'ce-lock-mini', title: 'You are editing: the card is locked under your name until you close it', 'aria-label': 'You are editing this card' }, '🔒') : null;
-    const otherSince = ed.lock?.state === 'other' && Number.isFinite(Date.parse(ed.lock.other?.since ?? ''))
-      ? new Date(ed.lock.other.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+    const otherSince = lockBusy() && Number.isFinite(Date.parse(ed.lock.other?.since ?? ''))
+      ? ` (since ${new Date(ed.lock.other.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : '';
+    const takeOver = label => h('button', { class: 'ghost', type: 'button', onclick: () => env.guard(() => { releaseLock(); return claimLock(ed.id, who(), true); }) }, label);
     const lockBand = ed.lock?.state === 'other'
       ? h('div', { class: 'ce-lock-band', role: 'status' }, '🔒 ', h('b', {}, ed.lock.other?.who ?? 'Someone'),
-        ` is editing this card${otherSince ? ` (since ${otherSince})` : ''}. You can look; Save is off until they close it.`,
-        h('button', { class: 'ghost', type: 'button', onclick: () => env.guard(() => { releaseLock(); return claimLock(ed.id, who(), true); }) }, 'Take over'))
-      : null;
+        ` is editing this card${otherSince}. You can look; Save is off until they close it.`, takeOver('Take over'))
+      : ed.lock?.state === 'twin'
+        ? h('div', { class: 'ce-lock-band', role: 'status' }, '🔒 You have this card open in another window', otherSince,
+          '. Save is off here until you close it there.', takeOver('Use it here'))
+        : ed.lock?.state === 'paused'
+          ? h('div', { class: 'ce-lock-band paused', role: 'status' }, '⏸ Paused: you were away, so the card is free for others. Click or type anywhere to keep editing.')
+          : null;
     const top = h('header', { class: 'ce-top' },
       h('nav', { class: 'ce-crumbs' },
         h('button', { class: 'link', type: 'button', onclick: () => go('sets') }, 'Card editor'), ' / ',
@@ -364,7 +371,7 @@ export function createEditor(env) {
       h('div', { class: 'ce-top-actions' }, lockChip, reviewNav(w),
         w.type === 'Core' ? null : h('button', { class: 'ghost ce-act', type: 'button', title: 'Undo', 'aria-label': 'Undo', disabled: !ed.undo.length, onclick: undo }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '↶'), h('span', { class: 'ce-act-lbl' }, 'Undo')),
         h('button', { class: 'ghost ce-act', type: 'button', title: 'Close', 'aria-label': 'Close', onclick: () => go(ed.from) }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'ce-act-lbl' }, 'Close')),
-        h('button', { class: 'primary', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(saveDraft) }, 'Save')));
+        h('button', { class: 'primary', type: 'button', disabled: !canWrite() || lockBusy(), onclick: () => env.guard(saveDraft) }, 'Save')));
     return h('div', { class: 'ce-full' }, top, lockBand, readOnlyNote(),
       h('div', { class: `ce-cols${WIDE.includes(w.type) ? ' wide' : ''}`, onwheel: wheelToColumn }, renderSide(), renderCentre(), renderForm()));
   }
@@ -378,9 +385,9 @@ export function createEditor(env) {
       h('span', { class: 'small muted' }, `${i + 1} / ${ids.length}`),
       h('button', { class: 'ghost', type: 'button', disabled: i >= ids.length - 1, title: 'Next card (→)', onclick: () => step(1) }, '›'),
       w.type === 'Core' ? null : (w.status ?? 'draft') === 'done'
-        ? h('button', { class: 'ghost ce-good is-done', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other',
+        ? h('button', { class: 'ghost ce-good is-done', type: 'button', disabled: !canWrite() || lockBusy(),
           title: 'This card is done. Open the next card that is not done yet', onclick: () => env.guard(looksGood) }, '✓ Done', h('span', { class: 'ce-good-next' }, ', next'))
-        : h('button', { class: 'ghost ce-good', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other',
+        : h('button', { class: 'ghost ce-good', type: 'button', disabled: !canWrite() || lockBusy(),
           title: 'Mark it done, save it and open the next card that is not done yet', onclick: () => env.guard(looksGood) }, 'Looks good', h('span', { class: 'ce-good-next' }, ', next')));
   }
 
@@ -756,7 +763,7 @@ export function createEditor(env) {
         diffView(toTokens(claudeText(w)), toTokens(r.text)),
         h('div', { class: 'ce-intent-row' },
           h('button', { class: 'ce-prop-use', type: 'button', disabled: cs.stale, title: cs.stale ? 'Check again: the text or the Intent changed' : 'Put this text on the card; the fx then waits for a new confirm', onclick: use }, 'Use this'),
-          h('button', { class: 'ce-prop-use', type: 'button', disabled: cs.stale || !canWrite() || ed.lock?.state === 'other', title: 'Put this text on the card and ask Claude for its fx',
+          h('button', { class: 'ce-prop-use', type: 'button', disabled: cs.stale || !canWrite() || lockBusy(), title: 'Put this text on the card and ask Claude for its fx',
             onclick: () => env.guard(async () => { use(); await askClaude(w); }) }, 'Use this and ask for fx')),
         r.issues?.length ? h('ul', { class: 'small ce-text-issues' }, r.issues.map(i => h('li', {}, i.quote ? h('q', {}, i.quote) : null, ` ${i.problem}`, i.rule ? h('span', { class: 'muted' }, ` (${i.rule})`) : null))) : null,
         still.length ? h('p', { class: 'small warn' }, 'Still against the guide: ', still.join(' · ')) : null);
@@ -794,7 +801,7 @@ export function createEditor(env) {
             oninput: e => { a.text[i] = e.target.value; refreshLeft(); } }),
           h('button', { class: 'link small', type: 'button', onclick: () => { a.skip[i] = !a.skip[i]; if (a.skip[i]) a.text[i] = ''; env.render(); } }, a.skip[i] ? 'Answer it' : 'Not sure yet'))))),
       h('div', { class: 'ce-intent-row' },
-        h('button', { class: 'ce-q-save', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(save) }, 'Save answers to Intent and check again'),
+        h('button', { class: 'ce-q-save', type: 'button', disabled: !canWrite() || lockBusy(), onclick: () => env.guard(save) }, 'Save answers to Intent and check again'),
         left));
   }
 
@@ -1174,11 +1181,11 @@ export function createEditor(env) {
         // ostane stara kad se promijeni samo renderer (Onigashima: "most Power" kao ikona).
         h('button', { class: 'ghost', type: 'button', title: 'Draw the published picture again with the current card look (no draft needed)',
           disabled: !canPublish() || w.new || !!ed.drafts?.cards?.[w.id], onclick: () => env.guard(redrawPicture) }, 'Redraw picture'));
-      if (w.new && !w.token && ed.drafts?.cards?.[w.id]) rare.push(h('button', { class: 'ghost', type: 'button', disabled: !canPublish() || ed.lock?.state === 'other',
+      if (w.new && !w.token && ed.drafts?.cards?.[w.id]) rare.push(h('button', { class: 'ghost', type: 'button', disabled: !canPublish() || lockBusy(),
         title: canPublish() ? 'Give this card another code in its set; the unpublished cards in between move one place' : 'Moving a card needs the shared folder open on a computer',
         onclick: () => env.guard(moveCard) }, 'Move to another code…'));
       if (ed.drafts?.cards?.[w.id]) rare.push(h('div', { class: 'ce-more-sep', 'aria-hidden': 'true' }),
-        h('button', { class: 'ghost ce-more-danger', type: 'button', disabled: !canWrite() || ed.lock?.state === 'other', onclick: () => env.guard(discardDraft) },
+        h('button', { class: 'ghost ce-more-danger', type: 'button', disabled: !canWrite() || lockBusy(), onclick: () => env.guard(discardDraft) },
           w.new ? 'Throw away this new card' : 'Discard the unpublished changes'));
       const menu = h('div', { class: 'ce-more-menu', hidden: true }, rare);
       const close = () => { menu.hidden = true; };
@@ -2248,7 +2255,7 @@ export function createEditor(env) {
 
   // Nacrt: polja koja se razlikuju od cards.json, tko i kad. Drugi nacrti se čitaju iznova prije pisanja.
   async function saveDraft() {
-    if (ed.lock?.state === 'other') throw new Error(`${ed.lock.other?.who ?? 'Someone'} is editing this card.`);
+    await ensureLock();
     if (await refreshDb()) {
       rebase();
       env.render();
@@ -2303,7 +2310,7 @@ export function createEditor(env) {
   }
 
   async function discardDraft() {
-    if (ed.lock?.state === 'other') throw new Error(`${ed.lock.other?.who ?? 'Someone'} is editing this card.`);
+    await ensureLock();
     if (!confirm(ed.work?.new ? 'Throw away this new card?' : 'Throw away the unpublished changes to this card?')) return;
     const fresh = await readDrafts();
     delete fresh.cards?.[ed.id];
@@ -2499,20 +2506,46 @@ export function createEditor(env) {
 
   // ---------- zaključavanje ----------
 
-  // Otvorena karta je zaključana na "Signed in as" dok je otvorena; tuđi lock gasi spremanje.
-  async function readLock(id) {
-    try { return JSON.parse((await fs.readText(store().root, lockPath(id))) ?? 'null'); } catch { return null; }
+  // Otvorena karta je zaključana na "Signed in as" dok je otvorena; tuđi lock gasi spremanje (vidi js/locks.js).
+  // Ovaj prozor ima svoj tab id (ostaje kroz reload), da isto ime u drugom prozoru bude 'twin'.
+  const TAB = (() => {
+    const fresh = () => Math.random().toString(36).slice(2, 10);
+    try { let t = sessionStorage.getItem(TAB_KEY); if (!t) { t = fresh(); sessionStorage.setItem(TAB_KEY, t); } return t; } catch { return fresh(); }
+  })();
+  const stateOf = (lock, me) => lockState(lock, me, Date.now(), TAB);
+  const lockBusy = () => ed.lock?.state === 'other' || ed.lock?.state === 'twin';
+  const busyText = () => ed.lock?.state === 'twin' ? 'This card is open in another window of yours. Close it there, or click "Use it here".'
+    : `${ed.lock?.other?.who ?? 'Someone'} is editing this card.`;
+
+  async function readLockFile(file) {
+    try { return JSON.parse((await fs.readText(store().root, `${LOCK_DIR}/${file}`)) ?? 'null'); } catch { return null; }
   }
 
-  // Svi lockovi (za Sets i Publish); u server načinu ih nema.
+  // Sve verzije locka jedne karte (glavni i konfliktne kopije Syncthinga) i ona koja vrijedi.
+  async function currentLock(id) {
+    const names = await fs.listFileNames(store().root, LOCK_DIR).catch(() => null);
+    const files = names ? names.filter(f => lockIdOf(f) === id) : [`${id}.json`];
+    const copies = [];
+    for (const file of files) { const l = await readLockFile(file); if (l) copies.push({ ...l, file }); }
+    return { lock: pickLock(copies), copies };
+  }
+
+  // Svi lockovi (za Sets i Publish). Usput briše napuštene lockove i konfliktne kopije.
   async function readLocks() {
     ed.locksAt = Date.now();
     if (!canWrite()) return false;
+    const byId = new Map();
+    for (const file of await fs.listFileNames(store().root, LOCK_DIR).catch(() => [])) {
+      const id = lockIdOf(file);
+      if (!id) continue;
+      const l = await readLockFile(file);
+      if (!isLive(l)) { fs.removeFile(store().root, `${LOCK_DIR}/${file}`).catch(() => {}); continue; }
+      if (!byId.has(id)) byId.set(id, []);
+      byId.get(id).push(l);
+    }
     const next = {};
-    for (const f of await fs.listFileNames(store().root, LOCK_DIR).catch(() => [])) {
-      if (!f.endsWith('.json')) continue;
-      const id = f.slice(0, -5);
-      const l = await readLock(id);
+    for (const [id, copies] of byId) {
+      const l = pickLock(copies);
       if (lockState(l, who()) === 'other') next[id] = l;
     }
     const changed = JSON.stringify(next) !== JSON.stringify(ed.locks);
@@ -2529,45 +2562,58 @@ export function createEditor(env) {
 
   async function claimLock(id, me, force = false) {
     ed.lock = { id, who: me, state: 'checking' };
-    const old = await readLock(id);
-    const st = lockState(old, me);
-    if (st === 'other' && !force) {
-      if (ed.lock?.id === id) { ed.lock = { id, who: me, state: 'other', other: old }; watchLock(id, me); env.render(); }
+    const { lock: cur } = await currentLock(id);
+    if (ed.lock?.id !== id) return;
+    const st = stateOf(cur, me);
+    if ((st === 'other' || st === 'twin') && !force) {
+      ed.lock = { id, who: me, state: st, other: cur };
+      watchLock(id, me);
+      env.render();
       return;
     }
-    const since = st === 'mine' ? old.since : null;
-    if (ed.lock?.id !== id) return;
-    await fs.writeFile(store().root, lockPath(id), JSON.stringify(newLock(me, new Date(), since)) + '\n');
+    const since = st === 'mine' ? cur.since : null;
+    const over = force || (st === 'mine' && !!cur.over);
+    const mine = newLock(me, new Date(), since, TAB, over);
+    await fs.writeFile(store().root, lockPath(id), JSON.stringify(mine) + '\n');
     if (ed.lock?.id !== id) {
       // Karta je u međuvremenu zatvorena: lock ne smije ostati.
       fs.removeFile(store().root, lockPath(id)).catch(() => {});
       return;
     }
-    ed.lock = { id, who: me, state: 'mine', since: since ?? new Date().toISOString() };
-    ed.lock.beat = setInterval(async () => {
-      if (ed.lock?.id !== id || ed.lock.state !== 'mine') return;
-      const now = await readLock(id);
-      // Netko je preuzeo kartu (Take over): odstupi, spremanje se gasi.
-      if (now?.who && now.who !== me && lockState(now, me) === 'other') {
-        clearInterval(ed.lock.beat);
-        ed.lock = { id, who: me, state: 'other', other: now };
-        watchLock(id, me);
-        env.render();
-        return;
-      }
-      fs.writeFile(store().root, lockPath(id), JSON.stringify(newLock(me, new Date(), ed.lock.since)) + '\n').catch(() => {});
-    }, HEARTBEAT_MS);
-    // Drugi stroj je možda zaključao u isto vrijeme: Syncthing to donese za par sekundi.
-    if (!force) setTimeout(async () => {
-      if (ed.lock?.id !== id || ed.lock.state !== 'mine') return;
-      const now = await readLock(id);
-      if (now?.who && now.who !== me && lockState(now, me) === 'other') {
-        clearInterval(ed.lock.beat);
-        ed.lock = { id, who: me, state: 'other', other: now };
-        watchLock(id, me);
-        env.render();
-      }
-    }, SETTLE_MS);
+    const l = { id, who: me, state: 'mine', since: mine.since, over };
+    ed.lock = l;
+    l.beat = setInterval(() => beat(l), HEARTBEAT_MS);
+    // Drugi stroj je možda zaključao u isto vrijeme: Syncthing to donese za 10 do 15 s.
+    l.settle = setTimeout(() => beat(l), SETTLE_MS);
+    env.render();
+  }
+
+  // Svakih 30 s (i jednom nakon SETTLE_MS): je li karta još moja; ako jest, osvježi lock i obriši konfliktne kopije.
+  // Bez unosa IDLE_MS i bez nespremljenog: pusti kartu (Paused), prvi klik ili tipka je opet zaključa.
+  async function beat(l) {
+    if (ed.lock !== l || l.state !== 'mine') return;
+    const { lock: cur, copies } = await currentLock(l.id);
+    if (ed.lock !== l) return;
+    if (cur && stateOf(cur, l.who) !== 'mine') { stepDown(l, cur); return; }
+    if (!ed.dirty && Date.now() - (ed.lastInput ?? 0) > IDLE_MS) { pauseLock(l); return; }
+    await fs.writeFile(store().root, lockPath(l.id), JSON.stringify(newLock(l.who, new Date(), l.since, TAB, l.over)) + '\n').catch(() => {});
+    for (const c of copies) if (isConflictCopy(c.file)) fs.removeFile(store().root, `${LOCK_DIR}/${c.file}`).catch(() => {});
+  }
+
+  function stopTimers(l) { clearInterval(l?.beat); clearTimeout(l?.settle); }
+
+  // Netko drugi (ili moj drugi prozor) drži kartu: odstupi, spremanje se gasi.
+  function stepDown(l, cur) {
+    stopTimers(l);
+    ed.lock = { id: l.id, who: l.who, state: stateOf(cur, l.who) === 'twin' ? 'twin' : 'other', other: cur };
+    watchLock(l.id, l.who);
+    env.render();
+  }
+
+  function pauseLock(l) {
+    stopTimers(l);
+    ed.lock = { id: l.id, who: l.who, state: 'paused' };
+    fs.removeFile(store().root, lockPath(l.id)).catch(() => {});
     env.render();
   }
 
@@ -2576,23 +2622,55 @@ export function createEditor(env) {
     const l = ed.lock;
     l.beat = setInterval(async () => {
       if (ed.lock !== l) { clearInterval(l.beat); return; }
-      const now = await readLock(id);
-      if (lockState(now, me) !== 'other') {
+      const { lock: cur } = await currentLock(id);
+      if (ed.lock !== l) return;
+      const st = stateOf(cur, me);
+      if (st === 'free' || st === 'mine') {
         clearInterval(l.beat);
-        if (ed.lock === l) claimLock(id, me);
-      } else if (now?.who !== l.other?.who) { l.other = now; env.render(); }
+        claimLock(id, me);
+      } else if (st !== l.state || cur.who !== l.other?.who || cur.tab !== l.other?.tab) {
+        l.state = st;
+        l.other = cur;
+        env.render();
+      }
     }, HEARTBEAT_MS);
   }
 
-  function releaseLock() {
+  // Prije spremanja: lock se ponovo pročita (Take over s drugog stroja se inače vidi tek za 30 s); Paused se vrati.
+  async function ensureLock() {
+    if (!ed.lock || !canWrite()) return;
+    if (ed.lock.state === 'paused') await claimLock(ed.lock.id, ed.lock.who);
+    const l = ed.lock;
+    if (l?.state === 'mine') {
+      const { lock: cur } = await currentLock(l.id);
+      if (ed.lock === l && cur && stateOf(cur, l.who) !== 'mine') stepDown(l, cur);
+    }
+    if (lockBusy()) throw new Error(busyText());
+  }
+
+  // Svaki unos na stranici karte je znak da je netko tu; nakon Paused ga vraća.
+  function touched() {
+    ed.lastInput = Date.now();
+    if (ed.lock?.state === 'paused' && ed.id === ed.lock.id) claimLock(ed.lock.id, ed.lock.who);
+  }
+  for (const t of ['pointerdown', 'keydown', 'wheel']) document.addEventListener(t, touched, { capture: true, passive: true });
+
+  function releaseLock(unloading = false) {
     const l = ed.lock;
     ed.lock = null;
     if (!l) return;
-    clearInterval(l.beat);
+    stopTimers(l);
     if (l.state !== 'mine' || !canWrite()) return;
-    readLock(l.id).then(now => { if (now?.who === l.who) return fs.removeFile(store().root, lockPath(l.id)); }).catch(() => {});
+    // Pri zatvaranju prozora nema vremena za čitanje: obriši odmah (server dobije zahtjev i nakon gašenja stranice).
+    if (unloading) { fs.removeFile(store().root, lockPath(l.id)).catch(() => {}); return; }
+    currentLock(l.id).then(({ copies }) => {
+      const main = copies.find(c => c.file === `${l.id}.json`);
+      if (main && stateOf(main, l.who) === 'mine') return fs.removeFile(store().root, lockPath(l.id));
+    }).catch(() => {});
   }
-  window.addEventListener('beforeunload', () => releaseLock());
+  window.addEventListener('pagehide', () => releaseLock(true));
+  // Stranica vraćena iz cachea preglednika (Natrag): zaključaj kartu ponovo.
+  window.addEventListener('pageshow', e => { if (e.persisted) env.render(); });
 
   // ---------- Traits & aliases ----------
 

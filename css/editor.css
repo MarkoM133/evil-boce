@@ -62,6 +62,7 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-lock-mini { color: var(--muted); font-size: 15px; cursor: help; padding: 0 4px; }
 .ce-lock-band { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: -22px; padding: 9px 16px; background: var(--red-wash); border-bottom: 1px solid #4a1410; color: #ffb3ab; font-size: 14px; }
 .ce-lock-band b { color: var(--bone); }
+.ce-lock-band.paused { background: var(--straw-wash); border-bottom-color: #4a3a10; color: var(--straw); }
 .ce-lock-band button { margin-left: auto; padding: 5px 12px; font-size: 14px; }
 .ce-cols { display: grid; grid-template-columns: minmax(240px, 280px) minmax(300px, 1fr) minmax(340px, 480px); grid-template-areas: "side centre form"; gap: 24px; align-items: start; }
 .ce-cols.wide { grid-template-columns: minmax(240px, 270px) minmax(380px, 1.3fr) minmax(340px, 440px); }
