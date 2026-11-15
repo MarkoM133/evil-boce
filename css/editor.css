@@ -210,6 +210,15 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-chip.accent { color: var(--straw); }
 .ce-chip button { clip-path: none; background: none; padding: 0 2px; font: 700 16px var(--text); color: var(--muted); }
 .ce-chips input { width: 150px; }
+/* Tag suggestions as pills under the field, in the flow of the form (Marko 2026-11-16, mockup B). */
+.ce-tag-pills { flex-basis: 100%; display: grid; gap: 8px; padding-top: 2px; }
+.ce-tag-group { display: grid; gap: 6px; }
+.ce-tag-group-h { font: 700 11px var(--text); letter-spacing: .12em; color: var(--muted); }
+.ce-tag-group-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.ce-tag-pill { clip-path: none; font: 600 13px var(--text); background: var(--surface-2); border: 1px dashed #3a3a3a; color: var(--bone); padding: 5px 11px; border-radius: 999px; display: inline-flex; gap: 6px; align-items: baseline; }
+.ce-tag-pill small { color: var(--muted); font-size: 11px; }
+.ce-tag-pill:hover, .ce-tag-pill.on { border: 1px solid var(--straw); background: var(--surface-2); }
+.ce-tag-more { justify-self: start; }
 .ce-status { display: flex; gap: 12px; align-items: center; margin-top: 10px; }
 .ce-status .ce-seg { flex: 1; max-width: 320px; }
 .ce-status .ce-seg button { font-size: 14px; padding: 7px; text-transform: capitalize; }

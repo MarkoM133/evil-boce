@@ -1891,37 +1891,41 @@ export function createEditor(env) {
     return h('div', { class: 'ce-field ce-first-tag' }, ...out);
   }
 
+  // Prijedlozi tagova kao pilule ispod polja (Marko 2026-11-16, mockup B): ništa ne pluta, pa ni na dnu stupca ni
+  // na mobitelu ništa ne bježi s ekrana. Prvo ovaj set, pa ostali; prazno polje pokaže prvih 10 i "+N more", tipkanje
+  // filtrira sve. Klik ili Enter doda; polje ostaje u fokusu za idući tag.
   function chips(w, from, traits, accent) {
+    const key = `${w.id}:${from}`;
     const addTag = value => {
       const t = String(value ?? add.value).trim();
       if (!t) return;
       snap(true);
       if (!w.traits.includes(t)) w.traits = [...(from && !w.traits.length ? [''] : []), ...w.traits, t];
+      ed.tagFocus = key;
       changed();
       env.render();
     };
-    const pop = h('ul', { class: 'ce-ac ce-tag-ac', hidden: true, role: 'listbox' });
+    const box = h('div', { class: 'ce-tag-pills', hidden: true });
     let items = [];
     let pick = -1;
     const inSet = traits.inSet ?? {};
+    const LIMIT = 10;
     const paint = () => {
-      const lis = [];
-      let group = null;
-      items.forEach((t, i) => {
-        const g = inSet[t] ? 'set' : 'other';
-        if (g !== group && Object.keys(inSet).length) {
-          lis.push(h('li', { class: 'ce-ac-head', 'aria-hidden': 'true' }, g === 'set' ? `IN ${traits.setCode ?? 'THIS SET'}` : 'OTHER SETS'));
-          group = g;
-        }
-        lis.push(h('li', { class: i === pick ? 'on' : '', role: 'option', 'data-i': i, onpointerdown: e => { e.preventDefault(); addTag(t); } },
-          h('span', {}, t), inSet[t] ? h('small', { class: 'muted' }, `${inSet[t]} ${inSet[t] === 1 ? 'card' : 'cards'}`) : null));
-      });
-      pop.replaceChildren(...lis);
-      const was = pop.hidden;
-      pop.hidden = !items.length;
-      // Opening below a field near the bottom of the form: the form scrolls so the list is seen whole.
-      if (was && !pop.hidden) requestAnimationFrame(() => pop.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
-      pop.querySelector(`[data-i="${pick}"]`)?.scrollIntoView({ block: 'nearest' });
+      const q = add.value.trim();
+      const all = ed.tagMore === key || q ? items : items.slice(0, LIMIT);
+      const pill = (t, i) => h('button', { type: 'button', class: `ce-tag-pill${i === pick ? ' on' : ''}`, onpointerdown: e => { e.preventDefault(); addTag(t); } },
+        t, inSet[t] ? h('small', {}, String(inSet[t])) : null);
+      const group = (title, list) => list.length ? h('div', { class: 'ce-tag-group' }, h('span', { class: 'ce-tag-group-h' }, title),
+        h('div', { class: 'ce-tag-group-pills' }, list.map(t => pill(t, items.indexOf(t))))) : null;
+      const mine = all.filter(t => inSet[t]);
+      const rest = all.filter(t => !inSet[t]);
+      box.replaceChildren(...[
+        group(Object.keys(inSet).length ? `IN ${traits.setCode ?? 'THIS SET'}` : 'TAGS', Object.keys(inSet).length ? mine : all),
+        Object.keys(inSet).length ? group('OTHER SETS', rest) : null,
+        !items.length && q ? h('p', { class: 'small muted' }, `No tag like that yet: Enter adds “${q}” as a new one.`) : null,
+        items.length > all.length ? h('button', { type: 'button', class: 'link small accent ce-tag-more', onpointerdown: e => { e.preventDefault(); ed.tagMore = key; paint(); } }, `+${items.length - all.length} more`) : null,
+      ].filter(Boolean));
+      box.hidden = false;
     };
     const show = () => {
       const q = add.value.trim().toLowerCase();
@@ -1932,22 +1936,26 @@ export function createEditor(env) {
       pick = q && items.length ? 0 : -1;
       paint();
     };
-    const add = h('input', { placeholder: from ? 'Add tag…' : 'Add trait…', autocomplete: 'off', 'aria-autocomplete': 'list',
-      onfocus: show, oninput: show, onblur: () => setTimeout(() => { pop.hidden = true; }, 150),
+    const add = h('input', { placeholder: from ? 'Add tag…' : 'Add trait…', autocomplete: 'off',
+      onfocus: show, oninput: show,
+      onblur: () => setTimeout(() => { if (document.activeElement !== add) { box.hidden = true; if (ed.tagFocus === key) ed.tagFocus = null; if (ed.tagMore === key) ed.tagMore = null; } }, 150),
       onkeydown: e => {
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-          e.preventDefault();
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight' && add.selectionStart === add.value.length && items.length || e.key === 'ArrowUp') {
           if (!items.length) return;
-          pick = (pick + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+          e.preventDefault();
+          pick = (pick + (e.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
           paint();
         } else if (e.key === 'Enter') { e.preventDefault(); addTag(pick >= 0 ? items[pick] : undefined); }
-        else if (e.key === 'Escape') { pop.hidden = true; }
+        else if (e.key === 'Escape') { box.hidden = true; add.blur(); }
       } });
+    // After a tag went in, the field is focused again for the next one.
+    if (ed.tagFocus === key) requestAnimationFrame(() => { if (add.isConnected) { add.focus({ preventScroll: true }); show(); } });
     return h('div', { class: 'ce-chips' },
       w.traits.slice(from).map((t, i) => h('span', { class: `ce-chip${accent.includes(t) ? ' accent' : ''}` }, t,
         h('button', { type: 'button', 'aria-label': `Remove ${t}`, onclick: () => { snap(true); w.traits = w.traits.filter((_, j) => j !== i + from); changed(); env.render(); } }, '×'))),
-      h('span', { class: 'ce-tag-add' }, add, pop),
-      h('button', { class: 'ghost ce-chip-add', type: 'button', onclick: () => addTag() }, '+ Add'));
+      h('span', { class: 'ce-tag-add' }, add),
+      h('button', { class: 'ghost ce-chip-add', type: 'button', onclick: () => addTag() }, '+ Add'),
+      box);
   }
 
   // Tekst s prekidačima faze, Once per turn i Range, tokenima statova i prijedlozima iz vodiča.
