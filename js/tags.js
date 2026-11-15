@@ -14,6 +14,25 @@ export const HERO_JOIN = '&';
 
 export const norm = s => String(s ?? '').trim().toLowerCase();
 
+// Riječi pravila (Marko 2026-11-15, DQ "Hero" kao tag): tag ne smije biti nijedna od njih, ni u množini, inače
+// "Hero" tag i "Hero" vrsta karte čitaju se isto. Cijeli tag, ne dio: "Brave Hero" je u redu. General je riječ
+// prvog taga i nije ovdje.
+export const RULE_WORDS = [
+  'Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core', 'Combo', 'Token', 'Card',
+  'Deck', 'Hand', 'Graveyard', 'Energy', 'Power', 'HP', 'DMG', 'Damage', 'Range', 'Knockback', 'Ring-out',
+  'Battle', 'Phase', 'Turn', 'Start', 'Preroll', 'Roll', 'Postroll', 'End', 'Opponent', 'Player', 'Ally',
+  'Wall', 'Terrain', 'Bonus', 'Space', 'Hex', 'Ball',
+];
+const RULE_SET = new Map(RULE_WORDS.map(w => [norm(w), w]));
+
+// The rule word a tag is ("Heroes" → "Hero"), or null.
+export function ruleWord(tag) {
+  const w = norm(tag);
+  if (!w) return null;
+  for (const f of [w, w.replace(/s$/, ''), w.replace(/es$/, '')]) if (RULE_SET.has(f)) return RULE_SET.get(f);
+  return null;
+}
+
 // Popis traitova: [{ name, description }] (data/traits.json) ili samo imena.
 export function traitNames(traits) {
   return (traits ?? []).map(t => (typeof t === 'string' ? t : t?.name)).filter(Boolean);

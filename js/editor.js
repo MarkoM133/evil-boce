@@ -5,7 +5,7 @@
 // Tekst je u editoru s tokenima ([HP], [PWR]…), u bazi riječima (js/card-text.js).
 import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, coreMode, TINTS, PHASE_COLORS } from './render.js';
 import { fxProblems } from './fx-grammar.js';
-import { firstTag, traitNames, norm, GENERAL, HEROES, TRAIT, INVALID } from './tags.js';
+import { firstTag, traitNames, norm, ruleWord, GENERAL, HEROES, TRAIT, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
 import { applyDrafts, imageHashOf } from './importer.js';
 import { lockPath, lockState, newLock, pickLock, lockIdOf, isConflictCopy, isLive, LOCK_DIR, HEARTBEAT_MS, SETTLE_MS, IDLE_MS } from './locks.js';
@@ -2128,6 +2128,11 @@ export function createEditor(env) {
     if (!(w.name ?? '').trim()) out.push([false, 'No name yet']);
     // Isto ime smije postojati (kod razlikuje; Marko 2026-11-07), ali neka se vidi.
     else { const twin = allCards().find(c => c.id !== w.id && c.type !== 'Core' && norm(c.name) === norm(w.name)); if (twin) out.push([false, 'Another card is called ' + twin.name + ' (' + twin.id + '): the code tells them apart']); }
+    // A tag that is a word of the rules (Marko 2026-11-15): "Hero" as a tag reads like the card type.
+    for (const t of w.traits ?? []) {
+      const rw = ruleWord(t);
+      if (rw) out.push([false, `Tag "${t}" is a word of the rules (${rw}): use another, e.g. "Brave ${rw}"`]);
+    }
     if (PORTRAIT.includes(w.type)) {
       const k = firstTag(db(), card, traitList);
       if (k.kind === HEROES) out.push([true, `First tag "${k.tag}" is a hero${k.heroes.length > 1 ? 'es' : ''}${k.heroes.some(n => n !== k.tag) ? ' alias' : ''}`]);

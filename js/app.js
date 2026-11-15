@@ -3,7 +3,7 @@ import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, 
 import { TYPES, COLOR_NAMES, DECK_TYPES, HERO_TYPES, TERRAINS } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, setTraits, cardVerdict, deckEvolutions, heroEvolutions, poolCapacity, tagWarnings, coverage, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError, TRAITS_PATH, emptyTraits } from './store.js';
-import { firstTag, tagLabel, hasTrait, traitNames, norm, heroAliases, GENERAL, HEROES, TRAIT } from './tags.js';
+import { firstTag, tagLabel, hasTrait, traitNames, norm, heroAliases, ruleWord, GENERAL, HEROES, TRAIT } from './tags.js';
 import { BALL_COLORS, DEFAULT_ACCENT, heroDefaultColor, ballColors } from './look.js';
 import { renderTools } from './tools.js';
 import { aggregate, filterMatches, ranked, cardsVersions, RESULTS } from './stats.js';
@@ -1048,6 +1048,7 @@ function renderTraits() {
     const n = nameIn.value.trim();
     if (!n) return;
     if (work.traits.some(t => norm(t.name) === norm(n))) { toast(`${n} is already on the list.`, 'warn'); return; }
+    if (ruleWord(n)) { toast(`${n} is a word of the rules (${ruleWord(n)}): a trait needs another name, e.g. Brave ${ruleWord(n)}.`, 'warn'); return; }
     work.traits.push({ name: n, description: '' });
     render();
   };

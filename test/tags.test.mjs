@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { firstTag, deckVerdict } from '../js/tags.js';
+import { firstTag, deckVerdict, ruleWord } from '../js/tags.js';
 
 const fx = JSON.parse(readFileSync(new URL('../game/tests/fixtures/first_tag_cases.json', import.meta.url), 'utf8'));
 const db = { cards: fx.cards };
@@ -69,4 +69,15 @@ test('a token is never a deck card, whatever its colour and tag (GDD 10, 2026-11
   const no = deckVerdict(d, [], d.cards[2], ['H1']);
   assert.equal(no.ok, false);
   assert.match(no.why, /token/);
+});
+
+test('a tag may not be a word of the rules (Marko 2026-11-15)', () => {
+  assert.equal(ruleWord('Hero'), 'Hero');
+  assert.equal(ruleWord(' heroes '), 'Hero');
+  assert.equal(ruleWord('Cores'), 'Core');
+  assert.equal(ruleWord('HP'), 'HP');
+  assert.equal(ruleWord('Brave Hero'), null);
+  assert.equal(ruleWord('Haki'), null);
+  assert.equal(ruleWord('General'), null);
+  assert.equal(ruleWord(''), null);
 });
