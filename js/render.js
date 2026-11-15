@@ -1038,9 +1038,17 @@ function renderHero(canvas, card, tpl, art, emblem) {
     ctx.save();
     // The frame's two arrows (where they sit in the 2100 × 1500 frame): covered with the plate just left of each,
     // then an hourglass in the plate's ink.
-    for (const [cx, cy] of L.labelMarks ?? [[1272, 100], [1733, 100]]) {
+    // Left the hourglass, right how many turns it lasts (Marko 2026-11-16).
+    const marks = L.labelMarks ?? [[1272, 100], [1733, 100]];
+    for (const [cx, cy] of marks) {
       const half = 22;
       ctx.drawImage(ctx.canvas, cx - half - 2 * half, cy - half, 2 * half, 2 * half, cx - half, cy - half, 2 * half, 2 * half);
+    }
+    {
+      const [rx, ry] = marks[1];
+      fitLine(ctx, String(Number(card.tempTurns)), { box: [rx - 22, ry - 24, 44, 48], size: 46, min: 30 }, { font: TITLE_FONT, color: plateText, bold: true });
+    }
+    for (const [cx, cy] of marks.slice(0, 1)) {
       const icon = 38;
       ctx.save();
       ctx.translate(cx - icon / 2, cy - icon / 2);
