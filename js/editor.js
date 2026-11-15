@@ -353,7 +353,7 @@ export function createEditor(env) {
         h('strong', {}, `${w.id} ${w.name || 'New card'}`),
         h('span', { class: `ce-badge ${TYPE_BADGE[w.type]}${w.type === 'Action' || w.type === 'Equipment' || w.type === 'Assist' ? ` c-bg-${w.color}` : ''}` }, w.type.toUpperCase()),
         wipBadge(w.id), lockMini),
-      h('div', { class: 'ce-top-actions' }, lockChip, reviewNav(w), readyToggle(w),
+      h('div', { class: 'ce-top-actions' }, lockChip, readyToggle(w), reviewNav(w),
         w.type === 'Core' ? null : h('button', { class: 'ghost ce-act', type: 'button', title: 'Undo', 'aria-label': 'Undo', disabled: !ed.undo.length, onclick: undo }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '↶'), h('span', { class: 'ce-act-lbl' }, 'Undo')),
         h('button', { class: 'ghost ce-act', type: 'button', title: 'Close', 'aria-label': 'Close', onclick: () => go(ed.from) }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'ce-act-lbl' }, 'Close')),
         h('button', { class: 'primary', type: 'button', disabled: !canWrite() || lockBusy(), onclick: () => env.guard(saveDraft) }, 'Save')));
