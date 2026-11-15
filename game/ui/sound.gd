@@ -4,8 +4,10 @@ extends Node
 ## A file's name says what it is for: `ko.ogg`, and `ko_2.ogg`, `ko_3.ogg`… for variations, one picked at random
 ## (ogg, wav or mp3). Nothing to register: a missing file is silence. `data/audio/sounds.json` may tune a sound:
 ## {"sfx": {"ko": {"volume": -3, "pitch": 0.05, "cooldown": 0.1}}} (volume in dB, pitch as a random spread).
-## Music: `music/menu.*` in the menu, `music/match_<set>.*` in a match (the set of the first hero, e.g.
-## match_op1), else `music/match.*`; several files with the same start are a playlist picked at random.
+## Music: `music/menu.*` in the menu, `music/match.*` under a match (`match_<set>` first if there is one), and in a
+## battle `music/battle_<set>.*` (battle_op1, battle_jo1, battle_dq1…, else `battle`; Marko 2026-11-15, option C):
+## without a battle file the match music just goes on. Leaving a piece and coming back to it carries on where it
+## was. Several files with the same start are a playlist picked at random.
 ## The game's buses are Effects and Music (Settings → Sound); the files never go in git.
 
 const EXTS: Array[String] = ["ogg", "wav", "mp3"]
@@ -52,6 +54,8 @@ var _next: int = 0
 var _music: Array[AudioStreamPlayer] = []
 var _music_on: int = 0
 var _music_key: String = "-"
+## Where each piece was when it was left (carries on there when it comes back).
+var _music_at: Dictionary = {}
 var _pending: Array = []
 
 
@@ -74,10 +78,11 @@ static func play(tree: SceneTree, key: String, strength: float = 1.0) -> void:
 
 
 ## Plays the music for `key` (menu, match_op1…), looping; "" stops. The same key again keeps it going.
-static func music(tree: SceneTree, key: String) -> void:
+## `keep`: when there is no file for `key` (or its shorter forms), what plays goes on (a battle without music).
+static func music(tree: SceneTree, key: String, keep: bool = false) -> void:
 	if tree == null:
 		return
-	instance(tree)._music_to(key)
+	instance(tree)._music_to(key, keep)
 
 
 ## The sounds for new match log entries (`me`: the viewer's seat, for winning and losing).
@@ -201,19 +206,21 @@ func _play(key: String, strength: float) -> void:
 	p.play()
 
 
-func _music_to(key: String) -> void:
+func _music_to(key: String, keep: bool = false) -> void:
 	if not is_inside_tree():
-		_pending.append(["_music_to", key])
+		_pending.append(["_music_to", key, keep])
 		return
 	# match_op1 → match: the set's own music, else the match's.
 	var found: String = key
 	while not found.is_empty() and not _files.has("music/" + found):
 		var cut: int = found.rfind("_")
 		found = found.substr(0, cut) if cut > 0 else ""
-	if found == _music_key:
+	if found == _music_key or (found.is_empty() and keep):
 		return
-	_music_key = found
 	var from: AudioStreamPlayer = _music[_music_on]
+	if from.playing and _music_key != "-" and not _music_key.is_empty():
+		_music_at[_music_key] = from.get_playback_position()
+	_music_key = found
 	var t: Tween = create_tween()
 	t.tween_property(from, "volume_db", -80.0, FADE)
 	t.tween_callback(from.stop)
@@ -229,7 +236,8 @@ func _music_to(key: String) -> void:
 	var to: AudioStreamPlayer = _music[_music_on]
 	to.stream = s
 	to.volume_db = -80.0
-	to.play()
+	var at: float = JsonUtil.as_float(_music_at.get(found, 0.0))
+	to.play(at if at < s.get_length() - 1.0 else 0.0)
 	create_tween().tween_property(to, "volume_db", 0.0, FADE)
 
 

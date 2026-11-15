@@ -130,6 +130,8 @@ var _cursor_shape: Input.CursorShape = Input.CURSOR_ARROW
 var _range_key: String = ""
 ## Evil Bochet under the table, or null (_build_bochet).
 var _bochet: Bochet
+## The battle music is on (the battle camera was on a battle last frame).
+var _in_battle_music: bool = false
 ## Heroes knocked out on the table whose hole waits for the bands of their moment (Marko 2026-11-11: the
 ## band of the blow covered the hole): the KO announcement starts it, or the end of the bands.
 var _ko_due: Dictionary[String, bool] = {}
@@ -352,9 +354,8 @@ func _ready() -> void:
 	add_child(_sling.make_instance())
 
 	_build_balls()
-	# The match's music: the set of the first hero on the table (music/match_op1.ogg), else music/match.*.
-	var first: String = state.heroes[0].card_id if not state.heroes.is_empty() else ""
-	Sound.music(get_tree(), ("match_" + first.get_slice("-", 0).to_lower()) if not first.is_empty() else "match")
+	# The match's music under the whole match (music/match.*; Marko 2026-11-15, option C: the franchises play in battles).
+	Sound.music(get_tree(), "match")
 	_build_hud()
 	_build_bochet()
 	if net_role == "host" and net_host.paused:
@@ -2532,6 +2533,7 @@ func _update_gauges(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	_battle_music()
 	_watch_balls(delta)
 	_follow_ball_pass()
 	_update_gauges(delta)
@@ -4276,6 +4278,28 @@ func _frame_battle(ids: PackedStringArray) -> void:
 	# Aim at the figures' middle, not their feet, so heads stay in the frame.
 	cam.target.y = 1.0
 	hud.battle_cam = true
+
+
+## In a battle (the battle camera on it) its franchise's music, back to the match's after (Marko 2026-11-15,
+## option C). The franchise is the set of the activated hero when he fights in it, else of the first one in it.
+func _battle_music() -> void:
+	if hud.battle_cam == _in_battle_music:
+		return
+	_in_battle_music = hud.battle_cam
+	if not _in_battle_music:
+		Sound.music(get_tree(), "match")
+		return
+	var ids: PackedStringArray = _current_battle()
+	var pick: String = ""
+	for slot: int in state.active:
+		if ids.has(state.active[slot]):
+			pick = state.active[slot]
+			break
+	if pick.is_empty() and not ids.is_empty():
+		pick = ids[0]
+	var h: HeroState = state.hero(pick) if not pick.is_empty() else null
+	var set_code: String = h.card_id.get_slice("-", 0).to_lower() if h != null else ""
+	Sound.music(get_tree(), ("battle_" + set_code) if not set_code.is_empty() else "battle", true)
 
 
 ## Key or switch: into the battle camera, or out to the table.
