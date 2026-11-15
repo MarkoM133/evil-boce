@@ -55,6 +55,6 @@ func test_match_events_and_their_sounds() -> void:
 	]
 	assert_eq(Sound.log_keys(log, 1), ["damage", "ko", "win"] as Array[String], "each sound once; moving is silent")
 	assert_eq(Sound.log_keys([{"type": "match_end", "winner": 0}] as Array[Dictionary], 1), ["lose"] as Array[String])
-	assert_eq(Sound.log_keys([{"type": "match_end", "winner": -1}] as Array[Dictionary], 1), ["draw"] as Array[String])
+	assert_eq(Sound.log_keys([{"type": "match_end", "winner": -1}] as Array[Dictionary], 1), ["tie"] as Array[String], "a draw is tie: draw is a card drawn")
 	var many: Array[Dictionary] = [{"type": "damage"}, {"type": "heal"}, {"type": "ko"}, {"type": "draw"}, {"type": "combo"}, {"type": "token"}]
 	assert_eq(Sound.log_keys(many, 0).size(), Sound.LOG_BURST, "a replay jumping ahead stays quiet enough")

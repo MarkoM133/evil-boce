@@ -94,7 +94,7 @@ static func log_keys(entries: Array[Dictionary], me: int) -> Array[String]:
 		var key: String = ""
 		if t == "match_end":
 			var w: int = JsonUtil.as_int(e.get("winner", -1)) if e.has("winner") else -1
-			key = "draw" if w < 0 else ("win" if w == me else "lose")
+			key = "tie" if w < 0 else ("win" if w == me else "lose")
 		else:
 			key = str(LOG_SOUNDS.get(t, ""))
 		if not key.is_empty() and not keys.has(key):
