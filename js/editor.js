@@ -367,7 +367,8 @@ export function createEditor(env) {
         h('button', { class: 'link', type: 'button', onclick: () => go('sets') }, 'Card editor'), ' / ',
         h('button', { class: 'link', type: 'button', onclick: () => { sets.pick(w.type === 'Core' ? 'Core' : w.type === 'Stage' ? 'Stage' : setOf(w.id)); go('sets'); } }, setName), ' / ',
         h('strong', {}, `${w.id} ${w.name || 'New card'}`),
-        h('span', { class: `ce-badge ${TYPE_BADGE[w.type]}${w.type === 'Action' || w.type === 'Equipment' || w.type === 'Assist' ? ` c-bg-${w.color}` : ''}` }, w.type.toUpperCase()), lockMini),
+        h('span', { class: `ce-badge ${TYPE_BADGE[w.type]}${w.type === 'Action' || w.type === 'Equipment' || w.type === 'Assist' ? ` c-bg-${w.color}` : ''}` }, w.type.toUpperCase()),
+        wipBadge(w.id), lockMini),
       h('div', { class: 'ce-top-actions' }, lockChip, reviewNav(w),
         w.type === 'Core' ? null : h('button', { class: 'ghost ce-act', type: 'button', title: 'Undo', 'aria-label': 'Undo', disabled: !ed.undo.length, onclick: undo }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '↶'), h('span', { class: 'ce-act-lbl' }, 'Undo')),
         h('button', { class: 'ghost ce-act', type: 'button', title: 'Close', 'aria-label': 'Close', onclick: () => go(ed.from) }, h('span', { class: 'ce-act-ico', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'ce-act-lbl' }, 'Close')),
@@ -2795,6 +2796,12 @@ export function createEditor(env) {
 
   // The Work-in-progress set that holds a card back from Publish: its own set, or for a Combo the set of an
   // ingredient (a published Combo must not name a card the game does not have). null when nothing holds it.
+  // WIP on the card itself (Marko 2026-11-15): the set is Work in progress, so this card waits for Publish.
+  function wipBadge(id) {
+    const code = wipSetOf(id, c => sets.isWip(c));
+    return code ? h('span', { class: 'ce-st review ce-wip', title: `Set ${code} is Work in progress: this card stays out of Publish until it is finished.` }, 'WIP') : null;
+  }
+
   // Introduced in for a Stage or Core (Marko 2026-11-15): optional; a card of a Work in progress set waits with it.
   function introducedField(w) {
     return h('label', { class: 'ce-field' }, h('span', {}, 'INTRODUCED IN'), h('select', { title: 'The set it comes out with. While that set is Work in progress, this card waits with it.',
@@ -3068,6 +3075,8 @@ export function createEditor(env) {
     h, state: env.state, store, canWrite, who, render: env.render, guard: env.guard, toast: env.toast,
     cards: allCards, drafts: () => ed.drafts, locks: () => ed.locks, thumbInto, go: id => go(id), newCard, nextId,
     pictureStale, checkPictures, redrawAll, canPublish,
+    // The Work in progress set a card waits with (its own, Introduced in, or a combo ingredient's), or null.
+    heldBy: id => wipSetOf(id, code => sets.isWip(code)),
     stalePictures: (prefix = '') => [...stale.ids].filter(([id, out]) => out && id.startsWith(prefix)).length,
   });
 

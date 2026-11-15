@@ -247,9 +247,12 @@ export function createSetsView(ctx) {
         : h('span', { class: `ce-st ${c.status ?? 'draft'}` }, (c.status ?? 'draft').toUpperCase());
     const claude = byClaude(draft) ? h('span', { class: 'ce-st claude', title: 'Changed by Claude Code: have a look, then Save' }, 'CLAUDE') : null;
     const token = c.token ? h('span', { class: 'ce-st token', title: 'A token: made by another card, never in a deck' }, 'TOKEN') : null;
+    // WIP beside the status (Marko 2026-11-15): the card waits with its Work in progress set.
+    const held = ctx.heldBy(c.id);
+    const wip = held ? h('span', { class: 'ce-st review', title: `Set ${held} is Work in progress: this card stays out of Publish` }, 'WIP') : null;
     return h('button', { class: `ce-tile${c.type === 'Hero' || c.type === 'Evolution' ? ' wide' : ''}`, type: 'button', onclick: () => ctx.go(c.id) },
       canvas,
-      h('span', { class: 'ce-tile-name' }, h('strong', {}, c.name || 'New card'), h('span', { class: 'ce-tile-badges' }, token, claude, badge)),
+      h('span', { class: 'ce-tile-name' }, h('strong', {}, c.name || 'New card'), h('span', { class: 'ce-tile-badges' }, token, claude, wip, badge)),
       h('span', { class: 'muted small' }, `${c.id} · ${c.type}${draft ? (draft.new ? ' · new' : ' · edited') : ''}`));
   }
 
