@@ -740,3 +740,9 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 /* Balance's arrow in the middle of its title, like the other blocks' (2026-11-15). */
 .ce-panel.ce-balance > summary h3 { display: flex; align-items: center; }
 .ce-panel.ce-balance > summary h3::before { vertical-align: baseline; line-height: 1; flex: none; }
+/* Fold arrows as drawn triangles (2026-11-15): a ▾ glyph sat on the text's baseline, low next to a big italic title.
+   A border triangle in a flex row sits in the middle. */
+.ce-panel-fold { font-size: 0; display: inline-grid; place-items: center; align-self: center; height: 20px; }
+.ce-panel-fold::before { content: ""; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid currentColor; }
+.ce-panel.ce-balance > summary h3::before { content: ""; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--muted);
+  margin: 0 12px 0 5px; align-self: center; }
