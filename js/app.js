@@ -878,6 +878,9 @@ function navSub(key) {
   }));
 }
 
+// The tabs under the line in the menu: making (Card editor, Tools), not looking.
+const MAKE_TABS = NAV.slice(NAV.findIndex(([k]) => k === '-') + 1).map(([k]) => k);
+
 function renderNav() {
   const cur = navOf(state.tab);
   return h('nav', { class: 'tabs', role: 'tablist' }, NAV.map(([key, label, items]) => key === '-' ? h('span', { class: 'tabs-sep', 'aria-hidden': 'true' }) : [
@@ -887,8 +890,9 @@ function renderNav() {
       replaceNext = false;
       render();
     } }, label),
-    // Card editor keeps its pages open in the menu wherever you are (Marko 2026-11-15); the others only while open.
-    items && (cur === key || key === 'editor') ? navSub(key) : null,
+    // Card editor keeps its pages open under the line, on Tools too (Marko 2026-11-15); above the line (Cards, Decks,
+    // Rules, Balance) it is folded like the others, which open only while they are open.
+    items && (cur === key || (key === 'editor' && MAKE_TABS.includes(cur))) ? navSub(key) : null,
   ]).flat());
 }
 
