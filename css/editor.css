@@ -465,16 +465,19 @@ button.link.ce-fx-more { font: 500 13px var(--text); color: var(--muted); justif
 .tabs-sub .tab-badge.alt { background: none; color: var(--straw); box-shadow: inset 0 0 0 2px var(--straw); margin-left: 4px; }
 
 /* Pregled karta po karta u traci stranice karte */
-.ce-review { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
-.ce-review > button { min-width: 36px; font-size: 18px; padding: 6px 10px; }
+.ce-review { display: inline-flex; align-items: center; gap: 2px; margin-right: 8px; }
+.ce-review > button { min-width: 40px; font-size: 20px; padding: 9px 12px; }
+/* 3 / 17 on one line, in the buttons' type (Marko 2026-11-15) */
+.ce-review > .small { white-space: nowrap; font: italic 700 16px/1 var(--display); color: var(--muted); padding: 0 8px; font-variant-numeric: tabular-nums; }
 /* Ready: the app's ghost button when off, a green Save-like button when on (Marko 2026-11-15) */
 .ce-ready-toggle { display: inline-flex; align-items: center; gap: 8px; }
 .ce-ready-toggle.ghost { color: var(--muted); }
 .ce-ready-toggle.ghost:hover:not(:disabled) { color: var(--bone); }
 .ce-ready-toggle.on { background: var(--c-Green); color: #041; }
 .ce-ready-toggle.on:hover:not(:disabled) { background: #2fcc5c; }
-.ce-ready-mark { width: 13px; height: 13px; border: 2px solid currentColor; border-radius: 50%; display: inline-grid; place-items: center; font: 800 12px/1 var(--text); font-style: normal; }
-.ce-ready-toggle.on .ce-ready-mark { border: 0; width: auto; height: auto; font-size: 16px; }
+/* the tick is there in both: dim on the ghost button (click to tick it), dark on green when ready */
+.ce-ready-mark { font: 800 16px/1 var(--text); font-style: normal; opacity: .55; }
+.ce-ready-toggle.on .ce-ready-mark { opacity: 1; }
 .ce-pub-done { color: var(--c-Green); border-color: #2f6b3d; }
 
 /* Crta u lijevoj navigaciji između gledanja (Cards, Decks, Balance) i izrade (Card editor, Tools). */

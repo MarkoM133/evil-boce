@@ -380,7 +380,7 @@ export function createEditor(env) {
     return h('button', { class: `ce-ready-toggle ${ready ? 'on' : 'ghost'}`, type: 'button', role: 'switch', 'aria-checked': String(ready), disabled: !canWrite() || lockBusy(),
       title: ready ? 'Ready: Publish may take it. Click if it is not finished after all' : 'Not ready: it waits under Publish › Not ready. Click when the card is finished',
       onclick: () => { snap(true); w.status = ready ? 'draft' : 'done'; changed(); env.render(); } },
-      h('span', { class: 'ce-ready-mark', 'aria-hidden': 'true' }, ready ? '✓' : ''), 'Ready');
+      h('span', { class: 'ce-ready-mark', 'aria-hidden': 'true' }, '✓'), 'Ready');
   }
 
   // Podaci preko servera su samo za gledanje: spremanje, upload i Objava trebaju otvoren zajednički folder.
