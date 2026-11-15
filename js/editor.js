@@ -1275,11 +1275,8 @@ export function createEditor(env) {
     if (ed.balBox) ed.balBox.replaceChildren(...renderBalance(card));
   }
 
-  const heroCard = w => {
-    const name = w.hero;
-    const c = db().cards.find(x => x.type === 'Hero' && !x.deleted && x.name === name);
-    return c ? merged(c) : null;
-  };
+  // The base hero by name, an unpublished one too (Marko 2026-11-15: an evolution for a hero of a WIP set had none).
+  const heroCard = w => allCards().find(x => x.type === 'Hero' && x.name === w.hero) ?? null;
 
   // Pogled u sredini: karta, u ruci, uvećana, stara i nova, ili način uređivanja arta (slika i izvan karte).
   function paintStage(card) {
@@ -1680,7 +1677,9 @@ export function createEditor(env) {
     let body;
     if (w.type === 'Hero' || w.type === 'Evolution') {
       const evo = w.type === 'Evolution';
-      const heroes = db().cards.filter(c => c.type === 'Hero' && !c.deleted);
+      // Every hero, unpublished ones too; a hero of a Work in progress set says so.
+      const heroes = allCards().filter(c => c.type === 'Hero');
+      const heroLabel = x => { const wip = wipSetOf(x.id, code => sets.isWip(code)); return `${x.name} (${x.id})${wip ? ` · ${wip} WIP` : ''}`; };
       const bgVal = w.bg || ed.tpl?.layout?.bg?.[w.color] || '';
       const hc = evo ? heroCard(w) : null;
       const emblemFile = h('input', { type: 'file', accept: 'image/png,image/webp', hidden: true, onchange: e => env.guard(() => uploadEmblem(e.target.files[0])) });
@@ -1690,7 +1689,7 @@ export function createEditor(env) {
         field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
         evo ? h('div', { class: 'ce-row' },
           field('BASE HERO', h('select', { onchange: e => { const x = heroes.find(c => c.name === e.target.value); snap(true); w.hero = e.target.value; if (x) w.color = x.color; changed(); env.render(); } },
-            h('option', { value: '' }, '–'), heroes.map(x => h('option', { value: x.name, selected: x.name === w.hero }, `${x.name} (${x.id})`)))),
+            h('option', { value: '' }, '–'), heroes.map(x => h('option', { value: x.name, selected: x.name === w.hero }, heroLabel(x))))),
           field('LEVEL', h('select', { onchange: e => set('evo', Number(e.target.value)) }, ROMAN.map((r, i) => h('option', { value: i + 1, selected: i + 1 === (w.evo ?? 1) }, r))))) : null,
         h('div', { class: 'ce-row' },
           evo ? field('COST', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 }))

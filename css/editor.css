@@ -241,6 +241,22 @@ button.link.accent, .accent { color: var(--straw); }
 .ce-tile:hover { background: none; }
 .ce-tile:hover .ce-tile-img { outline: 2px solid var(--bone); }
 .ce-tile-img { width: 100% !important; height: auto; border-radius: 6px; display: block; }
+/* A hero with folded evolutions: a little deck (Marko 2026-11-15, mockup 1B). */
+.ce-tile-stack { position: relative; display: block; margin: 14px 18px 0 0; }
+.ce-tile-stack .ce-tile-img { position: relative; }
+.ce-stack-back { position: absolute; inset: 0; border-radius: 6px; border: 3px solid var(--cc, var(--muted)); background: #0b0b0b; }
+.ce-stack-back.b1 { transform: translate(9px, -7px); opacity: .65; }
+.ce-stack-back.b2 { transform: translate(18px, -14px); opacity: .35; }
+.ce-stack-count { position: absolute; left: 8px; top: 8px; font: 700 12px var(--text); background: rgba(0, 0, 0, .8); color: var(--bone); padding: 2px 8px; border-radius: 2px; }
+.ce-hero-evos { display: grid; gap: 6px; align-content: start; }
+.ce-evo-btn { justify-self: start; clip-path: none; display: inline-flex; gap: 6px; align-items: center; font: 600 12px var(--text); padding: 4px 10px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 2px; }
+.ce-evo-btn:hover { border-color: var(--bone); background: var(--surface-2); }
+.ce-evo-chev { display: inline-block; transition: transform .15s; }
+.ce-evo-btn.open .ce-evo-chev { transform: rotate(90deg); }
+.ce-tile.ce-evo-open { padding-left: 10px; border-left: 2px solid color-mix(in srgb, var(--cc, var(--muted)) 60%, transparent); }
+.ce-grid-headrow { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.ce-filters .ce-quick { flex-basis: 100%; margin-top: 2px; flex-wrap: wrap; }
+.ce-filters .ce-quick .qf-group { flex-wrap: wrap; }
 .ce-tile-name { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .ce-st { font: 700 11px var(--text); letter-spacing: .08em; padding: 3px 6px; border-radius: 2px; white-space: nowrap; }
 .ce-st.done { color: var(--c-Green); background: #0d2014; }

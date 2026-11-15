@@ -34,7 +34,12 @@ export function setList(saved, cards) {
 // ctx: { h, state, store, canWrite, who, render, guard, toast, cards(), drafts(), locks(), thumbInto(canvas, card, px), go(id), newCard(set, type), nextId(set) }
 export function createSetsView(ctx) {
   const { h } = ctx;
-  const v = { saved: null, loading: false, code: null, q: '', type: '', color: '', status: '', settings: false };
+  // types / colors: several at once (Marko 2026-11-15, mockup 2B: the pills and dots of the Cards page).
+  const v = { saved: null, loading: false, code: null, q: '', types: new Set(), colors: new Set(), status: '', settings: false };
+  // Heroes whose evolutions are spread out on the set page (mockup 1B), kept in this browser.
+  const EVO_KEY = 'evil-boce-evo-open';
+  const evoOpen = (() => { try { return new Set(JSON.parse(localStorage.getItem(EVO_KEY) ?? '[]')); } catch { return new Set(); } })();
+  const saveEvoOpen = () => { try { localStorage.setItem(EVO_KEY, JSON.stringify([...evoOpen])); } catch {} };
 
   async function load() {
     if (v.loading) return;
@@ -157,8 +162,8 @@ export function createSetsView(ctx) {
     const drafts = ctx.drafts()?.cards ?? {};
     const q = v.q.trim().toLowerCase();
     const shown = all.filter(c => {
-      if (v.type && c.type !== v.type) return false;
-      if (v.color && c.color !== v.color) return false;
+      if (v.types.size && !v.types.has(c.type)) return false;
+      if (v.colors.size && !v.colors.has(c.color || 'None')) return false;
       if (['draft', 'done'].includes(v.status) && (c.status === 'done' ? 'done' : 'draft') !== v.status) return false;
       if (v.status === 'fx' && !needsFx(c)) return false;
       if (v.status === 'edited' && !drafts[c.id]) return false;
@@ -183,17 +188,30 @@ export function createSetsView(ctx) {
           newCardButton(s.code, special ? [newType] : NEW_TYPES, 'primary'))),
       h('div', { class: 'ce-filters' },
         h('input', { type: 'search', placeholder: 'Search name, text or tag…', value: v.q, oninput: e => { v.q = e.target.value; clearTimeout(v.qt); v.qt = setTimeout(ctx.render, 250); } }),
-        special ? null : sel(v.type, [['', 'All types'], ...TYPES.map(t => [t, t])], x => { v.type = x; ctx.render(); }),
-        special ? null : sel(v.color, [['', 'All colors'], ...COLORS.map(c => [c, c])], x => { v.color = x; ctx.render(); }),
-        sel(v.status, STATUS_FILTERS, x => { v.status = x; ctx.render(); })),
+        sel(v.status, STATUS_FILTERS, x => { v.status = x; ctx.render(); }),
+        special ? null : quickFilters()),
       ...groupedGrid(shown, drafts, h('div', { class: `ce-tile ce-tile-new${s.code === 'CB' ? ' wide' : ''}` },
           h('span', { class: 'plus' }, '+'), h('span', {}, 'New card'),
           h('div', { class: 'ce-newtypes' }, (special ? [newType] : NEW_TYPES).map(t => h('button', { type: 'button', class: 'ghost', onclick: () => ctx.newCard(s.code, t) }, t))),
           h('small', { class: 'muted' }, `Next code: ${next}`))));
   }
 
+  // Tip i boja kao na stranici Cards (Marko 2026-11-15, mockup 2B): klik pali ili gasi; unutar skupine "ili"
+  // (Action ili Equipment), između skupina "i". Clear sve vrati.
+  function quickFilters() {
+    const flip = (set, x) => { if (set.has(x)) set.delete(x); else set.add(x); ctx.render(); };
+    const any = v.types.size || v.colors.size;
+    return h('div', { class: 'quick ce-quick' },
+      h('div', { class: 'qf-group' }, TYPES.map(t => h('button', { type: 'button', class: `qf${v.types.has(t) ? ' active' : ''}`, 'aria-pressed': String(v.types.has(t)),
+        onclick: () => flip(v.types, t) }, t === 'Hero' ? 'Heroes' : t))),
+      h('div', { class: 'qf-group' }, [...COLORS, 'None'].map(c => h('button', { type: 'button', class: `qf-color c-${c}${v.colors.has(c) ? ' active' : ''}`,
+        title: c === 'None' ? 'Colorless' : c, 'aria-label': c === 'None' ? 'Colorless' : c, 'aria-pressed': String(v.colors.has(c)), onclick: () => flip(v.colors, c) }))),
+      any ? h('button', { type: 'button', class: 'link small', onclick: () => { v.types.clear(); v.colors.clear(); ctx.render(); } }, 'Clear') : null);
+  }
+
   // Heroji i evolucije su vodoravni, ostale karte okomite (Marko 2026-11-03): dvije mreže, a u prvoj ispod svakog
   // heroja njegove evolucije (po razini). Redoslijed mreže je i redoslijed za Prev / Next na stranici karte.
+  // Evolucije su složene iza heroja kao mali špil, a gumb ih raširi iza njega (Marko 2026-11-15, mockup 1B).
   function groupedGrid(shown, drafts, newTile) {
     const byId = (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true });
     const heroes = shown.filter(c => c.type === 'Hero').sort(byId);
@@ -201,12 +219,16 @@ export function createSetsView(ctx) {
     // Combo karte su vodoravne kao heroji.
     const combos = shown.filter(c => c.type === 'Combo').sort(byId);
     const wide = [];
+    const items = [];
     for (const hero of heroes) {
-      wide.push(hero);
-      wide.push(...evos.filter(e => e.hero === hero.name).sort((a, b) => (a.evo ?? 0) - (b.evo ?? 0) || byId(a, b)));
+      const mine = evos.filter(e => e.hero === hero.name).sort((a, b) => (a.evo ?? 0) - (b.evo ?? 0) || byId(a, b));
+      wide.push(hero, ...mine);
+      items.push(mine.length ? heroWithEvos(hero, mine, drafts) : tile(hero, drafts[hero.id]));
+      if (mine.length && evoOpen.has(hero.id)) items.push(...mine.map(e => tile(e, drafts[e.id], 'ce-evo-open')));
     }
-    wide.push(...evos.filter(e => !wide.includes(e)).sort(byId));
-    wide.push(...combos);
+    const loose = evos.filter(e => !wide.includes(e)).sort(byId);
+    wide.push(...loose, ...combos);
+    items.push(...loose.map(e => tile(e, drafts[e.id])), ...combos.map(c => tile(c, drafts[c.id])));
     const tall = shown.filter(c => !['Hero', 'Evolution', 'Combo'].includes(c.type)).sort(byId);
     v.order = [...wide, ...tall].map(c => c.id);
     const out = [];
@@ -214,7 +236,17 @@ export function createSetsView(ctx) {
       out.push(h('h3', { class: 'ce-grid-head' }, `${combos.length} ${combos.length === 1 ? 'combo' : 'combos'}`), h('div', { class: 'ce-grid wide' }, wide.map(c => tile(c, drafts[c.id])), newTile));
       return out;
     }
-    if (wide.length) out.push(h('h3', { class: 'ce-grid-head' }, `Heroes & evolutions (${wide.length})`), h('div', { class: 'ce-grid wide' }, wide.map(c => tile(c, drafts[c.id]))));
+    if (wide.length) {
+      const stacked = heroes.filter(hh => evos.some(e => e.hero === hh.name));
+      const allOpen = stacked.length && stacked.every(hh => evoOpen.has(hh.id));
+      out.push(h('div', { class: 'ce-grid-headrow' }, h('h3', { class: 'ce-grid-head' }, `Heroes & evolutions (${wide.length})`),
+        stacked.length ? h('button', { type: 'button', class: 'link small accent', onclick: () => {
+          for (const hh of stacked) { if (allOpen) evoOpen.delete(hh.id); else evoOpen.add(hh.id); }
+          saveEvoOpen();
+          ctx.render();
+        } }, allOpen ? 'Hide all evolutions' : 'Show all evolutions') : null),
+        h('div', { class: 'ce-grid wide' }, items));
+    }
     out.push(h('h3', { class: 'ce-grid-head' }, wide.length ? `Cards (${tall.length})` : `${tall.length} cards`), h('div', { class: 'ce-grid' }, tall.map(c => tile(c, drafts[c.id])), newTile));
     return out;
   }
@@ -249,7 +281,7 @@ export function createSetsView(ctx) {
       }) }, on ? 'WIP: on' : 'Work in progress');
   }
 
-  function tile(c, draft) {
+  function tile(c, draft, extra = '', stack = 0) {
     const lock = ctx.locks()[c.id];
     const canvas = h('canvas', { class: 'ce-tile-img' });
     ctx.thumbInto(canvas, c, ['Hero', 'Evolution', 'Combo'].includes(c.type) ? 300 : 210);
@@ -262,10 +294,23 @@ export function createSetsView(ctx) {
     // WIP beside the status (Marko 2026-11-15): the card waits with its Work in progress set.
     const held = ctx.heldBy(c.id);
     const wip = held ? h('span', { class: 'ce-st review', title: `Set ${held} is Work in progress: this card stays out of Publish` }, `${held} WIP`) : null;
-    return h('button', { class: `ce-tile${c.type === 'Hero' || c.type === 'Evolution' ? ' wide' : ''}`, type: 'button', onclick: () => ctx.go(c.id) },
-      canvas,
+    const pic = stack ? h('span', { class: 'ce-tile-stack' }, h('span', { class: 'ce-stack-back b2' }), h('span', { class: 'ce-stack-back b1' }), canvas,
+      h('span', { class: 'ce-stack-count' }, `+${stack}`)) : canvas;
+    return h('button', { class: `ce-tile${c.type === 'Hero' || c.type === 'Evolution' ? ' wide' : ''}${extra ? ` ${extra}` : ''}`, type: 'button', onclick: () => ctx.go(c.id),
+      style: `--cc: var(--c-${!c.color || c.color === 'None' ? 'colorless' : c.color})` },
+      pic,
       h('span', { class: 'ce-tile-name' }, h('strong', {}, c.name || 'New card'), h('span', { class: 'ce-tile-badges' }, token, claude, wip, badge)),
       h('span', { class: 'muted small' }, `${c.id} · ${c.type}${draft ? (draft.new ? ' · new' : ' · edited') : ''}`));
+  }
+
+  // A hero with evolutions: a little deck while they are folded, and the button that spreads them out after it.
+  function heroWithEvos(hero, mine, drafts) {
+    const open = evoOpen.has(hero.id);
+    return h('div', { class: 'ce-hero-evos' },
+      tile(hero, drafts[hero.id], '', open ? 0 : mine.length),
+      h('button', { type: 'button', class: `ce-evo-btn${open ? ' open' : ''}`, 'aria-expanded': String(open),
+        onclick: () => { if (open) evoOpen.delete(hero.id); else evoOpen.add(hero.id); saveEvoOpen(); ctx.render(); } },
+      h('span', { class: 'ce-evo-chev', 'aria-hidden': 'true' }, '▸'), `${mine.length} ${mine.length === 1 ? 'evolution' : 'evolutions'}`));
   }
 
   function imageField(code, name, label, hint) {
