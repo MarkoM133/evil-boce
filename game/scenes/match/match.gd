@@ -3523,6 +3523,54 @@ func demo_tokens_gone() -> void:
 	hud.refresh()
 
 
+## Screenshot helper: a temporary evolution on player 1's hero (Zoro if there is one): TEMP on its panel, the
+## form's stats, and equipment it does not fit dimmed (it stays on but does not work). The form is made up here.
+func demo_temp_evo() -> void:
+	_demo = true
+	var h: HeroState = state.heroes_of(0)[0]
+	for x: HeroState in state.heroes_of(0):
+		if engine.catalog.get_card(x.card_id).name == "Zoro":
+			h = x
+	var base: CardDef = engine.catalog.get_card(h.card_id)
+	var rec: Dictionary = base.to_record()
+	var id: String = base.id + "-T"
+	rec["id"] = id
+	rec["type"] = "Evolution"
+	rec["hero"] = base.name
+	rec["name"] = base.name + ", Unleashed"
+	rec["evo"] = 1
+	rec["tempTurns"] = 2
+	rec["traits"] = ["Unleashed"]
+	var stats: Dictionary = JsonUtil.as_dict(rec.get("stats", {})).duplicate()
+	stats["pwr"] = JsonUtil.as_int(stats.get("pwr", 0)) + 2000
+	stats["hp"] = JsonUtil.as_int(stats.get("hp", 0)) + 2
+	rec["stats"] = stats
+	engine.catalog.cards[id] = CardDef.from_card(rec)
+	if db != null and db.thumbs.has(base.id):
+		db.thumbs[id] = db.thumbs[base.id]
+	h.equipment.clear()
+	for c: CardDef in engine.catalog.of_type("Equipment"):
+		if not c.token and h.equipment.size() < 3:
+			h.equipment.append(c.id)
+	h.zone = HeroState.ZONE_MAP
+	h.hex = Hex.offset_to_axial(state.settings.map_size / 2, state.settings.map_size / 2 + 2)
+	h.temp_evo = id
+	h.temp_until = state.turn + 1
+	hud.hover_hero = h.id
+	cam.focus(arena.hex_center(h.hex), 14.0)
+	_sync()
+	hud.refresh()
+
+
+## Screenshot helper: the shared ring (the default claim, 2026-11-10): stages with both sides' energy in one
+## ring of 14, as demo_boards shows them under separate rings.
+func demo_ring() -> void:
+	demo_boards()
+	state.settings.stage_claim = MatchSettings.CLAIM_RING
+	_sync()
+	hud.refresh()
+
+
 ## Screenshot helper (after demo_battle): a card asks player 1 to choose one of two things.
 func demo_choose_option() -> void:
 	state.pending = [{"type": FxRuntime.DECISION_CHOOSE, "player": 0, "kind": "option", "prompt": "Choose one",
