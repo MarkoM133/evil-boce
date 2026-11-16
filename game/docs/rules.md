@@ -355,8 +355,8 @@ g. (2026-10-26) A grid knockback stopped by a wall or a hero just stops (no dama
    comes and when it goes, so 10/12 → 6/8 → 10/12), and the change itself never kills (1 HP at least).
    Equipment (Marko 2026-11-15): while the form lasts nothing falls; equipment whose first tag the form does
    not satisfy stays on but does not work (`equipment_works`: no stat bonus, not a source of effects), and
-   `_drop_unfit_equipment` looks again when the form is gone. Assumption: such equipment still counts as
-   equipped (the limit of 3, TRAIT_EQUIPPED and the like). Events: `evolved` with
+   `_drop_unfit_equipment` looks again when the form is gone. Such equipment still counts as equipped (the
+   limit of 3, TRAIT_EQUIPPED and the like; Marko 2026-11-16). Events: `evolved` with
    `temporary: true, until`; `evolution_removed` with `temporary: true, why` (expired, replaced, evolved, removed).
    Scenarios 83 and 84, tests/test_temp_evolution.gd.
 10. (confirmed 2026-11-11) `REVERSE_ROLL` puts the activated hero back where it stood when the Roll phase began
