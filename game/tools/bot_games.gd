@@ -2,13 +2,14 @@ extends SceneTree
 ## Bot-against-bot matches through the rules engine alone (no scene, no physics: grid knockback
 ## and the analytic roll of tests/test_bot.gd), counting how a rule change shifts the game.
 ## godot_console --headless --path game -s res://tools/bot_games.gd -- [--games=20] [--seed=1]
-##     [--level=hard] [--max-turns=60] [--fixtures] [--claim=stay|energy|ring] [--goal=14]
+##     [--level=hard] [--max-turns=60] [--fixtures] [--claim=stay|energy|ring] [--goal=14] [--report=<file.json>]
 ## Random decks from the shared folder's cards (`--fixtures`: the test fixtures). Reports, over
 ## all games: hero damage taken and from what (battle, wall, trap, card), cards discarded for
 ## battle hits, KOs, how the matches ended, turns, cards played and the energy they took; with
 ## who started the match against who won it; with energy claims (the shared ring is the default, goal `--goal`; `--claim=energy` each side its own, `--claim=stay` the first rule) also the energy put into stages,
 ## heroes knocked off a stage and the energy that cost, contested stages. The same seed gives the
-## same maps and decks whatever the rules, so runs compare game by game. Nothing is saved.
+## same maps and decks whatever the rules, so runs compare game by game. Nothing is saved, except with
+## --report: per hero, card and stage how often it was in a deck, won, and (cards) was played, as JSON.
 
 const MAX_STEPS: int = 6000
 
@@ -53,8 +54,14 @@ func _run() -> void:
 		"progress_lost": 0, "contested": 0, "claims": 0, "energy_taken": 0, "turn_list": [],
 	}
 	var lines := PackedStringArray()
+	# Balance per hero, card and stage (Marko 2026-11-16): in how many decks, how many of those won, and how
+	# often a card was played. A draw counts as a game, not a win.
+	var by_hero: Dictionary = {}
+	var by_card: Dictionary = {}
+	var by_stage: Dictionary = {}
 	for g: int in games:
 		var r: Dictionary = _game(catalog, level, int(opts["max-turns"]), claim, goal)
+		_tally(r, by_hero, by_card, by_stage)
 		for k: String in ["hero_dmg", "battle_hero_dmg", "wall_dmg", "trap_dmg", "card_dmg", "hand_cards", "deck_cards", "hits", "hits_with_cards", "all_on_hero", "kos", "ring_outs", "turns",
 			"cards_played", "energy_cards", "energy_banked", "energy_wasted", "knocked_off", "knocked_off_lost", "progress_lost",
 			"contested", "claims", "energy_taken"]:
@@ -84,6 +91,16 @@ func _run() -> void:
 	print("")
 	print("%d games, %s vs %s, seed %s, %s cards, stage claims: %s" % [games, Bot.level_name(level), Bot.level_name(level), opts["seed"],
 		"fixture" if opts["fixtures"] == "1" else "shared-folder", ("%s, goal %d" % [claim, goal]) if claim != MatchSettings.CLAIM_STAY else claim])
+	_print_balance(catalog, by_hero, by_card)
+	if opts.has("report"):
+		var f := FileAccess.open(opts["report"], FileAccess.WRITE)
+		if f != null:
+			f.store_string(JSON.stringify({"games": games, "level": Bot.level_name(level), "seed": opts["seed"], "claim": claim,
+				"heroes": by_hero, "cards": by_card, "stages": by_stage}, "  "))
+			f.close()
+			print("report: " + opts["report"])
+		else:
+			push_error("cannot write " + opts["report"])
 	var decided: int = JsonUtil.as_int(totals["first_won"]) + JsonUtil.as_int(totals["first_lost"])
 	if decided > 0:
 		print("who started won %d of %d (%.1f%%); seat 0 won %d (%.1f%%)" % [totals["first_won"], decided, 100.0 * JsonUtil.as_int(totals["first_won"]) / decided,
@@ -148,8 +165,10 @@ func _game(catalog: CardCatalog, level: Bot.Level, max_turns: int, claim: String
 	settings.manual_setup = true
 	settings.resolve_map(_rng, GameSettings.MAP_SIZES)
 	var seed_: int = _rng.randi()
-	var s: GameState = engine.start_match(settings, _decks(catalog), seed_)
+	var decks: Array = _decks(catalog)
+	var s: GameState = engine.start_match(settings, decks, seed_)
 	var first: int = s.initiative
+	var played: Array[Dictionary] = [{}, {}]
 	var bots: Array[Bot] = [Bot.new(seed_, level), Bot.new(seed_ + 1, level)]
 	var steps: int = 0
 	var cards_played: int = 0
@@ -172,6 +191,8 @@ func _game(catalog: CardCatalog, level: Bot.Level, max_turns: int, claim: String
 			if err.is_empty() and (m.type == Move.PLAY_CARD or m.type == Move.USE_ABILITY):
 				if m.type == Move.PLAY_CARD:
 					cards_played += 1
+					var pd: Dictionary = played[m.player]
+					pd[m.str_arg("card")] = JsonUtil.as_int(pd.get(m.str_arg("card"), 0)) + 1
 				energy_cards += maxi(before - s.player(m.player).energy, 0)
 			if not err.is_empty():
 				push_error("turn %d %s: %s refused: %s" % [s.turn, s.phase, JSON.stringify(m.to_dict()), err])
@@ -184,7 +205,7 @@ func _game(catalog: CardCatalog, level: Bot.Level, max_turns: int, claim: String
 	var r: Dictionary = {
 		"hero_dmg": 0, "battle_hero_dmg": 0, "wall_dmg": 0, "trap_dmg": 0, "card_dmg": 0,
 		"hand_cards": 0, "deck_cards": 0, "hits": 0, "hits_with_cards": 0, "all_on_hero": 0, "kos": 0, "ring_outs": 0,
-		"turns": s.turn, "result": s.result if s.is_over() else "", "winner": s.winner, "first": first,
+		"turns": s.turn, "result": s.result if s.is_over() else "", "winner": s.winner, "first": first, "decks": decks, "played": played,
 		"cards_played": cards_played, "energy_cards": energy_cards, "energy_banked": 0, "energy_wasted": 0,
 		"knocked_off": 0, "knocked_off_lost": 0, "progress_lost": 0, "contested": 0, "claims": 0, "energy_taken": 0,
 	}
@@ -294,3 +315,60 @@ func _roll(s: GameState, engine: RulesEngine) -> RollOutcome:
 			o.thrower = id
 		o.add(r)
 	return o
+
+
+## Adds one game to the balance counts: every hero, card and stage of each deck gets a game, a win when
+## its side won, and (cards) the times it was played.
+func _tally(r: Dictionary, by_hero: Dictionary, by_card: Dictionary, by_stage: Dictionary) -> void:
+	if str(r["result"]).is_empty():
+		return
+	var winner: int = JsonUtil.as_int(r["winner"])
+	var decks: Array = r["decks"]
+	var played: Array = r["played"]
+	for slot: int in decks.size():
+		var d: Dictionary = decks[slot]
+		var won: int = 1 if winner == slot else 0
+		for id: String in JsonUtil.as_strings(d.get("heroes", [])):
+			_count(by_hero, id, won, 0)
+		var cards: Dictionary = JsonUtil.as_dict(d.get("cards", {}))
+		var pd: Dictionary = played[slot]
+		for id: Variant in cards:
+			_count(by_card, str(id), won, JsonUtil.as_int(pd.get(id, 0)), JsonUtil.as_int(cards[id]))
+		for id: String in JsonUtil.as_strings(d.get("stages", [])):
+			_count(by_stage, id, won, 0)
+
+
+func _count(into: Dictionary, id: String, won: int, played: int, copies: int = 0) -> void:
+	var row: Dictionary = into.get(id, {"games": 0, "wins": 0, "played": 0, "copies": 0})
+	row["games"] = JsonUtil.as_int(row["games"]) + 1
+	row["wins"] = JsonUtil.as_int(row["wins"]) + won
+	row["played"] = JsonUtil.as_int(row["played"]) + played
+	row["copies"] = JsonUtil.as_int(row["copies"]) + copies
+	into[id] = row
+
+
+## Heroes by how often their side won, and the cards played least per game they were in a deck.
+func _print_balance(catalog: CardCatalog, by_hero: Dictionary, by_card: Dictionary) -> void:
+	var name_of := func(id: String) -> String:
+		var c: CardDef = catalog.get_card(id)
+		return c.name if c != null else id
+	var heroes: Array = by_hero.keys()
+	heroes.sort_custom(func(a: String, b: String) -> bool:
+		return _rate(JsonUtil.as_dict(by_hero[a]), "wins") > _rate(JsonUtil.as_dict(by_hero[b]), "wins"))
+	print("")
+	print("heroes (won / games):")
+	for id: String in heroes:
+		var h: Dictionary = by_hero[id]
+		print("  %-26s %3d / %3d  %5.1f%%" % [name_of.call(id), h["wins"], h["games"], 100.0 * _rate(h, "wins")])
+	var cards: Array = by_card.keys()
+	cards.sort_custom(func(a: String, b: String) -> bool:
+		return _rate(JsonUtil.as_dict(by_card[a]), "played") < _rate(JsonUtil.as_dict(by_card[b]), "played"))
+	print("cards played least (times played per game in a deck):")
+	for id: String in cards.slice(0, 12):
+		var c: Dictionary = by_card[id]
+		print("  %-26s %.2f  (%d games)" % [name_of.call(id), _rate(c, "played"), c["games"]])
+
+
+## A count per game the row was in a deck.
+func _rate(row: Dictionary, key: String) -> float:
+	return float(JsonUtil.as_int(row.get(key, 0))) / maxi(JsonUtil.as_int(row.get("games", 0)), 1)
