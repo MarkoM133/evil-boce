@@ -1908,6 +1908,7 @@ export function createEditor(env) {
     const box = h('div', { class: 'ce-tag-pills', hidden: true });
     let items = [];
     let pick = -1;
+    let reveal = false;
     const inSet = traits.inSet ?? {};
     const LIMIT = 10;
     const paint = () => {
@@ -1923,9 +1924,13 @@ export function createEditor(env) {
         group(Object.keys(inSet).length ? `IN ${traits.setCode ?? 'THIS SET'}` : 'TAGS', Object.keys(inSet).length ? mine : all),
         Object.keys(inSet).length ? group('OTHER SETS', rest) : null,
         !items.length && q ? h('p', { class: 'small muted' }, `No tag like that yet: Enter adds “${q}” as a new one.`) : null,
-        items.length > all.length ? h('button', { type: 'button', class: 'link small accent ce-tag-more', onpointerdown: e => { e.preventDefault(); ed.tagMore = key; paint(); } }, `+${items.length - all.length} more`) : null,
+        items.length > all.length ? h('button', { type: 'button', class: 'link small accent ce-tag-more', onpointerdown: e => { e.preventDefault(); ed.tagMore = key; reveal = true; paint(); } }, `+${items.length - all.length} more`) : null,
       ].filter(Boolean));
+      const opened = box.hidden;
       box.hidden = false;
+      // Under a field low in the column: the column scrolls so the pills show whole (Marko 2026-11-16).
+      if (opened || reveal) requestAnimationFrame(() => box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+      reveal = false;
     };
     const show = () => {
       const q = add.value.trim().toLowerCase();
