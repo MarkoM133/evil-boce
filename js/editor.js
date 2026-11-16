@@ -2463,7 +2463,7 @@ export function createEditor(env) {
           onclick: () => restoreArt(p) }, url ? h('img', { src: url, alt: 'Previous art' }) : 'art'));
       }
       row.replaceChildren(h('span', { class: 'muted small' }, 'Previous art'), ...thumbs,
-        h('small', { class: 'muted' }, 'Kept until the second Publish after it was replaced.'));
+        h('small', { class: 'muted' }, 'Kept until the second Publish (of any cards) after it was replaced. Tools › Clean up removes it now.'));
       row.hidden = false;
     }).catch(() => {});
     return row;
