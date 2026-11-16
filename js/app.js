@@ -17,7 +17,6 @@ const DB_PATH = 'data/cards.json';
 const state = {
   store: null,
   db: null,
-  logo: null,
   analysis: null,
   // Card Studio otvara Card editor (Marko 2026-11-15).
   tab: 'editor',
@@ -304,7 +303,6 @@ function zoomButton(card, list, label = 'Enlarge') {
 // ---------- podaci ----------
 
 async function useStore(store) {
-  if (state.logo?.startsWith('blob:')) URL.revokeObjectURL(state.logo);
   state.store?.dropImageUrls?.();
   state.store = store;
   state.analysis = null;
@@ -314,7 +312,6 @@ async function useStore(store) {
   state.fxProposals = await store.readFxProposals().catch(() => null);
   state.traits = await store.readTraits().catch(() => emptyTraits());
   setTraits(state.db, state.traits.traits);
-  state.logo = await store.logoUrl();
   state.decks = await store.listDecks();
   state.deck = null;
   state.inbox = await countInbox();

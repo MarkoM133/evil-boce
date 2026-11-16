@@ -104,6 +104,8 @@ Godot comes from `$env:GODOT` if set, else `godot_console` / `godot` on PATH.
 starts that version with the shared folder it sits in (`-- --data=...`), so the other player
 needs no settings. An existing version folder is kept unless `-Force`; raise the version
 instead, because online play refuses a guest whose game version differs from the host's.
+It keeps the new build and the one before it; older version folders under
+`<shared folder>/game/` go to the Recycle Bin, so Syncthing removes them for everyone.
 
 Output: `game/build/EvilBoce.exe` (one file, data stays in the shared folder). The script
 copies `data/branding/evil-boce.ico` into `game/.branding/` for the exe icon; both

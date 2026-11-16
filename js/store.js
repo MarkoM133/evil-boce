@@ -24,7 +24,6 @@ function summary(slug, d) {
   };
 }
 
-const LOGO_FILES = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'];
 // Kako igra čita tekst karata (piše ga game/tools/fx_proposals.gd), za karticu Effect.
 const FX_PROPOSALS_PATH = 'data/fx-proposals.json';
 // Popis traitova za pravilo prvog taga (kartica Traits; igra ga čita isto).
@@ -88,9 +87,6 @@ export function serverStore(info) {
     async imageUrl(card, { thumb = false, large = false } = {}) {
       if (!card.image) return null;
       return thumb || large ? `data/${thumb ? 'thumbs' : 'large'}/${thumbName(card)}` : `data/${card.image}`;
-    },
-    async logoUrl() {
-      return info.logo ? 'logo' : null;
     },
     async listDecks() {
       return json(await fetch('api/decks', { cache: 'no-store' }));
@@ -169,13 +165,6 @@ export function folderStore(root) {
     dropImageUrls() {
       for (const u of urls.values()) if (u) URL.revokeObjectURL(u);
       urls.clear();
-    },
-    async logoUrl() {
-      for (const name of LOGO_FILES) {
-        const f = await fs.getFile(root, name);
-        if (f) return URL.createObjectURL(f);
-      }
-      return null;
     },
     async listStats() {
       const out = [];

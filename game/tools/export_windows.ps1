@@ -5,6 +5,7 @@
 # -Publish also copies the exe to <shared folder>/game/<version>/ and points
 # <shared folder>/game/Evil Boce.cmd at it, so Syncthing hands it to the other players. The
 # .cmd starts the game with the shared folder it sits in, wherever that is on their computer.
+# It keeps the new build and the one before it; older version folders go to the Recycle Bin.
 # An existing version folder is never overwritten without -Force (raise config/version in
 # project.godot instead: online play checks that both sides run the same version).
 param(
@@ -52,4 +53,17 @@ start "" "%~dp0$version\EvilBoce.exe" -- --data="%EB_DATA%"
 "@
     Set-Content -Path (Join-Path $Data "game\Evil Boce.cmd") -Value $cmd -Encoding ascii
     Write-Host "Published $version to $dest (and game\Evil Boce.cmd)"
+    # Old builds (Marko 2026-11-16): the new one and the one before it stay (a fallback if the new one
+    # misbehaves); older version folders go to the Recycle Bin, so Syncthing drops them for everyone.
+    $versions = Get-ChildItem (Join-Path $Data "game") -Directory |
+        Where-Object { $_.Name -match '^\d+\.\d+\.\d+$' -and (Test-Path (Join-Path $_.FullName "EvilBoce.exe")) } |
+        Sort-Object { [version]$_.Name } -Descending
+    $old = $versions | Where-Object { [version]$_.Name -lt [version]$version } | Select-Object -Skip 1
+    if ($old) {
+        Add-Type -AssemblyName Microsoft.VisualBasic
+        foreach ($o in $old) {
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($o.FullName, 'OnlyErrorDialogs', 'SendToRecycleBin')
+            Write-Host "Old build $($o.Name) went to the Recycle Bin"
+        }
+    }
 }

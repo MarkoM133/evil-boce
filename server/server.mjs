@@ -36,7 +36,6 @@ async function loadConfig() {
 const cfg = await loadConfig();
 const DECKS = path.join(cfg.drive, 'decks');
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,59}$/;
-const LOGO_FILES = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'];
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -89,16 +88,6 @@ async function writeJson(file, value) {
   await fs.rename(tmp, file);
 }
 
-async function findLogo() {
-  for (const name of LOGO_FILES) {
-    try {
-      await fs.access(path.join(cfg.drive, name));
-      return name;
-    } catch {}
-  }
-  return null;
-}
-
 function readBody(req, limit = 256 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -132,7 +121,7 @@ async function api(req, res, parts) {
   const [, what, slug] = parts;
   if (what === 'info' && req.method === 'GET') {
     const db = await readJson(path.join(cfg.drive, 'data', 'cards.json'));
-    return send(res, 200, { folder: path.basename(cfg.drive), version: db?.version ?? 0, cards: db?.cards.length ?? 0, logo: (await findLogo()) ? 'logo' : null, writable: cfg.serverWrites });
+    return send(res, 200, { folder: path.basename(cfg.drive), version: db?.version ?? 0, cards: db?.cards.length ?? 0, writable: cfg.serverWrites });
   }
   // Sažeci partija koje igra piše u stats/ (kartica Balance); samo čitanje.
   if (what === 'stats' && req.method === 'GET') {
@@ -233,7 +222,7 @@ async function handle(req, res) {
   if (parts[0] === 'api') return api(req, res, parts);
   if (req.method !== 'GET' && req.method !== 'HEAD') return fail(res, 405, 'GET only');
 
-  // Podaci iz Drive foldera: samo data/ (cards.json, slike) i logo.
+  // Podaci iz Drive foldera: samo data/ (cards.json, slike).
   if (parts[0] === 'data') {
     const file = inside(path.join(cfg.drive, 'data'), parts.slice(1).join('/'));
     const hashed = ['images', 'thumbs', 'large'].includes(parts[1]) && /\.[0-9a-f]{8}\.(png|jpg)$/i.test(rel);
@@ -253,10 +242,6 @@ async function handle(req, res) {
       if (e.code === 'ENOENT') return fail(res, 404, 'not found');
       throw e;
     }
-  }
-  if (rel === '/logo') {
-    const name = await findLogo();
-    return name ? sendFile(res, path.join(cfg.drive, name)) : fail(res, 404, 'no logo');
   }
 
   // Web app iz repoa: index.html, css/ i js/ svima; ostatak repoa (docs/ s mockupima i testnom stranicom) samo
