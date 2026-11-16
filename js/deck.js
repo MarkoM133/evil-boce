@@ -1,6 +1,6 @@
 // Deck: pravila (§8 plana), random deck (§10) i deck kod. Bez I/O, isto za app i testove.
 import { DECK_TYPES } from './parse.js';
-import { deckVerdict, firstTag, traitNames, hasTrait, heroAliases, norm, isColorless, HEROES, TRAIT, INVALID, MIXED } from './tags.js';
+import { deckVerdict, firstTag, hasTrait, heroAliases, norm, isColorless, HEROES, TRAIT, INVALID, MIXED } from './tags.js';
 
 export const DECK_SIZE = 40;
 export const LIMITS = { Action: 4, Equipment: 4, Assist: 2, Evolution: 2 };
@@ -24,13 +24,11 @@ export function heroCards(db) {
   return db.cards.filter(c => c.type === 'Hero' && !c.deleted);
 }
 
-// Popis traitova (data/traits.json) uz bazu, za pravilo prvog taga; ne ide u cards.json.
+// Opisi tagova (data/traits.json) uz bazu; ne idu u cards.json. Pravilo prvog taga ih od 2026-11-16 ne čita.
 export function setTraits(db, traits) {
   Object.defineProperty(db, 'traitList', { value: traits ?? [], enumerable: false, configurable: true, writable: true });
   return db;
 }
-
-const traitsOf = db => db.traitList ?? [];
 
 // Evolution karte ovih heroja (sve iz baze), da se zna što bi deck mogao otključati.
 export function heroEvolutions(db, heroIds) {
@@ -42,12 +40,12 @@ export function heroEvolutions(db, heroIds) {
 // Karte koje smiju u deck uz ove heroje i ove Evolution karte u decku (pravilo prvog taga, bez maknutih).
 export function deckPool(db, heroIds, evolutionIds = []) {
   return db.cards.filter(c => !c.deleted && DECK_TYPES.includes(c.type) &&
-    deckVerdict(db, traitsOf(db), c, heroIds, evolutionIds).ok);
+    deckVerdict(db, c, heroIds, evolutionIds).ok);
 }
 
 // Zašto karta ne smije uz ove heroje ('' kad smije), i koje bi je Evolution karte otključale.
 export function cardVerdict(db, card, heroIds, evolutionIds = []) {
-  return deckVerdict(db, traitsOf(db), card, heroIds, evolutionIds);
+  return deckVerdict(db, card, heroIds, evolutionIds);
 }
 
 // Evolution karte u decku (id-evi).
@@ -182,24 +180,22 @@ export function deckChanges(deck, changes) {
 const MIN_OWN_CARDS = 8;
 
 // Upozorenja pri uvozu (ne blokiraju): [{ id, msg }].
-// 1. prvi tag nije General, alias ni trait s popisa; 2. heroj nema nijedan trait s popisa;
+// 1. prvi tag nije General, alias ni tag koji nosi neki heroj; 2. heroj nema nijedan tag;
 // 3. heroj smije manje od 8 različitih karata svoje boje; 4. alias heroja stoji na 2. ili kasnijem
 // mjestu; 5. prvi tag je trait koji nema nijedan heroj ni Evolution te boje.
 export function tagWarnings(db) {
-  const traits = traitsOf(db);
-  const names = traitNames(traits);
   const out = [];
   const heroes = heroCards(db);
   const live = db.cards.filter(c => !c.deleted);
   for (const c of live.filter(c => DECK_TYPES.includes(c.type) && c.type !== 'Evolution')) {
-    const k = firstTag(db, c, traits);
+    const k = firstTag(db, c);
     if (k.kind === INVALID) {
-      out.push({ id: c.id, msg: k.tag ? `first tag "${k.tag}" is not General, a hero alias or a trait from the list` : 'no tags: the first tag says who may take the card' });
+      out.push({ id: c.id, msg: k.tag ? `first tag "${k.tag}" is not General, a hero alias or a tag a hero carries` : 'no tags: the first tag says who may take the card' });
     } else if (k.kind === HEROES && k.unknown?.length) {
       out.push({ id: c.id, msg: `first tag "${k.tag}": ${k.unknown.map(u => `"${u}"`).join(', ')} is no hero yet, so the card counts for ${k.heroes.join(' and ')} only` });
     } else if (k.kind === TRAIT || k.kind === MIXED) {
       // "&" with traits (2026-11-15): a part that is nothing yet, and a trait nobody of that colour carries.
-      if (k.unknown?.length) out.push({ id: c.id, msg: `first tag "${k.tag}": ${k.unknown.map(u => `"${u}"`).join(', ')} is no hero or trait yet, so the card counts for ${[...k.heroes, ...k.traits].join(' and ')} only` });
+      if (k.unknown?.length) out.push({ id: c.id, msg: `first tag "${k.tag}": ${k.unknown.map(u => `"${u}"`).join(', ')} is no hero and no tag a hero carries yet, so the card counts for ${[...k.heroes, ...k.traits].join(' and ')} only` });
       const col = isColorless(c) ? '' : `${c.color} `;
       const held = t => live.some(x => (x.type === 'Hero' || x.type === 'Evolution') && (isColorless(c) || x.color === c.color) && hasTrait(x, t));
       const empty = k.traits.filter(t => !held(t));
@@ -210,7 +206,7 @@ export function tagWarnings(db) {
     if (later) out.push({ id: c.id, msg: `"${later}" is a hero's name but not the first tag; should it be first?` });
   }
   for (const h of heroes) {
-    if (!names.some(t => hasTrait(h, t))) out.push({ id: h.id, msg: 'the hero has no trait from the trait list' });
+    if (!(h.traits ?? []).some(t => String(t).trim())) out.push({ id: h.id, msg: 'the hero has no tags: only General cards and cards with its name are for it' });
     const own = deckPool(db, [h.id], heroEvolutions(db, [h.id])).filter(c => c.color === h.color || isColorless(c));
     if (own.length < MIN_OWN_CARDS) out.push({ id: h.id, msg: `${h.name} may take only ${own.length} different ${h.color} cards (fewer than ${MIN_OWN_CARDS})` });
   }
@@ -220,14 +216,13 @@ export function tagWarnings(db) {
 // Pokrivenost po heroju: koliko karata svoje boje smije (i kopija), od toga signature / trait /
 // general, i s koliko parova suigrača ima pun deck od 40.
 export function coverage(db) {
-  const traits = traitsOf(db);
   const heroes = heroCards(db);
   return heroes.map(h => {
     const own = deckPool(db, [h.id], heroEvolutions(db, [h.id])).filter(c => c.color === h.color || isColorless(c));
     const kinds = { signature: 0, trait: 0, general: 0, evolution: 0 };
     for (const c of own) {
       if (c.type === 'Evolution') { kinds.evolution++; continue; }
-      const k = firstTag(db, c, traits);
+      const k = firstTag(db, c);
       // "Dai & Mage": Dai's signature card, a trait card for everyone else.
       if (k.kind === HEROES || (k.kind === MIXED && k.heroes.includes(h.name))) kinds.signature++;
       else if (k.kind === TRAIT || k.kind === MIXED) kinds.trait++;

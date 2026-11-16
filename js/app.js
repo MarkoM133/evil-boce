@@ -3,7 +3,7 @@ import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, 
 import { TYPES, COLOR_NAMES, DECK_TYPES, HERO_TYPES, TERRAINS } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, setTraits, cardVerdict, deckEvolutions, heroEvolutions, poolCapacity, tagWarnings, coverage, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError, TRAITS_PATH, emptyTraits } from './store.js';
-import { firstTag, tagLabel, hasTrait, traitNames, norm, heroAliases, ruleWord, GENERAL, HEROES, TRAIT } from './tags.js';
+import { firstTag, tagLabel, hasTrait, norm, heroAliases, ruleWord, GENERAL, HEROES, TRAIT } from './tags.js';
 import { BALL_COLORS, DEFAULT_ACCENT, heroDefaultColor, ballColors } from './look.js';
 import { renderTools } from './tools.js';
 import { aggregate, filterMatches, ranked, cardsVersions, RESULTS } from './stats.js';
@@ -1034,8 +1034,9 @@ function balanceTable(title, note, rows, kind) {
 
 // ---------- Traits i Coverage: pravilo prvog taga (odluka 2026-10-26) ----------
 
-// Kartica Traits: popis traitova (data/traits.json) koje prvi tag karte smije imenovati. Za svaki:
-// opis, heroji koji ga imaju (na svojoj karti ili na Evolution karti) i karte kojima je to prvi tag.
+// Opisi tagova (data/traits.json, Marko 2026-11-16): neobavezna rečenica što tag znači. Pravilo prvog taga ih više
+// ne čita: glavni tag smije biti bilo koji tag koji nosi neki heroj ili Evolution. Za svaki: opis, tko ga nosi i
+// karte kojima je to prvi tag.
 function renderTraits() {
   const canEdit = state.store.canImport;
   const work = (state.traitWork ??= structuredClone(state.traits ?? emptyTraits()));
@@ -1043,27 +1044,27 @@ function renderTraits() {
   const holders = t => live.filter(c => (c.type === 'Hero' || c.type === 'Evolution') && hasTrait(c, t));
   const firstOf = t => live.filter(c => DECK_TYPES.includes(c.type) && String(c.traits?.[0] ?? '').split('&').some(p => norm(p) === norm(t)));
   const dirty = JSON.stringify(work) !== JSON.stringify(state.traits ?? emptyTraits());
-  const nameIn = h('input', { placeholder: 'New trait, e.g. Rokushiki', disabled: !canEdit });
+  const nameIn = h('input', { placeholder: 'A tag to describe, e.g. Rokushiki', disabled: !canEdit });
   const add = () => {
     const n = nameIn.value.trim();
     if (!n) return;
     if (work.traits.some(t => norm(t.name) === norm(n))) { toast(`${n} is already on the list.`, 'warn'); return; }
-    if (ruleWord(n)) { toast(`${n} is a word of the rules (${ruleWord(n)}): a trait needs another name, e.g. Brave ${ruleWord(n)}.`, 'warn'); return; }
+    if (ruleWord(n)) { toast(`${n} is a word of the rules (${ruleWord(n)}): a tag needs another name, e.g. Brave ${ruleWord(n)}.`, 'warn'); return; }
     work.traits.push({ name: n, description: '' });
     render();
   };
   return h('section', { class: 'panel' },
-    h('h2', {}, 'Traits'),
-    h('p', { class: 'muted' }, 'A card\'s first tag says who may take it: General (any hero of its color), a hero\'s name or alias (Giorno, Giorno & Bucciarati), or a trait from this list (a hero of the card\'s color with that tag, on its card or on an Evolution card in the deck). The game reads the same list.'),
+    h('h2', {}, 'Tag descriptions'),
+    h('p', { class: 'muted' }, 'Optional: what a tag means. A card\'s main tag says who may take it: General (any hero of its color), a hero\'s name or alias (Giorno, Giorno & Bucciarati), or any tag a hero carries (a hero of the card\'s color with that tag, on its card or on an Evolution card in the deck). A tag does not have to be on this list.'),
     h('table', { class: 'balance-table traits-table' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'Trait'), h('th', {}, 'Description'), h('th', {}, 'Heroes and Evolutions with it'), h('th', {}, 'Cards with it first'), h('th', {}, ''))),
+      h('thead', {}, h('tr', {}, h('th', {}, 'Tag'), h('th', {}, 'Description'), h('th', {}, 'Heroes and Evolutions with it'), h('th', {}, 'Cards with it first'), h('th', {}, ''))),
       h('tbody', {}, work.traits.map((t, i) => h('tr', {},
         h('td', {}, h('strong', {}, t.name)),
         h('td', {}, canEdit ? h('input', { value: t.description ?? '', onchange: e => { t.description = e.target.value; render(); } }) : (t.description ?? '')),
         h('td', {}, holders(t.name).map((c, j) => [j ? ', ' : null, cardLink(c.id)]).flat().filter(Boolean).concat(holders(t.name).length ? [] : [h('span', { class: 'muted' }, 'nobody yet')])),
         h('td', { class: 'num' }, firstOf(t.name).length),
         h('td', {}, canEdit ? h('button', { class: 'ghost', title: `Remove ${t.name} from the list`, onclick: () => { work.traits.splice(i, 1); render(); } }, 'Remove') : null))))),
-    canEdit ? h('div', { class: 'toolbar' }, nameIn, h('button', { onclick: add }, 'Add trait'),
+    canEdit ? h('div', { class: 'toolbar' }, nameIn, h('button', { onclick: add }, 'Add tag'),
       h('button', { class: 'primary', disabled: !dirty, onclick: () => guard(saveTraits) }, 'Save'),
       dirty ? h('button', { class: 'ghost', onclick: () => { state.traitWork = null; render(); } }, 'Undo') : null)
       : h('p', { class: 'muted' }, 'Open the folder (Import) to edit the list.'));
@@ -1075,7 +1076,7 @@ async function saveTraits() {
   state.traits = next;
   state.traitWork = null;
   setTraits(state.db, next.traits);
-  toast('Trait list saved.');
+  toast('Tag descriptions saved.');
 }
 
 // Kartica Coverage: po heroju koliko karata svoje boje smije (i kopija), od toga signature /
@@ -1517,12 +1518,8 @@ function renderDetail() {
   const rows = ['type', 'color', 'cost', 'evo', 'hero', 'stats', 'wt', 'bonus', 'values', 'traits', 'aliases', 'text', 'terrain', 'figure', 'heroSfx', 'rev', 'imageHash']
     .filter(k => c[k] !== undefined)
     .map(k => h('tr', {}, h('th', {}, k), h('td', {}, fmt(c[k]))));
-  // Pravilo prvog taga: tko smije kartu (deck karte) ili koje traitove s popisa heroj ima.
+  // Pravilo prvog taga: tko smije kartu (deck karte).
   if (DECK_TYPES.includes(c.type)) rows.push(h('tr', {}, h('th', {}, 'who may'), h('td', {}, cardTagLabel(c))));
-  if (c.type === 'Hero') {
-    const own = traitNames(state.traits?.traits).filter(t => hasTrait(c, t));
-    rows.push(h('tr', {}, h('th', {}, 'list traits'), h('td', {}, own.length ? own.join(', ') : '– none from the trait list –')));
-  }
   // Povijest ove karte; verzija otvara cijelu povijest na toj verziji.
   const changes = (state.changelog?.entries ?? []).flatMap(e => e.cards.filter(x => x.id === c.id).map(x => ({ v: e.version, x }))).reverse();
   if (changes.length) {
@@ -1772,7 +1769,7 @@ function addCard(id, delta) {
 // Tko smije kartu (prvi tag): "General", "Signature: Giorno", "Trait: Stand"; Evolution po heroju.
 function cardTagLabel(c) {
   if (c.type === 'Evolution') return `Evolution of ${c.hero}`;
-  return tagLabel(firstTag(state.db, c, state.traits?.traits));
+  return tagLabel(firstTag(state.db, c));
 }
 
 // Karta traži Evolution koje nema u decku: ponudi da doda obje (prvu od mogućih Evolution karata).

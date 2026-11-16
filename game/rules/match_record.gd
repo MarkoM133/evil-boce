@@ -22,7 +22,8 @@ var seed: int = 0
 ## cards.json records of every card the match uses, so a replay rebuilds its own catalog and
 ## still plays correctly after the cards change.
 var cards: Dictionary = {}
-## The trait list the first tag rule read (data/traits.json), so a replay plays by the same one.
+## The list of described tags (data/traits.json). The first tag rule read it until 2026-11-16; now a tag
+## counts when a hero or evolution of the record carries it, so the list no longer changes a replay.
 var traits: Array = []
 ## {"index", "turn", "phase", "state": GameState dict, "moves": [Move dicts], "rolls": [RollOutcome dicts]}
 var frames: Array[Dictionary] = []

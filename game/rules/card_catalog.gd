@@ -5,7 +5,8 @@ extends RefCounted
 
 var version: int = 0
 var cards: Dictionary[String, CardDef] = {}
-## The traits a first tag may name (data/traits.json, or "traits" in the doc), as written there.
+## The described tags (data/traits.json, or "traits" in the doc), as written there. The first tag rule does
+## not read them since 2026-11-16 (any tag a hero carries counts); a match record still stores the list.
 var trait_names: PackedStringArray = PackedStringArray()
 ## Cards per Draft pack by set code (data/sets/sets.json, edited in the web app's Card editor
 ## › Sets); "default" is the pack of a Draft that mixes sets.
@@ -30,7 +31,7 @@ static func from_doc(doc: Dictionary, with_placeholders: bool = true) -> CardCat
 	return cat
 
 
-## The trait list: [{name, description}] (data/traits.json) or plain names.
+## The described tags: [{name, description}] (data/traits.json) or plain names.
 func set_traits(list: Array) -> void:
 	trait_names = PackedStringArray()
 	for t: Variant in list:

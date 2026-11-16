@@ -10,7 +10,7 @@ const byId = new Map(fx.cards.map(c => [c.id, c]));
 
 test('prvi tag: vrsta (General, heroj, trait, nevažeći)', () => {
   for (const k of fx.kinds) {
-    const got = firstTag(db, byId.get(k.card), fx.traits);
+    const got = firstTag(db, byId.get(k.card));
     assert.equal(got.kind, k.kind, k.card);
     if (k.heroes) assert.deepEqual(got.heroes, k.heroes, k.card);
     if (k.trait) assert.equal(got.trait, k.trait, k.card);
@@ -20,7 +20,7 @@ test('prvi tag: vrsta (General, heroj, trait, nevažeći)', () => {
 
 test('prvi tag: smije li karta u deck (isti slučajevi kao u igri)', () => {
   for (const c of fx.cases) {
-    const v = deckVerdict(db, fx.traits, byId.get(c.card), c.heroes, c.evolutions ?? []);
+    const v = deckVerdict(db, byId.get(c.card), c.heroes, c.evolutions ?? []);
     assert.equal(v.ok, c.ok, `${c.card}: ${c.why} (${v.why})`);
     if (c.needs) assert.deepEqual(v.needs, [c.needs], c.card);
     if (c.says) assert.equal(v.why, c.says, c.card);
@@ -29,14 +29,15 @@ test('prvi tag: smije li karta u deck (isti slučajevi kao u igri)', () => {
 
 test('upozorenja pri uvozu i pokrivenost', async () => {
   const { setTraits, tagWarnings, coverage } = await import('../js/deck.js');
-  const d = setTraits({ cards: fx.cards }, fx.traits);
+  const d = setTraits({ cards: fx.cards }, []);
   const w = tagWarnings(d);
   const has = (id, part) => w.some(x => x.id === id && x.msg.includes(part));
   assert.ok(has('C-TYPO', 'first tag "Hakki"'), 'unknown first tag');
   assert.ok(has('C-NONE', 'no tags'), 'no tags');
   assert.ok(has('C-LATE', '"Alfa" is a hero'), 'alias in second place');
-  assert.ok(has('H-DEL', 'no trait from the trait list'), 'hero without a list trait');
-  assert.ok(has('H-ALF', 'only'), 'few own cards');
+  assert.ok(has('H-DEL', 'the hero has no tags'), 'hero without a tag');
+  assert.ok(has('H-BRA', 'only'), 'few own cards');
+  assert.ok(!has('C-LATE', 'first tag "Crew A"'), 'a tag a hero carries is a first tag, no list needed');
   assert.ok(!has('C-HAKI', 'nobody can take'), 'Alfa (Red) has Haki');
   assert.ok(has('C-SWORD-B', 'nobody can take'), 'no Blue hero with Sword');
   const cov = coverage(d);
@@ -54,11 +55,10 @@ test('colorless: any colour may take it, the first tag still counts', () => {
     { id: 'C2', type: 'Action', name: 'Observation Haki', color: 'None', bonusColors: ['Cyan'], traits: ['Haki'] },
   ];
   const d = { cards };
-  const traits = [{ name: 'Haki' }, { name: 'Cook' }];
   const by = id => cards.find(c => c.id === id);
-  assert.equal(deckVerdict(d, traits, by('C1'), ['H2']).ok, true, 'General colorless: any hero');
-  assert.equal(deckVerdict(d, traits, by('C2'), ['H1']).ok, true, 'Haki colorless: a Haki hero of another colour');
-  const no = deckVerdict(d, traits, by('C2'), ['H2']);
+  assert.equal(deckVerdict(d, by('C1'), ['H2']).ok, true, 'General colorless: any hero');
+  assert.equal(deckVerdict(d, by('C2'), ['H1']).ok, true, 'Haki colorless: a Haki hero of another colour');
+  const no = deckVerdict(d, by('C2'), ['H2']);
   assert.equal(no.ok, false, 'Haki colorless: still needs a Haki hero');
   assert.match(no.why, /needs a hero with Haki/);
 });
@@ -67,8 +67,8 @@ test('a token is never a deck card, whatever its colour and tag (GDD 10, 2026-11
   const d = { cards: [{ id: 'H1', name: 'Hero', type: 'Hero', color: 'Red', traits: [] },
     { id: 'A1', name: 'Card', type: 'Action', color: 'Red', traits: ['General'] },
     { id: 'A1-1', name: 'Token', type: 'Action', color: 'Red', traits: ['General'], token: true }] };
-  assert.equal(deckVerdict(d, [], d.cards[1], ['H1']).ok, true);
-  const no = deckVerdict(d, [], d.cards[2], ['H1']);
+  assert.equal(deckVerdict(d, d.cards[1], ['H1']).ok, true);
+  const no = deckVerdict(d, d.cards[2], ['H1']);
   assert.equal(no.ok, false);
   assert.match(no.why, /token/);
 });

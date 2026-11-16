@@ -50,7 +50,7 @@ func parse(text: String) -> void:
 	catalog = CardCatalog.from_doc(doc)
 	if FileAccess.file_exists(PLACEHOLDER_FX):
 		catalog.apply_fx_overrides(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(PLACEHOLDER_FX))))
-	# The traits a first tag may name (GDD 10, 2026-10-26), edited in the web app.
+	# The described tags, edited in the web app; the first tag rule no longer reads them (GDD 10, 2026-11-16).
 	var traits_path: String = data_dir().path_join("traits.json")
 	if FileAccess.file_exists(traits_path):
 		var td: Variant = JSON.parse_string(FileAccess.get_file_as_string(traits_path))

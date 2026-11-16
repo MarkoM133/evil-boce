@@ -1,16 +1,5 @@
 {
   "version": 1,
-  "traits": [
-    {
-      "name": "Haki"
-    },
-    {
-      "name": "Sword"
-    },
-    {
-      "name": "Gear Second"
-    }
-  ],
   "cards": [
     {
       "id": "TF-001",
@@ -134,6 +123,18 @@
       ],
       "text": "x",
       "fx": "PREROLL RANGE: HEAL FRIENDLY 4"
+    },
+    {
+      "id": "TF-011",
+      "name": "Dragon Breath",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "dragon"
+      ],
+      "text": "x",
+      "fx": "PREROLL: HEAL SELF 0"
     },
     {
       "id": "TA-001",

@@ -1,8 +1,10 @@
 // Pravilo prvog taga (odluka 2026-10-26): prvi tag karte kaže tko je smije u deck
 // (i u igri): General = svaki heroj boje karte; alias heroja ("Giorno", "Giorno & Bucciarati") =
 // samo ti heroji (ime iza "&" koje još nije heroj se preskače: "Shanks & Roger" je Shanksova dok
-// Roger ne dođe); trait s popisa (data/traits.json) = heroj boje karte koji ima taj trait, sam ili
+// Roger ne dođe); tag koji nosi neki heroj ili Evolution (Marko 2026-11-16: bilo koji, popisa traitova više
+// nema u pravilu; data/traits.json su samo opisi) = heroj boje karte koji ima taj tag, sam ili
 // kroz Evolution kartu u decku. Sve ostalo je nevažeće. Usporedba bez velikih slova i rubnih razmaka.
+// U kodu se takav tag i dalje zove trait (kind "trait", polje traits).
 // "&" spaja i traitove, i heroje s traitovima (Marko 2026-11-15): "Mage & Brave Hero" = heroj s bilo kojim od ta
 // dva traita, "Dai & Mage" = Dai ili heroj s traitom Mage. Svaki dio je prvo heroj, inače trait; dio koji nije
 // ni jedno ni drugo se preskače dok drugi dio vrijedi.
@@ -40,7 +42,7 @@ export function ruleWord(tag) {
   return null;
 }
 
-// Popis traitova: [{ name, description }] (data/traits.json) ili samo imena.
+// Opisi tagova: [{ name, description }] (data/traits.json) ili samo imena. Pravilo ih ne čita.
 export function traitNames(traits) {
   return (traits ?? []).map(t => (typeof t === 'string' ? t : t?.name)).filter(Boolean);
 }
@@ -52,23 +54,32 @@ export function heroAliases(hero) {
 
 const heroesOf = db => db.cards.filter(c => c.type === 'Hero' && !c.deleted);
 
+// The tag a hero or an Evolution carries that `normed` names, as written on the first card that has it (in the
+// order of the cards); null if nobody carries it. Same pick as FirstTag._trait_named in the game.
+export function carriedTag(db, normed) {
+  for (const c of db.cards) {
+    if (c.deleted || (c.type !== 'Hero' && c.type !== 'Evolution')) continue;
+    for (const t of c.traits ?? []) if (norm(t) === normed && normed) return String(t).trim();
+  }
+  return null;
+}
+
 // Što prvi tag znači: { kind, tag, heroes: [ime], traits: [ime], unknown: [dio], trait? }.
 // kind: general | heroes (samo heroji) | trait (samo traitovi, jedan ili više; trait je prvi) | mixed (oboje) |
 // invalid. Zadovoljava ga heroj naveden u heroes ili heroj s nekim od traits.
-export function firstTag(db, card, traits) {
+export function firstTag(db, card) {
   const tag = String(card.traits?.[0] ?? '').trim();
   if (!tag) return { kind: INVALID, tag };
   if (norm(tag) === GENERAL) return { kind: GENERAL, tag };
   const parts = tag.split(HERO_JOIN).map(norm).filter(Boolean);
   const heroes = heroesOf(db);
-  const list = traitNames(traits);
   const named = [];
   const got = [];
   const unknown = [];
   for (const p of parts) {
     const hero = heroes.find(h => heroAliases(h).includes(p));
     if (hero) { if (!named.includes(hero.name)) named.push(hero.name); continue; }
-    const t = list.find(x => norm(x) === p);
+    const t = carriedTag(db, p);
     if (!t) unknown.push(p);
     else if (!got.includes(t)) got.push(t);
   }
@@ -78,8 +89,8 @@ export function firstTag(db, card, traits) {
     const kind = !got.length ? HEROES : !named.length ? TRAIT : MIXED;
     return { kind, tag, heroes: named, traits: got, unknown, ...(kind === TRAIT ? { trait: got[0] } : {}) };
   }
-  // A trait whose own name holds an "&".
-  const whole = list.find(t => norm(t) === norm(tag));
+  // A tag whose own name holds an "&".
+  const whole = carriedTag(db, norm(tag));
   if (whole) return { kind: TRAIT, tag, heroes: [], traits: [whole], unknown: [], trait: whole };
   return { kind: INVALID, tag };
 }
@@ -116,7 +127,7 @@ export const isColorless = card => card?.color === COLORLESS;
 
 // Smije li karta u deck s ovim herojima (id-evi) i ovim Evolution kartama u decku (id-evi).
 // { ok, why, needs: [id Evolution karata koje bi je otključale] }.
-export function deckVerdict(db, traits, card, heroIds, evolutionIds = []) {
+export function deckVerdict(db, card, heroIds, evolutionIds = []) {
   // A token is made by another card in play (GDD 10, 2026-11-14): never in a deck. Same rule as FirstTag.deck_verdict.
   if (card.token) return { ok: false, why: 'a token is never in a deck', needs: [] };
   const ids = new Map(db.cards.map(c => [c.id, c]));
@@ -130,7 +141,7 @@ export function deckVerdict(db, traits, card, heroIds, evolutionIds = []) {
   }
   const colorless = isColorless(card);
   if (!colorless && !colors.has(card.color)) return { ok: false, why: `color ${card.color} is not a color of the chosen heroes`, needs: [] };
-  const kind = firstTag(db, card, traits);
+  const kind = firstTag(db, card);
   const same = colorless ? heroes : heroes.filter(h => h.color === card.color);
   if (kind.kind === GENERAL) return { ok: true, why: '', needs: [] };
   if (kind.kind === HEROES || kind.kind === TRAIT || kind.kind === MIXED) {
@@ -143,5 +154,5 @@ export function deckVerdict(db, traits, card, heroIds, evolutionIds = []) {
     if (needs.length) return { ok: false, why: `Requires ${needs.map(e => e.name).join(' or ')}`, needs: needs.map(e => e.id) };
     return { ok: false, why: whoFor(card, kind), needs: [] };
   }
-  return { ok: false, why: kind.tag ? `first tag "${kind.tag}" is not General, a hero or a known trait` : 'the card has no tags', needs: [] };
+  return { ok: false, why: kind.tag ? `first tag "${kind.tag}" is not General, a hero or a tag a hero carries` : 'the card has no tags', needs: [] };
 }

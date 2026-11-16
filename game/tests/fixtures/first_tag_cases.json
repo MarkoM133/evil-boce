@@ -1,23 +1,5 @@
 {
-  "about": "The first tag rule (2026-10-26) on invented cards: the game (test_first_tag.gd) and the web app (test/tags.test.mjs) must give the same answers. Colorless cards (color None, 2026-11-01) go with heroes of any colour; the first tag still counts. \"&\" joins traits and heroes with traits too (2026-11-15): any one of the parts is enough.",
-  "traits": [
-    {
-      "name": "Haki",
-      "description": "Willpower."
-    },
-    {
-      "name": "Sword",
-      "description": "Fights with blades."
-    },
-    {
-      "name": "Stand",
-      "description": "Has a Stand."
-    },
-    {
-      "name": "Gear Second",
-      "description": "A form of Delta."
-    }
-  ],
+  "about": "The first tag rule (2026-10-26) on invented cards: the game (test_first_tag.gd) and the web app (test/tags.test.mjs) must give the same answers. Colorless cards (color None, 2026-11-01) go with heroes of any colour; the first tag still counts. \"&\" joins tags and heroes with tags too (2026-11-15): any one of the parts is enough. Since 2026-11-16 there is no trait list: any tag a Hero or an Evolution card carries may be a first tag (Crew A, which only Alfa carries).",
   "cards": [
     {
       "id": "H-ALF",
@@ -311,7 +293,8 @@
     },
     {
       "card": "C-LATE",
-      "kind": "invalid"
+      "kind": "trait",
+      "trait": "Crew A"
     },
     {
       "card": "C-NONE",
@@ -489,7 +472,8 @@
       "evolutions": [],
       "card": "C-TYPO",
       "ok": false,
-      "why": "unknown first tag"
+      "why": "Hakki: no hero carries it",
+      "says": "first tag \"Hakki\" is not General, a hero or a tag a hero carries"
     },
     {
       "heroes": [
@@ -499,8 +483,20 @@
       ],
       "evolutions": [],
       "card": "C-LATE",
+      "ok": true,
+      "why": "Crew A is a tag Alfa carries: no list has to name it"
+    },
+    {
+      "heroes": [
+        "H-BRA",
+        "H-CHA",
+        "H-DEL"
+      ],
+      "evolutions": [],
+      "card": "C-LATE",
       "ok": false,
-      "why": "the alias is not the first tag"
+      "why": "Crew A: Bravo is Red but does not carry it",
+      "says": "needs a Red hero with Crew A"
     },
     {
       "heroes": [

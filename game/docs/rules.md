@@ -323,10 +323,14 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    tests/fixtures/first_tag_cases.json) locks a card to who may play it: General (any hero of
    its colour), a hero alias (the name follows the hero through evolutions; a name after "&"
    that is no hero yet is skipped, so "Shanks & Roger" is Shanks's until Roger comes) or a trait read off
-   the hero's current card (the last evolution, else the base). `_play` refuses the others
+   the hero's current card (the last evolution, else the base). (2026-11-16) A trait is any tag some
+   Hero or Evolution card of the catalog carries, of any colour: no list names it (data/traits.json
+   only describes tags now, and `CardCatalog.trait_names` is not read by the rule). A tag nobody
+   carries is invalid. The spelling in messages is the one on the first card that carries it. `_play` refuses the others
    ("only for X", "Requires T"); equipment whose tag the hero no longer fits falls into the
-   graveyard when an evolution comes or goes (`_drop_unfit_equipment`). A record carries the
-   trait list it played by. `{Sword}` effects count equipment cards, never a hero's trait.
+   graveyard when an evolution comes or goes (`_drop_unfit_equipment`). A record still carries
+   the list of described tags, which no longer changes how it replays (its own heroes and
+   evolutions carry the tags its cards were played by). `{Sword}` effects count equipment cards, never a hero's trait.
    (2026-11-15) "&" joins traits too, and heroes with traits: each part is a hero first, else a
    trait, and any one of them is enough ("Mage & Brave Hero", "Dai & Mage"). `kind_of` gives
    `heroes`, `traits` and `unknown` for every tag; the kinds are heroes (only heroes), trait (only

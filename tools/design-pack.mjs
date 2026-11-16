@@ -54,8 +54,8 @@ export function cardBlock(c, cards = []) {
   return rows.join('\n');
 }
 
-// Grupe jednog seta: heroji (s evolucijama i kartama čiji ih prvi tag imenuje), pa trait karte, pa General.
-export function groupSet(db, traits, setCards) {
+// Grupe jednog seta: heroji (s evolucijama i kartama čiji ih prvi tag imenuje), pa karte s tagom heroja, pa General.
+export function groupSet(db, setCards) {
   const heroes = setCards.filter(c => c.type === 'Hero').sort((a, b) => a.id.localeCompare(b.id));
   const used = new Set();
   const groups = [];
@@ -65,7 +65,7 @@ export function groupSet(db, traits, setCards) {
     for (const e of db.cards.filter(c => c.type === 'Evolution' && !c.deleted && norm(c.hero) === norm(h.name))) { own.push(e); used.add(e.id); }
     for (const c of setCards) {
       if (used.has(c.id) || c.type === 'Hero' || c.type === 'Evolution') continue;
-      const k = firstTag(db, c, traits);
+      const k = firstTag(db, c);
       if (k.kind === HEROES && k.heroes[0] === h.name) { own.push(c); used.add(c.id); }
     }
     groups.push({ title: `${h.name} (${h.color})`, cards: own });
@@ -73,8 +73,8 @@ export function groupSet(db, traits, setCards) {
   const rest = setCards.filter(c => !used.has(c.id));
   const byKey = new Map();
   for (const c of rest) {
-    const k = firstTag(db, c, traits);
-    const key = k.kind === TRAIT ? `Trait ${k.trait}` : k.kind === GENERAL ? 'General' : k.kind === HEROES ? `${k.heroes.join(' & ')}` : `Nevažeći prvi tag (${k.tag || 'bez taga'})`;
+    const k = firstTag(db, c);
+    const key = k.kind === TRAIT ? `Tag ${k.trait}` : k.kind === GENERAL ? 'General' : k.kind === HEROES ? `${k.heroes.join(' & ')}` : `Nevažeći prvi tag (${k.tag || 'bez taga'})`;
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(c);
   }
@@ -85,7 +85,7 @@ export function groupSet(db, traits, setCards) {
 const avg = xs => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
 const fmt = x => (Number.isInteger(x) ? String(x) : x.toFixed(1));
 
-export function balanceSection(db, traits, sets = []) {
+export function balanceSection(db, sets = []) {
   const live = db.cards.filter(c => !c.deleted);
   const order = c => { const i = sets.findIndex(x => x.code === setOf(c)); return i < 0 ? 99 : i; };
   const out = [];
@@ -103,7 +103,7 @@ export function balanceSection(db, traits, sets = []) {
   // Koliko karata ima koji heroj (prvi tag ga imenuje); cilj je 8 po heroju.
   out.push('### Karte po heroju (prvi tag imenuje heroja; cilj 8)', '', '| Heroj | Boja | Svoje karte | Evolucije |', '|---|---|---|---|');
   for (const h of heroes) {
-    const own = live.filter(c => !['Hero', 'Evolution', 'Stage', 'Core'].includes(c.type) && firstTag(db, c, traits).kind === HEROES && firstTag(db, c, traits).heroes.includes(h.name)).length;
+    const own = live.filter(c => !['Hero', 'Evolution', 'Stage', 'Core'].includes(c.type) && firstTag(db, c).kind === HEROES && firstTag(db, c).heroes.includes(h.name)).length;
     const ev = evos.filter(e => norm(e.hero) === norm(h.name)).length;
     out.push(`| ${h.name} | ${h.color} | ${own} | ${ev} |`);
   }
@@ -131,7 +131,7 @@ export function balanceSection(db, traits, sets = []) {
   return out.join('\n');
 }
 
-export function buildPack({ db, traits, sets, gameVersion, manual, now = new Date() }) {
+export function buildPack({ db, sets, gameVersion, manual, now = new Date() }) {
   const live = db.cards.filter(c => !c.deleted);
   const setName = code => sets.find(s => s.code === code)?.name ?? code;
   const parts = [
@@ -147,14 +147,14 @@ export function buildPack({ db, traits, sets, gameVersion, manual, now = new Dat
     '',
     '## 2. Karte',
     '',
-    'Po setu, unutar seta po heroju: heroj, njegove evolucije i karte čiji ga prvi tag imenuje; zatim karte s traitom ili General kao prvim tagom. **Podebljan tag** je prvi tag (tko kartu smije igrati). Statsi heroja su HP · DMG · PWR · RNG · KB (+ WT, težina kuglice). Bonus kvadratići su statsi koje Action daje sam od sebe kad se odigra.',
+    'Po setu, unutar seta po heroju: heroj, njegove evolucije i karte čiji ga prvi tag imenuje; zatim karte kojima je prvi tag tag heroja (Tag …) ili General. **Podebljan tag** je prvi tag (tko kartu smije igrati). Statsi heroja su HP · DMG · PWR · RNG · KB (+ WT, težina kuglice). Bonus kvadratići su statsi koje Action daje sam od sebe kad se odigra.',
     '',
   ];
   const codes = [...new Set(live.filter(c => !['Stage', 'Core', 'Combo'].includes(c.type)).map(setOf))].sort((a, b) => (sets.findIndex(s => s.code === a) - sets.findIndex(s => s.code === b)) || a.localeCompare(b));
   for (const code of codes) {
     const setCards = live.filter(c => setOf(c) === code && !['Stage', 'Core', 'Combo'].includes(c.type)).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
     parts.push(`### Set ${code}: ${setName(code)} (${setCards.length} karata)`, '');
-    for (const g of groupSet(db, traits, setCards)) parts.push(`#### ${g.title}`, '', ...g.cards.map(c => cardBlock(c, live)), '');
+    for (const g of groupSet(db, setCards)) parts.push(`#### ${g.title}`, '', ...g.cards.map(c => cardBlock(c, live)), '');
   }
   const stages = live.filter(c => c.type === 'Stage').sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   parts.push(`### Stageovi (${stages.length})`, '', ...stages.map(c => cardBlock(c, live)), '');
@@ -162,7 +162,7 @@ export function buildPack({ db, traits, sets, gameVersion, manual, now = new Dat
   if (combos.length) parts.push(`### Combo karte (${combos.length})`, '', 'Dvije karte (Action ili Assist) odigrane za dva tvoja heroja u istom battleu: igrač smije platiti dodatnu energiju (+X) i umjesto njih vrijedi Combo karta. Ne idu u deck ni u pakete.', '', ...combos.map(c => cardBlock(c, live)), '');
   const cores = live.filter(c => c.type === 'Core').sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   parts.push(`### Coreovi (${cores.length})`, '', ...cores.map(c => `- **${c.id} ${c.name}** · ${c.traits?.[0] ?? '?'}${bonusLine(c.bonus) ? ` · ${bonusLine(c.bonus)}` : ''}`), '');
-  parts.push('## 3. Brojke za balans', '', balanceSection(db, traits, sets), '');
+  parts.push('## 3. Brojke za balans', '', balanceSection(db, sets), '');
   return parts.join('\n');
 }
 
@@ -179,13 +179,12 @@ function main() {
   const read = (p, fb) => { try { return JSON.parse(fs.readFileSync(path.join(drive, p), 'utf8')); } catch { return fb; } };
   const db = read('data/cards.json', null);
   if (!db) throw new Error(`No data/cards.json in ${drive}`);
-  const traits = read('data/traits.json', { traits: [] }).traits ?? [];
   const sets = read('data/sets/sets.json', { sets: [] }).sets ?? [];
   const godot = fs.readFileSync(path.join(ROOT, 'game', 'project.godot'), 'utf8');
   const gameVersion = /config\/version="([^"]+)"/.exec(godot)?.[1] ?? '?';
   const out = path.join(ROOT, 'docs', 'private', 'dizajn-paket.md');
   const manual = fs.existsSync(out) ? manualPart(fs.readFileSync(out, 'utf8')) : '';
-  fs.writeFileSync(out, buildPack({ db, traits, sets, gameVersion, manual }));
+  fs.writeFileSync(out, buildPack({ db, sets, gameVersion, manual }));
   console.log(`${path.relative(ROOT, out)}: cards v${db.version}, ${db.cards.filter(c => !c.deleted).length} cards, game ${gameVersion}`);
 }
 

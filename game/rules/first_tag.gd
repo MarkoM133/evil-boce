@@ -3,8 +3,10 @@ extends RefCounted
 ## The first tag rule (GDD 10, 2026-10-26): a card's first tag says who may
 ## take it. "General": any hero of the card's colour. A hero alias ("Giorno", "Giorno &
 ## Bucciarati"): only those heroes; a name after "&" that is no hero yet is skipped ("Shanks &
-## Roger" is Shanks's until Roger comes). A trait from the trait list (data/traits.json): a hero of the
-## card's colour that has the trait, on its own card or on an Evolution card in the deck.
+## Roger" is Shanks's until Roger comes). A tag a Hero or an Evolution card carries (Marko, 2026-11-16:
+## any such tag; the trait list is gone from the rule, data/traits.json only describes tags): a hero of the
+## card's colour that has the tag, on its own card or on an Evolution card in the deck. The code still
+## calls such a tag a trait (kind "trait", the `traits` field).
 ## "&" joins traits too, and heroes with traits (Marko, 2026-11-15): "Mage & Brave Hero" is a hero with
 ## either trait, "Dai & Mage" is Dai or any hero with Mage. Each part is a hero first, else a trait; a part
 ## that is neither is skipped while another part counts.
@@ -75,18 +77,24 @@ static func kind_of(catalog: CardCatalog, card: CardDef) -> Dictionary:
 		if kind == TRAIT:
 			out["trait"] = traits[0]
 		return out
-	# A trait whose own name holds an "&".
+	# A tag whose own name holds an "&".
 	var whole: String = _trait_named(catalog, norm(tag))
 	if not whole.is_empty():
 		return {"kind": TRAIT, "tag": tag, "heroes": PackedStringArray(), "traits": PackedStringArray([whole]), "unknown": PackedStringArray(), "trait": whole}
 	return {"kind": INVALID, "tag": tag}
 
 
-## The trait on the list that `normed` names ("" if none).
+## The tag a Hero or an Evolution card carries that `normed` names, as written on the first card that has
+## it (in the order of the catalog); "" if nobody carries it. Same pick as carriedTag in js/tags.js.
 static func _trait_named(catalog: CardCatalog, normed: String) -> String:
-	for t: String in catalog.trait_names:
-		if norm(t) == normed:
-			return t
+	if normed.is_empty():
+		return ""
+	for c: CardDef in catalog.cards.values():
+		if c.type != "Hero" and c.type != "Evolution":
+			continue
+		for t: String in c.traits:
+			if norm(t) == normed:
+				return t.strip_edges()
 	return ""
 
 
@@ -166,7 +174,7 @@ static func deck_verdict(catalog: CardCatalog, card: CardDef, heroes: Array[Card
 				return {"ok": false, "why": "Requires %s" % " or ".join(needs_names), "needs": needs}
 			return _no(_who(card, k))
 	var tag: String = str(k.get("tag", ""))
-	return _no(("first tag \"%s\" is not General, a hero or a known trait" % tag) if not tag.is_empty() else "the card has no tags")
+	return _no(("first tag \"%s\" is not General, a hero or a tag a hero carries" % tag) if not tag.is_empty() else "the card has no tags")
 
 
 static func _ok() -> Dictionary:
@@ -210,4 +218,4 @@ static func play_verdict(catalog: CardCatalog, card: CardDef, base: CardDef, cur
 				return _no("Requires %s" % " or ".join(traits))
 			return _no("only for %s, or Requires %s" % [" or ".join(only), " or ".join(traits)])
 	var tag: String = str(k.get("tag", ""))
-	return _no(("first tag \"%s\" is not General, a hero or a known trait" % tag) if not tag.is_empty() else "the card has no tags")
+	return _no(("first tag \"%s\" is not General, a hero or a tag a hero carries" % tag) if not tag.is_empty() else "the card has no tags")

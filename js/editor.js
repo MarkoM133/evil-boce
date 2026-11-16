@@ -1817,10 +1817,9 @@ export function createEditor(env) {
   // Picked, it is a chip with a straw edge; × clears it, "add another" joins one more with "&" (any one of them is
   // enough). One line under it says who that is.
   function firstTagField(w) {
-    const traitList = env.state.traits?.traits ?? [];
     const cards = allCards().filter(c => !c.deleted);
     const tag = String(w.traits?.[0] ?? '').trim();
-    const k = firstTag({ ...db(), cards }, { traits: w.traits }, traitList);
+    const k = firstTag({ ...db(), cards }, { traits: w.traits });
     const parts = tag.split('&').map(p => p.trim()).filter(Boolean);
     const colorless = w.color === 'None' || !w.color;
     const colourWord = colorless ? '' : `${w.color} `;
@@ -1909,10 +1908,9 @@ export function createEditor(env) {
         const who = [...new Set([...named, ...carriers.filter(c => tags.some(t => (c.traits ?? []).some(x => norm(x) === norm(t)))).map(c => c.name)])];
         out.push(who.length
           ? h('small', { class: 'muted' }, `${colorless ? 'Heroes' : `${w.color} heroes`} with it: `, h('strong', {}, who.join(', ')))
-          : h('small', { class: 'warn' }, `No ${colourWord}hero has ${tag}: nobody can play this card.`));
+          : h('small', { class: 'warn' }, k.kind === INVALID ? `No hero carries "${tag}" yet: nobody can play this card.` : `No ${colourWord}hero has ${tag}: nobody can play this card.`));
       }
     }
-    if (tag && k.kind === INVALID && !open) out.push(h('small', { class: 'warn' }, `"${tag}" is not General, a hero or a tag on the trait list yet: the game does not take it.`));
     return h('div', { class: 'ce-field ce-first-tag' }, ...out);
   }
 
@@ -2165,7 +2163,6 @@ export function createEditor(env) {
   // [ok, tekst]: kvačice za ono što je u redu, ! za ono što treba pogledati.
   function checks(w, card) {
     const out = [];
-    const traitList = env.state.traits?.traits;
     const fxp = env.state.fxProposals?.cards?.[w.id];
     const textChanged = !w.new && toWords(w.text ?? '') !== (ed.base.type === 'Stage' ? stripTerrain(ed.base.text) : ed.base.text ?? '');
     const gameReads = () => {
@@ -2186,14 +2183,15 @@ export function createEditor(env) {
       if (rw) out.push([false, `Tag "${t}" is a word of the rules (${rw}): use another, e.g. "Brave ${rw}"`]);
     }
     if (PORTRAIT.includes(w.type)) {
-      const k = firstTag(db(), card, traitList);
-      if (k.kind === HEROES) out.push([true, `First tag "${k.tag}" is a hero${k.heroes.length > 1 ? 'es' : ''}${k.heroes.some(n => n !== k.tag) ? ' alias' : ''}`]);
-      else if (k.kind === TRAIT) out.push([true, k.traits.length > 1 ? `First tag "${k.tag}": a hero with ${k.traits.join(' or ')}` : `First tag "${k.tag}" is a trait`]);
-      else if (k.kind === MIXED) out.push([true, `First tag "${k.tag}": ${k.heroes.join(' or ')}, or a hero with ${k.traits.join(' or ')}`]);
-      else if (k.kind === GENERAL) out.push([true, 'First tag General: any hero of this colour']);
-      else out.push([false, k.tag ? `First tag "${k.tag}" is not a hero, alias or trait` : 'No first tag: who may play it?']);
-      // "Mage & Brave Hero" while Mage is not on the trait list: that part does not count yet.
-      if ((k.kind === TRAIT || k.kind === MIXED) && k.unknown?.length) out.push([false, `${k.unknown.map(u => `"${u}"`).join(', ')} in the first tag is no hero or trait yet: add the trait on Words › Tags, or it does not count`]);
+      // Drafts count too: a tag only a draft hero carries (a new set) is a tag a hero carries.
+      const k = firstTag({ ...db(), cards: allCards() }, card);
+      if (k.kind === HEROES) out.push([true, `Main tag "${k.tag}" is a hero${k.heroes.length > 1 ? 'es' : ''}${k.heroes.some(n => n !== k.tag) ? ' alias' : ''}`]);
+      else if (k.kind === TRAIT) out.push([true, `Main tag "${k.tag}": a hero with ${k.traits.join(' or ')}`]);
+      else if (k.kind === MIXED) out.push([true, `Main tag "${k.tag}": ${k.heroes.join(' or ')}, or a hero with ${k.traits.join(' or ')}`]);
+      else if (k.kind === GENERAL) out.push([true, 'Main tag General: any hero of this colour']);
+      else out.push([false, k.tag ? `Main tag "${k.tag}" is not General, a hero or a tag a hero carries` : 'No main tag: who may play it?']);
+      // "Mage & Brave Hero" while no hero carries Mage: that part does not count yet.
+      if ((k.kind === TRAIT || k.kind === MIXED) && k.unknown?.length) out.push([false, `${k.unknown.map(u => `"${u}"`).join(', ')} in the main tag is no hero and no tag a hero carries yet: it does not count`]);
       const avoid = avoidWarnings(ed.guide, card.text);
       out.push(avoid.length ? [false, avoid[0]] : [true, 'Phrases match the text guide']);
       gameReads();
@@ -2230,8 +2228,6 @@ export function createEditor(env) {
             : [true, `Temporary: ${w.tempTurns} ${Number(w.tempTurns) === 1 ? 'turn' : 'turns'}, on any level`]);
         }
       }
-      const names = traitNames(traitList).map(norm);
-      for (const t of w.traits.filter(t => names.includes(norm(t))).slice(0, 2)) out.push([true, `Trait "${t}" known`]);
       if (!w.abilityNames?.[0]) out.push([false, 'No ability name']);
       if (!w.emblem && !(w.type === 'Evolution' && heroCard(w)?.emblem)) out.push([false, 'No emblem on the plate']);
     }

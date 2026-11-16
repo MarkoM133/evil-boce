@@ -15,7 +15,6 @@ const db = {
     { id: 'XX1-099', name: 'Gone', type: 'Action', color: 'Red', cost: 1, traits: ['A'], text: 'x', deleted: true },
   ],
 };
-const traits = [{ name: 'Sword' }];
 const sets = [{ code: 'XX1', name: 'Test Set' }];
 
 test('a hand line break inside a sentence becomes a space, a new effect a new line', () => {
@@ -23,11 +22,11 @@ test('a hand line break inside a sentence becomes a space, a new effect a new li
 });
 
 test('cards come grouped by set and hero, with the first tag marked and deleted cards left out', () => {
-  const md = buildPack({ db, traits, sets, gameVersion: '9.9.9', manual: 'Pravila ovdje.', now: new Date('2026-11-07T10:00:00Z') });
+  const md = buildPack({ db, sets, gameVersion: '9.9.9', manual: 'Pravila ovdje.', now: new Date('2026-11-07T10:00:00Z') });
   assert.match(md, /karte verzija 3, 7 karata, igra 9\.9\.9/);
   assert.match(md, /### Set XX1: Test Set/);
   const hero = md.indexOf('#### Hero A (Red)');
-  const trait = md.indexOf('#### Trait Sword');
+  const trait = md.indexOf('#### Tag Sword');
   const general = md.indexOf('#### General');
   assert.ok(hero > 0 && general > hero && trait > general, 'hero first, then General and trait groups');
   // The hero's evolution and its signature card sit in its group.
@@ -43,9 +42,9 @@ test('cards come grouped by set and hero, with the first tag marked and deleted 
 });
 
 test('the hand-written rules survive a rebuild', () => {
-  const first = buildPack({ db, traits, sets, gameVersion: '1', manual: '\nRučni sažetak pravila.\n' });
+  const first = buildPack({ db, sets, gameVersion: '1', manual: '\nRučni sažetak pravila.\n' });
   assert.ok(first.includes(`${MANUAL_START}\nRučni sažetak pravila.\n${MANUAL_END}`));
-  const again = buildPack({ db, traits, sets, gameVersion: '2', manual: manualPart(first) });
+  const again = buildPack({ db, sets, gameVersion: '2', manual: manualPart(first) });
   assert.ok(again.includes('Ručni sažetak pravila.'));
   assert.equal(manualPart('no markers here'), '');
 });
