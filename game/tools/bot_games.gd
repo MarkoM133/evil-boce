@@ -6,7 +6,7 @@ extends SceneTree
 ## Random decks from the shared folder's cards (`--fixtures`: the test fixtures). Reports, over
 ## all games: hero damage taken and from what (battle, wall, trap, card), cards discarded for
 ## battle hits, KOs, how the matches ended, turns, cards played and the energy they took; with
-## energy claims (the shared ring is the default, goal `--goal`; `--claim=energy` each side its own, `--claim=stay` the first rule) also the energy put into stages,
+## who started the match against who won it; with energy claims (the shared ring is the default, goal `--goal`; `--claim=energy` each side its own, `--claim=stay` the first rule) also the energy put into stages,
 ## heroes knocked off a stage and the energy that cost, contested stages. The same seed gives the
 ## same maps and decks whatever the rules, so runs compare game by game. Nothing is saved.
 
@@ -48,7 +48,7 @@ func _run() -> void:
 	var totals: Dictionary = {
 		"hero_dmg": 0, "battle_hero_dmg": 0, "wall_dmg": 0, "trap_dmg": 0, "card_dmg": 0,
 		"hand_cards": 0, "deck_cards": 0, "hits": 0, "hits_with_cards": 0, "all_on_hero": 0, "kos": 0, "ring_outs": 0,
-		"turns": 0, "finished": 0, "results": {}, "stuck": 0,
+		"turns": 0, "finished": 0, "results": {}, "stuck": 0, "first_won": 0, "first_lost": 0, "seat0_won": 0,
 		"cards_played": 0, "energy_cards": 0, "energy_banked": 0, "energy_wasted": 0, "knocked_off": 0, "knocked_off_lost": 0,
 		"progress_lost": 0, "contested": 0, "claims": 0, "energy_taken": 0, "turn_list": [],
 	}
@@ -68,6 +68,12 @@ func _run() -> void:
 			totals["finished"] = JsonUtil.as_int(totals["finished"]) + 1
 			var res: Dictionary = totals["results"]
 			res[r["result"]] = JsonUtil.as_int(res.get(r["result"], 0)) + 1
+			# Who started (the initiative at match start, drawn by lot) against who won (Marko 2026-11-16).
+			var w: int = JsonUtil.as_int(r["winner"])
+			if w >= 0:
+				totals["first_won" if w == JsonUtil.as_int(r["first"]) else "first_lost"] = JsonUtil.as_int(totals["first_won" if w == JsonUtil.as_int(r["first"]) else "first_lost"]) + 1
+				if w == 0:
+					totals["seat0_won"] = JsonUtil.as_int(totals["seat0_won"]) + 1
 		lines.append("game %2d: %2d turns, %-9s hero dmg %3d (battle %3d) · hand cards %2d · KO %d · ring-outs %d · cards played %2d · stage energy %2d · knocked off %d (-%d) · contested %d" % [
 			g + 1, r["turns"], (str(r["result"]) + (" p%d" % JsonUtil.as_int(r["winner"]))) if not str(r["result"]).is_empty() else "unfinished",
 			r["hero_dmg"], r["battle_hero_dmg"], r["hand_cards"], r["kos"], r["ring_outs"], r["cards_played"], r["energy_banked"],
@@ -78,6 +84,10 @@ func _run() -> void:
 	print("")
 	print("%d games, %s vs %s, seed %s, %s cards, stage claims: %s" % [games, Bot.level_name(level), Bot.level_name(level), opts["seed"],
 		"fixture" if opts["fixtures"] == "1" else "shared-folder", ("%s, goal %d" % [claim, goal]) if claim != MatchSettings.CLAIM_STAY else claim])
+	var decided: int = JsonUtil.as_int(totals["first_won"]) + JsonUtil.as_int(totals["first_lost"])
+	if decided > 0:
+		print("who started won %d of %d (%.1f%%); seat 0 won %d (%.1f%%)" % [totals["first_won"], decided, 100.0 * JsonUtil.as_int(totals["first_won"]) / decided,
+			totals["seat0_won"], 100.0 * JsonUtil.as_int(totals["seat0_won"]) / decided])
 	var results: Dictionary = totals["results"]
 	print("finished %d (%s)%s" % [totals["finished"], _results_line(results), (", unfinished %d" % JsonUtil.as_int(totals["stuck"])) if JsonUtil.as_int(totals["stuck"]) > 0 else ""])
 	print("turns: %.1f per game" % (float(JsonUtil.as_int(totals["turns"])) / n))
@@ -139,6 +149,7 @@ func _game(catalog: CardCatalog, level: Bot.Level, max_turns: int, claim: String
 	settings.resolve_map(_rng, GameSettings.MAP_SIZES)
 	var seed_: int = _rng.randi()
 	var s: GameState = engine.start_match(settings, _decks(catalog), seed_)
+	var first: int = s.initiative
 	var bots: Array[Bot] = [Bot.new(seed_, level), Bot.new(seed_ + 1, level)]
 	var steps: int = 0
 	var cards_played: int = 0
@@ -173,7 +184,7 @@ func _game(catalog: CardCatalog, level: Bot.Level, max_turns: int, claim: String
 	var r: Dictionary = {
 		"hero_dmg": 0, "battle_hero_dmg": 0, "wall_dmg": 0, "trap_dmg": 0, "card_dmg": 0,
 		"hand_cards": 0, "deck_cards": 0, "hits": 0, "hits_with_cards": 0, "all_on_hero": 0, "kos": 0, "ring_outs": 0,
-		"turns": s.turn, "result": s.result if s.is_over() else "", "winner": s.winner,
+		"turns": s.turn, "result": s.result if s.is_over() else "", "winner": s.winner, "first": first,
 		"cards_played": cards_played, "energy_cards": energy_cards, "energy_banked": 0, "energy_wasted": 0,
 		"knocked_off": 0, "knocked_off_lost": 0, "progress_lost": 0, "contested": 0, "claims": 0, "energy_taken": 0,
 	}
