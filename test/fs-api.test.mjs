@@ -28,7 +28,10 @@ test('Publish stays on the computer: the database, card images and the rest are 
   assert.ok(canRemove('data/locks/OP1-014.json'));
   assert.equal(canRemove('data/editor/drafts.json'), false);
   assert.ok(canList('data/locks'));
+  assert.ok(canList('data/art'), 'a card offers its old art back on the phone too');
+  assert.ok(canList('data/art/emblems'));
   assert.equal(canList('data'), false);
+  assert.equal(canList('data/images'), false);
 });
 
 test('atomicWrite replaces the file whole and leaves no temp file', async () => {

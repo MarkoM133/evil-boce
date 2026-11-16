@@ -16,6 +16,7 @@ import { toTokens, toWords, headAt, withHeadAt, stripTerrain, withTerrain, coreB
 import { deckPool, heroEvolutions, setTraits } from './deck.js';
 import { decorate, comboProblems, touchedIngredients, INGREDIENT_TYPES } from './combo.js';
 import { planMove, targetCode, renameKeys, moveDrafts } from './card-move.js';
+import { artRefs, unusedArt, previousArtOf, artToDrop } from './art-files.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -1200,6 +1201,7 @@ export function createEditor(env) {
       ed.artMode ? h('p', { class: 'muted small ce-hint' }, HEROISH.includes(w.type) ? 'Drag the art to move it, scroll to zoom. The frame covers the right edge of the art. Esc cancels.' : 'Drag the art to move it, scroll to zoom. The dashed line is the art window. Esc cancels.') : null,
       w.type === 'Core' ? h('p', { class: 'muted small ce-hint' }, 'Image only, no frame') : null,
       buttons.length ? h('div', { class: 'ce-art-buttons' }, buttons, fileIn) : null,
+      buttons.length ? previousArtRow(w) : null,
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.')));
   }
 
@@ -2093,7 +2095,7 @@ export function createEditor(env) {
     for (const ev of ['click', 'keyup', 'select']) area.addEventListener(ev, () => { caret = area.selectionStart ?? caret; refreshToggles(); });
     const revealed = stage ? h('button', { type: 'button', onclick: () => { if (!/^When this Stage is revealed/i.test(area.value)) { area.value = `When this Stage is revealed, ${area.value}`; area.selectionStart = area.selectionEnd = area.value.length; sync(); } } }, 'When revealed') : null;
     const toks = TOKENS.map(t => h('button', { type: 'button', class: `tok tok-${t.toLowerCase()}`, title: `[${t}] at the cursor`, onmousedown: e => e.preventDefault(), onclick: () => insert(`[${t}]`) }, t));
-    const trait = PORTRAIT.includes(w.type) ? h('button', { type: 'button', class: 'tok tok-trait', title: 'A trait in the text, e.g. {Sword}', onmousedown: e => e.preventDefault(), onclick: () => insert('{}') }, '{Trait}') : null;
+    const trait = PORTRAIT.includes(w.type) ? h('button', { type: 'button', class: 'tok tok-trait', title: 'A tag in the text, e.g. {Sword}', onmousedown: e => e.preventDefault(), onclick: () => insert('{}') }, '{Tag}') : null;
     // Phrases from the Text guide (Card editor › Phrases): the same ones come up while typing; the list shows them all.
     const phrase = ed.guide?.phrases?.length ? h('select', { class: 'ce-phrase', 'aria-label': 'Insert a phrase from the Text guide', title: 'Phrases from the Text guide', onchange: e => { const p = ed.guide.phrases[Number(e.target.value)]; e.target.value = ''; if (p) insert(toTokens(p.text)); } },
       h('option', { value: '' }, 'Phrases'), ed.guide.phrases.map((p, i) => h('option', { value: i, title: p.note ?? '' }, `${p.label}: ${p.text.trim()}`))) : null;
@@ -2417,6 +2419,7 @@ export function createEditor(env) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const path = `art/${ed.work.id}.${await imageHashOf(bytes)}.${ext}`;
     await fs.writeFile(store().root, `data/${path}`, bytes);
+    ed.artList = null;
     store().dropImageUrls?.();
     snap(true);
     ed.work.art = path;
@@ -2425,6 +2428,98 @@ export function createEditor(env) {
     ed.artFor = null;
     changed();
     env.render();
+  }
+
+  // ---------- art koji ništa ne koristi (Marko 2026-11-16) ----------
+
+  // Svi fileovi arta kao "art/…" i "art/emblems/…"; kratko u memoriji, jer se stranica karte često crta.
+  async function artFiles(fresh = false) {
+    if (!fresh && ed.artList && Date.now() - ed.artList.at < 10000) return ed.artList.files;
+    const root = store().root;
+    const top = await fs.listFileNames(root, 'data/art').catch(() => []);
+    const emblems = await fs.listFileNames(root, 'data/art/emblems').catch(() => []);
+    const files = [...top.map(n => `art/${n}`), ...emblems.map(n => `art/emblems/${n}`)];
+    ed.artList = { at: Date.now(), files };
+    return files;
+  }
+
+  // Art koji ne koristi nijedna objavljena karta, nacrt ni zadnja Objava (njen Undo).
+  async function unusedArtNow(fresh = false) {
+    const drafts = fresh ? (await readDrafts()).cards : ed.drafts?.cards;
+    return unusedArt(await artFiles(fresh), artRefs(db().cards, drafts, await readLast()));
+  }
+
+  // Zamijenjeni art karte, za vraćanje (dok ga Objava ili Clean up ne obrišu).
+  function previousArtRow(w) {
+    if (w.type === 'Core' || w.new && !w.art) return null;
+    const row = h('div', { class: 'ce-prev-art', hidden: true });
+    unusedArtNow().then(async unused => {
+      const list = previousArtOf(w.id, unused).filter(p => p !== w.art).slice(-4);
+      if (!list.length || !row.isConnected || ed.work !== w) return;
+      const thumbs = [];
+      for (const p of list) {
+        const url = await store().dataUrl(p).catch(() => null);
+        thumbs.push(h('button', { type: 'button', class: 'ce-prev-art-pick', disabled: !canWrite(), title: 'Put this art back on the card (Save keeps it)',
+          onclick: () => restoreArt(p) }, url ? h('img', { src: url, alt: 'Previous art' }) : 'art'));
+      }
+      row.replaceChildren(h('span', { class: 'muted small' }, 'Previous art'), ...thumbs,
+        h('small', { class: 'muted' }, 'Kept until the second Publish after it was replaced.'));
+      row.hidden = false;
+    }).catch(() => {});
+    return row;
+  }
+
+  // Clean up (Tools, Marko 2026-11-16): art nothing uses goes now, without waiting for two Publishes. Only on a
+  // computer with the folder open; the delete asks once more on the page itself.
+  function renderCleanup() {
+    const box = h('div', { class: 'cleanup' });
+    if (!canPublish()) {
+      box.append(h('p', { class: 'muted' }, 'Clean up needs the shared folder open on a computer (Chrome or Edge).'));
+      return box;
+    }
+    const scan = async () => {
+      box.replaceChildren(h('p', { class: 'muted' }, 'Looking for art no card uses…'));
+      const list = await unusedArtNow(true);
+      const rows = [];
+      let total = 0;
+      for (const p of list) {
+        const f = await fs.getFile(store().root, `data/${p}`).catch(() => null);
+        total += f?.size ?? 0;
+        rows.push({ p, size: f?.size ?? 0, url: f ? URL.createObjectURL(f) : null });
+      }
+      const mb = n => `${(n / 1048576).toFixed(1)} MB`;
+      const intro = h('p', { class: 'muted' }, 'Art that no published card, draft or the last Publish (its Undo) uses: replaced art waiting to go. A Publish removes it by itself at the second Publish after it was replaced; this removes it now. Old card pictures kept for Undo are not touched.');
+      if (!rows.length) { box.replaceChildren(intro, h('p', {}, 'Nothing to clean up: every art file is used.')); return; }
+      const action = h('div', { class: 'toolbar' });
+      const ask = () => action.replaceChildren(h('button', { class: 'primary', type: 'button', onclick: () => action.replaceChildren(
+        h('span', {}, `Delete ${rows.length} ${rows.length === 1 ? 'file' : 'files'} (${mb(total)}) for good?`),
+        h('button', { class: 'primary', type: 'button', onclick: () => env.guard(async () => {
+          for (const r of rows) await fs.removeFile(store().root, `data/${r.p}`);
+          ed.artList = null;
+          env.toast(`Clean up: ${rows.length} art ${rows.length === 1 ? 'file' : 'files'} removed (${mb(total)}).`);
+          await scan();
+        }) }, 'Yes, delete'),
+        h('button', { class: 'ghost', type: 'button', onclick: ask }, 'Cancel')) }, `Clean up ${rows.length} ${rows.length === 1 ? 'file' : 'files'}`));
+      ask();
+      box.replaceChildren(intro,
+        h('p', {}, h('strong', {}, `${rows.length} ${rows.length === 1 ? 'file' : 'files'}, ${mb(total)}`)),
+        h('div', { class: 'cleanup-list' }, rows.map(r => h('figure', { class: 'cleanup-item' },
+          r.url ? h('img', { src: r.url, alt: r.p }) : h('div', { class: 'cleanup-noimg' }, '?'),
+          h('figcaption', { class: 'small' }, r.p.replace(/^art\//, ''), h('span', { class: 'muted' }, ` · ${mb(r.size)}`))))),
+        action);
+    };
+    env.guard(scan);
+    return box;
+  }
+
+  function restoreArt(path) {
+    snap(true);
+    ed.work.art = path;
+    ed.work.artCrop = { x: 0.5, y: 0.5, zoom: 1 };
+    ed.artList = null;
+    changed();
+    env.render();
+    env.toast('The previous art is back on the card. Save keeps it.');
   }
 
   // Amblem u pločici heroja: data/art/emblems/<kod>.<ext>.
@@ -3142,6 +3237,7 @@ export function createEditor(env) {
       images[id] = hash;
     }
     const { db: next, changed, bumped } = applyDrafts(db(), drafts, images);
+    const prevLast = changed ? await readLast() : null;
     if (changed) {
       await env.commitDb(next, { keepOld: true });
       await writeJson(LAST_PUBLISH_PATH, { at: new Date().toISOString(), who: who(), bumped, after: { version: next.version, updated: next.updated }, drafts, before });
@@ -3152,9 +3248,21 @@ export function createEditor(env) {
     for (const id of Object.keys(drafts)) if (after.cards?.[id]?.updated === drafts[id].updated) delete after.cards[id];
     await writeJson(DRAFTS_PATH, after);
     ed.drafts = after;
+    // Art (Marko 2026-11-16): what nothing used at the Publish before and still nothing uses goes now; what nothing
+    // uses now is written down for the next Publish. Until then a card offers its old art back.
+    let artGone = 0;
+    if (changed) {
+      const unusedNow = unusedArt(await artFiles(true), artRefs(next.cards, after.cards, { before, drafts }));
+      const drop = artToDrop(prevLast?.unusedArt, unusedNow);
+      for (const p of drop) { await fs.removeFile(store().root, `data/${p}`).catch(() => {}); artGone++; }
+      const record = await readLast();
+      if (record) await writeJson(LAST_PUBLISH_PATH, { ...record, unusedArt: unusedNow.filter(p => !drop.includes(p)) });
+      ed.artList = null;
+    }
     for (const id of Object.keys(drafts)) await logHistory(id, `published${bumped ? ` v${next.version}` : ''}`).catch(() => {});
     const parts = [`${changed} ${changed === 1 ? 'card' : 'cards'}`, `${Object.keys(images).length} new PNGs`];
     if (kept.length) parts.push(`no art yet (old picture kept, new cards wait): ${kept.join(', ')}`);
+    if (artGone) parts.push(`${artGone} old art ${artGone === 1 ? 'file' : 'files'} removed`);
     env.toast(`Published${bumped ? ` (version ${next.version})` : changed ? ' (look only)' : ''}: ${parts.join(', ')}. Next: fx proposals for the game (ask Claude Code to run them).`);
     env.render();
   }
@@ -3174,7 +3282,7 @@ export function createEditor(env) {
   });
 
   return {
-    render, isCardPage, isDirty: () => ed.dirty, newCard, who, setWho, leave,
+    render, isCardPage, isDirty: () => ed.dirty, newCard, who, setWho, leave, renderCleanup,
     waiting: () => Object.keys(ed.drafts?.cards ?? {}).length,
     wishes: () => (ed.wishlist?.items ?? []).filter(i => i.status === 'open').length,
   };

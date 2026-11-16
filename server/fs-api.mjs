@@ -22,8 +22,8 @@ const WRITE = [
 ];
 // Što smije brisati: samo lockove (editor ih pušta kad zatvoriš kartu).
 const REMOVE = [new RegExp(`^data/locks/${NAME}\\.json$`)];
-// Koje foldere smije izlistati.
-const LIST = ['data/locks'];
+// Koje foldere smije izlistati: lockove, i art (stranica karte nudi zamijenjeni art za vraćanje, 2026-11-16).
+const LIST = ['data/locks', 'data/art', 'data/art/emblems'];
 
 // Putanja iz zahtjeva: relativna, s /, bez .. i bez praznih dijelova; inače null.
 export function cleanPath(p) {

@@ -376,12 +376,12 @@ export function renderTools(helpers) {
   ui = helpers;
   const { h } = ui;
   const body = h('div', {});
-  const tabs = [['erase', 'Erase text'], ['bg', 'Remove background']];
+  const tabs = [['erase', 'Erase text'], ['bg', 'Remove background'], ['cleanup', 'Clean up']];
   const bar = h('div', { class: 'bk-forms tool-tabs', role: 'tablist' }, tabs.map(([k, label]) =>
     h('button', { type: 'button', role: 'tab', class: tab === k ? 'active' : '', 'aria-selected': String(tab === k), onclick: () => { tab = k; draw(); } }, label)));
   const draw = () => {
     for (const b of bar.children) { const on = b.textContent === tabs.find(([k]) => k === tab)[1]; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); }
-    body.replaceChildren(tab === 'erase' ? renderErase() : renderBackground());
+    body.replaceChildren(tab === 'erase' ? renderErase() : tab === 'cleanup' ? ui.cleanup() : renderBackground());
   };
   draw();
   return h('section', { class: 'panel tools' }, h('h2', {}, 'Tools'), bar, body);

@@ -901,7 +901,7 @@ function signedIn() {
 }
 
 function renderMain() {
-  const view = { import: renderImport, browse: renderBrowse, combos: renderCombos, rules: () => renderRules({ h, state }), editor: () => cardEditor.render(), decks: renderDecks, balance: renderBalance, traits: renderTraits, coverage: renderCoverage, tools: () => renderTools({ h, toast, loadModel: lamaModel }), history: renderHistory }[state.tab]();
+  const view = { import: renderImport, browse: renderBrowse, combos: renderCombos, rules: () => renderRules({ h, state }), editor: () => cardEditor.render(), decks: renderDecks, balance: renderBalance, traits: renderTraits, coverage: renderCoverage, tools: () => renderTools({ h, toast, loadModel: lamaModel, cleanup: () => cardEditor.renderCleanup() }), history: renderHistory }[state.tab]();
   // Na desktopu je izbornik stupac lijevo (s listom deckova na kartici Deckovi), na mobitelu kartice gore.
   return h('div', { class: 'shell' },
     h('aside', { class: 'side' },
