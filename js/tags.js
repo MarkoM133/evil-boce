@@ -100,12 +100,12 @@ export function hasTrait(card, trait) {
   return (card?.traits ?? []).some(t => norm(t) === norm(trait));
 }
 
-// Kratka oznaka za deck builder: "General", "Signature: Giorno", "Trait: Stand", "Invalid: Hakki".
+// Kratka oznaka za deck builder: "General", "Signature: Giorno", "Tag: Stand", "Invalid: Hakki".
 export function tagLabel(kind) {
   if (kind.kind === GENERAL) return 'General';
   if (kind.kind === HEROES) return `Signature: ${kind.heroes.join(' & ')}`;
-  if (kind.kind === TRAIT) return `Trait: ${kind.traits.join(' or ')}`;
-  if (kind.kind === MIXED) return `Signature: ${kind.heroes.join(' & ')}, or trait ${kind.traits.join(' or ')}`;
+  if (kind.kind === TRAIT) return `Tag: ${kind.traits.join(' or ')}`;
+  if (kind.kind === MIXED) return `Signature: ${kind.heroes.join(' & ')}, or tag ${kind.traits.join(' or ')}`;
   return kind.tag ? `Invalid: ${kind.tag}` : 'Invalid: no tag';
 }
 

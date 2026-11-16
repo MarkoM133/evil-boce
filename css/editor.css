@@ -814,3 +814,15 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-fold-head { cursor: pointer; user-select: none; }
 .ce-fold-head:hover h3, .ce-fold-head:hover .ce-panel-fold { color: var(--bone); }
 .ce-check-pill { cursor: pointer; }
+
+/* Main tag (Marko 2026-11-16, mockup tag-map/jedno-polje): one field with pills; picked it is a chip with a straw edge. */
+.ce-ft-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ce-ft-row input { flex: 1; min-width: 160px; max-width: 320px; }
+.ce-chip.ce-ft-main { border: 1px solid var(--straw); font-weight: 700; }
+.ce-tag-pill.ce-ft-general { border-style: solid; border-color: var(--straw); }
+.ce-tag-pill .ce-ft-dot { margin-right: 0; align-self: center; }
+.ce-other-tags { font: 600 12px var(--text); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 10px; }
+.ce-cards-for { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 15px; }
+.ce-cards-for b { font-variant-numeric: tabular-nums; }
+.ce-tag-holders { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 14px; }
+.ce-tag-holders > span { display: inline-flex; align-items: center; }

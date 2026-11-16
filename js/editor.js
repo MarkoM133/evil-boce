@@ -409,13 +409,15 @@ export function createEditor(env) {
     ed.checkHead = h('div', { class: 'ce-panel-head ce-check-head' }, h('h3', {}, 'Checks'), ed.checkPill);
     const parts = [h('section', { class: 'ce-panel' }, ed.checkHead, ed.checkBox)];
     // Same frame, Hero cards, Terrain i Cores su maknuti 2026-11-06: tip je u obrascu, evolucije ispod Aliasa.
+    if (w.type === 'Hero') parts.push(cardsForPanel(w));
     if (w.type !== 'Core') parts.push(fxPanel(w));
     if (PORTRAIT.includes(w.type)) { ed.balBox = h('div', {}); parts.push(ed.balBox); } else ed.balBox = null;
     parts.push(notesPanel(w));
     // Every block folds (Marko 2026-11-15): an arrow at the start of its head, remembered per block; Balance folds
     // by its own title (a details element).
     foldable(parts[0], 'checks');
-    if (w.type !== 'Core') foldable(parts[1], 'fx');
+    if (w.type === 'Hero') foldable(parts[1], 'cardsfor');
+    if (w.type !== 'Core') foldable(parts[w.type === 'Hero' ? 2 : 1], 'fx');
     foldable(parts[parts.length - 1], 'notes');
     return h('aside', { class: 'ce-side' }, ...parts);
   }
@@ -1712,7 +1714,7 @@ export function createEditor(env) {
         h('h2', {}, 'Ability'),
         field('ABILITY NAME', h('input', { value: w.abilityNames?.[0] ?? '', oninput: e => set('abilityNames', [e.target.value, ...(w.abilityNames ?? []).slice(1)]) })),
         ...text,
-        h('h2', {}, 'Traits'),
+        h('h2', {}, 'Tags'),
         chips(w, 0, traits, unlock),
         unlock.length ? h('p', { class: 'small muted' }, 'Cards with first tag ', h('strong', { class: 'accent' }, unlock.join(', ')), ' need this evolution in the deck.') : null,
       ];
@@ -1748,6 +1750,7 @@ export function createEditor(env) {
         ...text,
         h('h2', {}, 'Tags'),
         firstTagField(w),
+        h('span', { class: 'ce-other-tags' }, 'OTHER TAGS'),
         chips(w, 1, traits, []),
       ];
     } else if (w.type === 'Combo') {
@@ -1808,26 +1811,33 @@ export function createEditor(env) {
       canWrite() ? null : h('p', { class: 'small muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer), or Card Studio opened through Marko\'s computer.'));
   }
 
-  // Tagovi kao čipovi (× makne), polje "Add trait…" s prijedlozima iz popisa traitova. from: 1 = bez prvog taga.
-  // Popis prijedloga je naš (Marko 2026-11-05): Brave na Androidu ne pokazuje datalist. Otvori se na dodir,
-  // filtrira dok se tipka, dodir ili Enter doda tag.
-  // Who may play the card (Marko 2026-11-14, mockup docs/private/mockups/tags): Any hero (General), One hero, or a
-  // Trait; a hero or a trait is picked from a list that only holds what the first tag rule allows (heroes of the
-  // card's colour with their aliases, any colour for a colorless card; the traits of the trait list). Typing filters
-  // the list in place; "A & B" names two heroes.
+  // Main tag (Marko 2026-11-16, mockup docs/private/mockups/tag-map/jedno-polje.html): one field like Add tag, no
+  // Any hero / One hero / Trait bar. Its pills come in three groups: General, the heroes of the card's colour (any
+  // colour for a colorless card), and the tags those heroes and their evolutions carry (with how many carry it).
+  // Picked, it is a chip with a straw edge; × clears it, "add another" joins one more with "&" (any one of them is
+  // enough). One line under it says who that is.
   function firstTagField(w) {
     const traitList = env.state.traits?.traits ?? [];
+    const cards = allCards().filter(c => !c.deleted);
     const tag = String(w.traits?.[0] ?? '').trim();
-    const k = firstTag({ ...db(), cards: allCards() }, { traits: w.traits }, traitList);
-    const kindNow = k.kind === GENERAL ? 'general' : k.kind === HEROES ? 'hero' : k.kind === TRAIT ? 'trait' : k.kind === MIXED ? 'mixed' : null;
+    const k = firstTag({ ...db(), cards }, { traits: w.traits }, traitList);
     const parts = tag.split('&').map(p => p.trim()).filter(Boolean);
-    // The list shows while a hero or a trait is being picked and closes once one is (Marko 2026-11-14): then only
-    // "Picked: X · change". It opens with One hero / Trait when nothing of that kind is picked, or with change.
-    // "add another" (2026-11-15, "&" with traits): the next pick joins the tag ("Mage & Brave Hero", "Dai & Mage"),
-    // from either list; any one of them is enough to play the card.
-    if (ed.ftFor !== w.id) { ed.ftFor = w.id; ed.ftKind = kindNow === 'mixed' ? 'trait' : kindNow ?? 'hero'; ed.ftOpen = false; ed.ftAdd = false; }
+    const colorless = w.color === 'None' || !w.color;
+    const colourWord = colorless ? '' : `${w.color} `;
+    const fits = c => colorless || c.color === w.color;
+    const heroes = cards.filter(c => c.type === 'Hero' && fits(c)).sort((a, b) => a.name.localeCompare(b.name));
+    // Who carries a tag: heroes of the colour, and evolutions of those heroes.
+    const heroNames = new Set(heroes.map(c => c.name));
+    const carriers = cards.filter(c => (c.type === 'Hero' && fits(c)) || (c.type === 'Evolution' && heroNames.has(c.hero)));
+    const holdersOf = t => carriers.filter(c => (c.traits ?? []).some(x => norm(x) === norm(t)));
+    const tagNames = new Map();
+    for (const c of carriers) for (const t of c.traits ?? []) if (t && !ruleWord(t) && !tagNames.has(norm(t))) tagNames.set(norm(t), t);
+    const tagItems = [...tagNames.values()].map(t => ({ value: t, n: holdersOf(t).length }))
+      .sort((a, b) => b.n - a.n || a.value.localeCompare(b.value));
+    if (ed.ftFor !== w.id) { ed.ftFor = w.id; ed.ftOpen = false; ed.ftAdd = false; }
+    const open = ed.ftOpen || !tag;
     const pickFirst = v => {
-      const join = ed.ftAdd && v !== 'General' && kindNow && kindNow !== 'general';
+      const join = ed.ftAdd && v !== 'General' && tag && norm(tag) !== GENERAL;
       const next = !join ? v : parts.some(p => norm(p) === norm(v)) ? tag : [...parts, v].join(' & ');
       snap(true);
       w.traits = [next, ...(w.traits ?? []).slice(1)];
@@ -1836,58 +1846,73 @@ export function createEditor(env) {
       changed();
       env.render();
     };
-    const openList = () => { ed.ftOpen = true; ed.ftReveal = true; env.render(); };
-    const seg = h('div', { class: 'ce-seg ce-ft-seg' }, [['general', 'Any hero'], ['hero', 'One hero'], ['trait', 'Trait']].map(([key, label]) =>
-      h('button', { type: 'button', class: ed.ftKind === key ? 'active' : '', onclick: () => {
-        if (ed.ftKind === key && key !== 'general') return;
-        ed.ftKind = key;
-        if (key === 'general') { ed.ftAdd = false; pickFirst('General'); }
-        else openList();
-      } }, label)));
-    const out = [h('span', {}, 'WHO MAY PLAY THE CARD'), seg];
-    if (ed.ftKind === 'general') {
-      out.push(h('small', { class: 'muted' }, w.color === 'None' ? 'General: any hero, of any colour.' : `General: any ${w.color} hero.`));
+    const out = [h('span', {}, 'MAIN TAG · WHO MAY PLAY THE CARD')];
+    if (!open) {
+      const clear = () => { snap(true); w.traits = ['', ...(w.traits ?? []).slice(1)]; ed.ftOpen = true; ed.ftReveal = true; changed(); env.render(); };
+      out.push(h('div', { class: 'ce-ft-row' },
+        h('span', { class: 'ce-chip ce-ft-main' }, tag, canWrite() ? h('button', { type: 'button', 'aria-label': `Remove ${tag}`, title: 'Pick another main tag', onclick: clear }, '×') : null),
+        norm(tag) === GENERAL ? null : h('button', { class: 'link accent', type: 'button', disabled: !canWrite(), title: 'Another hero or tag that may play it too: any one of them is enough',
+          onclick: () => { ed.ftAdd = true; ed.ftOpen = true; ed.ftReveal = true; env.render(); } }, 'add another')));
     } else {
-      const items = ed.ftKind === 'hero'
-        ? allCards().filter(c => c.type === 'Hero' && (w.color === 'None' || c.color === w.color)).sort((a, b) => a.name.localeCompare(b.name))
-          .map(c => ({ value: c.name, words: [c.name, ...(c.aliases ?? [])], sub: (c.aliases ?? []).filter(a => a !== c.name).join(', '), color: c.color }))
-        : traitNames(traitList).map(t => ({ value: t, words: [t], sub: (traitList.find(x => (x?.name ?? x) === t)?.description ?? '') }));
-      const rows = items.map(it => h('li', { class: parts.some(p => norm(p) === norm(it.value)) ? 'on' : '', role: 'option', onpointerdown: e => { e.preventDefault(); pickFirst(it.value); } },
-        h('span', {}, it.color ? h('span', { class: 'ce-ft-dot', style: `--sw: var(--c-${it.color})` }) : null, it.value), h('small', { class: 'muted' }, it.sub)));
-      const two = h('li', { role: 'option', hidden: true });
-      const none = h('li', { class: 'muted', hidden: true }, h('small', {}, ed.ftKind === 'hero' ? `No ${w.color === 'None' ? '' : w.color + ' '}hero by that name.` : 'No such trait: new traits are added on the Traits page.'));
-      const list = h('ul', { class: 'ce-ft-list', role: 'listbox' }, rows, two, none);
+      const has = new Set(parts.map(norm));
+      const items = [
+        ...(ed.ftAdd ? [] : [{ value: 'General', words: ['General'], sub: colorless ? 'any hero' : `any ${w.color} hero`, group: 0 }]),
+        ...heroes.filter(c => !has.has(norm(c.name))).map(c => ({ value: c.name, words: [c.name, ...(c.aliases ?? [])], sub: '', group: 1, color: c.color })),
+        ...tagItems.filter(t => t.n && !has.has(norm(t.value))).map(t => ({ value: t.value, words: [t.value], sub: String(t.n), group: 2 })),
+      ];
+      const pills = items.map(it => h('button', { type: 'button', class: `ce-tag-pill${it.group === 0 ? ' ce-ft-general' : ''}`,
+        title: it.group === 2 ? (holdersOf(it.value).map(c => c.name).join(', ') || 'No hero of this colour carries it') : '',
+        onpointerdown: e => { e.preventDefault(); pickFirst(it.value); } },
+        it.color ? h('span', { class: 'ce-ft-dot', style: `--sw: var(--c-${it.color})` }) : null, it.value, it.sub ? h('small', {}, it.sub) : null));
+      const groupEls = [];
+      const titles = ['', `${colorless ? '' : w.color.toUpperCase() + ' '}HEROES`, `TAGS ${colorless ? 'HEROES' : w.color.toUpperCase() + ' HEROES'} CARRY`];
+      for (const g of [0, 1, 2]) {
+        const mine = items.map((it, i) => (it.group === g ? pills[i] : null)).filter(Boolean);
+        if (!mine.length) continue;
+        groupEls.push(h('div', { class: 'ce-tag-group', 'data-g': g }, titles[g] ? h('span', { class: 'ce-tag-group-h' }, titles[g]) : null, h('div', { class: 'ce-tag-group-pills' }, mine)));
+      }
+      const two = h('button', { type: 'button', class: 'ce-tag-pill', hidden: true });
+      const none = h('p', { class: 'small muted', hidden: true }, 'Nothing like that: a main tag is General, a hero, or a tag a hero carries.');
+      const box = h('div', { class: 'ce-tag-pills' }, groupEls, two, none);
+      let first = null;
       const filter = q => {
-        let shown = 0;
-        items.forEach((it, i) => { const ok = !q || it.words.some(x => norm(x).includes(q)); rows[i].hidden = !ok; if (ok) shown++; });
-        // "Shanks & Roger", "Mage & Brave Hero", "Dai & Mage": several in one first tag, typed with "&".
+        first = null;
+        items.forEach((it, i) => { const ok = !q || it.words.some(x => norm(x).includes(q)); pills[i].hidden = !ok; pills[i].classList.remove('on'); if (ok && !first) first = pills[i]; });
+        for (const g of groupEls) g.hidden = ![...g.querySelectorAll('.ce-tag-pill')].some(p => !p.hidden);
+        // "Shanks & Roger", "Mage & Brave Hero": several in one main tag, typed with "&".
         const pair = q.includes('&') ? String(search.value).trim() : '';
         two.hidden = !pair;
-        if (pair) { two.replaceChildren(h('span', {}, `Use "${pair}"`), h('small', { class: 'muted' }, 'any one of them')); two.onpointerdown = e => { e.preventDefault(); ed.ftAdd = false; pickFirst(pair); }; }
-        none.hidden = shown > 0 || !!pair;
+        if (pair) { two.replaceChildren(`Use "${pair}"`, h('small', {}, 'any one of them')); two.onpointerdown = e => { e.preventDefault(); ed.ftAdd = false; pickFirst(pair); }; first = two; }
+        if (q && first) first.classList.add('on');
+        none.hidden = !!first || !q;
       };
-      const search = h('input', { placeholder: ed.ftKind === 'hero' ? 'Type a hero or an alias…' : 'Type a trait…', autocomplete: 'off',
+      const search = h('input', { placeholder: ed.ftAdd ? `Another one, besides ${tag}…` : 'Main tag…', autocomplete: 'off', disabled: !canWrite(),
         oninput: e => filter(norm(e.target.value)),
-        onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); const first = rows.find(r => !r.hidden) ?? (two.hidden ? null : two); first?.dispatchEvent(new PointerEvent('pointerdown')); } } });
-      const right = kindNow === 'mixed' || (ed.ftKind === 'hero' ? kindNow === 'hero' : kindNow === 'trait') || (ed.ftAdd && !!kindNow && kindNow !== 'general');
-      if (right && !ed.ftOpen) {
-        out.push(h('div', { class: 'ce-ft-picked' }, h('span', { class: 'muted' }, 'Picked: '), h('strong', {}, tag), ' · ',
-          h('button', { class: 'link accent', type: 'button', disabled: !canWrite(), onclick: () => { ed.ftAdd = false; openList(); } }, 'change'), ' · ',
-          h('button', { class: 'link accent', type: 'button', disabled: !canWrite(), title: 'Another hero or trait that may play it too: any one of them is enough',
-            onclick: () => { ed.ftAdd = true; openList(); } }, 'add another')));
-        if (parts.length > 1) out.push(h('small', { class: 'muted' }, 'Any one of them is enough.'));
-      } else {
-        out.push(search, list);
-        out.push(h('small', { class: right ? 'muted' : 'warn' }, ed.ftAdd && right ? `Adding to "${tag}": pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} (or switch to ${ed.ftKind === 'hero' ? 'Trait' : 'One hero'} above)`
-          : right ? `Picked: ${tag}` : tag ? `Now "${tag}": pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list` : `Pick ${ed.ftKind === 'hero' ? 'a hero' : 'a trait'} from the list`));
-        // Just opened: brought into view (the form scrolls on its own) and ready to type in.
-        if (ed.ftReveal) {
-          ed.ftReveal = false;
-          requestAnimationFrame(() => requestAnimationFrame(() => { list.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); search.focus({ preventScroll: true }); }));
-        }
+        onkeydown: e => {
+          if (e.key === 'Enter') { e.preventDefault(); first?.dispatchEvent(new PointerEvent('pointerdown')); }
+          else if (e.key === 'Escape' && tag) { ed.ftOpen = false; ed.ftAdd = false; env.render(); }
+        } });
+      out.push(h('div', { class: 'ce-ft-row' }, search,
+        tag ? h('button', { class: 'link', type: 'button', onclick: () => { ed.ftOpen = false; ed.ftAdd = false; env.render(); } }, 'Cancel') : null), box);
+      if (ed.ftReveal) {
+        ed.ftReveal = false;
+        requestAnimationFrame(() => requestAnimationFrame(() => { box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); search.focus({ preventScroll: true }); }));
       }
     }
-    if (tag && !kindNow) out.push(h('small', { class: 'warn' }, `"${tag}" is not a hero, alias or trait: pick who plays the card.`));
+    // One line: who that is.
+    if (tag && !open) {
+      if (k.kind === GENERAL) out.push(h('small', { class: 'muted' }, colorless ? 'Any hero, of any colour.' : `Any ${w.color} hero.`));
+      else if (k.kind === HEROES) out.push(h('small', { class: 'muted' }, `Only ${k.heroes.join(' or ')}${parts.length > 1 ? ': any one of them is enough' : ''}.`));
+      else {
+        const named = k.kind === MIXED ? k.heroes : [];
+        const tags = k.kind === INVALID ? parts : [...(k.traits ?? []), ...(k.unknown ?? [])];
+        const who = [...new Set([...named, ...carriers.filter(c => tags.some(t => (c.traits ?? []).some(x => norm(x) === norm(t)))).map(c => c.name)])];
+        out.push(who.length
+          ? h('small', { class: 'muted' }, `${colorless ? 'Heroes' : `${w.color} heroes`} with it: `, h('strong', {}, who.join(', ')))
+          : h('small', { class: 'warn' }, `No ${colourWord}hero has ${tag}: nobody can play this card.`));
+      }
+    }
+    if (tag && k.kind === INVALID && !open) out.push(h('small', { class: 'warn' }, `"${tag}" is not General, a hero or a tag on the trait list yet: the game does not take it.`));
     return h('div', { class: 'ce-field ce-first-tag' }, ...out);
   }
 
@@ -1941,7 +1966,7 @@ export function createEditor(env) {
       pick = q && items.length ? 0 : -1;
       paint();
     };
-    const add = h('input', { placeholder: from ? 'Add tag…' : 'Add trait…', autocomplete: 'off',
+    const add = h('input', { placeholder: 'Add tag…', autocomplete: 'off',
       onfocus: show, oninput: show,
       onblur: () => setTimeout(() => { if (document.activeElement !== add) { box.hidden = true; if (ed.tagFocus === key) ed.tagFocus = null; if (ed.tagMore === key) ed.tagMore = null; } }, 150),
       onkeydown: e => {
@@ -2302,6 +2327,19 @@ export function createEditor(env) {
       h('p', { class: 'small' }, `Heroes: cards of their colour (goal 8). ${takes} of ${rows.length} may take this card.`),
       card.color === 'None' ? h('p', { class: 'small muted' }, 'Colorless: it does not change these counts.') : null,
       ...groups)];
+  }
+
+  // Cards for a hero (Marko 2026-11-16, mockup tag-map): for its name and each of its tags, how many cards have it
+  // in their main tag. Shows where the hero gets cards from and where nothing is yet.
+  function cardsForPanel(w) {
+    const cards = allCards().filter(c => !c.deleted && PORTRAIT.includes(c.type) && c.id !== w.id);
+    const mainParts = c => String(c.traits?.[0] ?? '').split('&').map(norm).filter(Boolean);
+    const count = words => cards.filter(c => mainParts(c).some(p => words.includes(p))).length;
+    const rows = [[w.name || 'Name', count([w.name, ...(w.aliases ?? [])].map(norm).filter(Boolean))],
+      ...(w.traits ?? []).filter(Boolean).map(t => [t, count([norm(t)])])];
+    return panel(`Cards for ${w.name || 'this hero'}`,
+      h('p', { class: 'small muted' }, 'Main tags that bring it cards:'),
+      h('div', { class: 'ce-cards-for' }, rows.map(([t, n]) => h('span', { class: n ? '' : 'muted' }, t, ' ', h('b', {}, String(n))))));
   }
 
   // ---------- spremanje ----------
@@ -2739,13 +2777,16 @@ export function createEditor(env) {
       });
     }
     const rows = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    // Who carries each tag (Marko 2026-11-16): heroes and evolutions, with the dot of their colour.
+    const carriers = allCards().filter(c => !c.deleted && (c.type === 'Hero' || c.type === 'Evolution'));
+    const holders = t => carriers.filter(c => (c.traits ?? []).some(x => norm(x) === norm(t)));
     return h('div', { class: 'ce-page' },
       env.renderTraits(),
       h('section', { class: 'panel' },
         h('h2', {}, 'Tags on the cards'),
-        h('p', { class: 'muted' }, 'Every tag on the cards. Click a tag to rename it on every card (as drafts; Publish puts it into the game).'),
+        h('p', { class: 'muted' }, 'Every tag on the cards and the heroes who carry it. Click a tag to rename it on every card (as drafts; Publish puts it into the game).'),
         h('table', { class: 'ce-pub-table ce-tag-table' },
-          h('thead', {}, h('tr', {}, ['Tag', 'First tag on', 'Other tag on'].map(t => h('th', {}, t)))),
+          h('thead', {}, h('tr', {}, ['Tag', 'Heroes and evolutions with it', 'Main tag on', 'Other tag on'].map(t => h('th', {}, t)))),
           h('tbody', {}, rows.map(([tag, n]) => {
             // Preimenovanje na klik (Marko 2026-11-06): ćelija postane polje s Rename i Cancel; Enter spremi, Esc odustane.
             const cell = h('td', {});
@@ -2758,7 +2799,10 @@ export function createEditor(env) {
               to.select();
             }
             show();
-            return h('tr', {}, cell, h('td', { class: 'num' }, n.first || '–'), h('td', { class: 'num' }, n.other || '–'));
+            const hs = holders(tag);
+            return h('tr', {}, cell,
+              h('td', {}, hs.length ? h('div', { class: 'ce-tag-holders' }, hs.map(c => h('span', {}, h('span', { class: 'ce-ft-dot', style: `--sw: var(--c-${c.color ?? 'colorless'})` }), c.name))) : h('span', { class: 'muted' }, '–')),
+              h('td', { class: 'num' }, n.first || '–'), h('td', { class: 'num' }, n.other || '–'));
           })))));
   }
 
