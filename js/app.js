@@ -2217,7 +2217,7 @@ window.addEventListener('beforeunload', e => {
 
 // Zapamćeni folder s trajnom dozvolom ("Dopusti pri svakom posjetu") otvara se sam, i na lokalnom serveru;
 // inače preko servera (mobitel), ili početni ekran s "Nastavi s …".
-// Nothing on the way may leave a black page (Tarik's Chrome 2026-11-20): a folder that cannot be read, or a page
+// Nothing on the way may leave a black page (Chrome, 2026-11-20): a folder that cannot be read, or a page
 // that cannot be drawn, falls back to the start screen with the reason, where the folder can be chosen again.
 await (async () => {
   state.savedRoot = window.showDirectoryPicker ? await fs.loadRoot() : null;
