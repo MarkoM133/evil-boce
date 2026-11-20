@@ -2217,14 +2217,32 @@ window.addEventListener('beforeunload', e => {
 
 // Zapamćeni folder s trajnom dozvolom ("Dopusti pri svakom posjetu") otvara se sam, i na lokalnom serveru;
 // inače preko servera (mobitel), ili početni ekran s "Nastavi s …".
-state.savedRoot = window.showDirectoryPicker ? await fs.loadRoot() : null;
-const info = await probeServer();
-if (state.savedRoot && (await fs.permission(state.savedRoot).catch(() => 'denied')) === 'granted') {
-  await useStore(folderStore(state.savedRoot));
-  await applyHash().catch(e => toast(e.message || String(e), 'error'));
-} else if (info) {
-  await useStore(serverStore(info));
-  state.tab = 'editor';
-  await applyHash().catch(e => toast(e.message || String(e), 'error'));
-}
-render();
+// Nothing on the way may leave a black page (Tarik's Chrome 2026-11-20): a folder that cannot be read, or a page
+// that cannot be drawn, falls back to the start screen with the reason, where the folder can be chosen again.
+await (async () => {
+  state.savedRoot = window.showDirectoryPicker ? await fs.loadRoot() : null;
+  const info = await probeServer().catch(() => null);
+  try {
+    if (state.savedRoot && (await fs.permission(state.savedRoot).catch(() => 'denied')) === 'granted') {
+      await useStore(folderStore(state.savedRoot));
+      await applyHash().catch(e => toast(e.message || String(e), 'error'));
+    } else if (info) {
+      await useStore(serverStore(info));
+      state.tab = 'editor';
+      await applyHash().catch(e => toast(e.message || String(e), 'error'));
+    }
+  } catch (e) {
+    console.error(e);
+    const where = state.store?.kind === 'folder' ? `the folder "${state.store.name}"` : 'the cards';
+    state.store = null;
+    toast(`Card Studio could not open ${where}: ${e.message || e}. Choose the folder again.`, 'error', 20000);
+  }
+  try {
+    render();
+  } catch (e) {
+    console.error(e);
+    state.store = null;
+    render();
+    toast(`Card Studio could not draw this page: ${e.message || e}. Choose the folder again.`, 'error', 20000);
+  }
+})();
