@@ -18,7 +18,9 @@ export function toTokens(text) {
     // "[Range] " na početku je glava (gore), "range" malim slovom ostaje riječ.
     .replace(/\bRange\b/g, '[RNG]')
     // Energy je token i bez broja ("charged Energy" → "charged [EN]"), kao što je na karti dijamant.
-    .replace(/\bEnergy\b/g, '[EN]');
+    .replace(/\bEnergy\b/g, '[EN]')
+    // Power isto (2026-11-20): "Set their Power to 0" ostaje ikona i kad se karta opet otvori. Knockback ne: često je glagol.
+    .replace(/\bPower\b/g, '[PWR]');
 }
 
 // Tokeni (editor) → riječi (baza): "2[DMG]" → "2 DMG", "more [HP]" → "more HP", "[RNG]" na početku → "[Range] ".

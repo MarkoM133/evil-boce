@@ -23,6 +23,9 @@ test('card text: words in cards.json, tokens in the editor, and back', () => {
     assert.equal(toWords(tokens), words);
   }
   assert.equal(toTokens("Knockback an Opponent's Hero 3 spaces"), "Knockback an Opponent's Hero 3 spaces");
+  // Power is an icon without a number too (2026-11-20, DQ1-035 Kaclang).
+  assert.equal(toTokens('Set their Power to 0 this turn.'), 'Set their [PWR] to 0 this turn.');
+  assert.equal(toWords('Set their [PWR] to 0 this turn.'), 'Set their Power to 0 this turn.');
   assert.equal(toWords('**Battle Phase:** gain +1[KB]'), 'Battle Phase: gain +1 Knockback');
 });
 
