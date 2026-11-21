@@ -1847,7 +1847,7 @@ export function createEditor(env) {
             onclick: () => { set('ingredients', [ing[1] ?? '', ing[0] ?? '']); env.render(); } }, '⇄'),
           comboSlot(1, pool.find(x => x.id === ing[1]), colourName)),
         ed.comboPick == null ? null : comboPicker(pool, ing, colourName, choose),
-        h('p', { class: 'small muted' }, 'Both cards played for two of your heroes in the same battle: the player may pay X more energy to turn them into this card. The rim takes the colours of the two cards. Combo cards never go in a deck or a pack.'),
+        h('p', { class: 'small muted' }, 'Both cards played for two of your heroes in the same battle: the player may pay X more energy and this card comes on top of them, for both heroes. The same card twice is a pair too, and one hero may play both. The rim takes the colours of the two cards. Combo cards never go in a deck or a pack.'),
         h('h2', {}, 'Effect text'),
         ...text,
       ];

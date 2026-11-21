@@ -51,13 +51,12 @@ export function nextComboId(cards) {
   return `${COMBO_SET}-${String((n.length ? Math.max(...n) : 0) + 1).padStart(3, '0')}`;
 }
 
-// Problemi comboa za Checks: točno dva različita sastojka, Action ili Assist, X barem 0.
+// Problemi comboa za Checks: točno dva sastojka (smiju biti dvije iste karte, Marko 2026-11-21), Action ili Assist, X barem 0.
 export function comboProblems(cards, combo) {
   const out = [];
   const ing = combo.ingredients ?? [];
   if (ing.length !== 2 || !ing[0] || !ing[1]) out.push('A combo needs exactly two cards');
-  else if (ing[0] === ing[1]) out.push('The two cards must be different');
-  for (const id of ing.filter(Boolean)) {
+  for (const id of [...new Set(ing.filter(Boolean))]) {
     const c = cards.find(x => x.id === id);
     if (!c) out.push(`${id} is not a card`);
     else if (!INGREDIENT_TYPES.includes(c.type)) out.push(`${c.name} is ${c.type}: only Action and Assist cards make a combo`);

@@ -16,7 +16,8 @@ const DECISION_ROLL_OFFER: String = "roll_offer"
 ## End phase, energy claim variant: the player splits the energy left between the stages its
 ## heroes stand on: {"energy": n, "stages": [ids], "goal": n}.
 const DECISION_STAGE_ENERGY: String = "stage_energy"
-## Combo (2026-11-07): the second card of a pair was played in a battle; its player may pay more to turn both into the combo.
+## Combo (2026-11-07; on top of the two cards since 2026-11-21): the second card of a pair was played in a battle; its
+## player may pay more to add the combo to them.
 const DECISION_COMBO: String = "combo_offer"
 
 var catalog: CardCatalog
@@ -542,17 +543,15 @@ func _apply_card_round_move(s: GameState, m: Move) -> String:
 			var asked: CardDef = catalog.get_card(m.str_arg("card"))
 			if asked == null or asked.type != "Assist":
 				return PASS_ONLY_WHY
-		# Combo (2026-11-07): the second card of a pair, for another of the player's heroes in this battle,
-		# is offered as the combo first; the card is played (or replaced) when the offer is answered.
-		var offer: Dictionary = _combo_offer(s, m)
-		if not offer.is_empty():
-			s.pending.append(offer)
-			s.passed = PackedInt32Array()
-			s.to_act = _next_slot(s, s.to_act)
-			return ""
 		var err: String = _play_card(s, m)
 		if not err.is_empty():
 			return err
+		# Combo (2026-11-07; Marko 2026-11-21: on top of the cards): the card is played and resolved; when it is
+		# the second of a combo's pair in this battle, its player is then asked whether to pay for the combo too.
+		# The offer waits behind the choices the card itself asked for.
+		var offer: Dictionary = _combo_offer(s, m.player, m.str_arg("card"))
+		if not offer.is_empty():
+			s.pending.append(offer)
 		s.passed = PackedInt32Array()
 		s.to_act = _next_slot(s, s.to_act)
 		return ""
@@ -650,20 +649,15 @@ func _apply_decision(s: GameState, m: Move) -> String:
 			if m.type == Move.CHOOSE:
 				picked = str(m.data.get("value", ""))
 			elif m.type != Move.PASS:
-				return "choose the combo, or pass to play the card as it is"
+				return "choose the combo, or pass to go without it"
 			var option: Dictionary = {}
 			for o: Variant in JsonUtil.as_array(d.get("combos", [])):
 				if str(JsonUtil.as_dict(o).get("id", "")) == picked:
 					option = JsonUtil.as_dict(o)
 			if not picked.is_empty() and option.is_empty():
 				return "that combo is not on offer"
-			var cid: String = str(d.get("card", ""))
-			var wanted: String = str(d.get("hero", ""))
 			if option.is_empty():
-				# Declined: the card goes as it would have.
-				var err: String = _play(s, who, cid, wanted, false, null, str(d.get("replace", "")))
-				if not err.is_empty():
-					return err
+				# Declined: the two cards stay as they were played.
 				s.pending.pop_front()
 			else:
 				var err: String = _accept_combo(s, who, d, option)
@@ -2461,7 +2455,7 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 		"Action":
 			if card.bonus.is_empty() and card.effects.is_empty():
 				return "card effects are not ready yet"
-			var extra: int = _cost_damage(card)
+			var extra: int = _cost_damage(s, slot, target, card)
 			if extra > 0 and target.hp <= extra:
 				return "cannot pay %d damage" % extra
 			# An Action whose effect has nothing to work on (no hex for its wall, no core in reach)
@@ -2487,7 +2481,7 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 
 
 ## A card played in the battle being fought, for the combo offer: who, which hero (an Assist has none)
-## and the stat bonus it put on the hero (undone when a combo replaces it).
+## and the stat bonus it put on the hero.
 func _note_played(s: GameState, slot: int, cid: String, hero: String, bonus: Dictionary) -> void:
 	if s.phase != GameState.PHASE_BATTLE or s.battle_index < 0 or s.battle_index >= s.battles.size():
 		return
@@ -2497,118 +2491,139 @@ func _note_played(s: GameState, slot: int, cid: String, hero: String, bonus: Dic
 	b["played"] = played
 
 
-## Combo (Marko and the card author, 2026-11-07): when the second card of a combo's pair is played in a
-## battle for another of the player's heroes in it (an Assist counts without a hero), the player may pay
-## the combo's extra energy on top of the card's cost and both cards become the combo. The decision, or
-## {} when no combo is on offer (the play then goes as usual). The card is tried on a copy first, so an
-## illegal play is refused the usual way.
-func _combo_offer(s: GameState, m: Move) -> Dictionary:
+## Combo (2026-11-07; Marko 2026-11-21: a bonus on top, not a replacement): two cards of a combo's pair played by
+## one player in the same battle. Both resolve as ever; right after the second, its player may pay the combo's
+## extra energy and the Combo card's effect comes on top of them. Two different cards go to two different heroes of
+## the player in the battle (an Assist has no hero and pairs with any); two copies of the same card may also be
+## played for one hero. The decision, or {} when no combo is on offer.
+func _combo_offer(s: GameState, slot: int, cid: String) -> Dictionary:
 	if s.phase != GameState.PHASE_BATTLE or s.battle_index < 0 or s.battle_index >= s.battles.size():
 		return {}
-	var cid: String = m.str_arg("card")
 	var card: CardDef = catalog.get_card(cid)
 	if card == null or (card.type != "Action" and card.type != "Assist"):
 		return {}
 	# A token is never part of a combo (GDD 10, 2026-11-14), whatever a combo card lists.
 	if card.token:
 		return {}
-	var mine: Array[HeroState] = card_context_heroes(s, m.player)
-	if mine.size() < 2:
-		return {}
-	var played: Array = JsonUtil.as_array(s.battles[s.battle_index].get("played", []))
-	var combos: Array = []
+	var hero: String = ""
+	var options: Array = []
 	for combo: CardDef in catalog.of_type("Combo"):
 		if combo.ingredients.size() != 2 or not combo.ingredients.has(cid) or not combo.is_ready():
 			continue
 		var other: String = combo.ingredients[1] if combo.ingredients[0] == cid else combo.ingredients[0]
-		if other == cid:
-			continue
 		var other_card: CardDef = catalog.get_card(other)
 		if other_card != null and other_card.token:
 			continue
-		for rec: Variant in played:
-			var r: Dictionary = JsonUtil.as_dict(rec)
-			if JsonUtil.as_int(r.get("player", -1), -1) == m.player and str(r.get("card", "")) == other and not JsonUtil.as_bool(r.get("used", false)):
-				combos.append({"id": combo.id, "with": other, "with_hero": str(r.get("hero", "")), "extra": combo.extra_cost})
-				break
-	if combos.is_empty():
-		return {}
-	# The card as it would be played: its hero and its cost, from a copy.
-	var copy: GameState = GameState.from_dict(s.to_dict())
-	var before: int = copy.player(m.player).energy
-	if not _play_card(copy, m).is_empty():
-		return {}
-	var cost: int = before - copy.player(m.player).energy
-	var hero: String = ""
-	for i: int in range(copy.log.size() - 1, -1, -1):
-		var e: Dictionary = copy.log[i]
-		if (str(e.get("type", "")) == "action" or str(e.get("type", "")) == "assist") and str(e.get("card", "")) == cid:
-			hero = str(e.get("hero", ""))
-			break
-	var options: Array = []
-	for o: Variant in combos:
-		var c: Dictionary = JsonUtil.as_dict(o)
-		var with_hero: String = str(c.get("with_hero", ""))
-		# Two different heroes of the player in this battle (an Assist has no hero and pairs with any).
-		if not hero.is_empty() and not with_hero.is_empty() and with_hero == hero:
+		var pair: Array[Dictionary] = _combo_pair(s, slot, other, cid)
+		if pair.is_empty() or s.player(slot).energy < combo.extra_cost:
 			continue
-		if s.player(m.player).energy < cost + JsonUtil.as_int(c.get("extra", 0)):
+		if not _combo_payable(s, slot, combo, _combo_heroes(s, pair)):
 			continue
-		options.append(c)
+		hero = str(pair[1].get("hero", ""))
+		options.append({"id": combo.id, "with": other, "with_hero": str(pair[0].get("hero", "")), "extra": combo.extra_cost})
 	if options.is_empty():
 		return {}
-	return {"type": DECISION_COMBO, "player": m.player, "card": cid, "hero": hero, "cost": cost,
-		"replace": m.str_arg("replace"), "combos": options}
+	return {"type": DECISION_COMBO, "player": slot, "card": cid, "hero": hero, "combos": options}
 
 
-## The combo is paid: the second card leaves the hand without resolving, the first card's stat bonus
-## comes off its hero and its battle effects still waiting are dropped, and the combo's effects run for
-## the player with the second card's hero (the first one's for an Assist) in this battle.
+## The two played cards a combo of `first_id` and `second_id` would be made of now: [the earlier one, the one
+## played last], records of this battle's card round not yet in a combo; [] when they are not both there.
+## Different cards need two heroes of the player in the battle and may not be on the same hero.
+func _combo_pair(s: GameState, slot: int, first_id: String, second_id: String) -> Array[Dictionary]:
+	var none: Array[Dictionary] = []
+	var played: Array = JsonUtil.as_array(s.battles[s.battle_index].get("played", []))
+	var last: int = -1
+	for i: int in range(played.size() - 1, -1, -1):
+		var r: Dictionary = JsonUtil.as_dict(played[i])
+		if JsonUtil.as_int(r.get("player", -1), -1) == slot and str(r.get("card", "")) == second_id and not JsonUtil.as_bool(r.get("used", false)):
+			last = i
+			break
+	if last < 0:
+		return none
+	var second: Dictionary = JsonUtil.as_dict(played[last])
+	var same: bool = first_id == second_id
+	if not same and card_context_heroes(s, slot).size() < 2:
+		return none
+	for i: int in played.size():
+		if i == last:
+			continue
+		var r: Dictionary = JsonUtil.as_dict(played[i])
+		if JsonUtil.as_int(r.get("player", -1), -1) != slot or str(r.get("card", "")) != first_id or JsonUtil.as_bool(r.get("used", false)):
+			continue
+		var a: String = str(r.get("hero", ""))
+		var b: String = str(second.get("hero", ""))
+		if not same and not a.is_empty() and a == b:
+			continue
+		var out: Array[Dictionary] = [r, second]
+		return out
+	return none
+
+
+## The heroes a combo works for: the ones its two cards were played for (one, when both were played for it).
+func _combo_heroes(s: GameState, pair: Array[Dictionary]) -> Array[HeroState]:
+	var out: Array[HeroState] = []
+	for r: Dictionary in pair:
+		var h: HeroState = s.hero(str(r.get("hero", "")))
+		if h != null and not out.has(h):
+			out.append(h)
+	return out
+
+
+## Can every hero of the combo pay its additional cost (COST_DAMAGE needs more HP than it takes)?
+func _combo_payable(s: GameState, slot: int, combo: CardDef, heroes: Array[HeroState]) -> bool:
+	for h: HeroState in heroes:
+		var n: int = _cost_damage(s, slot, h, combo)
+		if n > 0 and h.hp <= n:
+			return false
+	return true
+
+
+## The combo is paid: the two cards stay as they were played, and the Combo card comes on top. Its stat boxes
+## and whatever its text does for "your Hero" go to both heroes the cards were played for (Marko 2026-11-21);
+## an effect that names its own targets ("Each of your Heroes in this Battle …") runs once.
 func _accept_combo(s: GameState, slot: int, d: Dictionary, option: Dictionary) -> String:
 	var p: PlayerState = s.player(slot)
 	var cid: String = str(d.get("card", ""))
 	var combo: CardDef = catalog.get_card(str(option.get("id", "")))
-	if combo == null or not p.hand.has(cid):
+	if combo == null:
 		return "that combo cannot be made now"
-	var total: int = JsonUtil.as_int(d.get("cost", 0)) + combo.extra_cost
-	if p.energy < total:
-		return "not enough energy (%d, costs %d)" % [p.energy, total]
-	var b: Dictionary = s.battles[s.battle_index]
-	var played: Array = JsonUtil.as_array(b.get("played", []))
-	var first: Dictionary = {}
-	for rec: Variant in played:
-		var r: Dictionary = JsonUtil.as_dict(rec)
-		if JsonUtil.as_int(r.get("player", -1), -1) == slot and str(r.get("card", "")) == str(option.get("with", "")) and not JsonUtil.as_bool(r.get("used", false)):
-			first = r
-			break
-	if first.is_empty():
+	if p.energy < combo.extra_cost:
+		return "not enough energy (%d, costs %d)" % [p.energy, combo.extra_cost]
+	var pair: Array[Dictionary] = _combo_pair(s, slot, str(option.get("with", "")), cid)
+	if pair.is_empty():
 		return "the other card of the combo is no longer in this battle"
-	p.energy -= total
-	_take_from_hand(p, cid)
-	p.graveyard.append(cid)
-	first["used"] = true
-	var first_hero: HeroState = s.hero(str(first.get("hero", "")))
-	if first_hero != null:
-		var bonus: Dictionary = JsonUtil.as_dict(first.get("bonus", {}))
-		for k: Variant in bonus:
-			first_hero.add_bonus(first_hero.phase_bonus, str(k), -JsonUtil.as_int(bonus[k]))
-	var kept: Array[Dictionary] = []
-	for x: Dictionary in s.deferred:
-		var ctx: Dictionary = JsonUtil.as_dict(x.get("ctx", {}))
-		if JsonUtil.as_int(x.get("player", -1), -1) == slot and str(ctx.get("card", "")) == str(first.get("card", "")):
-			continue
-		kept.append(x)
-	s.deferred = kept
-	var hero: String = str(d.get("hero", ""))
-	if hero.is_empty():
-		hero = str(first.get("hero", ""))
-	s.event("combo", {"combo": combo.id, "cards": [str(first.get("card", "")), cid], "heroes": [str(first.get("hero", "")), str(d.get("hero", ""))], "player": slot, "extra": combo.extra_cost})
-	var h: HeroState = s.hero(hero)
-	for k: String in combo.bonus:
-		if h != null:
+	var heroes: Array[HeroState] = _combo_heroes(s, pair)
+	if not _combo_payable(s, slot, combo, heroes):
+		return "a hero cannot pay the combo's additional cost"
+	p.energy -= combo.extra_cost
+	pair[0]["used"] = true
+	pair[1]["used"] = true
+	s.event("combo", {"combo": combo.id, "cards": [str(pair[0].get("card", "")), cid], "heroes": [str(pair[0].get("hero", "")), str(pair[1].get("hero", ""))], "player": slot, "extra": combo.extra_cost})
+	for h: HeroState in heroes:
+		for k: String in combo.bonus:
 			h.add_bonus(h.phase_bonus, k, combo.bonus[k])
-	_run_play_effects(s, slot, h, combo, s.battle_index)
+	# The second card's hero leads (the first one's for an Assist): effects that run once run for it.
+	var lead: Array[HeroState] = []
+	if not heroes.is_empty():
+		lead.append(heroes[heroes.size() - 1])
+	for e: FxEffect in combo.effects:
+		if _for_each_hero(e) and not heroes.is_empty():
+			for h: HeroState in heroes:
+				_run_play_effect(s, slot, h, combo, e, s.battle_index)
+		else:
+			_run_play_effect(s, slot, lead[0] if not lead.is_empty() else null, combo, e, s.battle_index)
+	_queue_core_returns(s)
 	return ""
+
+
+## Does a combo's effect speak of "your Hero" (then it runs for each hero of the combo), or of targets of its own?
+func _for_each_hero(e: FxEffect) -> bool:
+	if e.bonus or e.cond == "ACTIVATED":
+		return true
+	for a: Dictionary in e.actions:
+		if str(a["target"]) == "SELF" or str(a["verb"]) == "COST_DAMAGE":
+			return true
+	return false
 
 
 ## Why the first effect an Action runs as it is played cannot start ("" when it can).
@@ -2626,26 +2641,31 @@ func _play_blocker(s: GameState, slot: int, target: HeroState, card: CardDef) ->
 ## Effects that happen as the card is played: PLAY ones, and phase ones on an Action
 ## (its WHEN only says when it may be played). "If you win" ones wait for the battle.
 func _run_play_effects(s: GameState, slot: int, target: HeroState, card: CardDef, battle: int = -1) -> void:
+	for e: FxEffect in card.effects:
+		_run_play_effect(s, slot, target, card, e, battle)
+	# A core the card took off comes back now, after the card's own choices.
+	_queue_core_returns(s)
+
+
+## One effect of a card as it is played for `target` (null: no hero).
+func _run_play_effect(s: GameState, slot: int, target: HeroState, card: CardDef, e: FxEffect, battle: int = -1) -> void:
 	var ctx: Dictionary = {"player": slot, "hero": target.id if target != null else "", "card": card.id, "stage": ""}
 	if battle >= 0:
 		ctx["battle"] = battle
-	for e: FxEffect in card.effects:
-		if e.when == "PASSIVE" or e.when == "REVEAL":
-			continue
-		if card.type != "Action" and card.type != "Combo" and e.when != "PLAY":
-			continue
-		if e.optional and card.type != "Action":
-			continue
-		if not fx.cond_ok(s, ctx, e):
-			continue
-		if e.cond == "WIN" and not e.arms_on_play():
-			s.deferred.append({"player": slot, "hero": ctx["hero"], "fx": e.line, "ctx": ctx})
-			continue
-		var err: String = fx.run(s, ctx, e)
-		if not err.is_empty():
-			s.event("fx_skipped", {"card": card.id, "why": err})
-	# A core the card took off comes back now, after the card's own choices.
-	_queue_core_returns(s)
+	if e.when == "PASSIVE" or e.when == "REVEAL":
+		return
+	if card.type != "Action" and card.type != "Combo" and e.when != "PLAY":
+		return
+	if e.optional and card.type != "Action":
+		return
+	if not fx.cond_ok(s, ctx, e):
+		return
+	if e.cond == "WIN" and not e.arms_on_play():
+		s.deferred.append({"player": slot, "hero": ctx["hero"], "fx": e.line, "ctx": ctx})
+		return
+	var err: String = fx.run(s, ctx, e)
+	if not err.is_empty():
+		s.event("fx_skipped", {"card": card.id, "why": err})
 
 
 ## The phase an Action is locked to ("" = any card round).
@@ -2658,8 +2678,13 @@ func _play_phase(card: CardDef) -> String:
 	return ""
 
 
-func _cost_damage(card: CardDef) -> int:
+## The damage `target` pays as the card's additional cost: its COST_DAMAGE that counts for this hero (a bonus
+## may replace it: "Do not pay the additional cost" is INSTEAD … COST_DAMAGE 0).
+func _cost_damage(s: GameState, slot: int, target: HeroState, card: CardDef) -> int:
+	var ctx: Dictionary = {"player": slot, "hero": target.id if target != null else "", "card": card.id, "stage": ""}
 	for e: FxEffect in card.effects:
+		if not e.has_verb("COST_DAMAGE") or not fx.cond_ok(s, ctx, e):
+			continue
 		for a: Dictionary in e.actions:
 			if str(a["verb"]) == "COST_DAMAGE":
 				var args: PackedStringArray = a["args"]

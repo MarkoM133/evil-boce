@@ -1143,6 +1143,36 @@
       "introducedIn": "TA",
       "text": "Battle Phase: Each of your Heroes in this Battle gets +3000 Power.",
       "fx": "BATTLE: BUFF ALL_FRIENDLY_IN_BATTLE PWR 3000"
+    },
+    {
+      "id": "TF-040",
+      "name": "Grey Jab",
+      "type": "Action",
+      "color": "None",
+      "cost": 1,
+      "traits": [
+        "General"
+      ],
+      "bonus": {
+        "pwr": 1000
+      },
+      "text": ""
+    },
+    {
+      "id": "TC-003",
+      "name": "Twin Jab",
+      "type": "Combo",
+      "ingredients": [
+        "TF-040",
+        "TF-040"
+      ],
+      "extraCost": 1,
+      "introducedIn": "TA",
+      "bonus": {
+        "dmg": 2
+      },
+      "text": "Battle Phase: As an additional cost, your Hero takes 2 DMG.\n{Alpha} Bonus: Do not pay the additional cost.",
+      "fx": "BATTLE: COST_DAMAGE 2\nBATTLE INSTEAD BONUS {Alpha}: COST_DAMAGE 0"
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "name": "combo: declining the offer plays the card as it is, and the pair is not offered twice (2026-11-07)",
+  "name": "combo: declining the offer leaves the two cards as they were played, and the pair is not offered twice (2026-11-07; on top since 2026-11-21)",
   "steps": [
     {
       "setup": {
@@ -118,14 +118,18 @@
         "pending.0.player": 0,
         "pending.0.card": "TA-042",
         "pending.0.hero": "p0:TA-002",
-        "pending.0.cost": 1,
         "pending.0.combos.0.id": "TC-001",
         "pending.0.combos.0.with": "TA-040",
+        "pending.0.combos.0.with_hero": "p0:TA-001",
         "pending.0.combos.0.extra": 1,
-        "players.p0.hand": [
+        "players.p0.hand": [],
+        "players.p0.energy": 2,
+        "players.p0.graveyard": [
+          "TA-040",
           "TA-042"
         ],
-        "players.p0.energy": 3,
+        "heroes.p0:TA-001.phase_bonus.pwr": 1000,
+        "heroes.p0:TA-002.phase_bonus.pwr": 1000,
         "to_act": 1
       }
     },
@@ -145,7 +149,8 @@
         "players.p0.hand": [],
         "heroes.p0:TA-001.phase_bonus.pwr": 1000,
         "heroes.p0:TA-002.phase_bonus.pwr": 1000,
-        "battles.0.played.1.card": "TA-042"
+        "battles.0.played.1.card": "TA-042",
+        "battles.0.played.0.used": false
       }
     }
   ]

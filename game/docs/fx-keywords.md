@@ -61,7 +61,7 @@ beside it is never written.
   plays the card unless the text says otherwise; a colour bonus looks at the hero the card is played for; a
   discount never takes a card's cost below 1. Card text wording (gain / lose Energy, names only on Hero and
   Evolution cards) is in the private text guide. Which hero a card may be played for is
-  the card's first tag and colour, read by the game itself: no condition names the hero (`IF HERO` does not exist).
+  the card's first tag and colour, read by the game itself: no condition names the hero (`IF HERO` does not exist; a bonus for one hero is `BONUS {Tag}`).
 - `IF ACTIVATED`: the hero is this turn's activated hero. `IF WIN`: the effect waits and runs
   only if the hero's side wins the current battle (after damage, before knockback).
   `IF OPP_EQUIPPED {Trait}`: an enemy (in a battle: an enemy in that battle) has equipment
@@ -73,6 +73,10 @@ beside it is never written.
   is played for (SELF: the activated hero, the equipped hero, the hero an assist helps) is one
   of the card's `bonusColors`, or the colour named. A colorless card (`color: "None"`) is
   played for a hero of any colour; the first tag still counts.
+- `BONUS {Tag}` (Marko 2026-11-21): the same, for a hero rather than a colour: the hero the card is played for
+  is called that (its name or an alias), or the card it plays as now carries the tag, read as the first tag
+  is. `BATTLE BONUS {Flazzard}: BUFF SELF DMG 2`. Card text: "{Flazzard} Bonus: +2 DMG." A tag with spaces
+  stays one word in the head (`BONUS {Mage & Brave Hero}`).
 - `INSTEAD`: the effect replaces the one right before it on the card when its BONUS and IF
   hold, and is skipped otherwise; it keeps the WHEN of the one before. `PREROLL RANGE: HEAL
   FRIENDLY 3` + `PREROLL RANGE INSTEAD BONUS: HEAL FRIENDLY 4` is "heals 4 HP instead".
@@ -126,7 +130,7 @@ moves into or out of range gains or loses the effect at once.
 | `NO_CLAIM <p or hero group>` | | that player claims no stage this turn; on heroes (`NO_CLAIM ALL_ENEMY_IN_RANGE`, Conqueror's Haki): the heroes in range as the card is played get a "no_claim" status for the turn, and a stage claims for a player only if a hero of theirs on it is free (energy still goes in; the claim waits). `NO_CLAIM OPP` stays for the whole opponent |
 | `ROLL_AGAIN` | | the activated hero rolls once more, right away (Roll phase, after the roll); the ball stopping again brings new offers |
 | `REVERSE_ROLL` | | the activated hero goes back to where it stood as the Roll phase began; heroes it pushed, cores it picked up and stages it revealed stay ("reverse the roll", "return this hero to where it was before the roll") |
-| `COST_DAMAGE <n>` | | additional cost: SELF takes n as the card is played (needs more than n HP) |
+| `COST_DAMAGE <n>` | | additional cost: SELF takes n as the card is played (needs more than n HP). `COST_DAMAGE 0` under `INSTEAD BONUS` right after it takes the cost away for that hero ("{Flazzard} Bonus: Do not pay the additional cost."). On a Combo card each hero of the combo pays it |
 | `OWN_COST <n>` | | this card costs ±n, read when its price is worked out (`PLAY BONUS: OWN_COST -1` = "This card costs 1 less to play" for a hero of a bonus colour); never below 1 |
 | `CHOOSE <p> [A; B] [C; D]` | | that player picks a branch; its actions run |
 | `RECYCLE <p> <n> [TOP|BOTTOM|SHUFFLE]` | | the top n of the graveyard go back into the deck |

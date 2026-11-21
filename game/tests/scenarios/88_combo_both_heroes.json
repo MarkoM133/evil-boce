@@ -1,0 +1,136 @@
+{
+  "name": "combo on top (Marko 2026-11-21): the Combo card's stat boxes and its \"your Hero\" go to both heroes its cards were played for; each pays the additional cost unless its bonus says otherwise",
+  "steps": [
+    {
+      "setup": {
+        "seed": 1
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 0,
+        "keep": true
+      }
+    },
+    {
+      "move": {
+        "type": "mulligan",
+        "player": 1,
+        "keep": true
+      }
+    },
+    {
+      "set": {
+        "heroes.p0:TA-001.zone": "map",
+        "heroes.p0:TA-001.hex": [
+          4,
+          8
+        ],
+        "heroes.p0:TA-002.zone": "map",
+        "heroes.p0:TA-002.hex": [
+          5,
+          9
+        ],
+        "heroes.p1:TB-002.zone": "map",
+        "heroes.p1:TB-002.hex": [
+          6,
+          8
+        ],
+        "players.p0.hand": [
+          "TF-040",
+          "TF-040"
+        ],
+        "players.p0.energy": 4,
+        "initiative": 0
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 0,
+        "hero": "p0:TA-001",
+        "roll": false
+      }
+    },
+    {
+      "move": {
+        "type": "select",
+        "player": 1,
+        "hero": "p1:TB-002",
+        "roll": false
+      }
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "pass_round": true
+    },
+    {
+      "expect": {
+        "phase": "battle",
+        "battles": {
+          "$size": 1
+        },
+        "battles.0.heroes": {
+          "$size": 3
+        },
+        "to_act": 0
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TF-040",
+        "hero": "p0:TA-001"
+      }
+    },
+    {
+      "move": {
+        "type": "pass",
+        "player": 1
+      }
+    },
+    {
+      "move": {
+        "type": "play_card",
+        "player": 0,
+        "card": "TF-040",
+        "hero": "p0:TA-002"
+      }
+    },
+    {
+      "expect": {
+        "pending": {
+          "$size": 1
+        },
+        "pending.0.type": "combo_offer",
+        "pending.0.hero": "p0:TA-002",
+        "pending.0.combos.0.with_hero": "p0:TA-001"
+      }
+    },
+    {
+      "move": {
+        "type": "choose",
+        "player": 0,
+        "value": "TC-003"
+      }
+    },
+    {
+      "expect": {
+        "pending": {
+          "$size": 0
+        },
+        "players.p0.energy": 1,
+        "heroes.p0:TA-001.phase_bonus.pwr": 1000,
+        "heroes.p0:TA-001.phase_bonus.dmg": 2,
+        "heroes.p0:TA-001.hp": 10,
+        "heroes.p0:TA-002.phase_bonus.pwr": 1000,
+        "heroes.p0:TA-002.phase_bonus.dmg": 2,
+        "heroes.p0:TA-002.hp": 10
+      }
+    }
+  ]
+}

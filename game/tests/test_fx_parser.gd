@@ -94,6 +94,14 @@ func test_wording_2026_11_05() -> void:
 	_assert_fx(_fx("Action", "Conqueror's Haki", "Postroll Phase: Opponent's Heroes in Range can't claim a Stage this turn.\nRed Bonus: This card costs 1 less.", none),
 		"POSTROLL: NO_CLAIM ALL_ENEMY_IN_RANGE\nPLAY BONUS: OWN_COST -1")
 	_assert_fx(_fx("Action", "Jenga Cannon", "Preroll Phase: Place a Wall on an empty space in Range."), "PREROLL RANGE: WALL")
+	# A tag bonus that takes the additional cost away (2026-11-21).
+	_assert_fx(_fx("Combo", "Five Flares", "Battle Phase: As an additional cost, your Hero takes 3 DMG.\n{Flazzard} Bonus: Do not pay the additional cost."),
+		"BATTLE: COST_DAMAGE 3\nBATTLE INSTEAD BONUS {Flazzard}: COST_DAMAGE 0")
+	_assert_fx(_fx("Action", "Old Grudge", "Battle Phase: +1000 Power.\n{Mage & Brave Hero} Bonus: +2 DMG."),
+		"BATTLE: BUFF SELF PWR 1000\nBATTLE BONUS {Mage & Brave Hero}: BUFF SELF DMG 2")
+	# One effect per line, as Card Studio writes them: a line that opens with its phase ends the one before.
+	_assert_fx(_fx("Combo", "Five Finger Flares", "Battle Phase: +4 DMG\nBattle Phase: As an additional cost, your Hero takes 3 DMG.\n{Flazzard} Bonus: Do not pay the additional cost."),
+		"BATTLE: BUFF SELF DMG 4\nBATTLE: COST_DAMAGE 3\nBATTLE INSTEAD BONUS {Flazzard}: COST_DAMAGE 0")
 	# A companion (GDD 10, 2026-11-21): the three sentences of Coco Jumbo.
 	_assert_fx(_fx("Assist", "Coco Jumbo", "When you play this card, place Coco Jumbo next to your Hero.\nPostroll Phase: A friendly Hero within 1 space may pay 1 Energy to hide inside.\nEnd Phase: It moves up to 2 spaces in a random direction."),
 		"PLAY: COMPANION\nPOSTROLL OPTIONAL: HIDE 1 1\nEND: WANDER 2")

@@ -28,10 +28,10 @@ test('colourless cards add no colour; two of the same colour are one', () => {
   assert.deepEqual(comboColors(cards, { ingredients: ['OP1-009'] }), ['None']);
 });
 
-test('a combo needs two different Action or Assist cards and an X', () => {
+test('a combo needs two Action or Assist cards and an X; the same card twice is a pair too (2026-11-21)', () => {
   assert.deepEqual(comboProblems(cards, cards[4]), []);
   assert.match(comboProblems(cards, { ingredients: ['OP1-024', ''], extraCost: 1 })[0], /exactly two/);
-  assert.match(comboProblems(cards, { ingredients: ['OP1-024', 'OP1-024'], extraCost: 1 })[0], /different/);
+  assert.deepEqual(comboProblems(cards, { ingredients: ['OP1-024', 'OP1-024'], extraCost: 1 }), []);
   assert.match(comboProblems(cards, { ingredients: ['OP1-024', 'OP1-012'], extraCost: 1 })[0], /only Action and Assist/);
   assert.match(comboProblems(cards, { ingredients: ['OP1-024', 'OP1-031'] })[0], /extra cost/);
 });

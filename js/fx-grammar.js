@@ -91,12 +91,13 @@ export function actionProblem(text) {
 export function lineProblem(line) {
   const colon = line.indexOf(':');
   if (colon < 0) return 'no ":" between the head and the actions';
-  const head = line.slice(0, colon).trim().toUpperCase().split(/\s+/).filter(Boolean);
+  // A {Tag} in the head (BONUS {Mage & Brave Hero}) is one word, spaces and all.
+  const head = line.slice(0, colon).trim().toUpperCase().replace(/\{[^}]*\}/g, m => m.replace(/\s+/g, '_')).split(/\s+/).filter(Boolean);
   if (!head.length || !WHENS.includes(head[0])) return `"${head[0] ?? ''}" is not a WHEN (${WHENS.join(', ')})`;
   for (let i = 1; i < head.length; i++) {
     const w = head[i];
     if (['ONCE', 'OPTIONAL', 'RANGE', 'INSTEAD'].includes(w)) continue;
-    if (w === 'BONUS') { if (COLORS.includes(head[i + 1])) i++; continue; }
+    if (w === 'BONUS') { if (COLORS.includes(head[i + 1]) || /^\{.+\}$/.test(head[i + 1] ?? '')) i++; continue; }
     if (w === 'IF') {
       if (!CONDS.includes(head[i + 1])) return `IF needs one of ${CONDS.join(', ')}`;
       i++;

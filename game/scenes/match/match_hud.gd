@@ -4065,7 +4065,8 @@ func _combo_dialog(d: Dictionary, who: int) -> void:
 		b.alignment = HORIZONTAL_ALIGNMENT_CENTER
 		b.custom_minimum_size = Vector2(0, 48)
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var no: Button = _option_button("PLAY %s AS IT IS" % _card_name(cid).to_upper(), func() -> void: choose_pressed.emit(who, ""))
+	# The card is already played: the combo comes on top of it or not at all (Marko 2026-11-21).
+	var no: Button = _option_button("NO COMBO", func() -> void: choose_pressed.emit(who, ""))
 	_dialog_box.remove_child(no)
 	# Slanted buttons: these margins make its top corners meet the bottom corners of the one above alike.
 	var inset := MarginContainer.new()
@@ -5225,7 +5226,7 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			var names := PackedStringArray()
 			for c: String in JsonUtil.as_strings(e.get("cards", [])):
 				names.append(_card_b(c))
-			return dot + "%s turns %s into %s (+%d Energy)." % [_who(JsonUtil.as_int(e.get("player", 0))), " and ".join(names), _card_b(str(e.get("combo", ""))), JsonUtil.as_int(e.get("extra", 0))]
+			return dot + "%s adds %s to %s (+%d Energy)." % [_who(JsonUtil.as_int(e.get("player", 0))), _card_b(str(e.get("combo", ""))), " and ".join(names), JsonUtil.as_int(e.get("extra", 0))]
 		"hit_held", "hold_hit":
 			return dot + "%s holds the hit back for double knockback." % _hero_b(hero) if t == "hit_held" else ""
 		"damage":

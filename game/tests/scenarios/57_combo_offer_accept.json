@@ -1,5 +1,5 @@
 {
-  "name": "combo: the second card of a pair played for another hero in the same battle is offered as the combo; paying its cost + X replaces both cards, undoes the first card's bonus and buffs every hero of the player in the battle (2026-11-07)",
+  "name": "combo: the second card of a pair played for another hero in the same battle resolves, then the combo is offered; paying X adds the Combo card on top of both cards (2026-11-07; on top since 2026-11-21)",
   "steps": [
     {
       "setup": {
@@ -118,14 +118,18 @@
         "pending.0.player": 0,
         "pending.0.card": "TA-042",
         "pending.0.hero": "p0:TA-002",
-        "pending.0.cost": 1,
         "pending.0.combos.0.id": "TC-001",
         "pending.0.combos.0.with": "TA-040",
+        "pending.0.combos.0.with_hero": "p0:TA-001",
         "pending.0.combos.0.extra": 1,
-        "players.p0.hand": [
+        "players.p0.hand": [],
+        "players.p0.energy": 2,
+        "players.p0.graveyard": [
+          "TA-040",
           "TA-042"
         ],
-        "players.p0.energy": 3,
+        "heroes.p0:TA-001.phase_bonus.pwr": 1000,
+        "heroes.p0:TA-002.phase_bonus.pwr": 1000,
         "to_act": 1
       }
     },
@@ -147,10 +151,11 @@
           "TA-040",
           "TA-042"
         ],
-        "heroes.p0:TA-001.phase_bonus.pwr": 3000,
-        "heroes.p0:TA-002.phase_bonus.pwr": 3000,
+        "heroes.p0:TA-001.phase_bonus.pwr": 4000,
+        "heroes.p0:TA-002.phase_bonus.pwr": 4000,
         "heroes.p1:TB-002.phase_bonus": {},
-        "battles.0.played.0.used": true
+        "battles.0.played.0.used": true,
+        "battles.0.played.1.used": true
       }
     },
     {

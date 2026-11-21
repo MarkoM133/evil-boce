@@ -227,7 +227,7 @@ func _game(catalog: CardCatalog, level: Bot.Level, max_turns: int, claim: String
 	# A battle hit is one damage event by a hero in the Battle phase, plus any hand_damage right before it.
 	var pending_cards: int = 0
 	for e: Dictionary in s.log:
-		if not _force.is_empty() and str(e.get("type", "")) in ["companion", "sheltered", "left_shelter", "companion_moved", "companion_gone", "companion_fell"]:
+		if not _force.is_empty() and str(e.get("type", "")) in ["companion", "sheltered", "left_shelter", "companion_moved", "companion_gone", "companion_fell", "combo"]:
 			_forced[str(e["type"])] = _forced.get(str(e["type"]), 0) + 1
 		var t: String = str(e.get("type", ""))
 		var by: String = str(e.get("by", ""))

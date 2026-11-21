@@ -78,6 +78,8 @@ var cond: String = ""
 var cond_arg: String = ""
 var bonus: bool = false
 var bonus_color: String = ""
+## BONUS {Tag}: the bonus counts for a hero called that or carrying that tag (2026-11-21).
+var bonus_tag: String = ""
 var instead: bool = false
 ## Each action: {"verb": String, "target": String, "args": PackedStringArray,
 ## "branches": Array[Array[Dictionary]] (CHOOSE only)}.
@@ -98,7 +100,9 @@ func to_fx() -> String:
 		head.append("INSTEAD")
 	if bonus:
 		head.append("BONUS")
-		if not bonus_color.is_empty():
+		if not bonus_tag.is_empty():
+			head.append("{%s}" % bonus_tag)
+		elif not bonus_color.is_empty():
 			head.append(bonus_color)
 	if not cond.is_empty():
 		head.append("IF")
@@ -211,7 +215,9 @@ static func parse_line(line: String) -> FxEffect:
 		return null
 	var e := FxEffect.new()
 	e.line = line
-	var head: PackedStringArray = line.substr(0, colon).strip_edges().to_upper().split(" ", false)
+	# A {Tag} in the head stays whole, and keeps its spelling for BONUS {Tag}.
+	var head: PackedStringArray = _tokens(line.substr(0, colon).strip_edges().to_upper())
+	var spelt: PackedStringArray = _tokens(line.substr(0, colon).strip_edges())
 	if head.is_empty() or not WHENS.has(head[0]):
 		return null
 	e.when = head[0]
@@ -230,6 +236,9 @@ static func parse_line(line: String) -> FxEffect:
 				e.bonus = true
 				if i + 1 < head.size() and COLORS.has(head[i + 1]):
 					e.bonus_color = head[i + 1]
+					i += 1
+				elif i + 1 < head.size() and head[i + 1].begins_with("{") and head[i + 1].ends_with("}"):
+					e.bonus_tag = spelt[i + 1].trim_prefix("{").trim_suffix("}").strip_edges()
 					i += 1
 			"IF":
 				if i + 1 >= head.size() or not CONDS.has(head[i + 1]):

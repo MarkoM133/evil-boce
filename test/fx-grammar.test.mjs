@@ -22,6 +22,9 @@ test('lines from fx-keywords.md read as the game reads them', () => {
     'PREROLL: TOKEN ME DQ1-010-1',
     'POSTROLL ONCE OPTIONAL: TOKEN ME DQ1-001-1 2',
     'PLAY: CHOOSE ME [TOKEN ME DQ1-010-1] [TOKEN OPP DQ1-010-2]',
+    // A tag bonus (2026-11-21): the hero is called that or carries the tag.
+    'BATTLE INSTEAD BONUS {Flazzard}: COST_DAMAGE 0',
+    'BATTLE BONUS {Mage & Brave Hero}: BUFF SELF DMG 2',
     // A companion (GDD 10, 2026-11-21): Coco Jumbo's three lines.
     'PLAY: COMPANION',
     'POSTROLL OPTIONAL: HIDE 1 1',

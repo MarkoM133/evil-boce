@@ -138,19 +138,24 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
   (`DeckCode.DECK_TYPES` already leaves them out). The web app helpers are in `js/combo.js`.
 - The battle being fought remembers what its card round played (`battles[i].played`: player, card, hero,
   the stat bonus it put on the hero, used). A played Assist has no hero.
-- When: in a battle's card round, `play_card` of the second card of a combo's pair, when the first one was
-  played this battle by the same player and for a different hero of theirs (an Assist pairs with any), the
-  player has two or more heroes in the battle, the card itself would be legal (tried on a copy) and the
-  player can pay its cost + X: the move puts `combo_offer {player, card, hero, cost, replace, combos: [{id,
-  with, with_hero, extra}]}` on `pending` and the turn passes; the card stays in the hand until answered.
-- `choose {value: combo id}` accepts: cost + X is paid, the second card goes to the graveyard without
-  resolving, the first card's stat bonus comes off its hero and its waiting "If you win" effects are dropped
-  (an effect of it that already ran, a knockback say, stays), the record is marked used, event `combo`, and
-  the combo's effects run (`BATTLE:` lines like an Action's; its stat boxes go on the second card's hero).
-  `choose {value: ""}` or `pass` declines: the card is played as it would have been.
+- A combo is a bonus on top of its two cards, not a replacement (Marko 2026-11-21; until then it replaced
+  them). When: in a battle's card round, `play_card` of the second card of a combo's pair. The card is played
+  and resolves as ever; then, when the first card was played this battle by the same player, is not in a
+  combo yet, and the player can pay X, the move puts `combo_offer {player, card, hero, combos: [{id, with,
+  with_hero, extra}]}` on `pending`, behind the choices the card itself asked for.
+- The pair: two different cards go to two different heroes of the player, who has two or more heroes in the
+  battle (an Assist pairs with any). Two copies of the same card are a pair too (`ingredients: [id, id]`),
+  and one hero may play both.
+- `choose {value: combo id}` accepts: X is paid, both records are marked used, event `combo`, and the Combo
+  card comes on top: its stat boxes go on both heroes the cards were played for (one hero, when it played
+  both), and its `BATTLE:` lines run like an Action's. A line that speaks of "your Hero" (target SELF,
+  COST_DAMAGE, a BONUS, IF ACTIVATED) runs once for each of those heroes, so each pays the additional cost
+  and each is checked for the bonus; a line with targets of its own (ALL_FRIENDLY_IN_BATTLE, ENEMY…) runs
+  once, for the second card's hero. A combo whose additional cost a hero cannot pay (COST_DAMAGE needs more
+  HP than it takes) is not offered. `choose {value: ""}` or `pass` declines: nothing changes.
 - Same combo again: any time the condition holds. A card may be in several combos; all that fit are offered.
 - `ALL_FRIENDLY_IN_BATTLE`: every hero of the card's player in the battle the context names, else the one
-  being fought. Scenarios 57 and 58; the bot takes the first combo on offer.
+  being fought. Scenarios 57, 58, 87 (two copies, one hero, tag bonus) and 88 (both heroes); the bot takes the first combo on offer.
 - Match scene (no rules): the offer dialog shows the combo card above its buttons. Event `combo` shows the
   combo card over the screen (`MatchHud._combo_show`, queued with the bands; a click or Enter skips it).
   The pause menu's right side has tabs MATCH LOG and COMBO LIST (when there are combos); COMBO LIST shows the

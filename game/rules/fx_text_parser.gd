@@ -37,6 +37,11 @@ static func parse(card: CardDef) -> Dictionary:
 		# A bonus line is a sentence of its own, even after a bare phase ("Battle Phase:").
 		if _is_bonus(l.strip_edges()) and not kept.is_empty() and _rx("[.!?]\\s*$").search(kept[kept.size() - 1]) == null:
 			kept[kept.size() - 1] = kept[kept.size() - 1].strip_edges() + "."
+		# A line that opens with its phase is an effect of its own (Card Studio writes one effect per line), also
+		# after a line with no full stop ("Battle Phase: +4 DMG").
+		if _rx("^(?:\\[Range\\]\\s*)?(?:Start|Preroll|Roll|Postroll|Battle|End) Phase\\b").search(l.strip_edges()) != null and not kept.is_empty() \
+				and not kept[kept.size() - 1].strip_edges().is_empty() and _rx("[.!?:]\\s*$").search(kept[kept.size() - 1]) == null:
+			kept[kept.size() - 1] = kept[kept.size() - 1].strip_edges() + "."
 		kept.append(l)
 	text = "\n".join(kept)
 	if text.strip_edges().is_empty():
@@ -112,11 +117,13 @@ static func parse(card: CardDef) -> Dictionary:
 
 
 const BONUS_HEAD: String = "^((?:Cyan|Yellow|Purple|Red|Blue|Green)(?:\\s*/\\s*(?:Cyan|Yellow|Purple|Red|Blue|Green))*)\\s+Bonus:\\s*(.*)$"
+## "{Flazzard} Bonus: …" (Marko 2026-11-21): a bonus for the hero called that, or carrying that tag.
+const TAG_BONUS_HEAD: String = "^\\{([^}]+)\\}\\s+Bonus:\\s*(.*)$"
 const STAT_WORD: String = "(?:power|pwr|\\[pwr\\]|dmg|damage|\\[dmg\\]|kb|knockback|\\[kb\\]|range|rng|\\[rng\\]|hp|\\[hp\\])"
 
 
 static func _is_bonus(sentence: String) -> bool:
-	return _rx(BONUS_HEAD).search(sentence) != null
+	return _rx(BONUS_HEAD).search(sentence) != null or _rx(TAG_BONUS_HEAD).search(sentence) != null
 
 
 ## A bonus sentence: the colours, then what the bonus is. "This card costs N less to play" is
@@ -140,6 +147,12 @@ static func _parse_bonus(colors: String, rest: String, card: CardDef, prev: FxEf
 		e = FxEffect.new()
 		e.when = "PASSIVE" if card.type == "Equipment" or card.type == "Assist" else (prev.when if prev != null else "PLAY")
 		e.actions = _clause(who + low)
+	elif low == "do not pay the additional cost" and prev != null and prev.has_verb("COST_DAMAGE"):
+		# "Do not pay the additional cost" (2026-11-21): the cost in the sentence before is not paid.
+		e = FxEffect.new()
+		e.when = prev.when
+		e.actions = [_act("COST_DAMAGE", "", ["0"])]
+		instead = true
 	elif instead and low.begins_with("it ") and prev != null:
 		# "It heals 4 HP instead": the sentence before, its one number replaced by this one.
 		var nums: Array[RegExMatch] = _rx("[+-]?\\d+").search_all(low)
@@ -231,7 +244,7 @@ static func _normalise(text: String, self_name: String) -> String:
 
 static func _sentences(t: String) -> PackedStringArray:
 	var out := PackedStringArray()
-	for s: String in _rx("(?<=[.!?])\\s+(?=[A-Z\\[])").sub(t, "\n", true).split("\n"):
+	for s: String in _rx("(?<=[.!?])\\s+(?=[A-Z\\[]|\\{[^}]+\\}\\s+Bonus:)").sub(t, "\n", true).split("\n"):
 		var x: String = s.strip_edges().trim_suffix(".").strip_edges()
 		if not x.is_empty():
 			out.append(x)
@@ -244,6 +257,12 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 	var bm: RegExMatch = _rx(BONUS_HEAD).search(s)
 	if bm != null:
 		return _parse_bonus(bm.get_string(1), bm.get_string(2), card, prev, prev_sentence)
+	bm = _rx(TAG_BONUS_HEAD).search(s)
+	if bm != null:
+		var tagged: FxEffect = _parse_bonus("", bm.get_string(2), card, prev, prev_sentence)
+		if tagged != null:
+			tagged.bonus_tag = bm.get_string(1).strip_edges()
+		return tagged
 	_traits = PackedStringArray()
 	for tm: RegExMatch in _rx("\\{(\\w+)\\}").search_all(s):
 		_traits.append(tm.get_string(1))

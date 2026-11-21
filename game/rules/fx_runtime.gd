@@ -313,6 +313,10 @@ func bonus_ok(s: GameState, ctx: Dictionary, e: FxEffect) -> bool:
 	var hc: CardDef = engine.catalog.get_card(hero.card_id)
 	if hc == null:
 		return false
+	# A tag bonus ("{Flazzard} Bonus:", Marko 2026-11-21): the hero is called that (name or alias), or the card it
+	# plays as now carries the tag, read as the first tag is.
+	if not e.bonus_tag.is_empty():
+		return FirstTag.aliases_of(hc).has(FirstTag.norm(e.bonus_tag)) or FirstTag.has_trait(engine.stat_card(hero), e.bonus_tag)
 	if not e.bonus_color.is_empty():
 		return hc.color.to_upper() == e.bonus_color
 	return card.has_bonus_for(hc.color)
@@ -1072,7 +1076,8 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 		"COST_DAMAGE":
 			if me == null:
 				return "no hero to pay"
-			engine.hero_damage(s, me, args[0].to_int(), false, "", str(ctx.get("card", "")))
+			if args[0].to_int() > 0:
+				engine.hero_damage(s, me, args[0].to_int(), false, "", str(ctx.get("card", "")))
 		"CHOOSE":
 			var branches: Array = JsonUtil.as_array(a.get("branches", []))
 			var index: int = JsonUtil.as_int(answer, 0)
