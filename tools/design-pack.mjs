@@ -159,7 +159,7 @@ export function buildPack({ db, sets, gameVersion, manual, now = new Date() }) {
   const stages = live.filter(c => c.type === 'Stage').sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   parts.push(`### Stageovi (${stages.length})`, '', ...stages.map(c => cardBlock(c, live)), '');
   const combos = live.filter(isCombo).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  if (combos.length) parts.push(`### Combo karte (${combos.length})`, '', 'Dvije karte (Action ili Assist) odigrane za dva tvoja heroja u istom battleu: igrač smije platiti dodatnu energiju (+X) i umjesto njih vrijedi Combo karta. Ne idu u deck ni u pakete.', '', ...combos.map(c => cardBlock(c, live)), '');
+  if (combos.length) parts.push(`### Combo karte (${combos.length})`, '', 'Dvije karte (Action ili Assist) odigrane za dva tvoja heroja u istom battleu (dvije iste karte smije i jedan heroj): obje se razriješe, pa igrač smije platiti dodatnu energiju (+X) i Combo karta dođe povrh njih, za oba heroja. Ne idu u deck ni u pakete.', '', ...combos.map(c => cardBlock(c, live)), '');
   const cores = live.filter(c => c.type === 'Core').sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   parts.push(`### Coreovi (${cores.length})`, '', ...cores.map(c => `- **${c.id} ${c.name}** · ${c.traits?.[0] ?? '?'}${bonusLine(c.bonus) ? ` · ${bonusLine(c.bonus)}` : ''}`), '');
   parts.push('## 3. Brojke za balans', '', balanceSection(db, sets), '');
