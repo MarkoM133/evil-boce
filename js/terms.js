@@ -46,3 +46,21 @@ export function termsOfCard(card, terms) {
 }
 
 export const subtypes = terms => (terms ?? []).filter(t => t?.subtype && t.name).map(t => t.name);
+
+// Pojmovi dok se tipka (Marko 2026-11-21): 2+ slova ispred kursora koja počinju pojam ("hid" → "hide inside").
+// Gleda do 3 riječi unatrag, najdulji kraj koji je početak pojma. { from, items: [{ label, insert, term }] }.
+export function suggestTerms(terms, text, caret) {
+  const before = String(text ?? '').slice(0, caret);
+  const m = /([\p{L}][\p{L}'-]*(?: [\p{L}'-]+){0,2})$/u.exec(before);
+  if (!m) return { from: caret, items: [] };
+  const names = termNames(terms);
+  const words = m[1].split(' ');
+  for (let i = 0; i < words.length; i++) {
+    const part = words.slice(i).join(' ');
+    if (part.length < 2) continue;
+    const low = part.toLowerCase();
+    const hits = names.filter(n => n.toLowerCase().startsWith(low) && n.length > part.length);
+    if (hits.length) return { from: caret - part.length, items: hits.slice(0, 6).map(n => ({ label: n, insert: n, term: n })) };
+  }
+  return { from: caret, items: [] };
+}

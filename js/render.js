@@ -31,6 +31,8 @@ const COLOR_WORD = '(Cyan|Yellow|Purple|Red|Blue|Green)';
 const STAT_WORDS = { power: 'pwr', dmg: 'dmg', hp: 'hp', range: 'rng', kb: 'kb', knockback: 'kb' };
 // "Red Bonus:" ili "Cyan / Purple Bonus:" na početku retka: bonus za te boje.
 const BONUS_RE = new RegExp(`^${COLOR_WORD}(?:\\s*/\\s*${COLOR_WORD})?(?:\\s*/\\s*${COLOR_WORD})?\\s+Bonus\\s*:\\s*`, 'i');
+// "{Flazzard} Bonus:" (Marko 2026-11-21): a bonus for the hero called that, or carrying that tag. Same chip, no dots.
+const TAG_BONUS_RE = /^\{([^}]+)\}\s+Bonus\s*:\s*/i;
 
 const TITLE_FONT = '"Agency FB", "Barlow Condensed", "Arial Narrow", sans-serif';
 const TEXT_FONT = '"Barlow Semi Condensed", "Barlow Condensed", "Arial Narrow", sans-serif';
@@ -525,7 +527,7 @@ export function parseEffects(text) {
   for (const raw of (text ?? '').split('\n')) {
     const line = raw.trim();
     if (!line) continue;
-    if ((RANGE_RE.test(line) || PHASE_RE.test(line) || BONUS_RE.test(line)) && cur.length) { blocks.push(cur.join('\n')); cur = []; }
+    if ((RANGE_RE.test(line) || PHASE_RE.test(line) || BONUS_RE.test(line) || TAG_BONUS_RE.test(line)) && cur.length) { blocks.push(cur.join('\n')); cur = []; }
     cur.push(line);
   }
   if (cur.length) blocks.push(cur.join('\n'));
@@ -534,7 +536,12 @@ export function parseEffects(text) {
 
 export function parseEffect(text) {
   let t = (text ?? '').trim();
-  const out = { range: false, phase: null, once: false, cond: null, bonus: null, lines: [] };
+  const out = { range: false, phase: null, once: false, cond: null, bonus: null, bonusTag: null, lines: [] };
+  const tb = t.match(TAG_BONUS_RE);
+  if (tb) {
+    out.bonusTag = tb[1].trim();
+    t = t.slice(tb[0].length);
+  }
   const b = t.match(BONUS_RE);
   if (b) {
     const cap = w => w[0].toUpperCase() + w.slice(1).toLowerCase();
@@ -574,8 +581,9 @@ function drawEffect(ctx, text, color, box, icons, heading = '', passive = false)
   const groups = blocks.map(e => {
     const chips = [];
     if (e.bonus) chips.push({ kind: 'bonus', text: `${e.bonus.join(' / ').toUpperCase()} BONUS`, colors: e.bonus });
+    if (e.bonusTag) chips.push({ kind: 'bonus', text: `${e.bonusTag.toUpperCase()} BONUS`, colors: [] });
     if (e.phase) chips.push({ kind: 'phase', text: e.phase, once: e.once });
-    else if (passive && !e.bonus && e.lines.some(l => !/^Terrain:/i.test(l.text))) chips.push({ kind: 'phase', text: 'PASSIVE', once: e.once });
+    else if (passive && !e.bonus && !e.bonusTag && e.lines.some(l => !/^Terrain:/i.test(l.text))) chips.push({ kind: 'phase', text: 'PASSIVE', once: e.once });
     // Nema oznake RANGE (pravilo B, Marko 2026-11-05): range se piše u tekstu uz metu ("in [RNG]"),
     // oznake na vrhu su samo za vrijeme. Stari "[Range] " na početku retka se i dalje čita, ali se ne crta.
     return { chips, paras: toParas(e) };
@@ -777,8 +785,9 @@ function drawChips(ctx, chips, cx, top, h, color, icons) {
     }
     if (c.kind === 'bonus') {
       const dot = h * 0.4;
-      const dots = c.colors.length * dot + (c.colors.length - 1) * dot * 0.3;
-      return { w: ctx.measureText(c.text).width + pad * 2 + dots + 12, dot, dots };
+      // A tag bonus has no colour dots: only its text (2026-11-21).
+      const dots = c.colors.length ? c.colors.length * dot + (c.colors.length - 1) * dot * 0.3 + 12 : 0;
+      return { w: ctx.measureText(c.text).width + pad * 2 + dots, dot, dots };
     }
     const iw = h * 0.7;
     return { w: ctx.measureText(c.text).width + pad * 2 + iw + 10, iw };
@@ -826,7 +835,8 @@ function drawChips(ctx, chips, cx, top, h, color, icons) {
         ctx.stroke();
       });
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(c.text, x + pad * 0.7 + m.dots + 12 + (m.w - pad * 0.7 - m.dots - 12) / 2, top + h / 2 + 1);
+      const lead = m.dots ? pad * 0.7 + m.dots : 0;
+      ctx.fillText(c.text, x + lead + (m.w - lead) / 2, top + h / 2 + 1);
     } else {
       ctx.fillStyle = 'rgba(0,0,0,0.78)';
       roundRect(ctx, x, top, m.w, h, 12);

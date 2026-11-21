@@ -33,3 +33,14 @@ test('the renderer draws a term bold and marked, icons still work around it', ()
   setRuleTerms([]);
   assert.ok(!richRuns('Pay 1 Energy to hide inside.').some(r => r.term), 'no terms, plain text');
 });
+
+test('typing the start of a term offers it (2026-11-21)', async () => {
+  const { suggestTerms } = await import('../js/terms.js');
+  const terms = [{ name: 'hide inside', text: 'x' }, { name: 'Companion', subtype: true, text: 'y' }];
+  const s = suggestTerms(terms, 'A friendly Hero may pay 1[EN] to hid', 36);
+  assert.equal(s.from, 33);
+  assert.deepEqual(s.items.map(i => i.insert), ['hide inside']);
+  assert.deepEqual(suggestTerms(terms, 'to hide inside', 14).items, [], 'a term already written is not offered again');
+  assert.deepEqual(suggestTerms(terms, 'Comp', 4).items, [], 'a subtype is not a word of the text');
+  assert.deepEqual(suggestTerms(terms, 'h', 1).items, [], 'one letter is not enough');
+});

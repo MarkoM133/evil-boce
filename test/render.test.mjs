@@ -84,3 +84,14 @@ test('a temporary evolution says how long it lasts (2026-11-15)', async () => {
   assert.equal(tempEvolutionLine(2), 'Temporary: lasts until the end of the next turn.');
   assert.equal(tempEvolutionLine(3), 'Temporary: lasts 3 turns, this one counted.');
 });
+
+test('a tag bonus line is an effect of its own with the tag, no colours (2026-11-21)', () => {
+  const blocks = parseEffects('Battle Phase: As an additional cost, your Hero takes 3 DMG.\n{Flazzard} Bonus: Do not pay the additional cost.');
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[1].bonusTag, 'Flazzard');
+  assert.equal(blocks[1].bonus, null);
+  assert.deepEqual(blocks[1].lines, [{ bullet: false, text: 'Do not pay the additional cost.' }]);
+  assert.equal(parseEffect('{Mage & Brave Hero} Bonus: +2 DMG.').bonusTag, 'Mage & Brave Hero');
+  assert.equal(parseEffect('Red Bonus: +2 DMG.').bonusTag, null);
+  assert.deepEqual(statBonusLines('{Flazzard} Bonus: +1 DMG.').chips, [], 'a tag bonus stays in the text: the boxes are per colour');
+});

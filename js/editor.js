@@ -4,7 +4,7 @@
 // u sredini karta, desno forma. Izmjene se spremaju kao nacrti (data/editor/drafts.json); igra ih vidi tek nakon Objave.
 // Tekst je u editoru s tokenima ([HP], [PWR]…), u bazi riječima (js/card-text.js).
 import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, coreMode, TINTS, PHASE_COLORS, setRuleTerms } from './render.js';
-import { TERMS_PATH, emptyTerms, termsOfCard, subtypes } from './terms.js';
+import { TERMS_PATH, emptyTerms, termsOfCard, subtypes, termNames, suggestTerms } from './terms.js';
 import { fxProblems } from './fx-grammar.js';
 import { firstTag, traitNames, norm, ruleWord, GENERAL, HEROES, TRAIT, MIXED, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
@@ -2093,7 +2093,7 @@ export function createEditor(env) {
     const paint = () => {
       pop.replaceChildren(...sug.items.map((it, i) => h('li', { role: 'option', 'aria-selected': String(i === pick), class: i === pick ? 'on' : '',
         onmousedown: e => { e.preventDefault(); take(it); } },
-      h('span', { class: it.token ? `tok tok-${it.token.toLowerCase()}` : '' }, it.label), it.note ? h('small', { class: 'muted' }, it.note) : null)));
+      h('span', { class: it.token ? `tok tok-${it.token.toLowerCase()}` : it.term ? 'ce-term-word' : '' }, it.label), it.note ? h('small', { class: 'muted' }, it.note) : null)));
       pop.hidden = !sug.items.length;
     };
     const showSuggest = () => {
@@ -2102,9 +2102,12 @@ export function createEditor(env) {
       if (before.endsWith('[')) {
         sug = { from: caret - 1, items: TOKENS.map(t => ({ label: `[${t}]`, insert: `[${t}]`, token: t, note: { HP: 'heal / health', DMG: 'damage', PWR: 'Power', RNG: 'Range', KB: 'Knockback', EN: 'Energy' }[t] })) };
       } else {
+        // Rule terms first (Marko 2026-11-21): gold, as on the card; then the phrases of the Text guide.
+        const t = suggestTerms(ed.terms?.terms, area.value, caret);
         const g = suggest(ed.guide, area.value, caret);
         const notes = new Map((ed.guide?.phrases ?? []).map(p => [p.text, p.label]));
-        sug = { from: g.from, items: g.items.map(it => ({ label: toTokens(it.insert).trim(), insert: toTokens(it.insert).replace(/\s+$/, ''), note: notes.get(it.insert) })) };
+        const phraseItems = g.items.map(it => ({ label: toTokens(it.insert).trim(), insert: toTokens(it.insert).replace(/\s+$/, ''), note: notes.get(it.insert) }));
+        sug = t.items.length ? { from: t.from, items: t.items.map(it => ({ ...it, note: 'rule term' })) } : { from: g.from, items: phraseItems };
       }
       pick = 0;
       paint();
@@ -2179,16 +2182,32 @@ export function createEditor(env) {
       area.selectionStart = area.selectionEnd = caret;
       sync();
     } }, '+ Bonus') : null;
+    // A tag bonus (Marko 2026-11-21): "{Flazzard} Bonus: " on a new line, the cursor between the braces to type the hero or tag.
+    const tagBonusBtn = ['Action', 'Equipment', 'Assist', 'Combo'].includes(w.type) ? h('button', { type: 'button', class: 'ce-add-effect', title: 'A bonus for the hero called that, or carrying that tag: {Flazzard} Bonus: …', onmousedown: e => e.preventDefault(), onclick: () => {
+      snap(true);
+      area.value = area.value.replace(/\s+$/, '') + (area.value.trim() ? '\n' : '') + '{} Bonus: ';
+      caret = area.value.length - '} Bonus: '.length;
+      area.focus();
+      area.selectionStart = area.selectionEnd = caret;
+      sync();
+    } }, '+ Tag bonus') : null;
     const seg = h('div', { class: 'ce-phase-seg', role: 'group', 'aria-label': 'Phase of the effect the cursor is in' }, passiveBtn, phaseBtns);
     // Range nije prekidač (pravilo B, 2026-11-05): piše se u tekstu uz metu, "a friendly Hero in [RNG]".
     const mods = once || revealed ? h('div', { class: 'ce-mods' }, revealed, once) : null;
-    const bar = h('div', { class: 'ce-tokbar' }, toks, trait ? h('span', { class: 'ce-tokbar-sep' }) : null, trait, phrase);
+    // Rule terms (Marko 2026-11-21): the gold words of Card editor › Words › Terms, at the cursor; the last entry opens that page.
+    const termList = termNames(ed.terms?.terms);
+    const termPick = stage ? null : h('select', { class: 'ce-phrase ce-terms', 'aria-label': 'Insert a rule term', title: 'Rule terms: gold on the card, explained once in Words › Terms', onchange: e => {
+      const v = e.target.value; e.target.value = '';
+      if (v === '\u0000') { go('terms'); return; }
+      if (v) insert(v);
+    } }, h('option', { value: '' }, 'Terms'), termList.map(n => h('option', { value: n }, n)), h('option', { value: '\u0000' }, termList.length ? 'Edit terms…' : 'No terms yet: add one…'));
+    const bar = h('div', { class: 'ce-tokbar' }, toks, trait ? h('span', { class: 'ce-tokbar-sep' }) : null, trait, termPick, phrase);
     // Check text (Marko 2026-11-06): desno u istom redu; odgovor ide ispod.
     // Savjet za pisanje kao ⓘ (Marko 2026-11-06): hover pokaže, dodir otvori ispod reda.
     const hintText = stage ? 'Type [ for a stat icon, or the start of a phrase from the Text guide: a list opens under the text.'
         : 'Each effect is its own line; the phase and Once per turn set the effect the cursor is in (+ Effect starts a new one). Range goes in the text next to its target: "a friendly Hero in [RNG]". Type [ for a stat icon or the start of a phrase for suggestions.';
     const hint = h('details', { class: 'ce-hint-i' }, h('summary', { title: hintText, 'aria-label': 'How to write the effect text' }, 'ⓘ'), h('p', { class: 'muted small' }, hintText));
-    const adds = h('div', { class: 'ce-adds' }, addEffect, bonusBtn, hint);
+    const adds = h('div', { class: 'ce-adds' }, addEffect, bonusBtn, tagBonusBtn, hint);
     const tools = h('div', { class: 'ce-effect-tools' }, seg, mods);
     function refreshToggles() {
       const hd = here();

@@ -840,3 +840,8 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .cleanup-item { margin: 0; display: grid; gap: 4px; }
 .cleanup-item img, .cleanup-noimg { width: 100%; aspect-ratio: 1; object-fit: cover; border: 1px solid var(--line); background: var(--surface-2); display: grid; place-items: center; }
 .cleanup-item figcaption { overflow-wrap: anywhere; }
+/* Rule terms (Marko 2026-11-21): gold, as on the card, in the Terms picker and in the suggestions while typing. */
+.ce-tokbar .ce-terms { width: 6.5em; color: #e0b64a; }
+.ce-tokbar .ce-terms + .ce-phrase { margin-left: 0; }
+.ce-tokbar .ce-terms:hover { color: #ffd36a; }
+.ce-term-word { color: #ffd36a; font-weight: 700; }
