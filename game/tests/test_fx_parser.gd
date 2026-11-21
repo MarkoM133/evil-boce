@@ -94,6 +94,11 @@ func test_wording_2026_11_05() -> void:
 	_assert_fx(_fx("Action", "Conqueror's Haki", "Postroll Phase: Opponent's Heroes in Range can't claim a Stage this turn.\nRed Bonus: This card costs 1 less.", none),
 		"POSTROLL: NO_CLAIM ALL_ENEMY_IN_RANGE\nPLAY BONUS: OWN_COST -1")
 	_assert_fx(_fx("Action", "Jenga Cannon", "Preroll Phase: Place a Wall on an empty space in Range."), "PREROLL RANGE: WALL")
+	# A companion (GDD 10, 2026-11-21): the three sentences of Coco Jumbo.
+	_assert_fx(_fx("Assist", "Coco Jumbo", "When you play this card, place Coco Jumbo next to your Hero.\nPostroll Phase: A friendly Hero within 1 space may pay 1 Energy to hide inside.\nEnd Phase: It moves up to 2 spaces in a random direction."),
+		"PLAY: COMPANION\nPOSTROLL OPTIONAL: HIDE 1 1\nEND: WANDER 2")
+	_assert_fx(_fx("Assist", "Quiet Shell", "When you play this card, place Quiet Shell next to your Hero.\nPostroll Phase: A friendly Hero within 2 spaces may hide inside."),
+		"PLAY: COMPANION\nPOSTROLL OPTIONAL: HIDE 2")
 	_assert_fx(_fx("Action", "Anti-Manner Kick Course", "Postroll Phase: Knockback an Opponent's Hero in Range 3 spaces, away from your Hero."),
 		"POSTROLL RANGE: KNOCKBACK ENEMY 3 AWAY")
 	_assert_fx(_fx("Action", "Anti-Manner Kick Course", "Postroll Phase: Choose an Opponent's Hero in Range. Knock them back 3 spaces."),

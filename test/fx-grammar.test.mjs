@@ -22,6 +22,11 @@ test('lines from fx-keywords.md read as the game reads them', () => {
     'PREROLL: TOKEN ME DQ1-010-1',
     'POSTROLL ONCE OPTIONAL: TOKEN ME DQ1-001-1 2',
     'PLAY: CHOOSE ME [TOKEN ME DQ1-010-1] [TOKEN OPP DQ1-010-2]',
+    // A companion (GDD 10, 2026-11-21): Coco Jumbo's three lines.
+    'PLAY: COMPANION',
+    'POSTROLL OPTIONAL: HIDE 1 1',
+    'POSTROLL OPTIONAL: HIDE 2',
+    'END: WANDER 2',
   ]) assert.equal(lineProblem(line), '', line);
 });
 

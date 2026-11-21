@@ -2,7 +2,7 @@ extends SceneTree
 ## Bot-against-bot matches through the rules engine alone (no scene, no physics: grid knockback
 ## and the analytic roll of tests/test_bot.gd), counting how a rule change shifts the game.
 ## godot_console --headless --path game -s res://tools/bot_games.gd -- [--games=20] [--seed=1]
-##     [--level=hard] [--max-turns=60] [--fixtures] [--claim=stay|energy|ring] [--goal=14] [--report=<file.json>]
+##     [--level=hard] [--max-turns=60] [--fixtures] [--claim=stay|energy|ring] [--goal=14] [--report=<file.json>] [--force=<card id>]
 ## Random decks from the shared folder's cards (`--fixtures`: the test fixtures). Reports, over
 ## all games: hero damage taken and from what (battle, wall, trap, card), cards discarded for
 ## battle hits, KOs, how the matches ended, turns, cards played and the energy they took; with
@@ -10,11 +10,17 @@ extends SceneTree
 ## heroes knocked off a stage and the energy that cost, contested stages. The same seed gives the
 ## same maps and decks whatever the rules, so runs compare game by game. Nothing is saved, except with
 ## --report: per hero, card and stage how often it was in a deck, won, and (cards) was played, as JSON.
+## --force=<card id>: three copies of that card go into every deck, and it is played (and its optional abilities
+## used) whenever the rules allow, before the bot is asked: a card the bots see no gain in still gets its rules run
+## through whole matches (companions, 2026-11-21).
 
 const MAX_STEPS: int = 6000
 
 var _rng := RandomNumberGenerator.new()
 var _tuning: PhysicsTuning
+var _force: String = ""
+## Forced plays and ability uses that went in, and what the companions did (from the log).
+var _forced: Dictionary[String, int] = {}
 
 
 func _initialize() -> void:
@@ -43,6 +49,7 @@ func _run() -> void:
 			return
 		catalog = db.catalog
 	var level: Bot.Level = Bot.level_from(opts["level"])
+	_force = str(opts.get("force", ""))
 	var games: int = int(opts["games"])
 	var claim: String = opts["claim"]
 	var goal: int = int(opts["goal"])
@@ -101,6 +108,8 @@ func _run() -> void:
 			print("report: " + opts["report"])
 		else:
 			push_error("cannot write " + opts["report"])
+	if not _force.is_empty():
+		print("forced %s: %s" % [_force, JSON.stringify(_forced)])
 	var decided: int = JsonUtil.as_int(totals["first_won"]) + JsonUtil.as_int(totals["first_lost"])
 	if decided > 0:
 		print("who started won %d of %d (%.1f%%); seat 0 won %d (%.1f%%)" % [totals["first_won"], decided, 100.0 * JsonUtil.as_int(totals["first_won"]) / decided,
@@ -151,6 +160,10 @@ func _decks(catalog: CardCatalog) -> Array:
 	var out: Array = []
 	for slot: int in 2:
 		var raw: Dictionary = DeckCode.random_deck(catalog, _rng)
+		if not _force.is_empty():
+			var forced: Dictionary = JsonUtil.as_dict(raw.get("cards", {}))
+			forced[_force] = 3
+			raw["cards"] = forced
 		out.append(MatchLaunch.engine_deck(catalog, raw, "Bot %d" % (slot + 1), _rng))
 	return out
 
@@ -180,6 +193,8 @@ func _game(catalog: CardCatalog, level: Bot.Level, max_turns: int, claim: String
 			if not err_r.is_empty():
 				push_error("roll refused: " + err_r)
 				break
+			continue
+		if not _force.is_empty() and s.pending.is_empty() and _play_forced(engine, s):
 			continue
 		var moved: bool = false
 		for slot: int in 2:
@@ -212,6 +227,8 @@ func _game(catalog: CardCatalog, level: Bot.Level, max_turns: int, claim: String
 	# A battle hit is one damage event by a hero in the Battle phase, plus any hand_damage right before it.
 	var pending_cards: int = 0
 	for e: Dictionary in s.log:
+		if not _force.is_empty() and str(e.get("type", "")) in ["companion", "sheltered", "left_shelter", "companion_moved", "companion_gone", "companion_fell"]:
+			_forced[str(e["type"])] = _forced.get(str(e["type"]), 0) + 1
 		var t: String = str(e.get("type", ""))
 		var by: String = str(e.get("by", ""))
 		var amount: int = JsonUtil.as_int(e.get("amount", 0))
@@ -372,3 +389,16 @@ func _print_balance(catalog: CardCatalog, by_hero: Dictionary, by_card: Dictiona
 ## A count per game the row was in a deck.
 func _rate(row: Dictionary, key: String) -> float:
 	return float(JsonUtil.as_int(row.get(key, 0))) / maxi(JsonUtil.as_int(row.get("games", 0)), 1)
+
+
+## Plays the forced card for whoever may, else uses one of its optional abilities; true when a move went in.
+func _play_forced(engine: RulesEngine, s: GameState) -> bool:
+	for slot: int in 2:
+		if s.player(slot).hand.has(_force) and engine.apply(s, Move.make(Move.PLAY_CARD, slot, {"card": _force})).is_empty():
+			_forced["played"] = _forced.get("played", 0) + 1
+			return true
+		for a: Dictionary in engine.fx.usable_abilities(s, slot):
+			if str(a["card"]) == _force and engine.apply(s, Move.make(Move.USE_ABILITY, slot, {"hero": a["hero"], "card": a["card"], "index": a["index"]})).is_empty():
+				_forced["abilities"] = _forced.get("abilities", 0) + 1
+				return true
+	return false

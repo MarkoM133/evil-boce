@@ -337,6 +337,26 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    traits, one or more), mixed (both). A part that is neither is skipped while another counts.
    Refusals: "only for X", "Requires T or U", "only for X, or Requires T" in play; in a deck
    "needs a Red hero with T or U", "only for X, or a Red hero with T".
+9i. (2026-11-21) Companions (`CompanionState`, `GameState.companions`, at most one per player; the first is
+   Coco Jumbo): a token on a hex, not a hero. Its Assist's fx puts it down (`PLAY: COMPANION`, a free hex
+   next to the hero, never on a core, wall, hero or another companion) and it lives while that Assist is in
+   play (`_sync_companions` on every step of `_continue`); replaced or fallen, its Assist goes to the
+   graveyard. Its hex is taken for heroes (`GameState.is_free`), cores and walls. The sim reports a pushed
+   companion as a `RollResult` under the companion's id (`companion:<slot>`): it rests on `end_hex`, and off
+   the map, into a strip or out it falls (`companion_falls`). Without such a result (the analytic roll, grid
+   knockback) it stays, and a hero that stopped on its hex pushes it to the nearest free one
+   (`_unstack_companions`). Hiding (`HIDE`): the hero's zone becomes `shelter`: `is_on_map()` is false, so
+   range, battles, stages and targets leave it out; `FxRuntime.sources` skips it and its equipment; the
+   groups ALL_FRIENDLY / ALL_ENEMY skip it; `_lost_active` puts its player on Pass or an Assist when it was
+   the activated hero. It leaves a stage as by its own doing (no energy lost). Activating it (`select`)
+   puts it on a free hex next to the companion first (`leave_shelter`). Fallen with a hero inside:
+   `ring_out(hero, "companion")`, the usual 1 DMG or a card, back to the start zone. Its Assist gone any
+   other way: the hero comes out on the companion's hex, unhurt. `WANDER` runs with the Assist's END effects,
+   before the turn ends. Events: `companion`, `companion_moved` (why: wander | pushed), `companion_gone`
+   (why: assist | replaced | fell), `companion_fell`, `sheltered`, `left_shelter`.
+   Assumptions: a hero locked in a tie cannot hide; a hidden hero keeps its cores, equipment, evolutions and
+   statuses (they tick as ever) and cannot be damaged or healed by cards (it is no target); the companion
+   never rests on a core's hex; grid knockback treats a companion's hex as taken (the hero stops before it).
 9g. (2026-11-01) Colorless cards: `color: "None"` passes the colour check in `deck_verdict`
    and `_play` (the first tag still counts), and `bonusColors` on the card drive the fx
    `BONUS` / `INSTEAD` effects and `OWN_COST` (docs/fx-keywords.md). The Draft counts a

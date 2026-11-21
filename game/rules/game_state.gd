@@ -26,6 +26,8 @@ var heroes: Array[HeroState] = []
 var cores: Array[CoreState] = []
 var stages: Array[StageState] = []
 var walls: Array[WallState] = []
+## Companions on the map (GDD 10, 2026-11-21), at most one per player.
+var companions: Array[CompanionState] = []
 var rng_seed: int = 0
 var rng_state: int = 0
 
@@ -162,6 +164,35 @@ func wall_at(a: Vector2i) -> bool:
 	return false
 
 
+func companion(id: String) -> CompanionState:
+	for c: CompanionState in companions:
+		if c.id == id:
+			return c
+	return null
+
+
+func companion_of(slot: int) -> CompanionState:
+	for c: CompanionState in companions:
+		if c.owner == slot:
+			return c
+	return null
+
+
+func companion_at(a: Vector2i) -> CompanionState:
+	for c: CompanionState in companions:
+		if c.hex == a:
+			return c
+	return null
+
+
+## The companion a hero hides in, or null.
+func shelter_of(hero_id: String) -> CompanionState:
+	for c: CompanionState in companions:
+		if not hero_id.is_empty() and c.inside == hero_id:
+			return c
+	return null
+
+
 func core_at(a: Vector2i) -> CoreState:
 	for c: CoreState in cores:
 		if c.place == CoreState.ON_FIELD and c.hex == a:
@@ -169,10 +200,10 @@ func core_at(a: Vector2i) -> CoreState:
 	return null
 
 
-## A hero of that size could rest centred on `a`: on the map, no wall or other hero there.
+## A hero of that size could rest centred on `a`: on the map, no wall, other hero or companion there.
 func is_free(a: Vector2i, big: bool, except: HeroState = null) -> bool:
 	for cell: Vector2i in Hex.spiral(a, 1 if big else 0):
-		if not map().contains(cell) or wall_at(cell) or hero_at(cell, except) != null:
+		if not map().contains(cell) or wall_at(cell) or hero_at(cell, except) != null or companion_at(cell) != null:
 			return false
 	return true
 
@@ -300,6 +331,9 @@ func to_dict() -> Dictionary:
 	var am: Dictionary = {}
 	for k: int in aims:
 		am[str(k)] = aims[k]
+	var comps: Array = []
+	for c: CompanionState in companions:
+		comps.append(c.to_dict())
 	return {
 		"settings": settings.to_dict(),
 		"turn": turn,
@@ -311,6 +345,7 @@ func to_dict() -> Dictionary:
 		"cores": cs,
 		"stages": ss,
 		"walls": ws,
+		"companions": comps,
 		"rng_seed": rng_seed,
 		"rng_state": rng_state,
 		"active": act,
@@ -376,6 +411,8 @@ static func from_dict(d: Dictionary) -> GameState:
 		s.stages.append(StageState.from_dict(JsonUtil.as_dict(ss[k])))
 	for w: Variant in JsonUtil.as_array(d.get("walls", [])):
 		s.walls.append(WallState.from_dict(JsonUtil.as_dict(w)))
+	for c: Variant in JsonUtil.as_array(d.get("companions", [])):
+		s.companions.append(CompanionState.from_dict(JsonUtil.as_dict(c)))
 	s.rng_seed = JsonUtil.as_int(d.get("rng_seed", 0))
 	s.rng_state = JsonUtil.as_int(d.get("rng_state", 0))
 	var act: Dictionary = JsonUtil.as_dict(d.get("active", {})) if not old_phases else {}

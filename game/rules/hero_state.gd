@@ -6,6 +6,8 @@ extends RefCounted
 const ZONE_STRIP: String = "strip"
 const ZONE_MAP: String = "map"
 const ZONE_KO: String = "ko"
+## Hidden inside its player's companion (GDD 10, 2026-11-21): off the table, as if not there.
+const ZONE_SHELTER: String = "shelter"
 
 var id: String = ""
 var owner: int = 0
@@ -43,6 +45,10 @@ func is_on_map() -> bool:
 
 func is_ko() -> bool:
 	return zone == ZONE_KO
+
+
+func is_hidden() -> bool:
+	return zone == ZONE_SHELTER
 
 
 func has_status(name: String) -> bool:

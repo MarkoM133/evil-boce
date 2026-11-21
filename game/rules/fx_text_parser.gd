@@ -260,6 +260,11 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 	else:
 		e.when = "PASSIVE"
 	var low: String = s.to_lower()
+	# "When you play this card, …" (an Assist that brings a companion, 2026-11-21): runs as the card enters play.
+	m = _rx("^when you play this card, (.*)$").search(low)
+	if m != null:
+		e.when = "PLAY"
+		low = m.get_string(1)
 	m = _rx("^when this stage is revealed, (.*)$").search(low)
 	if m != null:
 		e.when = "REVEAL"
@@ -480,6 +485,17 @@ static func _match(low: String) -> Array[Dictionary]:
 		var target: String = _subject(m.get_string(1))
 		if not target.is_empty():
 			return [_act("STATUS", target, ["IMMUNE_KB", "TURN"])]
+
+	# Companions (GDD 10, 2026-11-21): "place Coco Jumbo next to your Hero", "A friendly Hero within 1 space may
+	# pay 1 Energy to hide inside" (the "may" is already taken off), "It moves up to 2 spaces in a random direction".
+	if _rx("^place .+ next to your hero$").search(low) != null:
+		return [_act("COMPANION", "", [])]
+	m = _rx("^a friendly hero within (\\d+) spaces? (?:pays? (\\d+) energy to )?hides? inside$").search(low)
+	if m != null:
+		return [_act("HIDE", "", [m.get_string(1), m.get_string(2)] if not m.get_string(2).is_empty() else [m.get_string(1)])]
+	m = _rx("^it moves (?:up to )?(\\d+) spaces? in a random direction$").search(low)
+	if m != null:
+		return [_act("WANDER", "", [m.get_string(1)])]
 
 	m = _rx("^place a wall(?: on an empty space)?(?: \\(line of (\\d+)\\))?$").search(low)
 	if m != null:

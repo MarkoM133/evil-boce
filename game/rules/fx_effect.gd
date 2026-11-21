@@ -57,6 +57,9 @@ const VERBS: Dictionary[String, Array] = {
 	"SWAP": [true, 0],          # SWAP FRIENDLY [ENGAGED]  (SELF and that hero trade hexes)
 	"DUEL_TOP": [false, 2],     # DUEL_TOP <STAT> <n> [PICK]  (players show their top card; higher cost gets +n: PICK = one hero the winner picks)
 	"MOVE_ID": [false, 2],      # MOVE_ID <hero id> <n>  (one hero of a group move; written by the runtime)
+	"COMPANION": [false, 0],    # COMPANION  (PLAY, on an Assist: its companion goes on a free hex next to the hero; the player picks)
+	"HIDE": [false, 1],         # HIDE <reach> [energy]  (the Assist's companion: one hero of its player within reach hides inside, for that energy)
+	"WANDER": [false, 1],       # WANDER <n>  (END: the Assist's companion walks 1..n hexes in a direction drawn by lot)
 	"TOKEN": [true, 1],         # TOKEN <ME|OPP> <token card id> [n]  (that player gets n of that token beside the hand)
 }
 ## A TOKEN is never made in the End phase (it would be gone at once) nor by a passive (GDD 10, 2026-11-14).

@@ -14,6 +14,8 @@ export const VERBS = {
   CHOOSE: [true, 0], RECYCLE: [true, 1], PICK_CORE: [false, 0], MOVE_CORE: [false, 1], TRAP_CORE: [false, 1],
   HOLD_HIT: [true, 0], FULL_HIT: [true, 0], NOOP: [false, 0], FREE_PLAY: [false, 1], SWAP: [true, 0], DUEL_TOP: [false, 2], MOVE_ID: [false, 2],
   TOKEN: [true, 1],
+  // Pratilac (GDD 10, 2026-11-21): COMPANION na PLAY Assista, HIDE <domet> [energija], WANDER <n> na END.
+  COMPANION: [false, 0], HIDE: [false, 1], WANDER: [false, 1],
 };
 // TOKEN se ne stvara u End fazi (odmah bi nestao) ni pasivno (GDD 10, 2026-11-14).
 export const NO_TOKEN_WHENS = ['END', 'PASSIVE'];

@@ -137,6 +137,32 @@
       "fx": "PREROLL: HEAL SELF 0"
     },
     {
+      "id": "TF-030",
+      "name": "Old Turtle",
+      "type": "Assist",
+      "color": "Red",
+      "cost": 2,
+      "traits": [
+        "General"
+      ],
+      "subtype": "Companion",
+      "text": "x",
+      "fx": "PLAY: COMPANION\nPOSTROLL OPTIONAL: HIDE 1 1\nEND: WANDER 2"
+    },
+    {
+      "id": "TF-031",
+      "name": "Quiet Shell",
+      "type": "Assist",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "General"
+      ],
+      "subtype": "Companion",
+      "text": "x",
+      "fx": "PLAY: COMPANION\nPOSTROLL OPTIONAL: HIDE 2"
+    },
+    {
       "id": "TA-001",
       "name": "Alpha",
       "type": "Hero",

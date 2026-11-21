@@ -32,7 +32,8 @@ func sources(s: GameState) -> Array[Dictionary]:
 		slot = (slot + 1) % s.players.size()
 	for sl: int in order:
 		for h: HeroState in s.heroes_of(sl):
-			if h.is_ko():
+			# A hero hidden in a companion is off the table: its ability and equipment do nothing meanwhile.
+			if h.is_ko() or h.is_hidden():
 				continue
 			var card: CardDef = engine.stat_card(h)
 			if card != null:
@@ -723,6 +724,28 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			if options.size() == 1:
 				return {}
 			return {"player": player, "kind": "hero", "options": options, "prompt": "Swap places with"}
+		"COMPANION":
+			var spots: Array[Vector2i] = engine.companion_spots(s, engine.companion_hero(s, player, str(ctx.get("hero", ""))))
+			if spots.is_empty():
+				return {"error": "no free space next to your hero"}
+			if spots.size() == 1:
+				return {}
+			return {"player": player, "kind": "hex", "options": spots.map(func(a: Vector2i) -> Variant: return Hex.to_json(a)), "prompt": "Place the companion"}
+		"HIDE":
+			var comp: CompanionState = _own_companion(s, ctx)
+			if comp == null:
+				return {"error": "no companion on the table"}
+			if not comp.inside.is_empty():
+				return {"error": "a hero is already inside"}
+			var price: int = args[1].to_int() if args.size() > 1 else 0
+			if s.player(player).energy < price:
+				return {"error": "not enough energy (%d, costs %d)" % [s.player(player).energy, price]}
+			var near: Array[HeroState] = engine.shelter_candidates(s, comp, args[0].to_int())
+			if near.is_empty():
+				return {"error": "no hero of yours next to the companion"}
+			if near.size() == 1:
+				return {}
+			return {"player": player, "kind": "hero", "options": near.map(func(h: HeroState) -> Variant: return h.id), "prompt": "Who hides inside"}
 		"WALL":
 			var hexes: Array = _wall_options(s, ctx, e)
 			if hexes.is_empty():
@@ -949,6 +972,30 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 		"REMOVE_EVO":
 			for h: HeroState in _targets(s, ctx, e, target, answer, verb):
 				engine.remove_evolution(s, h)
+		"COMPANION":
+			var spots: Array[Vector2i] = engine.companion_spots(s, engine.companion_hero(s, player, str(ctx.get("hero", ""))))
+			if spots.is_empty():
+				return "no free space next to your hero"
+			var at: Vector2i = JsonUtil.as_hex(answer) if answer != null else spots[0]
+			if not spots.has(at):
+				return "not a free hex next to your hero"
+			engine.place_companion(s, player, str(ctx.get("card", "")), at)
+		"HIDE":
+			var comp: CompanionState = _own_companion(s, ctx)
+			if comp == null:
+				return "no companion on the table"
+			var near: Array[HeroState] = engine.shelter_candidates(s, comp, args[0].to_int())
+			var who: HeroState = s.hero(str(answer)) if answer != null else (near[0] if not near.is_empty() else null)
+			if who == null or not near.has(who):
+				return "that hero cannot hide now"
+			var price: int = args[1].to_int() if args.size() > 1 else 0
+			var pl: PlayerState = s.player(player)
+			if pl.energy < price:
+				return "not enough energy (%d, costs %d)" % [pl.energy, price]
+			pl.energy -= price
+			engine.enter_shelter(s, who, comp)
+		"WANDER":
+			engine.wander_companion(s, _own_companion(s, ctx), args[0].to_int())
 		"WALL":
 			var w := WallState.new()
 			w.id = "wall:%d" % (s.walls.size() + 1)
@@ -1047,6 +1094,12 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 	return ""
 
 
+## The companion the context's card put on the table (its player's, from that very Assist), or null.
+func _own_companion(s: GameState, ctx: Dictionary) -> CompanionState:
+	var c: CompanionState = s.companion_of(JsonUtil.as_int(ctx.get("player", 0)))
+	return c if c != null and c.card_id == str(ctx.get("card", "")) else null
+
+
 func _branch(e: FxEffect, branch: Variant) -> FxEffect:
 	var sub := FxEffect.new()
 	sub.when = e.when
@@ -1143,11 +1196,11 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 				out.append(h)
 		"ALL_FRIENDLY":
 			for h: HeroState in s.heroes:
-				if not h.is_ko() and s.team_of(h.owner) == s.team_of(player):
+				if not h.is_ko() and not h.is_hidden() and s.team_of(h.owner) == s.team_of(player):
 					out.append(h)
 		"ALL_ENEMY":
 			for h: HeroState in s.heroes:
-				if not h.is_ko() and s.team_of(h.owner) != s.team_of(player):
+				if not h.is_ko() and not h.is_hidden() and s.team_of(h.owner) != s.team_of(player):
 					out.append(h)
 		"ALL_OTHER_IN_RANGE":
 			if me != null:
@@ -1288,7 +1341,7 @@ func _wall_options(s: GameState, ctx: Dictionary, e: FxEffect) -> Array:
 	var out: Array = []
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	for a: Vector2i in s.map().cells():
-		if s.stage_at(a) != null or s.wall_at(a) or s.hero_at(a) != null or s.core_at(a) != null:
+		if s.stage_at(a) != null or s.wall_at(a) or s.hero_at(a) != null or s.core_at(a) != null or s.companion_at(a) != null:
 			continue
 		if e.range and (me == null or not engine.reaches_hex(s, me, a)):
 			continue

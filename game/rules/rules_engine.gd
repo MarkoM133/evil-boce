@@ -319,7 +319,7 @@ func _keep_plan(key: String, plan: SetupPlan) -> void:
 
 ## `gap` < 0 skips the distance rules (returning a core from the inventory).
 func _core_spot_error(s: GameState, c: CoreState, a: Vector2i, gap: int) -> String:
-	if s.wall_at(a) or s.hero_at(a) != null:
+	if s.wall_at(a) or s.hero_at(a) != null or s.companion_at(a) != null:
 		return "hex is taken"
 	if s.stage_at(a) != null:
 		return "not on a stage"
@@ -468,6 +468,12 @@ func _apply_start(s: GameState, m: Move) -> String:
 			return why
 		if not roll and h.zone == HeroState.ZONE_STRIP:
 			return "a hero in the start zone must roll"
+		# A hero hidden in a companion comes out as it is activated (GDD 10, 2026-11-21): onto a free hex next to
+		# it (`hex` picks which; the first free one otherwise), and from there it rolls or stays like any hero.
+		if h.is_hidden():
+			var out_err: String = leave_shelter(s, h, m.data.get("hex", null))
+			if not out_err.is_empty():
+				return out_err
 	s.active[m.player] = hid
 	if not hid.is_empty():
 		s.choices[m.player] = roll
@@ -848,6 +854,7 @@ func apply_knockback(s: GameState, o: RollOutcome) -> String:
 	s.pending_knockbacks.clear()
 	var causes: Dictionary[String, int] = _causes(s, o, movers)
 	for r: RollResult in o.results:
+		_apply_companion_result(s, r)
 		var h: HeroState = s.hero(r.ball_id)
 		if h == null or h.is_ko():
 			continue
@@ -859,6 +866,7 @@ func apply_knockback(s: GameState, o: RollOutcome) -> String:
 			s.event("knockback", {"hero": h.id, "from": Hex.to_json(from), "to": Hex.to_json(h.hex),
 				"steps": asked[h.id], "physics": true, "hits": r.collisions.size() + r.walls_hit})
 		end_move(s, h, was, by_team)
+	_unstack_companions(s)
 	s.event("knockback_done", {"heroes": asked.keys()})
 	_check_win(s)
 	_continue(s)
@@ -872,11 +880,13 @@ func apply_roll(s: GameState, o: RollOutcome) -> String:
 		return "not waiting for a roll"
 	var causes: Dictionary[String, int] = roll_causes(s, o)
 	for r: RollResult in o.results:
+		_apply_companion_result(s, r)
 		var h: HeroState = s.hero(r.ball_id)
 		if h == null or h.is_ko():
 			continue
 		var by_team: int = causes.get(r.ball_id, -1)
 		_apply_result(s, h, r, by_team)
+	_unstack_companions(s)
 	# A thrown hero that never left its start strip (too weak a throw) throws again, as if
 	# nothing happened (Marko 2026-10-26): it may not stay there. The others keep where they
 	# stopped and are not thrown again.
@@ -1055,6 +1065,7 @@ func _continue(s: GameState) -> void:
 	var guard: int = 0
 	while not s.is_over() and guard < 64:
 		guard += 1
+		_sync_companions(s)
 		_drop_held_hits(s)
 		if not s.pending.is_empty() or not s.pending_knockbacks.is_empty():
 			return
@@ -2434,6 +2445,9 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 		"Assist":
 			if p.assists.has(cid):
 				return "that assist is already in play"
+			var comp_err: String = _companion_blocker(s, slot, target, card)
+			if not comp_err.is_empty():
+				return comp_err
 			if p.assists.size() >= s.settings.assist_limit:
 				var out: String = replace
 				if not p.assists.has(out):
@@ -2841,6 +2855,227 @@ func max_hp(s: GameState, h: HeroState) -> int:
 
 
 ## Attacker `a` reaches `b`: b's footprint lies within a's range, counted from a's outer hexes.
+# =====================================================================================
+# Companions (GDD 10, 2026-11-21)
+# =====================================================================================
+
+## A companion could rest on `a`: on the map, no wall, hero, core or other companion there.
+func companion_spot_free(s: GameState, a: Vector2i) -> bool:
+	return s.map().contains(a) and not s.wall_at(a) and s.hero_at(a) == null and s.core_at(a) == null and s.companion_at(a) == null
+
+
+## Free hexes next to `h` for its player's companion.
+func companion_spots(s: GameState, h: HeroState) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if h == null or not h.is_on_map():
+		return out
+	var seen: Dictionary[Vector2i, bool] = {}
+	for cell: Vector2i in s.footprint(h):
+		for n: Vector2i in Hex.neighbors(cell):
+			if seen.has(n):
+				continue
+			seen[n] = true
+			if companion_spot_free(s, n):
+				out.append(n)
+	return out
+
+
+## The hero an Assist's companion is put next to: the one the card was played for, else the player's hero
+## that cards go to now (the activated one; in a battle, theirs in it).
+func companion_hero(s: GameState, slot: int, hero_id: String) -> HeroState:
+	var h: HeroState = s.hero(hero_id)
+	if h != null:
+		return h
+	var ctx: Array[HeroState] = card_context_heroes(s, slot)
+	return ctx[0] if not ctx.is_empty() else s.active_hero(slot)
+
+
+## An Assist whose PLAY effect puts a companion down is not played without a free hex next to the hero.
+func _companion_blocker(s: GameState, slot: int, target: HeroState, card: CardDef) -> String:
+	for e: FxEffect in card.effects_when("PLAY"):
+		for a: Dictionary in e.actions:
+			if str(a["verb"]) == "COMPANION" and companion_spots(s, companion_hero(s, slot, target.id if target != null else "")).is_empty():
+				return "no free space next to your hero"
+	return ""
+
+
+## Puts `slot`'s companion from `card_id` on `a`. A player has one: the one before it leaves with its Assist.
+func place_companion(s: GameState, slot: int, card_id: String, a: Vector2i) -> void:
+	var old: CompanionState = s.companion_of(slot)
+	if old != null:
+		remove_companion(s, old, "replaced")
+	var c := CompanionState.new()
+	c.id = CompanionState.id_for(slot)
+	c.owner = slot
+	c.card_id = card_id
+	c.hex = a
+	s.companions.append(c)
+	s.event("companion", {"id": c.id, "player": slot, "card": card_id, "hex": Hex.to_json(a)})
+
+
+## Takes a companion off the table. `why`: assist (its Assist left play) | replaced (a new one came) | fell
+## (off the table). A hero inside comes out where it stood, unhurt; a fall is handled by companion_falls first.
+## Replaced or fallen, its Assist goes to the graveyard with it.
+func remove_companion(s: GameState, c: CompanionState, why: String) -> void:
+	if c == null or not s.companions.has(c):
+		return
+	var inside: HeroState = s.hero(c.inside)
+	s.companions.erase(c)
+	c.inside = ""
+	if inside != null and inside.is_hidden():
+		_put_out(s, inside, c.hex, null)
+	var p: PlayerState = s.player(c.owner)
+	if why != "assist" and p != null and p.assists.has(c.card_id):
+		p.assists.remove_at(p.assists.find(c.card_id))
+		p.graveyard.append(c.card_id)
+	s.event("companion_gone", {"id": c.id, "player": c.owner, "card": c.card_id, "why": why})
+
+
+## A companion left the table (a ball pushed it over the edge): it is gone with its Assist; a hero inside
+## pays as for a ring-out and goes back to its start zone.
+func companion_falls(s: GameState, c: CompanionState) -> void:
+	var inside: HeroState = s.hero(c.inside)
+	c.inside = ""
+	s.event("companion_fell", {"id": c.id, "player": c.owner, "hero": inside.id if inside != null else ""})
+	remove_companion(s, c, "fell")
+	if inside != null and inside.is_hidden():
+		ring_out(s, inside, "companion")
+
+
+## A companion whose Assist is no longer in play leaves; a hero that was knocked out inside is not inside.
+func _sync_companions(s: GameState) -> void:
+	for c: CompanionState in s.companions.duplicate():
+		var p: PlayerState = s.player(c.owner)
+		var h: HeroState = s.hero(c.inside)
+		if not c.inside.is_empty() and (h == null or not h.is_hidden()):
+			c.inside = ""
+		if p == null or not p.assists.has(c.card_id):
+			remove_companion(s, c, "assist")
+
+
+## Heroes of `c`'s owner that may hide in it now: on the map, free (not locked in a tie), within `reach`.
+func shelter_candidates(s: GameState, c: CompanionState, reach: int) -> Array[HeroState]:
+	var out: Array[HeroState] = []
+	if c == null or not c.inside.is_empty():
+		return out
+	for h: HeroState in s.heroes_of(c.owner):
+		if not h.is_on_map() or h.tie_turns > 0:
+			continue
+		if Hex.distance(c.hex, h.hex) - (1 if h.big else 0) <= reach:
+			out.append(h)
+	return out
+
+
+## `h` hides in its player's companion: off the table (not a target, in no battle, on no stage, no cards
+## for it); if it was the activated hero, its player is down to Pass or an Assist for the turn.
+func enter_shelter(s: GameState, h: HeroState, c: CompanionState) -> void:
+	var was: StageState = begin_move(s, h)
+	h.zone = HeroState.ZONE_SHELTER
+	c.inside = h.id
+	_lost_active(s, h)
+	end_move(s, h, was, -1)
+	s.event("sheltered", {"hero": h.id, "companion": c.id})
+
+
+## A hidden hero comes out next to its companion: `wanted` (a hex as JSON) if it is one of the free ones,
+## else the first free hex around it. "" or why not.
+func leave_shelter(s: GameState, h: HeroState, wanted: Variant) -> String:
+	var c: CompanionState = s.shelter_of(h.id)
+	if c == null:
+		return "hero is not hidden"
+	if not _put_out(s, h, c.hex, wanted):
+		return "no free space next to the companion"
+	c.inside = ""
+	return ""
+
+
+## Puts a hidden hero back on the map around `from` (on it when it is free: the companion is gone), on the
+## wanted hex when that is a free one next to it.
+func _put_out(s: GameState, h: HeroState, from: Vector2i, wanted: Variant) -> bool:
+	var found: bool = false
+	var spot: Vector2i = from
+	if wanted != null:
+		var want: Vector2i = JsonUtil.as_hex(wanted)
+		if Hex.distance(from, want) <= 1 + (1 if h.big else 0) and s.is_free(want, h.big, h):
+			spot = want
+			found = true
+	if not found:
+		for r: int in range(0, 4):
+			for cell: Vector2i in Hex.spiral(from, r):
+				if s.is_free(cell, h.big, h):
+					spot = cell
+					found = true
+					break
+			if found:
+				break
+	if not found:
+		return false
+	h.zone = HeroState.ZONE_MAP
+	h.hex = spot
+	s.event("left_shelter", {"hero": h.id, "hex": Hex.to_json(h.hex)})
+	arrive(s, h)
+	return true
+
+
+## The End phase: a companion walks by itself, 1 to `steps` hexes in a direction drawn by lot, until
+## something is in the way; a direction with no free first step is skipped. It never leaves the table and
+## carries the hero inside along.
+func wander_companion(s: GameState, c: CompanionState, steps: int) -> void:
+	if c == null or steps <= 0:
+		return
+	var first: int = s.random_int(6)
+	var want: int = 1 + s.random_int(steps)
+	for k: int in 6:
+		var dir: int = (first + k) % 6
+		var at: Vector2i = c.hex
+		var done: int = 0
+		while done < want:
+			var next: Vector2i = Hex.neighbor(at, dir)
+			if not companion_spot_free(s, next):
+				break
+			at = next
+			done += 1
+		if done > 0:
+			var from: Vector2i = c.hex
+			c.hex = at
+			s.event("companion_moved", {"id": c.id, "from": Hex.to_json(from), "hex": Hex.to_json(at), "why": "wander"})
+			return
+
+
+## One ball's stop that is a companion's (the sim reports it under the companion's id): it rests where it
+## stopped, or it is gone when it left the map.
+func _apply_companion_result(s: GameState, r: RollResult) -> void:
+	var c: CompanionState = s.companion(r.ball_id)
+	if c == null:
+		return
+	if r.ring_out or r.strip_entered >= 0 or r.end_area != BallWorld.Area.MAP:
+		companion_falls(s, c)
+		return
+	if r.end_hex != c.hex:
+		var from: Vector2i = c.hex
+		c.hex = r.end_hex
+		s.event("companion_moved", {"id": c.id, "from": Hex.to_json(from), "hex": Hex.to_json(c.hex), "why": "pushed"})
+
+
+## A hero that stopped on a companion's hex pushes it onto the nearest free one (a roll worked out without
+## the sim, or two stops snapped to the same hex).
+func _unstack_companions(s: GameState) -> void:
+	for c: CompanionState in s.companions:
+		if s.hero_at(c.hex) == null and not s.wall_at(c.hex):
+			continue
+		for r: int in range(1, 5):
+			var moved: bool = false
+			for a: Vector2i in Hex.spiral(c.hex, r):
+				if companion_spot_free(s, a):
+					var from: Vector2i = c.hex
+					c.hex = a
+					s.event("companion_moved", {"id": c.id, "from": Hex.to_json(from), "hex": Hex.to_json(a), "why": "pushed"})
+					moved = true
+					break
+			if moved:
+				break
+
+
 func in_range(s: GameState, a: HeroState, b: HeroState) -> bool:
 	if not a.is_on_map() or not b.is_on_map():
 		return false
