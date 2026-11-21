@@ -15,6 +15,8 @@ const WRITE = [
   new RegExp(`^data/fx-requests/${NAME}\\.json$`),
   new RegExp(`^data/text-requests/${NAME}\\.json$`),
   /^data\/fx-wishlist\.json$/,
+  // Pojmovi pravila (Card editor › Words › Terms, 2026-11-21).
+  /^data\/terms\.json$/,
   new RegExp(`^data/art/(?:emblems/)?${NAME}${IMG}$`),
   /^data\/sets\/sets\.json$/,
   /^data\/card-frames\/[a-z0-9-]{1,30}\/layout\.json$/,

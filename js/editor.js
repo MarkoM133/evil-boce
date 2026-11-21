@@ -3,7 +3,8 @@
 // s trakom (breadcrumb, lock, Undo, Close, Save), lijevo paneli (Checks, panel tipa, fx, Balance, Notes & history),
 // u sredini karta, desno forma. Izmjene se spremaju kao nacrti (data/editor/drafts.json); igra ih vidi tek nakon Objave.
 // Tekst je u editoru s tokenima ([HP], [PWR]…), u bazi riječima (js/card-text.js).
-import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, coreMode, TINTS, PHASE_COLORS } from './render.js';
+import { loadTemplate, renderCard, fontsReady, loadImage, parseEffect, templateName, coreMode, TINTS, PHASE_COLORS, setRuleTerms } from './render.js';
+import { TERMS_PATH, emptyTerms, termsOfCard, subtypes } from './terms.js';
 import { fxProblems } from './fx-grammar.js';
 import { firstTag, traitNames, norm, ruleWord, GENERAL, HEROES, TRAIT, MIXED, INVALID } from './tags.js';
 import { TERRAINS } from './parse.js';
@@ -30,7 +31,7 @@ const INTENT_OPEN_KEY = 'evil-boce-intent-open';
 // Zadnja Objava iz editora: baza prije nje i objavljeni nacrti, za Undo.
 const LAST_PUBLISH_PATH = 'data/editor/last-publish.json';
 export const EDIT_TYPES = ['Hero', 'Evolution', 'Action', 'Equipment', 'Assist', 'Stage', 'Core', 'Combo'];
-export const PAGES = ['sets', 'publish', 'traits', 'guide', 'frames', 'wishlist', 'words'];
+export const PAGES = ['sets', 'publish', 'traits', 'guide', 'frames', 'wishlist', 'words', 'terms'];
 const PORTRAIT = ['Action', 'Equipment', 'Assist'];
 const HEROISH = ['Hero', 'Evolution'];
 // Vodoravne karte: heroji, evolucije i Combo karte (2026-11-07).
@@ -45,7 +46,7 @@ const TAB_KEY = 'evil-boce-tab';
 const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'PWR'], ['rng', 'RNG'], ['kb', 'KB']];
 const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB', 'EN'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
-const FIELDS = ['name', 'type', 'token', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain',
+const FIELDS = ['name', 'type', 'token', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain', 'subtype',
   'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'ingredients', 'extraCost', 'introducedIn', 'tempTurns'];
 const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equipment: 'action', Assist: 'action', Stage: 'stage', Core: 'core', Combo: 'combo' };
 
@@ -87,7 +88,9 @@ export function createEditor(env) {
     ed.loading = true;
     try {
       ed.agency = await fontsReady();
-      [ed.drafts, ed.guide, ed.notes, ed.history, ed.wishlist, ed.intent] = await Promise.all([readJson(DRAFTS_PATH, { version: 1, cards: {} }), readGuide(store()), readJson(NOTES_PATH, { cards: {} }), readJson(HISTORY_PATH, { cards: {} }), readJson(WISH_PATH, { version: 1, items: [] }), readJson(INTENT_PATH, { cards: {} })]);
+      [ed.drafts, ed.guide, ed.notes, ed.history, ed.wishlist, ed.intent, ed.terms] = await Promise.all([readJson(DRAFTS_PATH, { version: 1, cards: {} }), readGuide(store()), readJson(NOTES_PATH, { cards: {} }), readJson(HISTORY_PATH, { cards: {} }), readJson(WISH_PATH, { version: 1, items: [] }), readJson(INTENT_PATH, { cards: {} }), readJson(TERMS_PATH, emptyTerms())]);
+      setRuleTerms(ed.terms.terms);
+      ed.termsAt = Date.now();
       await readLocks();
       await sets.ensure();
       ed.ready = true;
@@ -198,11 +201,12 @@ export function createEditor(env) {
         ed.work = null;
       }
       syncLock();
+      refreshTerms();
       // Lockovi i cards.json s drugog stroja, najviše svakih 30 s.
       if (Date.now() - ed.locksAt > HEARTBEAT_MS) {
         Promise.all([readLocks(), refreshDb()]).then(([a, b]) => { if (a || b) env.render(); }).catch(() => {});
       }
-      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), pageTabs(want), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, words: renderTraitsPage, frames: frames.render, publish: renderPublish, wishlist: renderFxPage }[want]());
+      return h('div', { class: 'ce-page-wrap' }, readOnlyNote(), pageTabs(want), { sets: sets.render, guide: guide.render, traits: renderTraitsPage, words: renderTraitsPage, terms: renderTermsPage, frames: frames.render, publish: renderPublish, wishlist: renderFxPage }[want]());
     }
     if (want !== ed.id) {
       if (!leaveOk()) return renderCardPage();
@@ -866,7 +870,7 @@ export function createEditor(env) {
     // Words: Tags, Phrases i fx (Marko 2026-11-15: ono što čeka igru ide s Publisha ovamo, adresa wishlist).
     const wishes = (ed.wishlist?.items ?? []).filter(i => i.status === 'open').length;
     const groups = [
-      [['traits', 'Tags', 0], ['guide', 'Phrases', 0], ['wishlist', 'fx', wishes]],
+      [['traits', 'Tags', 0], ['terms', 'Terms', 0], ['guide', 'Phrases', 0], ['wishlist', 'fx', wishes]],
     ];
     const cur = want === 'words' ? 'traits' : want;
     const group = groups.find(g => g.some(([k]) => k === cur));
@@ -941,6 +945,71 @@ export function createEditor(env) {
         h('div', { class: 'ce-fx-pair' },
           h('div', {}, h('p', { class: 'small muted' }, 'The game reads'), h('pre', { class: 'ce-fx-code ce-claude-fx' }, st(c).res.read || '(nothing)')),
           h('div', {}, h('p', { class: 'small muted' }, 'Claude reads'), h('pre', { class: 'ce-fx-code ce-claude-fx' }, st(c).res.fx || '(nothing)')))))) : null);
+  }
+
+  // ---------- pojmovi pravila (Marko 2026-11-21) ----------
+
+  function refreshTerms() {
+    if (Date.now() - (ed.termsAt ?? 0) < HEARTBEAT_MS) return;
+    ed.termsAt = Date.now();
+    readJson(TERMS_PATH, emptyTerms()).then(x => {
+      if (JSON.stringify(x) === JSON.stringify(ed.terms) || ed.termWork) return;
+      ed.terms = x;
+      setRuleTerms(x.terms);
+      env.render();
+    }).catch(() => {});
+  }
+
+  // Subtype: a small gold tab beside the type (Companion); only terms marked as subtypes are offered.
+  function subtypeField(w) {
+    const list = subtypes(ed.terms?.terms);
+    if (!list.length && !w.subtype) return null;
+    const field = (label, input, extra) => h('label', { class: 'ce-field' }, h('span', {}, label), input, extra ?? null);
+    return field('SUBTYPE', h('select', { onchange: e => { snap(true); if (e.target.value) w.subtype = e.target.value; else delete w.subtype; changed(); env.render(); } },
+      h('option', { value: '' }, '–'), [...new Set([...list, ...(w.subtype ? [w.subtype] : [])])].map(n => h('option', { value: n, selected: n === w.subtype }, n))),
+    h('small', { class: 'muted' }, 'What this card puts on the table. Its explanation is on Words › Terms.'));
+  }
+
+  // Words › Terms: each term once, with the text the game shows on hover; which cards use it.
+  function renderTermsPage() {
+    const canEdit = canWrite();
+    const work = (ed.termWork ??= structuredClone(ed.terms ?? emptyTerms()));
+    const dirty = JSON.stringify(work) !== JSON.stringify(ed.terms ?? emptyTerms());
+    const cards = allCards().filter(c => !c.deleted);
+    const users = t => cards.filter(c => termsOfCard(c, [t]).length);
+    const nameIn = h('input', { placeholder: 'New term, e.g. hide inside', disabled: !canEdit });
+    const add = () => {
+      const n = nameIn.value.trim();
+      if (!n) return;
+      if (work.terms.some(t => t.name.toLowerCase() === n.toLowerCase())) { env.toast(`${n} is already a term.`, 'warn'); return; }
+      work.terms.push({ name: n, text: '' });
+      env.render();
+    };
+    const save = async () => {
+      const next = { ...work, version: (ed.terms?.version ?? 0) + 1 };
+      await writeJson(TERMS_PATH, next);
+      ed.terms = next;
+      ed.termWork = null;
+      setRuleTerms(next.terms);
+      env.toast('Terms saved.');
+      env.render();
+    };
+    return h('div', { class: 'ce-page' }, h('section', { class: 'panel' },
+      h('h2', {}, 'Terms'),
+      h('p', { class: 'muted' }, 'Cards are written in sentences. A term that needs explaining (hide inside) is drawn gold and bold on the card, and the game shows this text when the mouse is over it; it is written once here. A subtype (Companion) is the small gold tab beside the card type.'),
+      h('table', { class: 'ce-pub-table ce-terms-table' },
+        h('thead', {}, h('tr', {}, ['Term', 'Subtype', 'What it means (shown on hover)', 'Cards', ''].map(x => h('th', {}, x)))),
+        h('tbody', {}, work.terms.map((t, i) => h('tr', {},
+          h('td', {}, h('strong', { class: 'ce-term-name' }, t.name)),
+          h('td', {}, h('input', { type: 'checkbox', checked: !!t.subtype, disabled: !canEdit, title: 'A subtype is a tab beside the card type, not a word in the text',
+            onchange: e => { if (e.target.checked) t.subtype = true; else delete t.subtype; env.render(); } })),
+          h('td', {}, canEdit ? h('textarea', { rows: 2, value: t.text ?? '', oninput: e => { t.text = e.target.value; } , onchange: () => env.render() }) : (t.text ?? '')),
+          h('td', { class: 'small' }, users(t).map(c => c.id).join(', ') || h('span', { class: 'muted' }, '–')),
+          h('td', {}, canEdit ? h('button', { class: 'ghost', type: 'button', onclick: () => { work.terms.splice(i, 1); env.render(); } }, 'Remove') : null))))),
+      canEdit ? h('div', { class: 'toolbar' }, nameIn, h('button', { type: 'button', onclick: add }, 'Add term'),
+        h('button', { class: 'primary', type: 'button', disabled: !dirty, onclick: () => env.guard(save) }, 'Save'),
+        dirty ? h('button', { class: 'ghost', type: 'button', onclick: () => { ed.termWork = null; env.render(); } }, 'Undo') : null)
+        : h('p', { class: 'muted' }, 'Saving needs the shared folder, or Card Studio through Marko\'s computer.')));
   }
 
   function renderWishlist() {
@@ -1725,6 +1794,7 @@ export function createEditor(env) {
       body = [
         h('h2', {}, 'Card'),
         w.token ? tokensRow(w) : field('TYPE', seg(PORTRAIT.map(t => [t, t]), w.type, v => { set('type', v); env.render(); })),
+        subtypeField(w),
         field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
         h('div', { class: 'ce-row' }, field('COST', num(w.cost ?? 0, e => set('cost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })), code),
         w.token ? null : tokensRow(w),

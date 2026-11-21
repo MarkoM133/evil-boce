@@ -840,7 +840,7 @@ function importButton() {
 // Četiri podstranice: Words drži Tags (Traits & aliases), Phrases (Text guide) i fx (Claude i fx wishlist, s Publisha
 // 2026-11-15). Stare adrese (traits, guide, wishlist) i dalje rade.
 const EDITOR_PAGES = [['sets', 'Sets'], ['publish', 'Publish'], ['traits', 'Words'], ['frames', 'Frames']];
-const EDITOR_GROUP = { wishlist: 'traits', guide: 'traits', words: 'traits' };
+const EDITOR_GROUP = { wishlist: 'traits', guide: 'traits', words: 'traits', terms: 'traits' };
 // Gledanje gore, izrada dolje (Marko 2026-11-03): Cards, Decks, Balance, crta, Card editor, Tools.
 const NAV = [
   // Combos (2026-11-07): the combo list, for the phone beside a match too.

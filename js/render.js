@@ -1,3 +1,4 @@
+import { splitTerms, termNames } from './terms.js';
 // Crtanje karte za editor karata: iz karte, predloška (data/card-frames/<predložak>/layout.json) i arta
 // nacrta platno 1500×2100. Isti modul koriste preview u editoru, Objava (PNG) i provjere.
 // Predložak je podatak: slojevi okvira (Card Engine exporti, bijeli, tintaju se bojom karte), prozor arta
@@ -40,6 +41,14 @@ const COND_RE = /^(If [^,]+,)\s*/;
 // Ikone u tekstu: riječ stata iza broja ili iza more/less (kako je Card Engine crtao sprite: "heals 3 HP",
 // "+2000 Power", "more HP", "1 Energy"; broj i ikona su spojeni, iza more/less/most/least ostaje razmak ("the most Power", Marko 2026-11-07); HP, DMG i Power su ikona i bez broja: "Set their Power to 0", 2026-11-20), stari tokeni [PWR]…, i {Trait} podebljano. Tekst karte ostaje u riječima (igra ih čita).
 // "Range" velikim slovom je ikona i bez broja ("in Range", "Hero's Range"; Marko 2026-11-05), "range" malim ostaje riječ.
+// Pojmovi pravila (Marko 2026-11-21): riječi s popisa (data/terms.json) crtaju se zlatno i podebljano. Popis postavi
+// editor kad ga učita; bez popisa tekst je kao prije.
+let TERM_NAMES = [];
+export function setRuleTerms(terms) {
+  TERM_NAMES = termNames(terms);
+}
+const TERM_INK = '#ffd36a';
+
 const ICON_RE = /\[(PWR|DMG|HP|RNG|KB)\]|\{([^}]+)\}|(?:(?<=\d)\s?|(?<=\b(?:more|less|most|least)\s))(HP|DMG|Power|Range|Knockback|Energy)\b|\b(HP|DMG|Energy|Range|Power)\b/g;
 const WORD_ICON = { HP: 'hp', DMG: 'dmg', Power: 'pwr', Range: 'rng', Knockback: 'kb', Energy: 'energy' };
 
@@ -141,6 +150,7 @@ export function renderCard(canvas, card, tpl, art, emblem = null) {
   fitLine(ctx, card.cost == null ? '' : String(card.cost), L.cost, { font: TITLE_FONT, color: ink(L.cost) });
   if (color === 'None' && L.cost && card.cost != null) drawCostRim(ctx, L.cost.box, card.bonusColors ?? []);
   fitLine(ctx, card.type ?? '', L.type, { font: TITLE_FONT, color: ink(L.type) });
+  if (card.subtype) drawSubtype(ctx, card.subtype, L.type);
   fitLine(ctx, card.id ?? '', L.code, { font: TITLE_FONT, color: ink(L.code) });
   if (card.comboMark) drawComboMark(ctx, card.id ?? '', L.code);
   drawBonus(ctx, card.bonus ?? {}, L, tpl.icons);
@@ -220,6 +230,29 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 // Jedan redak u kućici, smanjuje se dok ne stane; false kad ni najmanji ne stane.
+// Subtype (Companion, Marko 2026-11-21): a small gold tab right of the type label, same height.
+function drawSubtype(ctx, text, box) {
+  if (!box || !text) return;
+  const [tx, ty, tw, th] = box.box;
+  const size = Math.round(box.size * 0.95);
+  ctx.save();
+  ctx.font = `${size}px ${TITLE_FONT}`;
+  const pad = th * 0.45;
+  const w = ctx.measureText(text).width + pad * 2;
+  const x = tx + tw + th * 0.25;
+  ctx.lineWidth = Math.max(2, th * 0.07);
+  ctx.strokeStyle = TERM_INK;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  roundRect(ctx, x, ty, w, th, th * 0.28);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = TERM_INK;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + w / 2, ty + th / 2 + size * 0.04);
+  ctx.restore();
+}
+
 function fitLine(ctx, text, box, { font, color, bold = false }) {
   if (!box || !text) return true;
   const [x, y, w, h] = box.box;
@@ -589,6 +622,16 @@ function drawEffect(ctx, text, color, box, icons, heading = '', passive = false)
 
 // "{Sword}" je tag (crta se kao pločica), "3 HP" i [PWR]… ikone statova; ostalo običan tekst.
 export function richRuns(s) {
+  if (!TERM_NAMES.length) return richRunsPlain(s);
+  const out = [];
+  for (const part of splitTerms(s, TERM_NAMES)) {
+    if (part.term) out.push({ text: part.text, bold: true, term: true });
+    else out.push(...richRunsPlain(part.text));
+  }
+  return out;
+}
+
+function richRunsPlain(s) {
   const runs = [];
   let last = 0;
   for (const m of s.matchAll(ICON_RE)) {
@@ -631,7 +674,7 @@ function layoutParas(ctx, paras, maxW, size, icons) {
         if (/^\s+$/.test(b)) { words.push({ space: true }); continue; }
         ctx.font = `${r.bold ? 'bold' : '500'} ${size}px ${TEXT_FONT}`;
         const prev = words.at(-1);
-        const part = { text: b, bold: !!r.bold, underline: !!r.underline, w: ctx.measureText(b).width };
+        const part = { text: b, bold: !!r.bold, underline: !!r.underline, term: !!r.term, w: ctx.measureText(b).width };
         if (prev && !prev.space) prev.parts.push(part);
         else words.push({ parts: [part] });
       }
@@ -712,7 +755,8 @@ function drawRich(ctx, line, cx, cy, size, icons, ink = '#ffffff') {
       ctx.fillText(p.text, x + st.pad, cy + size * 0.04);
     } else {
       ctx.font = `${p.bold ? 'bold' : '500'} ${size}px ${TEXT_FONT}`;
-      ctx.fillStyle = ink;
+      // A term is gold on the dark text box; on a light one (Stage) it stays the text colour, bold.
+      ctx.fillStyle = p.term && /^(#[def]|white)/i.test(ink) ? TERM_INK : ink;
       ctx.fillText(p.text, x, cy + size * 0.03);
       if (p.underline) ctx.fillRect(x, cy + size * 0.42, p.w, Math.max(2, size * 0.06));
     }

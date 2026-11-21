@@ -29,6 +29,7 @@ test('Publish stays on the computer: the database, card images and the rest are 
   assert.equal(canRemove('data/editor/drafts.json'), false);
   assert.ok(canList('data/locks'));
   assert.ok(canList('data/art'), 'a card offers its old art back on the phone too');
+  assert.ok(canWrite('data/terms.json'), 'Words › Terms saves through the server too');
   assert.ok(canList('data/art/emblems'));
   assert.equal(canList('data'), false);
   assert.equal(canList('data/images'), false);
