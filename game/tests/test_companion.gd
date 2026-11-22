@@ -254,3 +254,73 @@ func test_a_saved_match_keeps_the_companion_and_who_is_inside() -> void:
 	assert_true(back.hero(ALPHA).is_hidden())
 	assert_eq(back.shelter_of(ALPHA).id, c.id)
 	assert_eq(GameState.from_dict({}).companions.size(), 0, "an older record has none")
+
+
+## Walls on every free hex next to `center`.
+func _wall_in(s: GameState, center: Vector2i) -> void:
+	for n: Vector2i in Hex.neighbors(center):
+		if s.is_free(n, false):
+			var w := WallState.new()
+			w.id = "wall:%d" % (s.walls.size() + 1)
+			w.hexes.append(n)
+			s.walls.append(w)
+
+
+func test_with_no_room_next_to_the_hero_it_goes_on_the_nearest_free_hex() -> void:
+	var s: GameState = _state()
+	var h: HeroState = s.hero(ALPHA)
+	_wall_in(s, h.hex)
+	var spots: Array[Vector2i] = engine.companion_spots(s, h)
+	assert_eq(spots.size(), 12, "the whole second ring is free")
+	for a: Vector2i in spots:
+		assert_eq(Hex.distance(a, h.hex), 2)
+	assert_eq(engine.apply(s, Move.make(Move.PLAY_CARD, 0, {"card": TURTLE})), "", "the card is played all the same (Marko 2026-11-22)")
+	assert_eq(str(s.pending[0]["kind"]), "hex", "the player picks among the equally near")
+	assert_eq(JsonUtil.as_array(s.pending[0]["options"]).size(), 12)
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": Hex.to_json(Hex.neighbor(h.hex, 0))})), "pick one of the offered options", "a walled hex next to the hero is not on offer")
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": Hex.to_json(spots[5])})), "")
+	assert_eq(s.companion_of(0).hex, spots[5])
+
+
+func test_next_to_the_hero_comes_first() -> void:
+	var s: GameState = _state()
+	var h: HeroState = s.hero(ALPHA)
+	var free: Vector2i = Hex.neighbor(h.hex, 2)
+	_wall_in(s, h.hex)
+	s.walls = s.walls.filter(func(w: WallState) -> bool: return not w.hexes.has(free))
+	var spots: Array[Vector2i] = engine.companion_spots(s, h)
+	assert_eq(spots.size(), 1, "one hex next to the hero is free: no farther one is offered")
+	assert_eq(spots[0], free)
+
+
+func test_a_hidden_hero_comes_out_on_the_nearest_free_hex_it_picks() -> void:
+	var s: GameState = _state()
+	var c: CompanionState = _with_companion(s, SHELL)
+	var h: HeroState = s.hero(ALPHA)
+	engine.enter_shelter(s, h, c)
+	assert_eq(engine.shelter_exits(s, h).size(), 6, "room all round the companion: the six hexes next to it")
+	_wall_in(s, c.hex)
+	var exits: Array[Vector2i] = engine.shelter_exits(s, h)
+	assert_eq(exits.size(), 12, "none next to it: the second ring")
+	s.phase = GameState.PHASE_START
+	s.active = {}
+	s.only_pass = PackedInt32Array()
+	var far: Vector2i = Hex.neighbor(Hex.neighbor(Hex.neighbor(c.hex, 0), 0), 0)
+	assert_eq(engine.apply(s, Move.make(Move.SELECT, 0, {"hero": ALPHA, "roll": false, "hex": Hex.to_json(far)})),
+		"not one of the free hexes nearest to the companion", "a farther hex is not an exit")
+	assert_true(h.is_hidden(), "a refused pick leaves it inside")
+	assert_eq(engine.apply(s, Move.make(Move.SELECT, 0, {"hero": ALPHA, "roll": false, "hex": Hex.to_json(exits[7])})), "")
+	assert_eq(h.hex, exits[7], "the hex its player picked")
+	assert_eq(Hex.distance(h.hex, c.hex), 2)
+	assert_eq(c.inside, "")
+
+
+func test_without_a_pick_it_takes_the_first_exit() -> void:
+	var s: GameState = _state()
+	var c: CompanionState = _with_companion(s, SHELL)
+	var h: HeroState = s.hero(ALPHA)
+	engine.enter_shelter(s, h, c)
+	_wall_in(s, c.hex)
+	var first: Vector2i = engine.shelter_exits(s, h)[0]
+	assert_eq(engine.leave_shelter(s, h, null), "")
+	assert_eq(h.hex, first)

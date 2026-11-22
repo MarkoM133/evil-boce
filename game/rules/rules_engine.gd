@@ -2889,19 +2889,35 @@ func companion_spot_free(s: GameState, a: Vector2i) -> bool:
 	return s.map().contains(a) and not s.wall_at(a) and s.hero_at(a) == null and s.core_at(a) == null and s.companion_at(a) == null
 
 
-## Free hexes next to `h` for its player's companion.
+## Where `h`'s player may put a companion: the free hexes nearest to the hero. Next to it when there is room;
+## with none there, the nearest ring that has a free hex (Marko 2026-11-22). The player picks among them.
 func companion_spots(s: GameState, h: HeroState) -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
+	var none: Array[Vector2i] = []
 	if h == null or not h.is_on_map():
-		return out
-	var seen: Dictionary[Vector2i, bool] = {}
-	for cell: Vector2i in s.footprint(h):
-		for n: Vector2i in Hex.neighbors(cell):
-			if seen.has(n):
-				continue
-			seen[n] = true
-			if companion_spot_free(s, n):
-				out.append(n)
+		return none
+	return _nearest_free(s, h.hex, null)
+
+
+## Where the hero hidden in a companion may come out as it is activated: the free hexes nearest to the companion
+## (next to it when there is room, else the nearest ring that has one; Marko 2026-11-22). The player picks.
+func shelter_exits(s: GameState, h: HeroState) -> Array[Vector2i]:
+	var none: Array[Vector2i] = []
+	var c: CompanionState = s.shelter_of(h.id) if h != null else null
+	if c == null:
+		return none
+	return _nearest_free(s, c.hex, h)
+
+
+## The free hexes of the first ring round `center` that has any, from the centre out: free for `hero` to stand
+## on (its size counted), or for a companion when `hero` is null. [] only when the map is full.
+func _nearest_free(s: GameState, center: Vector2i, hero: HeroState) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for r: int in range(0, s.settings.map_size * 2 + 1):
+		for a: Vector2i in Hex.ring(center, r):
+			if (s.is_free(a, hero.big, hero) if hero != null else companion_spot_free(s, a)):
+				out.append(a)
+		if not out.is_empty():
+			return out
 	return out
 
 
@@ -2915,12 +2931,12 @@ func companion_hero(s: GameState, slot: int, hero_id: String) -> HeroState:
 	return ctx[0] if not ctx.is_empty() else s.active_hero(slot)
 
 
-## An Assist whose PLAY effect puts a companion down is not played without a free hex next to the hero.
+## An Assist whose PLAY effect puts a companion down is not played without a free hex for it (a full map).
 func _companion_blocker(s: GameState, slot: int, target: HeroState, card: CardDef) -> String:
 	for e: FxEffect in card.effects_when("PLAY"):
 		for a: Dictionary in e.actions:
 			if str(a["verb"]) == "COMPANION" and companion_spots(s, companion_hero(s, slot, target.id if target != null else "")).is_empty():
-				return "no free space next to your hero"
+				return "no free space on the map"
 	return ""
 
 
@@ -3002,44 +3018,40 @@ func enter_shelter(s: GameState, h: HeroState, c: CompanionState) -> void:
 	s.event("sheltered", {"hero": h.id, "companion": c.id})
 
 
-## A hidden hero comes out next to its companion: `wanted` (a hex as JSON) if it is one of the free ones,
-## else the first free hex around it. "" or why not.
+## A hidden hero comes out as it is activated: on `wanted` (a hex as JSON) when that is one of its exits
+## (shelter_exits), else on the first of them. "" or why not.
 func leave_shelter(s: GameState, h: HeroState, wanted: Variant) -> String:
 	var c: CompanionState = s.shelter_of(h.id)
 	if c == null:
 		return "hero is not hidden"
-	if not _put_out(s, h, c.hex, wanted):
-		return "no free space next to the companion"
+	var exits: Array[Vector2i] = shelter_exits(s, h)
+	if exits.is_empty():
+		return "no free space on the map"
+	var at: Vector2i = exits[0]
+	if wanted != null:
+		at = JsonUtil.as_hex(wanted)
+		if not exits.has(at):
+			return "not one of the free hexes nearest to the companion"
 	c.inside = ""
+	_set_out(s, h, at)
 	return ""
 
 
-## Puts a hidden hero back on the map around `from` (on it when it is free: the companion is gone), on the
-## wanted hex when that is a free one next to it.
-func _put_out(s: GameState, h: HeroState, from: Vector2i, wanted: Variant) -> bool:
-	var found: bool = false
-	var spot: Vector2i = from
-	if wanted != null:
-		var want: Vector2i = JsonUtil.as_hex(wanted)
-		if Hex.distance(from, want) <= 1 + (1 if h.big else 0) and s.is_free(want, h.big, h):
-			spot = want
-			found = true
-	if not found:
-		for r: int in range(0, 4):
-			for cell: Vector2i in Hex.spiral(from, r):
-				if s.is_free(cell, h.big, h):
-					spot = cell
-					found = true
-					break
-			if found:
-				break
-	if not found:
+## Puts a hidden hero back on the map round `from`, the hex its companion stood on: there when it is free (the
+## companion is gone), else on the nearest free hex.
+func _put_out(s: GameState, h: HeroState, from: Vector2i, _wanted: Variant) -> bool:
+	var spots: Array[Vector2i] = _nearest_free(s, from, h)
+	if spots.is_empty():
 		return false
+	_set_out(s, h, spots[0])
+	return true
+
+
+func _set_out(s: GameState, h: HeroState, at: Vector2i) -> void:
 	h.zone = HeroState.ZONE_MAP
-	h.hex = spot
+	h.hex = at
 	s.event("left_shelter", {"hero": h.id, "hex": Hex.to_json(h.hex)})
 	arrive(s, h)
-	return true
 
 
 ## The End phase: a companion walks by itself, 1 to `steps` hexes in a direction drawn by lot, until

@@ -731,7 +731,7 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 		"COMPANION":
 			var spots: Array[Vector2i] = engine.companion_spots(s, engine.companion_hero(s, player, str(ctx.get("hero", ""))))
 			if spots.is_empty():
-				return {"error": "no free space next to your hero"}
+				return {"error": "no free space on the map"}
 			if spots.size() == 1:
 				return {}
 			return {"player": player, "kind": "hex", "options": spots.map(func(a: Vector2i) -> Variant: return Hex.to_json(a)), "prompt": "Place the companion"}
@@ -979,10 +979,10 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 		"COMPANION":
 			var spots: Array[Vector2i] = engine.companion_spots(s, engine.companion_hero(s, player, str(ctx.get("hero", ""))))
 			if spots.is_empty():
-				return "no free space next to your hero"
+				return "no free space on the map"
 			var at: Vector2i = JsonUtil.as_hex(answer) if answer != null else spots[0]
 			if not spots.has(at):
-				return "not a free hex next to your hero"
+				return "not one of the free hexes nearest to your hero"
 			engine.place_companion(s, player, str(ctx.get("card", "")), at)
 		"HIDE":
 			var comp: CompanionState = _own_companion(s, ctx)
