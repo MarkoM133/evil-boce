@@ -150,6 +150,10 @@ const CARDS: Array = [
 		"text": "Postroll Phase: Gain the Assist you removed from your Opponent."},
 	{"id": "TD-106", "name": "Core Punch", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
 		"text": "Postroll Phase: As an additional cost, deactivate a Core on your Hero.\nAn Opponent's Hero in Range takes 2 DMG."},
+	{"id": "TD-107", "name": "Blood Punch", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: As an additional cost, your Hero takes 2 DMG.\nAn Opponent's Hero in Range takes 2 DMG."},
+	{"id": "TD-108", "name": "Emblem", "type": "Equipment", "color": "Red", "cost": 1, "traits": ["General"], "bonus": {"pwr": 3000},
+		"text": "As an additional cost, your Hero takes 3 DMG."},
 ]
 
 
@@ -1255,3 +1259,30 @@ func test_an_assist_taken_from_the_opponent_and_gained() -> void:
 	assert_eq(engine.apply(s, Move.make(Move.PLAY_CARD, 0, {"card": "TD-105-1"})), "")
 	assert_true(s.player(0).assists.has("TA-030"), "it comes to the player who took it")
 	assert_false(s.player(1).graveyard.has("TA-030"))
+
+
+# --- costs --------------------------------------------------------------------------------
+
+func test_a_cost_is_not_paid_when_the_card_has_nothing_to_work_on() -> void:
+	var s: GameState = _state()
+	assert_eq(_fx_of("TD-107"), "POSTROLL: COST_DAMAGE 2\nPLAY RANGE: DAMAGE ENEMY 2")
+	assert_eq(_play(s, 0, "TD-107"), "no hero to target", "no opponent in range")
+	assert_eq(s.hero(ALPHA).hp, 10)
+	assert_eq(s.player(0).energy, 10)
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-107"))
+	_on_map(s, ECHO, s.hero(ALPHA).hex + Hex.DIRECTIONS[0] * 2)
+	assert_eq(_play(s, 0, "TD-107"), "")
+	assert_eq(s.hero(ALPHA).hp, 8)
+	assert_eq(s.hero(ECHO).hp, 8)
+
+
+func test_an_equipment_paid_with_damage() -> void:
+	var s: GameState = _state()
+	s.hero(ALPHA).hp = 3
+	assert_eq(_play(s, 0, "TD-108"), "cannot pay 3 damage")
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-108"))
+	s.hero(ALPHA).hp = 10
+	var pwr: int = engine.stat(s, s.hero(ALPHA), "pwr")
+	assert_eq(_play(s, 0, "TD-108"), "")
+	assert_eq(s.hero(ALPHA).hp, 7)
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), pwr + 3000)

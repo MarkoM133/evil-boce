@@ -22,11 +22,16 @@ export const VERBS = {
   // DQ1 (2026-11-22): TERRAIN <ime terena> mijenja teren stagea na kojem heroj stoji.
   TERRAIN: [false, 1], REQUIRE: [false, 1],
   HEAL_MOD: [true, 1], NEXT_CARD: [false, 3], WEAKEN_CARD: [false, 1], BOTTOM: [true, 1],
+  GAIN_TAG: [true, 1], PAY: [false, 1], PAY_HP: [true, 1], KO: [true, 0],
+  SACRIFICE: [false, 0], SAVE_KO: [true, 0], SHIELD: [true, 1], PREVENT: [false, 2], HEAL_LATER: [true, 1], RING_OUT_DRAW: [false, 1],
+  TELEPORT: [true, 1], TELEPORT_ID: [false, 2], APPROACH: [false, 1], RETURN_LATER: [true, 0], DRAIN_STAGE: [false, 1],
+  REVEAL_STAGE: [false, 0], CURSE_STAGE: [false, 0], NEGATE_LAST: [false, 0], REMOVE_ASSIST: [true, 0], GAIN_ASSIST: [false, 0],
+  EQUIP_OTHER: [false, 0], DUEL_HAND: [false, 2], SHOW_CARD: [false, 1], DUEL_SHOWN: [false, 2],
 };
 // TOKEN se ne stvara u End fazi (odmah bi nestao) ni pasivno (GDD 10, 2026-11-14).
 export const NO_TOKEN_WHENS = ['END', 'PASSIVE'];
-export const HERO_TARGETS = ['SELF', 'EQUIPPED', 'ENEMY', 'FRIENDLY', 'ALL_FRIENDLY', 'ALL_ENEMY', 'CARD_HERO', 'ALL_OTHER_IN_RANGE',
-  'ALL_FRIENDLY_IN_RANGE', 'ALL_ENEMY_IN_RANGE', 'ALL_FRIENDLY_IN_BATTLE', 'ALL_HEROES', 'EACH_HERO', 'MOST_HP', 'MOST_PWR', 'MOST_ENERGY'];
+export const HERO_TARGETS = ['SELF', 'EQUIPPED', 'ENEMY', 'FRIENDLY', 'ALL_FRIENDLY', 'ALL_ENEMY', 'CARD_HERO', 'PAID', 'ALL_OTHER_IN_RANGE',
+  'ALL_FRIENDLY_IN_RANGE', 'ALL_ENEMY_IN_RANGE', 'ALL_FRIENDLY_IN_BATTLE', 'ALL_HEROES', 'EACH_HERO', 'MOST_HP', 'MOST_PWR', 'MOST_ENERGY', 'MOST_ASSISTS'];
 export const PLAYER_TARGETS = ['ME', 'OPP'];
 export const STATS = ['PWR', 'DMG', 'KB', 'RNG', 'HP'];
 

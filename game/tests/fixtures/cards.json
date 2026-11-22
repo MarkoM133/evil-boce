@@ -1192,6 +1192,17 @@
       "text": "Battle Phase: As an additional cost, your Hero takes 2 DMG.\n{Alpha} Bonus: Do not pay the additional cost.",
       "fx": "BATTLE: COST_DAMAGE 2\nBATTLE INSTEAD BONUS {Alpha}: COST_DAMAGE 0",
       "comboKind": "team"
+    },
+    {
+      "id": "TF-050",
+      "name": "Scorched Earth",
+      "type": "Action",
+      "color": "Red",
+      "cost": 1,
+      "traits": [
+        "General"
+      ],
+      "text": "Postroll Phase: The Terrain of a Stage your Hero stands on becomes Fire."
     }
   ]
 }

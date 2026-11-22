@@ -239,6 +239,49 @@ whatever takes that card back takes the bonus too.
 "If X has 5 or less HP, his Evolution cards cost 2 Energy less and heal him 3 HP." is two lines:
 `PASSIVE IF LOW_HP 5: COST ME -2 EVOLUTION FOR_SELF` and `PLAYED IF TAG ANY EVOLUTION FOR_SELF HP_BEFORE 5: HEAL SELF 3`.
 
+**Tags gained in the match.** `GAIN_TAG <t> {Tag} [TURN]`: on a `PASSIVE` line those heroes carry the tag while the
+card is in play ("The equipped Hero gains {Mage}.", "Your Heroes gain {Brave Hero}."); with `TURN` for this turn
+("… until the end of the turn"). A gained tag counts like one the hero carries (Marko 2026-11-22): for playing cards
+(`FirstTag.play_verdict` takes `RulesEngine.gained_tags`) and for effects (`hero_has_tag`, `BONUS {Tag}`).
+
+**Narrowing the heroes of an action.** `WITH {Tag}` after the arguments keeps the heroes called that or carrying
+the tag (`hero_is`); `HP <n>` those with n HP or less. A group narrowed to nobody as an effect's first step means
+the card is not played. A hero a card that is not a hero's own speaks of by name (its first tag: "Hyunckel gets +2
+Knockback" on an Assist tagged Hyunckel) is written `ALL_FRIENDLY … WITH {Hyunckel}`. In an Assist's ability
+"your Hero" is the player's hero acting now (the first one in the battle being fought, else the activated one).
+
+| verb | effect, and the card text the parser reads |
+|---|---|
+| `BUFF <group> … PICK WITH {Tag}` | "A friendly Hero with {Brave Hero} in this Battle gets +5000 Power." (`ALL_FRIENDLY_IN_BATTLE`, the player picks among those with the tag); without PICK all of them: "Your {Dark Army} Heroes in this Battle get +3000 Power." |
+| `PAY <n>` | the player pays n Energy; an ability that starts with it is not offered without the Energy. "You may pay 2 Energy. If you do, …" |
+| `PAY_HP <t> <n>` then `… PAID …` | each of those heroes with more than n HP loses n; `PAID` is the target for the ones that did. "Each of your {Dark Army} Heroes may pay 1 HP to get +2000 Power." (the heroes in the battle; all that can pay do) |
+| `KO <t> [HP <n>]` | the hero goes down (a hit for all its HP, so what saves from a KO still can). "KO an Opponent's Hero in Range with 1 HP." |
+| `STATUS <t> STONE TURN` | no Power and no damage this turn. "Another friendly Hero in Range has 0 Power and cannot take DMG this turn." |
+| `STATUS <t> DOOMED TURN` | the hero is KO'd as the End phase starts. "Your Hero is KO'd during the End Phase." |
+| `STATUS <t> STUN <n> [LINKED]` | cannot be activated; n counts this turn, so "next turn" is 2 and "for 2 turns" 3. `LINKED`: it ends when the hero whose card it is is KO'd or ringed out ("… or until X is KO'd or ringed out") |
+| `STATUS SELF NO_ROLL TURN` | the hero does not roll this turn ("They cannot roll this turn.") |
+| `STATUS SELF FLEE TURN` | "Your Hero loses this Battle without taking DMG. After the Battle, they are ringed out.": its side cannot win the battle, no hit goes to it, and it is ringed out (a full ring-out) when the battle is done |
+| passive statuses | `BRITTLE` ("If X rolls, this Evolution goes to the graveyard."), `NO_CARDS` ("No cards can be played for X."), `KO_IF_REMOVED` ("If this Evolution is removed, X is KO'd.": a card took it off, not a roll) |
+| `SACRIFICE` | the Assist whose line it is goes to the graveyard. "You may put this Assist into the graveyard. If you do, …" |
+| `SAVE_KO <t>` | passive on an Assist: the first of those heroes that would be KO'd stays at 1 HP and the Assist goes to the graveyard. "The first time one of your Heroes would be KO'd, they stay at 1 HP instead. Then put this Assist into the graveyard." |
+| `SHIELD <t> <n>` | passive on an Assist: before a battle hit of n or less is dealt to one of those heroes, its player is asked whether the Assist goes to the graveyard instead (`PREVENT <hero> <n>` then keeps that hit off). "If X would take 5 or less DMG, you may put this Assist into the graveyard instead." |
+| `HEAL_LATER <t> <n>` | heals as the End phase starts. "… your Hero heals 1 HP at the end of the turn." |
+| `RING_OUT_DRAW <n>` | if an opponent's hero is ringed out in this Battle phase the player draws n, once. Read after a SACRIFICE sentence |
+| `TELEPORT <SELF|FRIENDLY> <n|STAGE>` | to a free hex up to n away, or (STAGE) a free hex of a stage in SELF's range; walls and balls in between do not matter. "Your Hero moves to an empty space up to 10 spaces away.", "Move another friendly Hero in Range to an empty space on a Stage in Range." |
+| `APPROACH <n>` | SELF steps up to n hexes towards the nearest opponent hero of its battle, until next to it. "Your Hero moves 2 spaces towards the nearest Opponent's Hero." |
+| `RETURN_LATER SELF` | as the End phase starts the hero goes back to where the Battle phase found it (`GameState.battle_snapshot`), also from its start zone; not when KO |
+| `KNOCKBACK <t> <n> RANDOM` | each hero its own direction, drawn by lot. "When this Stage is revealed, Knockback each Hero on it 5 spaces in a random direction." |
+| `BUFF MOST_ASSISTS … PICK` | like `MOST_ENERGY`, by Assists in play. "… the player with more Assists chooses one of their Heroes in this Battle. That Hero gets +3000 Power." |
+| `DUEL_HAND <STAT> <n> PICK` | each player with a hero in the battle shows a card from the hand (their pick, it stays in the hand); the higher cost wins and picks one of their heroes for +n; a tie nobody, an empty hand shows 0 |
+| `DRAIN_STAGE <n>` | n of the opponents' Energy leaves the stage SELF stands on (from whoever holds the most). "Remove 5 of your Opponent's Energy from that Stage." |
+| `CURSE_STAGE` | for the rest of the match no Battle Phase cards for the other sides' heroes standing on the stage SELF stands on (`StageState.cursed_by`) |
+| `REVEAL_STAGE` | a face-down stage of an opponent in SELF's range turns face up (its reveal effect runs for SELF) |
+| `NEGATE_LAST [{Tag}] [RANGE <n>]` | the last Battle Phase card an opponent played in this battle is undone when it has the tag, or was played for a hero with n Range or more: it loses the stats it gave (`gave_phase` / `gave_turn` kept with the card) and its effects that still wait; what already happened stays. Otherwise the card is not played |
+| `REMOVE_ASSIST OPP`, `GAIN_ASSIST` | one of the opponent's Assists goes to their graveyard (the card's player picks); the same turn GAIN_ASSIST brings it into play on that player's side |
+| `EQUIP_OTHER [{Tag}]` | on an Equipment: it goes on another hero of the player in the range of the hero it is played for, one with the tag (the move's `wearer` names it when several fit), and it is played in the phase its sentence opens with |
+
+`COST_DAMAGE` on an Evolution is paid as it goes on ("As an additional cost, X takes 3 DMG.").
+
 ## Choices
 
 When an effect needs a decision, the engine pushes `{"type": "choose", "player", "kind":

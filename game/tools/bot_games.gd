@@ -3,6 +3,7 @@ extends SceneTree
 ## and the analytic roll of tests/test_bot.gd), counting how a rule change shifts the game.
 ## godot_console --headless --path game -s res://tools/bot_games.gd -- [--games=20] [--seed=1]
 ##     [--level=hard] [--max-turns=60] [--fixtures] [--claim=stay|energy|ring] [--goal=14] [--report=<file.json>] [--force=<card id>]
+##     [--drafts[=<id prefix>]]
 ## Random decks from the shared folder's cards (`--fixtures`: the test fixtures). Reports, over
 ## all games: hero damage taken and from what (battle, wall, trap, card), cards discarded for
 ## battle hits, KOs, how the matches ended, turns, cards played and the energy they took; with
@@ -48,6 +49,31 @@ func _run() -> void:
 			quit(1)
 			return
 		catalog = db.catalog
+	# --drafts[=<id prefix>]: the Card Studio drafts play too (those whose id starts with the prefix; all without one),
+	# in place of a published card with the same id: a set gets its rules run through whole matches before it is
+	# published. A draft the game cannot read yet is left out and named.
+	if opts.has("drafts") and opts["fixtures"] != "1":
+		var data: String = GameSettings.data_path().path_join("data")
+		var doc: Dictionary = JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(data.path_join("cards.json"))))
+		var drafts: Dictionary = JsonUtil.as_dict(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(data.path_join("editor/drafts.json")))).get("cards", {}))
+		var prefix: String = "" if opts["drafts"] == "1" else opts["drafts"]
+		var list: Array = JsonUtil.as_array(doc.get("cards", []))
+		var added: int = 0
+		for key: Variant in drafts:
+			var rec: Dictionary = JsonUtil.as_dict(drafts[key]).duplicate()
+			rec["id"] = str(rec.get("id", key))
+			if not str(rec["id"]).begins_with(prefix):
+				continue
+			var probe: CardDef = CardDef.from_card(rec)
+			if not probe.is_ready():
+				print("draft not ready, left out: %s %s %s" % [rec["id"], probe.name, str(probe.unparsed)])
+				continue
+			list = list.filter(func(c: Variant) -> bool: return str(JsonUtil.as_dict(c).get("id", "")) != str(rec["id"]))
+			list.append(rec)
+			added += 1
+		doc["cards"] = list
+		catalog = CardCatalog.from_doc(doc)
+		print("drafts in play: %d" % added)
 	var level: Bot.Level = Bot.level_from(opts["level"])
 	_force = str(opts.get("force", ""))
 	var games: int = int(opts["games"])

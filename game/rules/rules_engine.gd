@@ -2493,9 +2493,15 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 				return "hero already has %d equipment" % s.settings.equipment_limit
 			if takes.equipment.has(cid):
 				return "hero already has that equipment"
+			# "As an additional cost, your Hero takes 3 DMG" on an Equipment: the hero that takes it pays, as it goes on.
+			var gear_cost: int = _cost_damage(s, slot, takes, card)
+			if gear_cost > 0 and takes.hp <= gear_cost:
+				return "cannot pay %d damage" % gear_cost
 			_take_from_hand(p, cid)
 			takes.equipment.append(cid)
 			s.event("equipped", {"card": cid, "hero": takes.id})
+			if gear_cost > 0:
+				hero_damage(s, takes, gear_cost, false, "", cid)
 		"Evolution":
 			if not target.is_on_map():
 				return "a hero in the start zone cannot evolve"
@@ -2845,8 +2851,20 @@ func _play_blocker(s: GameState, slot: int, target: HeroState, card: CardDef) ->
 			continue
 		if not fx.cond_ok(s, ctx, e):
 			continue
-		return fx.first_error(s, ctx, e)
+		var err: String = fx.first_error(s, ctx, e)
+		# A line that is only a cost ("As an additional cost, deactivate a Core on your Hero.") is followed by what the
+		# card does: that has to be able to start too, or the cost would be paid for nothing.
+		if not err.is_empty() or not _only_costs(e):
+			return err
 	return ""
+
+
+## Is the effect nothing but what the card asks of its player before it does anything?
+func _only_costs(e: FxEffect) -> bool:
+	for a: Dictionary in e.actions:
+		if not ["REQUIRE", "COST_DAMAGE", "DEACTIVATE_CORE", "PAY", "OWN_COST"].has(str(a["verb"])):
+			return false
+	return not e.actions.is_empty()
 
 
 ## "Play this card only if …" (REQUIRE): why the card may not be played now, "" when it may.

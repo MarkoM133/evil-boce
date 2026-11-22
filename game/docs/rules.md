@@ -212,6 +212,41 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
   statuses, then `FxRuntime.passive_status`), so "X is immune to Knockback" on an Evolution now works.
 - Tests: `tests/test_dq1_fx.gd` (the DQ1 words are tested there on small cards written as card text).
 
+## What the DQ1 set added to the engine (built 2026-11-22)
+
+The fx words are in `docs/fx-keywords.md` ("Words that came with DQ1"); the open readings in `docs/pitanja.md`. In
+the engine:
+
+- **State.** `GameState.turn_plays` (every card played this turn: player, card, hero, phase, battle),
+  `GameState.battle_snapshot` (where every hero stood as the Battle phase began), `StageState.terrain_override` and
+  `cursed_by`, `HeroState.stun_by`. A battle's `played` entries carry `gave_phase` / `gave_turn` (the bonuses the card
+  put on its hero) and `negated`. All of it is in the save and the net state.
+- **As the End phase starts** (`_set_phase`, in this order, before the End effects and the claims): Fire burns
+  (`_burn`), doomed heroes go down (`_doom`), heals put off till then land (`_late_heals`), heroes go back to where the
+  Battle phase found them (`_returns`).
+- **Playing a card** (`_play`): a REQUIRE line is checked first (`_requirement`); a line that is only a cost is
+  followed by a check that the next line can start (`_play_blocker`, `_only_costs`); no cards for a hero with the
+  passive status NO_CARDS; no Battle Phase cards for a hero on a stage cursed by another side; an Evolution or an
+  Equipment with COST_DAMAGE takes it as it goes on; an Equipment with EQUIP_OTHER goes on another hero (the move's
+  `wearer`); a bonus line that says "instead" after a bare phase line replaces the stat box (`FxRuntime.box_replaced`);
+  after the card's own effects the cards that were in play as it was played get `FxRuntime.on_card_played`.
+- **Costs** (`card_cost`): `FxRuntime.cost_mod` takes the hero the card is for; a combo's extra energy goes through
+  `combo_cost`.
+- **Damage** (`hero_damage`): none for a hero of stone; a hit bought off (`prevent`) does nothing; a hero that would
+  go down asks `FxRuntime.save_from_ko` first. `ko_hero` is a KO by a card, as a hit for all the HP.
+- **Battles**: before a hit is offered to the loser, `FxRuntime.offer_shields`; a side with a FLEE hero cannot win, its
+  hero is not hit and is ringed out in `_finish_battle`; effects that wait for the battle (`FxEffect.waits_for_battle`:
+  WIN, WIN_ALLY, LOSE_BELOW) are settled in `FxRuntime.on_battle_done`.
+- **Tags**: `gained_tags`, `hero_has_tag`, `hero_is`; `CardDef.has_trait` reads each part of a tag joined by "&".
+- **Rolling**: a hero with NO_ROLL is left out of `_rollers`; a thrown hero with the passive status BRITTLE loses its
+  Evolution in `apply_roll`.
+- **Not built**: the deck check for cards whose first tag a hero only gains in the match; a pick of the hero when an
+  Assist's "your Hero" could be two heroes in one battle; the HUD's own words for the new events (`burn`, `terrain`,
+  `stunned`, `saved`, `card_undone`, `stage_cursed`, `stage_drained`, `assist_gone`, `card_shown` …) and a way to
+  name the `wearer` when several heroes fit.
+- `tools/bot_games.gd --drafts[=<id prefix>]` plays the Card Studio drafts too, so a set can be run through whole
+  matches before it is published.
+
 ## Scenario tests
 
 `tests/test_scenarios.gd` runs every `tests/scenarios/*.json` against the fixture catalog
