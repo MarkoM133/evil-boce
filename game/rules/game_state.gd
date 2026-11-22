@@ -61,6 +61,9 @@ var pending_rolls: PackedStringArray = PackedStringArray()
 var roll_snapshot: Dictionary[String, Dictionary] = {}
 ## The "Roll Phase:" offers after this roll went out already (once per stop).
 var roll_offered: bool = false
+## Where every hero stood as the Battle phase began ({"zone", "hex"} by hero id), for "return your Hero to where
+## they were at the start of the Battle Phase".
+var battle_snapshot: Dictionary = {}
 ## Every card played this turn, in order: {"player", "card", "hero" ("" for an Assist), "phase"}. Conditions and
 ## triggers count them ("your Opponent played a {Fire} card this turn", "your third {Mage} card in a turn").
 var turn_plays: Array[Dictionary] = []
@@ -369,6 +372,7 @@ func to_dict() -> Dictionary:
 		"roll_snapshot": roll_snapshot.duplicate(true),
 		"roll_offered": roll_offered,
 		"turn_plays": turn_plays.duplicate(true),
+		"battle_snapshot": battle_snapshot.duplicate(true),
 		"pending_knockbacks": pending_knockbacks.duplicate(true),
 		"abilities_used": Array(abilities_used),
 		"deferred": deferred.duplicate(true),
@@ -450,6 +454,7 @@ static func from_dict(d: Dictionary) -> GameState:
 	for k: Variant in snap:
 		s.roll_snapshot[str(k)] = JsonUtil.as_dict(snap[k])
 	s.roll_offered = JsonUtil.as_bool(d.get("roll_offered", false))
+	s.battle_snapshot = JsonUtil.as_dict(d.get("battle_snapshot", {})).duplicate(true)
 	for x: Variant in JsonUtil.as_array(d.get("turn_plays", [])):
 		s.turn_plays.append(JsonUtil.as_dict(x))
 	for x: Variant in JsonUtil.as_array(d.get("pending_knockbacks", [])):

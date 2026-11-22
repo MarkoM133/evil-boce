@@ -882,6 +882,9 @@ func apply_roll(s: GameState, o: RollOutcome) -> String:
 			continue
 		var by_team: int = causes.get(r.ball_id, -1)
 		_apply_result(s, h, r, by_team)
+		# "If X rolls, this Evolution goes to the graveyard."
+		if r.thrown and not h.is_ko() and has_status(s, h, "brittle"):
+			remove_evolution(s, h, true)
 	_unstack_companions(s)
 	# A thrown hero that never left its start strip (too weak a throw) throws again, as if
 	# nothing happened (Marko 2026-10-26): it may not stay there. The others keep where they
@@ -918,12 +921,7 @@ func arrive(s: GameState, h: HeroState) -> void:
 		return
 	var st: StageState = s.stage_at(h.hex)
 	if st != null and st.placed and not st.revealed:
-		st.revealed = true
-		# A wind blows in a direction drawn now and kept (GDD 6, 2026-10-26); it goes into the
-		# state and the replay with the stage.
-		st.wind_dir = s.random_int(6)
-		s.event("stage_revealed", {"stage": st.id, "by": h.id, "wind": st.wind_dir})
-		fx.on_reveal(s, st, h)
+		reveal_stage(s, st, h)
 
 
 ## Who moved each ball of a roll, as a team: a thrown ball its own; a ball it did not throw the
@@ -1169,6 +1167,10 @@ func _set_phase(s: GameState, phase: String) -> void:
 	# A hero that left its stage (or whose stage got claimed) loses the reveal bonus for good.
 	s.stage_buffs = s.stage_buffs.filter(func(b: Dictionary) -> bool: return _stage_buff_holds(s, b))
 	_queue_core_returns(s)
+	if phase == GameState.PHASE_BATTLE:
+		s.battle_snapshot.clear()
+		for h: HeroState in s.heroes:
+			s.battle_snapshot[h.id] = {"zone": h.zone, "hex": Hex.to_json(h.hex)}
 	if phase == GameState.PHASE_ROLL:
 		# Where everyone stands before the balls fly, for REVERSE_ROLL.
 		s.roll_snapshot.clear()
@@ -1178,6 +1180,7 @@ func _set_phase(s: GameState, phase: String) -> void:
 		_burn(s)
 		_doom(s)
 		_late_heals(s)
+		_returns(s)
 	match phase:
 		GameState.PHASE_START, GameState.PHASE_PREROLL, GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, \
 				GameState.PHASE_BATTLE, GameState.PHASE_END:
@@ -1210,7 +1213,8 @@ func _rollers(s: GameState) -> Array[HeroState]:
 	for slot: int in _active_slots(s):
 		if s.choices.get(slot, false):
 			var h: HeroState = s.active_hero(slot)
-			if h != null and not h.is_ko():
+			# "They cannot roll this turn" (a card moved the hero instead).
+			if h != null and not h.is_ko() and not h.has_status("no_roll"):
 				out.append(h)
 	return out
 
@@ -2376,7 +2380,7 @@ func card_context_heroes(s: GameState, slot: int) -> Array[HeroState]:
 
 ## play_card {"card": id, "hero": target id (optional when only one fits), "replace": assist id}.
 func _play_card(s: GameState, m: Move) -> String:
-	return _play(s, m.player, m.str_arg("card"), m.str_arg("hero"), false, null, m.str_arg("replace"))
+	return _play(s, m.player, m.str_arg("card"), m.str_arg("hero"), false, null, m.str_arg("replace"), m.str_arg("wearer"))
 
 
 ## FREE_PLAY: a card from the hand goes on `on` without paying its cost (colour and context
@@ -2391,8 +2395,9 @@ func free_play_error(s: GameState, slot: int, cid: String, on: HeroState) -> Str
 	return play_free(copy, slot, cid, copy.hero(on.id))
 
 
+## `wearer`: for an Equipment that goes on another friendly hero (EQUIP_OTHER), the hero that takes it.
 func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, forced: HeroState,
-		replace: String = "") -> String:
+		replace: String = "", wearer: String = "") -> String:
 	var p: PlayerState = s.player(slot)
 	# A token (GDD 10, 2026-11-14) is played like a card from the hand, from beside it.
 	if not p.hand.has(cid) and not p.tokens.has(cid):
@@ -2428,6 +2433,10 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 	var fit: Array[HeroState] = []
 	var unfit: String = ""
 	for h: HeroState in same_colour:
+		# "No cards can be played for X."
+		if has_status(s, h, "no_cards"):
+			unfit = "no cards can be played for %s" % hero_name(h)
+			continue
 		var v: Dictionary = FirstTag.play_verdict(catalog, card, catalog.get_card(h.card_id), stat_card(h), gained_tags(s, h))
 		if JsonUtil.as_bool(v["ok"]):
 			fit.append(h)
@@ -2451,7 +2460,14 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 	# The cost depends on the hero the card is played for (a colorless card's bonus): with no
 	# target picked (an Assist), the cheapest of the heroes that fit.
 	var cost: int = 0 if free else card_cost(s, p, card, target if target != null else _cheapest_for(s, p, card, same_colour))
+	# A stage cursed by an opposing side: no Battle Phase cards for a hero standing on it, for the rest of the match.
+	if s.phase == GameState.PHASE_BATTLE and target != null and target.is_on_map():
+		var under: StageState = s.stage_at(target.hex)
+		if under != null and under.cursed_by >= 0 and under.cursed_by != s.team_of(slot):
+			return "no Battle Phase cards for a hero on that stage"
 	var hp_before: int = target.hp if target != null else 0
+	var had_phase: Dictionary = target.phase_bonus.duplicate() if target != null else {}
+	var had_turn: Dictionary = target.turn_bonus.duplicate() if target != null else {}
 	var gain_before: int = _bonus_pwr(target)
 	# The cards in play as the card is played: they are the ones that see it (a hero's own card still answers the
 	# Evolution that takes its place).
@@ -2460,13 +2476,26 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 		return "not enough energy (%d, costs %d)" % [p.energy, cost]
 	match card.type:
 		"Equipment":
-			if target.equipment.size() >= s.settings.equipment_limit:
+			# "Equip this to another friendly Hero in Range with {Tag}": the hero it is played for hands it on.
+			var takes: HeroState = target
+			var other: FxEffect = _effect_with(card, "EQUIP_OTHER")
+			if other != null:
+				var fits: Array[HeroState] = equip_other_options(s, target, card, other)
+				if fits.is_empty():
+					return "no other friendly hero in range that can take it"
+				takes = null
+				for h: HeroState in fits:
+					if h.id == wearer or (wearer.is_empty() and fits.size() == 1):
+						takes = h
+				if takes == null:
+					return "say who takes it: " + ", ".join(_ids(fits))
+			if takes.equipment.size() >= s.settings.equipment_limit:
 				return "hero already has %d equipment" % s.settings.equipment_limit
-			if target.equipment.has(cid):
+			if takes.equipment.has(cid):
 				return "hero already has that equipment"
 			_take_from_hand(p, cid)
-			target.equipment.append(cid)
-			s.event("equipped", {"card": cid, "hero": target.id})
+			takes.equipment.append(cid)
+			s.event("equipped", {"card": cid, "hero": takes.id})
 		"Evolution":
 			if not target.is_on_map():
 				return "a hero in the start zone cannot evolve"
@@ -2477,6 +2506,10 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 			# counted without the temporary one that may sit on top.
 			if card.temp_turns <= 0 and card.evo != target.evolutions.size() + 1:
 				return "needs evolution level %d first" % (card.evo - 1)
+			# "As an additional cost, X takes 3 DMG" on an Evolution: paid as it goes on.
+			var evo_cost: int = _cost_damage(s, slot, target, card)
+			if evo_cost > 0 and target.hp <= evo_cost:
+				return "cannot pay %d damage" % evo_cost
 			_take_from_hand(p, cid)
 			var damage: int = max_hp(s, target) - target.hp
 			# Either kind takes the temporary one off first: a new temporary replaces it, an evolution that
@@ -2498,6 +2531,8 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 				target.hp = maxi(max_hp(s, target) - damage, 0)
 				s.event("evolved", {"card": cid, "hero": target.id, "level": card.evo})
 			_drop_unfit_equipment(s, target)
+			if evo_cost > 0:
+				hero_damage(s, target, evo_cost, false, "", cid)
 		"Assist":
 			if p.assists.has(cid):
 				return "that assist is already in play"
@@ -2549,7 +2584,80 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 	_run_play_effects(s, slot, target, card)
 	# Cards in play that watch for a card being played ("Whenever you play a {Fire} card, …").
 	fx.on_card_played(s, slot, card, target, {"hp_before": hp_before, "pwr_gain": _bonus_pwr(target) - gain_before}, watchers)
+	_note_gave(s, cid, target, had_phase, had_turn)
 	return ""
+
+
+## What a card played in the battle gave its hero, kept with the card in the battle's list: whatever undoes the
+## card takes exactly that back.
+func _note_gave(s: GameState, cid: String, target: HeroState, had_phase: Dictionary, had_turn: Dictionary) -> void:
+	if target == null or s.phase != GameState.PHASE_BATTLE or s.battle_index < 0 or s.battle_index >= s.battles.size():
+		return
+	var played: Array = JsonUtil.as_array(s.battles[s.battle_index].get("played", []))
+	for i: int in range(played.size() - 1, -1, -1):
+		var x: Dictionary = played[i]
+		if str(x.get("card", "")) == cid and str(x.get("hero", "")) == target.id and not x.has("gave_phase"):
+			x["gave_phase"] = _bonus_diff(target.phase_bonus, had_phase)
+			x["gave_turn"] = _bonus_diff(target.turn_bonus, had_turn)
+			return
+
+
+static func _bonus_diff(now: Dictionary, was: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for k: Variant in now:
+		var d: int = JsonUtil.as_int(now[k]) - JsonUtil.as_int(was.get(k, 0))
+		if d != 0:
+			out[k] = d
+	return out
+
+
+## A card played in this battle is undone (Marko 2026-11-22): it loses the stats it gave and its effects that still
+## wait ("If you win this Battle, …"); what already happened stays. `x` is its entry in the battle's list.
+func undo_card(s: GameState, x: Dictionary) -> void:
+	var h: HeroState = s.hero(str(x.get("hero", "")))
+	if h != null:
+		var gave_phase: Dictionary = JsonUtil.as_dict(x.get("gave_phase", x.get("bonus", {})))
+		for k: Variant in gave_phase:
+			h.add_bonus(h.phase_bonus, str(k), -JsonUtil.as_int(gave_phase[k]))
+		var gave_turn: Dictionary = JsonUtil.as_dict(x.get("gave_turn", {}))
+		for k: Variant in gave_turn:
+			h.add_bonus(h.turn_bonus, str(k), -JsonUtil.as_int(gave_turn[k]))
+		clamp_hp(s, h)
+	for i: int in range(s.deferred.size() - 1, -1, -1):
+		var d: Dictionary = s.deferred[i]
+		if str(JsonUtil.as_dict(d.get("ctx", {})).get("card", "")) == str(x.get("card", "")) and str(d.get("hero", "")) == str(x.get("hero", "")):
+			s.deferred.remove_at(i)
+			break
+	x["negated"] = true
+	x["used"] = true
+	s.event("card_undone", {"card": x.get("card", ""), "hero": x.get("hero", "")})
+
+
+## The card's effect that carries the verb; null when none does.
+func _effect_with(card: CardDef, verb: String) -> FxEffect:
+	for e: FxEffect in card.effects:
+		if e.has_verb(verb):
+			return e
+	return null
+
+
+## The heroes an Equipment with EQUIP_OTHER may go on: other heroes of the player on the map, in the range of the
+## hero it is played for, carrying the tag the line names, with room for it.
+func equip_other_options(s: GameState, by: HeroState, card: CardDef, e: FxEffect) -> Array[HeroState]:
+	var out: Array[HeroState] = []
+	var tag: String = ""
+	for a: Dictionary in e.actions:
+		for x: String in JsonUtil.as_strings(a["args"]):
+			if x.begins_with("{"):
+				tag = x
+	if by == null:
+		return out
+	for h: HeroState in s.heroes_of(by.owner):
+		if h == by or not h.is_on_map() or not in_range(s, by, h) or h.equipment.has(card.id) or h.equipment.size() >= s.settings.equipment_limit:
+			continue
+		if tag.is_empty() or hero_has_tag(s, h, tag):
+			out.append(h)
+	return out
 
 
 ## The Power the hero has from this phase and this turn's bonuses (what cards gave it).
@@ -2785,7 +2893,9 @@ func _run_play_effect(s: GameState, slot: int, target: HeroState, card: CardDef,
 ## The phase an Action is locked to ("" = any card round).
 func _play_phase(card: CardDef) -> String:
 	if card.type != "Action":
-		return ""
+		# An Equipment handed to another hero is played in the phase its sentence opens with.
+		var other: FxEffect = _effect_with(card, "EQUIP_OTHER")
+		return other.when if other != null and other.when != "PLAY" and other.when != "PASSIVE" else ""
 	for e: FxEffect in card.effects:
 		if e.when != "PLAY" and e.when != "PASSIVE" and e.when != "PLAYED":
 			return e.when
@@ -2927,18 +3037,23 @@ static func _ids(list: Array[HeroState]) -> PackedStringArray:
 
 ## Takes the top evolution off (card to the graveyard); HP only drops to the new max. A temporary
 ## evolution is the top one while it lasts.
-func remove_evolution(s: GameState, h: HeroState) -> void:
+## `rolled`: it broke because its hero was thrown, not because a card took it off.
+func remove_evolution(s: GameState, h: HeroState, rolled: bool = false) -> void:
 	if not h.temp_evo.is_empty():
 		_drop_temp_evolution(s, h, "removed")
 		return
 	if h.evolutions.is_empty():
 		return
 	var cid: String = h.evolutions[h.evolutions.size() - 1]
+	# "If this Evolution is removed, X is KO'd": asked while the Evolution is still on.
+	var fatal: bool = not rolled and has_status(s, h, "ko_if_removed")
 	h.evolutions.remove_at(h.evolutions.size() - 1)
 	s.player(h.owner).graveyard.append(cid)
 	clamp_hp(s, h)
 	s.event("evolution_removed", {"card": cid, "hero": h.id})
 	_drop_unfit_equipment(s, h)
+	if fatal:
+		ko_hero(s, h, "", cid)
 
 
 ## Whether a piece of equipment on the hero does anything now. In a temporary evolution the hero has that
@@ -3331,6 +3446,44 @@ func _late_heals(s: GameState) -> void:
 			continue
 		heal(s, h, JsonUtil.as_int(m.get("amount", 0)))
 		s.event("heal", {"hero": h.id, "amount": JsonUtil.as_int(m.get("amount", 0)), "hp": h.hp})
+
+
+## As the End phase starts: heroes sent back to where the Battle phase found them ("At the end of the turn, return
+## your Hero to where they were at the start of the Battle Phase"): from wherever they are now, onto that hex or
+## the free hex nearest to it. A hero that is KO stays out.
+func _returns(s: GameState) -> void:
+	for m: Dictionary in s.turn_mods:
+		if str(m.get("kind", "")) != "return":
+			continue
+		var h: HeroState = s.hero(str(m.get("hero", "")))
+		var was: Dictionary = JsonUtil.as_dict(s.battle_snapshot.get(str(m.get("hero", "")), {}))
+		if h == null or h.is_ko() or h.is_hidden() or str(was.get("zone", "")) != HeroState.ZONE_MAP:
+			continue
+		var home: Vector2i = JsonUtil.as_hex(was.get("hex", null))
+		if h.is_on_map() and h.hex == home:
+			continue
+		var spots: Array[Vector2i] = _nearest_free(s, home, h)
+		if spots.is_empty():
+			continue
+		var from: StageState = begin_move(s, h)
+		h.zone = HeroState.ZONE_MAP
+		h.hex = spots[0]
+		s.event("moved", {"hero": h.id, "hex": Hex.to_json(h.hex), "by": "return"})
+		arrive(s, h)
+		end_move(s, h, from, s.team_of(h.owner))
+
+
+## A face-down stage turns face up (a hero stopped on it, or a card says so).
+func reveal_stage(s: GameState, st: StageState, by: HeroState) -> void:
+	if st == null or not st.placed or st.revealed:
+		return
+	st.revealed = true
+	# A wind blows in a direction drawn now and kept (GDD 6, 2026-10-26); it goes into the
+	# state and the replay with the stage.
+	st.wind_dir = s.random_int(6)
+	s.event("stage_revealed", {"stage": st.id, "by": by.id if by != null else "", "wind": st.wind_dir})
+	if by != null:
+		fx.on_reveal(s, st, by)
 
 
 ## The hero goes down whatever HP it has (a card's "KO", the End of a doomed hero), as a hit for all its HP: what

@@ -76,6 +76,13 @@ static func parse(card: CardDef) -> Dictionary:
 	var rich: RegExMatch = _rx("(?i)the player with (?:more|the most) energy chooses one of their heroes in this battle\\. that hero gets \\+(\\d+) (\\w+)\\.?").search(t)
 	if rich != null:
 		t = t.substr(0, rich.get_start()) + "Most energy pick for +%s %s." % [rich.get_string(1), rich.get_string(2)] + t.substr(rich.get_end())
+	# DQ1 stages (2026-11-22): the player with more Assists picks; each player shows a card from the hand.
+	var helped: RegExMatch = _rx("(?i)the player with (?:more|the most) assists chooses one of their heroes in this battle\\.\\s+that hero gets \\+(\\d+) (\\w+)\\.?").search(t)
+	if helped != null:
+		t = t.substr(0, helped.get_start()) + "Most assists pick for +%s %s." % [helped.get_string(1), helped.get_string(2)] + t.substr(helped.get_end())
+	var hands: RegExMatch = _rx("(?i)each player reveals a card from their hand\\.\\s+the player who reveal(?:s|ed) the higher[- ]cost card chooses one of their heroes in this battle\\.\\s+that hero gets \\+(\\d+) (\\w+)\\.?").search(t)
+	if hands != null:
+		t = t.substr(0, hands.get_start()) + "Hand duel for +%s %s." % [hands.get_string(1), hands.get_string(2)] + t.substr(hands.get_end())
 	# "X gets +2 Knockback if you have more {A} than {B} cards in your graveyard, or +2 DMG if you have more {B} than {A}."
 	# is two sentences, one for each side (2026-11-22).
 	var either: RegExMatch = _rx("(?i)([^.]*?)(\\+\\d+ \\w+) if you have more (\\{[^}]+\\}) than (\\{[^}]+\\}) cards in your graveyard, or (\\+\\d+ \\w+) if you have more \\{[^}]+\\} than \\{[^}]+\\}(?: cards in your graveyard)?\\.?").search(t)
@@ -575,7 +582,7 @@ static func _match(low: String) -> Array[Dictionary]:
 		return [_act("OWN_COST", "", [("-" if m.get_string(2) == "less" else "") + m.get_string(1)])]
 
 	# "As an additional cost, take 3 DMG." or "…, your Hero takes 3 DMG." (Marko 2026-11-05).
-	m = _rx("^as an additional cost, (?:take|your hero takes) (\\d+) dmg$").search(low)
+	m = _rx("^as an additional cost, (?:take|your hero takes|self takes) (\\d+) dmg$").search(low)
 	if m != null:
 		return [_act("COST_DAMAGE", "", [m.get_string(1)])]
 
@@ -613,6 +620,54 @@ static func _match(low: String) -> Array[Dictionary]:
 	m = _rx("^(.*?)\\s*heals? (\\d+) hp at the end of the turn$").search(low)
 	if m != null and not _subject(m.get_string(1)).is_empty():
 		return [_act("HEAL_LATER", _subject(m.get_string(1)), [m.get_string(2)])]
+	# Moves that do not walk (2026-11-22).
+	m = _rx("^(?:your hero|self) moves? to an empty space up to (\\d+) spaces? away$").search(low)
+	if m != null:
+		return [_act("TELEPORT", "SELF", [m.get_string(1)])]
+	if _rx("^(?:they|your hero|self) (?:cannot|can't) roll this turn$").search(low) != null:
+		return [_act("STATUS", "SELF", ["NO_ROLL", "TURN"])]
+	if _rx("^move another friendly hero to an empty space on a stage in range$").search(low) != null:
+		return [_act("TELEPORT", "FRIENDLY", ["STAGE"])]
+	m = _rx("^(?:your hero|self) moves? (\\d+) spaces? towards the nearest opponent's hero$").search(low)
+	if m != null:
+		return [_act("APPROACH", "", [m.get_string(1)])]
+	if _rx("^at the end of the turn, return (?:your hero|self) to where (?:they were|it was|he was|she was) at the start of the battle phase$").search(low) != null:
+		return [_act("RETURN_LATER", "SELF", [])]
+	m = _rx("^knock(?:back)? each hero on (?:it|this stage) (?:back )?(\\d+) spaces? in a random direction$").search(low)
+	if m != null:
+		return [_act("KNOCKBACK", "EACH_HERO", [m.get_string(1), "RANDOM"])]
+	# Stages.
+	m = _rx("^remove (\\d+) of your opponent's energy from (?:that|this|the) stage$").search(low)
+	if m != null:
+		return [_act("DRAIN_STAGE", "", [m.get_string(1)])]
+	if _rx("^for the rest of the match, your opponent (?:can't|cannot) play battle phase cards for their heroes standing on (?:this|that) stage$").search(low) != null:
+		return [_act("CURSE_STAGE", "", [])]
+	if _rx("^reveal one of your opponent's stages(?: in range)?$").search(low) != null:
+		return [_act("REVEAL_STAGE", "", [])]
+	# The opponent's last card, undone.
+	m = _rx("^if the last battle phase card your opponent played (?:is|was) an? \\{([^}]+)\\} card, put it into the graveyard$").search(low)
+	if m != null:
+		return [_act("NEGATE_LAST", "", ["{%s}" % m.get_string(1)])]
+	m = _rx("^if the last battle phase card your opponent played was played for a hero with (\\d+) or more range, put it into the graveyard$").search(low)
+	if m != null:
+		return [_act("NEGATE_LAST", "", ["RANGE", m.get_string(1)])]
+	# Assists taken and gained.
+	if _rx("^put one of your opponent's assists into their graveyard$").search(low) != null:
+		return [_act("REMOVE_ASSIST", "OPP", [])]
+	if _rx("^gain the assist you removed from your opponent$").search(low) != null:
+		return [_act("GAIN_ASSIST", "", [])]
+	m = _rx("^equip this to another friendly hero(?: with \\{([^}]+)\\})?$").search(low)
+	if m != null:
+		return [_act("EQUIP_OTHER", "", ["{%s}" % m.get_string(1)] if not m.get_string(1).is_empty() else [])]
+	# Evolutions with a catch.
+	if _rx("^if self rolls, this evolution goes to the graveyard$").search(low) != null:
+		return [_act("STATUS", "SELF", ["BRITTLE"])]
+	if _rx("^no cards can be played for self$").search(low) != null:
+		return [_act("STATUS", "SELF", ["NO_CARDS"])]
+	if _rx("^if this evolution is removed, self is ko'd$").search(low) != null:
+		return [_act("STATUS", "SELF", ["KO_IF_REMOVED"])]
+	if _rx("^as an additional cost, deactivate a core on (?:your hero|self)$").search(low) != null:
+		return [_act("DEACTIVATE_CORE", "SELF", ["1"])]
 	m = _rx("^pay (\\d+) energy$").search(low)
 	if m != null:
 		return [_act("PAY", "", [m.get_string(1)])]
@@ -708,6 +763,12 @@ static func _match(low: String) -> Array[Dictionary]:
 	m = _rx("^most energy pick for \\+(\\d+) (\\w+)$").search(low)
 	if m != null and STAT_WORDS.has(m.get_string(2)):
 		return [_act("BUFF", "MOST_ENERGY", [STAT_WORDS[m.get_string(2)], m.get_string(1), "PICK"])]
+	m = _rx("^most assists pick for \\+(\\d+) (\\w+)$").search(low)
+	if m != null and STAT_WORDS.has(m.get_string(2)):
+		return [_act("BUFF", "MOST_ASSISTS", [STAT_WORDS[m.get_string(2)], m.get_string(1), "PICK"])]
+	m = _rx("^hand duel for \\+(\\d+) (\\w+)$").search(low)
+	if m != null and STAT_WORDS.has(m.get_string(2)):
+		return [_act("DUEL_HAND", "", [STAT_WORDS[m.get_string(2)], m.get_string(1), "PICK"])]
 	m = _rx("^duel for \\+(\\d+) (\\w+)$").search(low)
 	if m != null and STAT_WORDS.has(m.get_string(2)):
 		return [_act("DUEL_TOP", "", [STAT_WORDS[m.get_string(2)], m.get_string(1), "PICK"])]
@@ -842,7 +903,7 @@ static func _match(low: String) -> Array[Dictionary]:
 	if low == "your opponent must discard a card":
 		return [_act("DISCARD", "OPP", ["1"])]
 	# The token is named here; CardCatalog puts its card id in once every card is loaded (CardDef.resolve_tokens).
-	m = _rx("^(?:you )?create token #(\\d+) x(\\d+)$").search(low)
+	m = _rx("^(?:then )?(?:you )?create token #(\\d+) x(\\d+)$").search(low)
 	if m != null and m.get_string(1).to_int() < _token_names.size():
 		var made: Array = ["{%s}" % _token_names[m.get_string(1).to_int()]]
 		if m.get_string(2).to_int() > 1:

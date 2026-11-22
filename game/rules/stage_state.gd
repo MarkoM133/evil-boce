@@ -23,6 +23,9 @@ var terrain_until_turn: int = -1
 var wind_dir: int = -1
 ## A terrain a card put on the stage in place of its own ("Fire"); "" while it has its own.
 var terrain_override: String = ""
+## The team whose card cursed the stage for the rest of the match (no Battle Phase cards for the other teams'
+## heroes standing on it); -1 when none.
+var cursed_by: int = -1
 ## The energy claim variant (MatchSettings.CLAIM_ENERGY): slot -> energy that player has put in.
 var progress: Dictionary[int, int] = {}
 
@@ -59,6 +62,7 @@ func to_dict() -> Dictionary:
 		"terrain_until_turn": terrain_until_turn,
 		"wind_dir": wind_dir,
 		"terrain_override": terrain_override,
+		"cursed_by": cursed_by,
 		"progress": _progress_dict(),
 	}
 
@@ -80,6 +84,7 @@ static func from_dict(d: Dictionary) -> StageState:
 	s.revealed = JsonUtil.as_bool(d.get("revealed", false))
 	s.wind_dir = JsonUtil.as_int(d.get("wind_dir", -1), -1)
 	s.terrain_override = str(d.get("terrain_override", ""))
+	s.cursed_by = JsonUtil.as_int(d.get("cursed_by", -1), -1)
 	s.claimed_by = JsonUtil.as_int(d.get("claimed_by", -1), -1)
 	s.claimed_heroes = JsonUtil.as_strings(d.get("claimed_heroes", []))
 	s.stay_hero = str(d.get("stay_hero", ""))

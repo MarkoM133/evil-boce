@@ -428,6 +428,114 @@ func passive_tags(s: GameState, h: HeroState) -> PackedStringArray:
 	return out
 
 
+## Hexes a TELEPORT may put `who` on: any free hex up to n away from it, or (STAGE) a free hex of a placed stage
+## that `me` reaches. What lies in between does not matter.
+func _teleport_options(s: GameState, me: HeroState, who: HeroState, arg: String) -> Array:
+	var out: Array = []
+	if who == null or not who.is_on_map():
+		return out
+	if arg == "STAGE":
+		for st: StageState in s.stages:
+			if not st.placed:
+				continue
+			for a: Vector2i in st.footprint():
+				if s.is_free(a, who.big, who) and me != null and engine.reaches_hex(s, me, a):
+					out.append(Hex.to_json(a))
+		return out
+	for a: Vector2i in Hex.spiral(who.hex, arg.to_int()):
+		if a != who.hex and s.is_free(a, who.big, who):
+			out.append(Hex.to_json(a))
+	return out
+
+
+func _put_hero(s: GameState, who: HeroState, to: Vector2i, team: int) -> void:
+	if who == null or to == who.hex:
+		return
+	var was: StageState = engine.begin_move(s, who)
+	who.hex = to
+	s.event("moved", {"hero": who.id, "hex": Hex.to_json(to), "by": "fx"})
+	engine.arrive(s, who)
+	engine.end_move(s, who, was, team)
+
+
+## Centres of the face-down stages of the opponents that `me` reaches.
+func _hidden_stages(s: GameState, me: HeroState, player: int) -> Array:
+	var out: Array = []
+	if me == null:
+		return out
+	for st: StageState in s.stages:
+		if not st.placed or st.revealed or s.team_of(st.owner) == s.team_of(player):
+			continue
+		for a: Vector2i in st.footprint():
+			if engine.reaches_hex(s, me, a):
+				out.append(Hex.to_json(st.center))
+				break
+	return out
+
+
+## The last Battle Phase card an opponent played in the battle being fought, as the battle keeps it; {} when there
+## is none, it was undone already, or it is not the kind the action asks for ({Tag}: a card with that tag;
+## RANGE n: played for a hero with n Range or more).
+func _last_opp_card(s: GameState, ctx: Dictionary, args: PackedStringArray) -> Dictionary:
+	if s.phase != GameState.PHASE_BATTLE or s.battle_index < 0 or s.battle_index >= s.battles.size():
+		return {}
+	var team: int = s.team_of(JsonUtil.as_int(ctx.get("player", 0)))
+	var played: Array = JsonUtil.as_array(s.battles[s.battle_index].get("played", []))
+	for i: int in range(played.size() - 1, -1, -1):
+		var x: Dictionary = played[i]
+		var c: CardDef = engine.catalog.get_card(str(x.get("card", "")))
+		if s.team_of(JsonUtil.as_int(x.get("player", 0))) == team or c == null or c.type != "Action":
+			continue
+		if JsonUtil.as_bool(x.get("negated", false)):
+			return {}
+		for a: String in args:
+			if a.begins_with("{") and not c.has_trait(a.trim_prefix("{").trim_suffix("}")):
+				return {}
+		var at: int = args.find("RANGE")
+		if at >= 0 and at + 1 < args.size():
+			var for_hero: HeroState = s.hero(str(x.get("hero", "")))
+			if for_hero == null or engine.stat(s, for_hero, "rng") < args[at + 1].to_int():
+				return {}
+		return x
+	return {}
+
+
+## The Assist the player took off an opponent this turn and may still gain: {"card", "from"}.
+func _gulped(s: GameState, player: int) -> Dictionary:
+	for m: Dictionary in s.turn_mods:
+		if str(m.get("kind", "")) == "gulped" and JsonUtil.as_int(m.get("player", -1)) == player \
+				and s.player(JsonUtil.as_int(m.get("from", 0))).graveyard.has(str(m.get("card", ""))):
+			return m
+	return {}
+
+
+## DUEL_HAND once every card is shown: {"winner": slot or -1, "heroes": the winner's heroes in the battle,
+## "shown": [{player, card, cost}]}. The higher cost wins, a tie nobody; an empty hand shows 0.
+func _shown_result(s: GameState, ctx: Dictionary) -> Dictionary:
+	var shown: Dictionary = JsonUtil.as_dict(ctx.get("shown", {}))
+	var list: Array = []
+	var best: int = -1
+	var best_cost: int = -1
+	var tie: bool = false
+	for key: Variant in shown:
+		var c: CardDef = engine.catalog.get_card(str(shown[key]))
+		var cost: int = c.cost if c != null else 0
+		list.append({"player": str(key).to_int(), "card": str(shown[key]), "cost": cost})
+		if cost > best_cost:
+			best_cost = cost
+			best = str(key).to_int()
+			tie = false
+		elif cost == best_cost:
+			tie = true
+	var heroes: Array = []
+	if best >= 0 and not tie:
+		for id: String in _battle_ids(s, {"battle": ctx.get("battle", s.battle_index)}):
+			var h: HeroState = s.hero(id)
+			if h != null and h.is_on_map() and h.owner == best:
+				heroes.append(h.id)
+	return {"winner": best if not tie else -1, "heroes": heroes, "shown": list}
+
+
 ## The words of an action that narrow its heroes: WITH {Tag} (a hero called that or carrying the tag) and HP <n>
 ## (a hero with n HP or less). Kept in the context while the action is worked out.
 static func _narrow(ctx: Dictionary, args: PackedStringArray) -> void:
@@ -1071,6 +1179,55 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			prompt += " · %s" % card.name
 		return {"player": who, "kind": "hero", "options": ids, "prompt": prompt}
 	match verb:
+		"TELEPORT":
+			if target == "SELF":
+				var to: Array = _teleport_options(s, me, me, args[0])
+				if to.is_empty():
+					return {"error": "no free space to move to"}
+				return {"player": player, "kind": "hex", "options": to, "prompt": "Where to"}
+			# FRIENDLY: who moves, and there must be a hex for someone.
+			var movers: Array = _hero_options(s, ctx, e, target, verb).filter(func(id: Variant) -> bool: return not _teleport_options(s, me, s.hero(str(id)), args[0]).is_empty())
+			if movers.is_empty():
+				return {"error": "no hero to move, or nowhere to move it"}
+			if movers.size() > 1:
+				return {"player": player, "kind": "hero", "options": movers, "prompt": "Who moves"}
+		"TELEPORT_ID":
+			var spots: Array = _teleport_options(s, me, s.hero(args[0]), args[1])
+			if spots.is_empty():
+				return {"error": "no free space to move to"}
+			return {"player": player, "kind": "hex", "options": spots, "prompt": "Where to"}
+		"DRAIN_STAGE", "CURSE_STAGE":
+			if engine.stage_under(s, me) == null:
+				return {"error": "your hero is not on a stage"}
+		"REVEAL_STAGE":
+			var hidden: Array = _hidden_stages(s, me, player)
+			if hidden.is_empty():
+				return {"error": "no face-down stage of an opponent in range"}
+			if hidden.size() > 1:
+				return {"player": player, "kind": "hex", "options": hidden, "prompt": "Which stage"}
+		"NEGATE_LAST":
+			if _last_opp_card(s, ctx, args).is_empty():
+				return {"error": "no card of the opponent to undo"}
+		"REMOVE_ASSIST":
+			var theirs: PackedStringArray = s.player(engine.other_slot(s, player)).assists
+			if theirs.is_empty():
+				return {"error": "the opponent has no Assist"}
+			if theirs.size() > 1:
+				return {"player": player, "kind": "card", "options": Array(theirs), "prompt": "Which Assist"}
+		"GAIN_ASSIST":
+			if _gulped(s, player).is_empty():
+				return {"error": "no Assist was removed this turn"}
+			if s.player(player).assists.size() >= s.settings.assist_limit:
+				return {"error": "no room for another Assist"}
+		"SHOW_CARD":
+			var show_hand: PackedStringArray = s.player(args[0].to_int()).hand
+			if show_hand.size() > 1:
+				return {"player": args[0].to_int(), "kind": "card", "options": Array(show_hand), "prompt": "Show a card from your hand"}
+		"DUEL_SHOWN":
+			var shown: Dictionary = _shown_result(s, ctx)
+			var mine: Array = JsonUtil.as_array(shown.get("heroes", []))
+			if args.has("PICK") and mine.size() > 1:
+				return {"player": JsonUtil.as_int(shown.get("winner", -1)), "kind": "hero", "options": mine, "prompt": "Who gets +%s %s?" % [args[1], args[0]]}
 		"SACRIFICE":
 			if not s.player(player).assists.has(str(ctx.get("card", ""))):
 				return {"error": "that Assist is not in play"}
@@ -1085,7 +1242,7 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 					can_pay = true
 			if not can_pay:
 				return {"error": "no hero can pay %s HP" % args[0]}
-		"DAMAGE", "HEAL", "KNOCKBACK", "STATUS", "REMOVE_EVO", "BUFF", "DAMAGE_MOD", "KO", "GAIN_TAG":
+		"DAMAGE", "HEAL", "KNOCKBACK", "STATUS", "REMOVE_EVO", "BUFF", "DAMAGE_MOD", "KO", "GAIN_TAG", "RETURN_LATER":
 			if target == "ENEMY" or target == "FRIENDLY":
 				var options: Array = _hero_options(s, ctx, e, target, verb)
 				if options.is_empty():
@@ -1246,6 +1403,139 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 	match verb:
 		"OWN_COST", "REQUIRE", "HEAL_MOD", "SAVE_KO", "SHIELD":
 			return ""
+		"EQUIP_OTHER":
+			return ""
+		"TELEPORT":
+			if target == "SELF":
+				if me == null or answer == null:
+					return "nowhere to move"
+				_put_hero(s, me, JsonUtil.as_hex(answer), s.team_of(player))
+				return ""
+			# FRIENDLY: the hero picked (or the only one that can go), then its hex.
+			var movers: Array = _hero_options(s, ctx, e, target, verb).filter(func(id: Variant) -> bool: return not _teleport_options(s, me, s.hero(str(id)), args[0]).is_empty())
+			var mover: String = str(answer) if answer != null else (str(movers[0]) if not movers.is_empty() else "")
+			if mover.is_empty():
+				return "no hero to move"
+			var hop := FxEffect.new()
+			hop.when = e.when
+			hop.actions = [{"verb": "TELEPORT_ID", "target": "", "args": PackedStringArray([mover, args[0]])}]
+			hop.line = hop.to_fx()
+			return run(s, ctx, hop)
+		"TELEPORT_ID":
+			if answer != null:
+				_put_hero(s, s.hero(args[0]), JsonUtil.as_hex(answer), s.team_of(player))
+		"APPROACH":
+			# Step by step towards the nearest opponent of its battle, until next to it or nothing nearer is free.
+			var foes: Array[HeroState] = battle_enemies(s, ctx)
+			if me == null or not me.is_on_map() or foes.is_empty():
+				return ""
+			var foe: HeroState = foes[0]
+			for f: HeroState in foes:
+				if Hex.distance(me.hex, f.hex) < Hex.distance(me.hex, foe.hex):
+					foe = f
+			var at: Vector2i = me.hex
+			for _step: int in args[0].to_int():
+				var here: int = Hex.distance(at, foe.hex)
+				if here <= 1 + (1 if me.big else 0) + (1 if foe.big else 0):
+					break
+				var better: Vector2i = at
+				for n: Vector2i in Hex.neighbors(at):
+					if s.is_free(n, me.big, me) and Hex.distance(n, foe.hex) < Hex.distance(better, foe.hex):
+						better = n
+				if better == at:
+					break
+				at = better
+			_put_hero(s, me, at, s.team_of(player))
+		"RETURN_LATER":
+			for h: HeroState in _targets(s, ctx, e, target, answer):
+				s.turn_mods.append({"kind": "return", "hero": h.id})
+		"DRAIN_STAGE":
+			var drained: StageState = engine.stage_under(s, me)
+			if drained == null:
+				return "your hero is not on a stage"
+			var gone: int = 0
+			for _i: int in args[0].to_int():
+				var from: int = -1
+				var slots: Array = drained.progress.keys()
+				slots.sort()
+				for other: int in slots:
+					if s.team_of(other) != s.team_of(player) and drained.progress[other] > 0 and (from < 0 or drained.progress[other] > drained.progress[from]):
+						from = other
+				if from < 0:
+					break
+				drained.progress[from] -= 1
+				gone += 1
+			s.event("stage_drained", {"stage": drained.id, "amount": gone, "card": ctx.get("card", "")})
+		"CURSE_STAGE":
+			var cursed: StageState = engine.stage_under(s, me)
+			if cursed == null:
+				return "your hero is not on a stage"
+			cursed.cursed_by = s.team_of(player)
+			s.event("stage_cursed", {"stage": cursed.id, "team": cursed.cursed_by, "card": ctx.get("card", "")})
+		"REVEAL_STAGE":
+			var hidden: Array = _hidden_stages(s, me, player)
+			if hidden.is_empty():
+				return "no face-down stage in range"
+			engine.reveal_stage(s, s.stage_at(JsonUtil.as_hex(answer if answer != null else hidden[0])), me)
+		"NEGATE_LAST":
+			var undone: Dictionary = _last_opp_card(s, ctx, args)
+			if undone.is_empty():
+				return "no card of the opponent to undo"
+			engine.undo_card(s, undone)
+		"REMOVE_ASSIST":
+			var victim: int = engine.other_slot(s, player)
+			var theirs: PackedStringArray = s.player(victim).assists
+			if theirs.is_empty():
+				return "the opponent has no Assist"
+			var taken: String = str(answer) if answer != null else theirs[0]
+			if not engine.discard_assist(s, victim, taken, "removed"):
+				return "that Assist is not in play"
+			s.turn_mods.append({"kind": "gulped", "player": player, "card": taken, "from": victim})
+		"GAIN_ASSIST":
+			var back: Dictionary = _gulped(s, player)
+			if back.is_empty():
+				return "no Assist was removed this turn"
+			var loser: PlayerState = s.player(JsonUtil.as_int(back.get("from", 0)))
+			loser.graveyard.remove_at(loser.graveyard.find(str(back.get("card", ""))))
+			s.player(player).assists.append(str(back.get("card", "")))
+			s.turn_mods.erase(back)
+			s.event("assist", {"card": back.get("card", ""), "player": player, "gained": true})
+		"DUEL_HAND":
+			# Each player with a hero in the battle shows a card (their pick), then the costs are compared.
+			var duel := FxEffect.new()
+			duel.when = e.when
+			var showing: Array[int] = []
+			for id: String in _battle_ids(s, {"battle": ctx.get("battle", s.battle_index)}):
+				var dh: HeroState = s.hero(id)
+				if dh != null and not showing.has(dh.owner):
+					showing.append(dh.owner)
+					duel.actions.append({"verb": "SHOW_CARD", "target": "", "args": PackedStringArray([str(dh.owner)])})
+			if showing.is_empty():
+				return ""
+			duel.actions.append({"verb": "DUEL_SHOWN", "target": "", "args": args})
+			duel.line = duel.to_fx()
+			ctx["shown"] = {}
+			return run(s, ctx, duel)
+		"SHOW_CARD":
+			var hand: PackedStringArray = s.player(args[0].to_int()).hand
+			var shown: Dictionary = JsonUtil.as_dict(ctx.get("shown", {}))
+			shown[args[0]] = str(answer) if answer != null and hand.has(str(answer)) else (hand[0] if not hand.is_empty() else "")
+			ctx["shown"] = shown
+		"DUEL_SHOWN":
+			var res: Dictionary = _shown_result(s, ctx)
+			for x: Variant in JsonUtil.as_array(res.get("shown", [])):
+				var one: Dictionary = JsonUtil.as_dict(x)
+				s.event("card_shown", {"player": one["player"], "card": one["card"], "cost": one["cost"]})
+			var winner: int = JsonUtil.as_int(res.get("winner", -1), -1)
+			s.event("duel", {"stage": ctx.get("stage", ""), "winner": winner, "tie": winner < 0})
+			var ids: Array = JsonUtil.as_array(res.get("heroes", []))
+			if args.has("PICK"):
+				ids = [answer] if answer != null else ids.slice(0, 1)
+			for id: Variant in ids:
+				var dh: HeroState = s.hero(str(id))
+				if dh != null and winner >= 0:
+					dh.add_bonus(dh.phase_bonus, args[0].to_lower(), args[1].to_int())
+					s.event("duel_buff", {"stage": ctx.get("stage", ""), "hero": dh.id, "stat": args[0].to_lower(), "amount": args[1].to_int()})
 		"SACRIFICE":
 			if not engine.discard_assist(s, player, str(ctx.get("card", "")), "sacrificed"):
 				return "that Assist is not in play"
@@ -1461,6 +1751,10 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 				return "knockback needs a hero"
 			var towards: bool = args.size() > 1 and args[1] == "TOWARDS"
 			for h: HeroState in _targets(s, ctx, e, target, answer):
+				# RANDOM: each hero its own direction, drawn by lot ("in a random direction").
+				if args.has("RANDOM"):
+					engine.knockback(s, h, s.random_int(6), args[0].to_int(), -1)
+					continue
 				var dir: int = Hex.direction_towards(me.hex, h.hex)
 				if towards:
 					dir = (dir + 3) % 6
@@ -1786,8 +2080,8 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 					tie = true
 			if best != null and not tie:
 				out.append(best)
-		"MOST_ENERGY":
-			# The heroes of the player with the most Energy among the players in the battle the context names
+		"MOST_ENERGY", "MOST_ASSISTS":
+			# The heroes of the player with the most Energy (or Assists in play) among the players in the battle the context names
 			# (else those with heroes on the stage, else everyone on the map); a tie picks nobody (Egghead, 2026-11-05).
 			var pool: Array[HeroState] = []
 			if ctx.has("battle"):
@@ -1801,7 +2095,7 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 				for h: HeroState in s.heroes:
 					if h.is_on_map() and (st == null or st.covers(h.hex)):
 						pool.append(h)
-			var richest: int = _richest_owner(s, pool)
+			var richest: int = _richest_owner(s, pool, target == "MOST_ASSISTS")
 			for h: HeroState in pool:
 				if richest >= 0 and h.owner == richest:
 					out.append(h)
@@ -1812,7 +2106,7 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 
 
 ## The owner with strictly the most Energy among the owners of these heroes; -1 on a tie or when empty.
-func _richest_owner(s: GameState, pool: Array[HeroState]) -> int:
+func _richest_owner(s: GameState, pool: Array[HeroState], by_assists: bool = false) -> int:
 	var best: int = -1
 	var best_energy: int = -1
 	var tie: bool = false
@@ -1821,7 +2115,7 @@ func _richest_owner(s: GameState, pool: Array[HeroState]) -> int:
 		if seen.has(h.owner):
 			continue
 		seen.append(h.owner)
-		var energy: int = s.player(h.owner).energy
+		var energy: int = s.player(h.owner).assists.size() if by_assists else s.player(h.owner).energy
 		if energy > best_energy:
 			best_energy = energy
 			best = h.owner

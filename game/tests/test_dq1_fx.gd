@@ -113,6 +113,43 @@ const CARDS: Array = [
 		"text": "Battle Phase: Your Hero loses this Battle without taking DMG. After the Battle, they are ringed out."},
 	{"id": "TD-085", "name": "Nurse", "type": "Assist", "color": "Red", "cost": 1, "traits": ["General"],
 		"text": "Postroll Phase Once Per Turn: You may pay 1 Energy. If you do, your Hero heals 1 HP at the end of the turn."},
+	{"id": "TD-090", "name": "Helpers Hall", "type": "Stage",
+		"text": "In a Battle on this Stage, the player with more Assists chooses one of their Heroes in this Battle. That Hero gets +3000 Power."},
+	{"id": "TD-091", "name": "Bluff Castle", "type": "Stage",
+		"text": "In a Battle on this Stage, each player reveals a card from their hand. The player who reveals the higher-cost card chooses one of their Heroes in this Battle. That Hero gets +3000 Power."},
+	{"id": "TD-092", "name": "Wild Forest", "type": "Stage", "text": "When this Stage is revealed, Knockback each Hero on it 5 spaces in a random direction."},
+	{"id": "TD-093", "name": "Dimmer", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: Play this card only while your Hero is on a Stage.\nRemove 5 of your Opponent's Energy from that Stage."},
+	{"id": "TD-094", "name": "Insignia", "type": "Equipment", "color": "Red", "cost": 1, "traits": ["Alpha"],
+		"text": "Postroll Phase: Equip this to another friendly Hero in Range with {Gear Second}.\n{Haki} cards played for the equipped Hero cost 1 Energy less."},
+	{"id": "TD-095", "name": "Blink", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Preroll Phase: Your Hero moves to an empty space up to 10 spaces away. They cannot roll this turn."},
+	{"id": "TD-096", "name": "Lift", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: Move another friendly Hero in Range to an empty space on a Stage in Range."},
+	{"id": "TD-097", "name": "Homecoming", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: At the end of the turn, return your Hero to where they were at the start of the Battle Phase."},
+	{"id": "TD-098", "name": "Snuff", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: If the last Battle Phase card your Opponent played is a {Haki} card, put it into the graveyard."},
+	{"id": "TD-099", "name": "Parry", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: If the last Battle Phase card your Opponent played was played for a Hero with 4 or more Range, put it into the graveyard."},
+	{"id": "TD-100", "name": "Curse", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: Play this card only while your Hero is on a Stage.\nFor the rest of the match, your Opponent can't play Battle Phase cards for their Heroes standing on this Stage."},
+	{"id": "TD-101", "name": "Alpha, Rock Form", "type": "Evolution", "color": "Red", "cost": 2, "traits": ["Haki"], "evo": 1, "hero": "Alpha",
+		"stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2},
+		"text": "As an additional cost, Alpha takes 3 DMG.\nAlpha is immune to Knockback. If Alpha rolls, this Evolution goes to the graveyard."},
+	{"id": "TD-102", "name": "Alpha, Armored", "type": "Evolution", "color": "Red", "cost": 2, "traits": ["Haki"], "evo": 1, "hero": "Alpha",
+		"stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2},
+		"text": "When you play this Evolution, Alpha heals to full HP.\nNo cards can be played for Alpha.\nIf this Evolution is removed, Alpha is KO'd."},
+	{"id": "TD-103", "name": "Peek", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Preroll Phase: Reveal one of your Opponent's Stages in Range."},
+	{"id": "TD-104", "name": "Lunge", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"], "bonus": {"pwr": 2000},
+		"text": "Battle Phase: Your Hero moves 2 spaces towards the nearest Opponent's Hero."},
+	{"id": "TD-105", "name": "Gulp", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Preroll Phase: Put one of your Opponent's Assists into their graveyard. Then create a Gush Token."},
+	{"id": "TD-105-1", "name": "Gush", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"], "token": true,
+		"text": "Postroll Phase: Gain the Assist you removed from your Opponent."},
+	{"id": "TD-106", "name": "Core Punch", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: As an additional cost, deactivate a Core on your Hero.\nAn Opponent's Hero in Range takes 2 DMG."},
 ]
 
 
@@ -967,3 +1004,254 @@ func test_a_heal_at_the_end_of_the_turn() -> void:
 	assert_eq(engine.fx.use_ability(s, 0, "", "TD-085", 0), "that ability cannot be used now", "once per turn")
 	engine._set_phase(s, GameState.PHASE_END)
 	assert_eq(s.hero(ALPHA).hp, 6)
+
+
+# --- stages, moves that do not walk, the opponent's last card undone, Assists taken, Evolutions with a catch ----
+
+func test_the_last_group_reads() -> void:
+	assert_eq(_fx_of("TD-090"), "BATTLE: BUFF MOST_ASSISTS PWR 3000 PICK")
+	assert_eq(_fx_of("TD-091"), "BATTLE: DUEL_HAND PWR 3000 PICK")
+	assert_eq(_fx_of("TD-092"), "REVEAL: KNOCKBACK EACH_HERO 5 RANDOM")
+	assert_eq(_fx_of("TD-093"), "POSTROLL: REQUIRE ON_STAGE\nPLAY: DRAIN_STAGE 5")
+	assert_eq(_fx_of("TD-094"), "POSTROLL RANGE: EQUIP_OTHER {Gear Second}\nPASSIVE: COST ME -1 {Haki} FOR_SELF")
+	assert_eq(_fx_of("TD-095"), "PREROLL: TELEPORT SELF 10\nPLAY: STATUS SELF NO_ROLL TURN")
+	assert_eq(_fx_of("TD-096"), "POSTROLL RANGE: TELEPORT FRIENDLY STAGE")
+	assert_eq(_fx_of("TD-097"), "BATTLE: RETURN_LATER SELF")
+	assert_eq(_fx_of("TD-098"), "BATTLE: NEGATE_LAST {Haki}")
+	assert_eq(_fx_of("TD-099"), "BATTLE: NEGATE_LAST RANGE 4")
+	assert_eq(_fx_of("TD-100"), "POSTROLL: REQUIRE ON_STAGE\nPLAY: CURSE_STAGE")
+	assert_eq(_fx_of("TD-101"), "PASSIVE: COST_DAMAGE 3\nPASSIVE: STATUS SELF IMMUNE_KB TURN\nPASSIVE: STATUS SELF BRITTLE")
+	assert_eq(_fx_of("TD-102"), "PLAY: HEAL SELF FULL\nPASSIVE: STATUS SELF NO_CARDS\nPASSIVE: STATUS SELF KO_IF_REMOVED")
+	assert_eq(_fx_of("TD-103"), "PREROLL: REVEAL_STAGE")
+	assert_eq(_fx_of("TD-104"), "BATTLE: APPROACH 2")
+	assert_eq(_fx_of("TD-105"), "PREROLL: REMOVE_ASSIST OPP\nPLAY: TOKEN ME TD-105-1")
+	assert_eq(_fx_of("TD-105-1"), "POSTROLL: GAIN_ASSIST")
+	assert_eq(_fx_of("TD-106"), "POSTROLL: DEACTIVATE_CORE SELF 1\nPLAY RANGE: DAMAGE ENEMY 2")
+
+
+func test_a_stage_for_the_player_with_more_assists() -> void:
+	var s: GameState = _state()
+	_stage(s, "TS-003").card_id = "TD-090"
+	_battle(s)
+	var alpha: int = engine.stat(s, s.hero(ALPHA), "pwr")
+	var echo: int = engine.stat(s, s.hero(ECHO), "pwr")
+	engine.fx.fire_battle(s)
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), alpha, "as many each: nobody")
+	s.player(1).assists.append("TA-030")
+	engine.fx.fire_battle(s)
+	assert_eq(engine.stat(s, s.hero(ECHO), "pwr"), echo + 3000)
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), alpha)
+
+
+func test_a_stage_where_each_player_shows_a_card() -> void:
+	var s: GameState = _state()
+	_stage(s, "TS-003").card_id = "TD-091"
+	_battle(s)
+	s.player(0).hand = PackedStringArray(["TA-049", "TX-010"])
+	s.player(1).hand = PackedStringArray(["TA-040"])
+	var alpha: int = engine.stat(s, s.hero(ALPHA), "pwr")
+	engine.fx.fire_battle(s)
+	assert_eq(s.pending.size(), 1, "the player with two cards picks which to show")
+	assert_eq(JsonUtil.as_int(s.pending[0]["player"]), 0)
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": "TA-049"})), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), alpha + 3000, "cost 3 against cost 1")
+	assert_eq(s.player(0).hand.size(), 2, "the card shown stays in the hand")
+	# A tie: nobody.
+	s = _state()
+	_stage(s, "TS-003").card_id = "TD-091"
+	_battle(s)
+	s.player(0).hand = PackedStringArray(["TA-040"])
+	s.player(1).hand = PackedStringArray(["TA-040"])
+	engine.fx.fire_battle(s)
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), alpha)
+	assert_eq(engine.stat(s, s.hero(ECHO), "pwr"), 2000)
+
+
+func test_a_stage_that_throws_its_heroes() -> void:
+	var s: GameState = _state()
+	var st: StageState = _stage(s, "TS-003")
+	st.card_id = "TD-092"
+	var from: Vector2i = s.hero(ALPHA).hex
+	engine.fx.on_reveal(s, st, s.hero(ALPHA))
+	assert_true(s.hero(ALPHA).hex != from or not s.pending_knockbacks.is_empty() or not s.hero(ALPHA).is_on_map(), "knocked away, or waiting for the table to do it")
+
+
+func test_energy_taken_off_a_stage() -> void:
+	var s: GameState = _state()
+	var st: StageState = _stage(s, "TS-003")
+	st.progress = {0: 1, 1: 4}
+	assert_eq(_play(s, 0, "TD-093"), "")
+	assert_eq(st.progress_of(1), 0, "all four of the five asked for")
+	assert_eq(st.progress_of(0), 1, "its own stays")
+
+
+func test_an_equipment_handed_to_another_hero() -> void:
+	var s: GameState = _state()
+	_on_map(s, BRAVO, s.hero(ALPHA).hex + Hex.DIRECTIONS[1])
+	s.phase = GameState.PHASE_PREROLL
+	assert_eq(_play(s, 0, "TD-094"), "playable in the postroll phase")
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-094"))
+	s.phase = GameState.PHASE_POSTROLL
+	assert_eq(_play(s, 0, "TD-094"), "no other friendly hero in range that can take it", "Bravo has no such tag")
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-094"))
+	s.hero(BRAVO).equipment.append("TD-060")
+	assert_eq(_play(s, 0, "TD-094"), "")
+	assert_true(s.hero(BRAVO).equipment.has("TD-094"))
+	assert_false(s.hero(ALPHA).equipment.has("TD-094"))
+
+
+func test_a_hero_moved_far_does_not_roll() -> void:
+	var s: GameState = _state()
+	s.phase = GameState.PHASE_PREROLL
+	s.choices = {0: true, 1: true}
+	assert_eq(_play(s, 0, "TD-095"), "")
+	assert_eq(str(s.pending[0]["kind"]), "hex")
+	var far: Vector2i = s.hero(ALPHA).hex + Hex.DIRECTIONS[5] * 8
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": Hex.to_json(far)})), "")
+	assert_eq(s.hero(ALPHA).hex, far)
+	var rolling: Array[String] = []
+	for h: HeroState in engine._rollers(s):
+		rolling.append(h.id)
+	assert_eq(rolling, [ECHO] as Array[String], "the hero that was moved stays out of the roll")
+
+
+func test_another_hero_lifted_onto_a_stage() -> void:
+	var s: GameState = _state()
+	_on_map(s, BRAVO, s.hero(ALPHA).hex + Hex.DIRECTIONS[1] * 2)
+	assert_eq(_play(s, 0, "TD-096"), "")
+	assert_eq(str(s.pending[0]["kind"]), "hex", "one hero to move: only the hex is asked")
+	var spot: Variant = JsonUtil.as_array(s.pending[0]["options"])[0]
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": spot})), "")
+	assert_eq(s.hero(BRAVO).hex, JsonUtil.as_hex(spot))
+	assert_true(_stage(s, "TS-003").covers(s.hero(BRAVO).hex))
+
+
+func test_a_hero_returns_at_the_end_of_the_turn() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	var home: Vector2i = s.hero(ALPHA).hex
+	s.battle_snapshot = {ALPHA: {"zone": HeroState.ZONE_MAP, "hex": Hex.to_json(home)}}
+	assert_eq(_play(s, 0, "TD-097"), "")
+	s.hero(ALPHA).hex = home + Hex.DIRECTIONS[3] * 4
+	engine._set_phase(s, GameState.PHASE_END)
+	assert_eq(s.hero(ALPHA).hex, home)
+	# From the start zone too.
+	s = _state()
+	_battle(s)
+	s.battle_snapshot = {ALPHA: {"zone": HeroState.ZONE_MAP, "hex": Hex.to_json(home)}}
+	assert_eq(_play(s, 0, "TD-097"), "")
+	s.hero(ALPHA).zone = HeroState.ZONE_STRIP
+	engine._set_phase(s, GameState.PHASE_END)
+	assert_true(s.hero(ALPHA).is_on_map())
+	assert_eq(s.hero(ALPHA).hex, home)
+
+
+func test_the_opponents_last_card_is_undone() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	s.player(1).energy = 20
+	var echo: int = engine.stat(s, s.hero(ECHO), "pwr")
+	assert_eq(_play(s, 0, "TD-098"), "no card of the opponent to undo")
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-098"))
+	assert_eq(_play(s, 1, "TA-049", ECHO), "")
+	assert_eq(engine.stat(s, s.hero(ECHO), "pwr"), echo + 1000)
+	assert_eq(_play(s, 0, "TD-098"), "")
+	assert_eq(engine.stat(s, s.hero(ECHO), "pwr"), echo, "it gives nothing any more")
+	assert_eq(_play(s, 0, "TD-098"), "no card of the opponent to undo", "the same card is not undone twice")
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-098"))
+	# The last one counts, whatever came before it.
+	assert_eq(_play(s, 1, "TA-049", ECHO), "")
+	assert_eq(_play(s, 1, "TA-040", ECHO), "")
+	assert_eq(_play(s, 0, "TD-098"), "no card of the opponent to undo", "the last card has no such tag")
+
+
+func test_a_card_that_waits_for_a_win_is_undone_with_its_wait() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	s.hero(ECHO).add_bonus(s.hero(ECHO).turn_bonus, "rng", 1)
+	assert_eq(_play(s, 1, "TA-047", ECHO), "")
+	assert_eq(s.deferred.size(), 1, "if you win this Battle, …")
+	assert_eq(_play(s, 0, "TD-099"), "", "played for a hero with 4 Range")
+	assert_eq(s.deferred.size(), 0)
+	assert_eq(engine.stat(s, s.hero(ECHO), "pwr"), 2000)
+
+
+func test_a_cursed_stage_takes_no_battle_cards_for_the_other_side() -> void:
+	var s: GameState = _state()
+	assert_eq(_play(s, 0, "TD-100"), "")
+	assert_eq(_stage(s, "TS-003").cursed_by, 0)
+	_battle(s)
+	assert_eq(_play(s, 1, "TA-040", ECHO), "no Battle Phase cards for a hero on that stage")
+	assert_eq(_play(s, 0, "TA-040", ALPHA), "", "its own side plays as ever")
+	# Off the stage the opponent plays as ever.
+	_on_map(s, ECHO, s.hero(ALPHA).hex + Hex.DIRECTIONS[0] * 2)
+	s.player(1).hand.clear()
+	assert_eq(_play(s, 1, "TA-040", ECHO), "")
+
+
+func test_an_evolution_paid_with_damage_that_breaks_on_a_roll() -> void:
+	var s: GameState = _state()
+	s.hero(ALPHA).hp = 3
+	assert_eq(_play(s, 0, "TD-101"), "cannot pay 3 damage")
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-101"))
+	s.hero(ALPHA).hp = 10
+	assert_eq(_play(s, 0, "TD-101"), "")
+	assert_eq(s.hero(ALPHA).hp, 9, "12 as it evolves, then the 3")
+	assert_true(engine.has_status(s, s.hero(ALPHA), "immune_kb"))
+	assert_true(engine.has_status(s, s.hero(ALPHA), "brittle"))
+	engine.remove_evolution(s, s.hero(ALPHA), true)
+	assert_eq(s.hero(ALPHA).evolutions.size(), 0)
+	assert_false(s.hero(ALPHA).is_ko())
+	assert_false(engine.has_status(s, s.hero(ALPHA), "immune_kb"), "gone with the Evolution")
+
+
+func test_an_evolution_that_takes_no_cards_and_holds_its_hero_up() -> void:
+	var s: GameState = _state()
+	s.hero(ALPHA).hp = 2
+	assert_eq(_play(s, 0, "TD-102"), "")
+	assert_eq(s.hero(ALPHA).hp, 12)
+	assert_eq(_play(s, 0, "TD-055"), "no cards can be played for Alpha, Armored")
+	engine.remove_evolution(s, s.hero(ALPHA))
+	assert_true(s.hero(ALPHA).is_ko(), "taken off by a card: the hero goes down")
+
+
+func test_a_face_down_stage_of_the_opponent_is_revealed() -> void:
+	var s: GameState = _state()
+	s.phase = GameState.PHASE_PREROLL
+	assert_eq(_play(s, 0, "TD-103"), "no face-down stage of an opponent in range")
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-103"))
+	var theirs: StageState = _stage(s, "TS-005")
+	theirs.placed = true
+	theirs.revealed = false
+	theirs.center = s.hero(ALPHA).hex + Hex.DIRECTIONS[2] * 3
+	assert_eq(_play(s, 0, "TD-103"), "")
+	assert_true(theirs.revealed)
+
+
+func test_a_hero_steps_towards_its_opponent() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	_on_map(s, ECHO, s.hero(ALPHA).hex + Hex.DIRECTIONS[0] * 3)
+	assert_eq(_play(s, 0, "TD-104"), "")
+	assert_eq(Hex.distance(s.hero(ALPHA).hex, s.hero(ECHO).hex), 1)
+	# Already next to it: it stays.
+	var at: Vector2i = s.hero(ALPHA).hex
+	assert_eq(_play(s, 0, "TD-104"), "")
+	assert_eq(s.hero(ALPHA).hex, at)
+
+
+func test_an_assist_taken_from_the_opponent_and_gained() -> void:
+	var s: GameState = _state()
+	s.phase = GameState.PHASE_PREROLL
+	assert_eq(_play(s, 0, "TD-105"), "the opponent has no Assist")
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-105"))
+	s.player(1).assists.append("TA-030")
+	assert_eq(_play(s, 0, "TD-105"), "")
+	assert_false(s.player(1).assists.has("TA-030"))
+	assert_true(s.player(1).graveyard.has("TA-030"))
+	assert_true(s.player(0).tokens.has("TD-105-1"))
+	s.phase = GameState.PHASE_POSTROLL
+	s.to_act = 0
+	assert_eq(engine.apply(s, Move.make(Move.PLAY_CARD, 0, {"card": "TD-105-1"})), "")
+	assert_true(s.player(0).assists.has("TA-030"), "it comes to the player who took it")
+	assert_false(s.player(1).graveyard.has("TA-030"))

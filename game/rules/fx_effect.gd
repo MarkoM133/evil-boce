@@ -69,6 +69,20 @@ const VERBS: Dictionary[String, Array] = {
 	"HIDE": [false, 1],         # HIDE <reach> [energy]  (the Assist's companion: one hero of its player within reach hides inside, for that energy)
 	"WANDER": [false, 1],       # WANDER <n>  (END: the Assist's companion walks 1..n hexes in a direction drawn by lot)
 	"TOKEN": [true, 1],         # TOKEN <ME|OPP> <token card id> [n]  (that player gets n of that token beside the hand)
+	"TELEPORT": [true, 1],      # TELEPORT <SELF|FRIENDLY> <n|STAGE>  (to a free hex up to n away, or on a stage in SELF's range; nothing in between matters)
+	"TELEPORT_ID": [false, 2],  # TELEPORT_ID <hero id> <n|STAGE>  (the hero picked for TELEPORT FRIENDLY; written by the runtime)
+	"APPROACH": [false, 1],     # APPROACH <n>  (SELF steps up to n hexes towards the nearest opponent hero of its battle)
+	"RETURN_LATER": [true, 0],  # RETURN_LATER SELF  (as the End phase starts the hero goes back to where the Battle phase found it)
+	"DRAIN_STAGE": [false, 1],  # DRAIN_STAGE <n>  (n of the opponents' Energy leaves the stage SELF stands on)
+	"REVEAL_STAGE": [false, 0], # REVEAL_STAGE  (a face-down stage of an opponent in SELF's range turns face up)
+	"CURSE_STAGE": [false, 0],  # CURSE_STAGE  (for the rest of the match no Battle Phase cards for opponents' heroes on the stage SELF stands on)
+	"NEGATE_LAST": [false, 0],  # NEGATE_LAST [{Tag}] [RANGE <n>]  (the last Battle Phase card an opponent played in this battle is undone)
+	"REMOVE_ASSIST": [true, 0], # REMOVE_ASSIST OPP  (one of that player's Assists goes to their graveyard; the card's player picks)
+	"GAIN_ASSIST": [false, 0],  # GAIN_ASSIST  (the Assist the player removed this turn comes into play on their side)
+	"EQUIP_OTHER": [false, 0],  # EQUIP_OTHER [{Tag}]  (this Equipment goes on another friendly hero in SELF's range, one with the tag)
+	"DUEL_HAND": [false, 2],    # DUEL_HAND <STAT> <n> [PICK]  (each player in the battle shows a card from the hand; the higher cost gets +n)
+	"SHOW_CARD": [false, 1],    # SHOW_CARD <slot>  (that player picks the card to show; written by the runtime)
+	"DUEL_SHOWN": [false, 2],   # DUEL_SHOWN <STAT> <n> [PICK]  (the shown cards are compared; written by the runtime)
 	"SACRIFICE": [false, 0],    # SACRIFICE  (the Assist whose line it is goes to the graveyard: "put this Assist into the graveyard")
 	"SAVE_KO": [true, 0],       # SAVE_KO <target>  (passive, Assist: the first of those heroes that would be KO'd stays at 1 HP; the Assist goes to the graveyard)
 	"SHIELD": [true, 1],        # SHIELD <target> <n>  (passive, Assist: when one of those heroes would take a battle hit of n or less, its player may put the Assist into the graveyard instead)
@@ -89,7 +103,7 @@ const VERBS: Dictionary[String, Array] = {
 ## A TOKEN is never made in the End phase (it would be gone at once) nor by a passive (GDD 10, 2026-11-14).
 const NO_TOKEN_WHENS: Array[String] = ["END", "PASSIVE"]
 const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "ALL_FRIENDLY", "ALL_ENEMY", "CARD_HERO", "PAID",
-	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_ENEMY_IN_RANGE", "ALL_FRIENDLY_IN_BATTLE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR", "MOST_ENERGY"]
+	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_ENEMY_IN_RANGE", "ALL_FRIENDLY_IN_BATTLE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR", "MOST_ENERGY", "MOST_ASSISTS"]
 const PLAYER_TARGETS: Array[String] = ["ME", "OPP"]
 const STATS: Array[String] = ["PWR", "DMG", "KB", "RNG", "HP"]
 const COUNTERS: Array[String] = ["TRAIT_EQUIPPED", "CORES", "MISSING_HP", "ENERGY", "LOW_HP_FRIENDLY", "LOW_HP_OTHER_FRIENDLY", "COUNT",
