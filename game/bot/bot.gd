@@ -97,6 +97,7 @@ func evaluate(engine: RulesEngine, s: GameState, slot: int) -> float:
 			score -= sign * 3.0
 		if s.settings.energy_claims():
 			score += sign * _energy_value(engine, s, p)
+	score += _shelter_value(engine, s, team)
 	# The battle being fought now: the Power gap decides it.
 	if s.phase == GameState.PHASE_BATTLE and s.battle_index >= 0 and s.battle_index < s.battles.size():
 		var mine: int = 0
@@ -112,6 +113,32 @@ func evaluate(engine: RulesEngine, s: GameState, slot: int) -> float:
 		if mine > 0 and theirs > 0:
 			score += clampf((mine - theirs) / 1000.0, -5.0, 5.0) * 4.0 + (8.0 if mine > theirs else -8.0 if mine < theirs else 0.0)
 	return score
+
+
+## Companions (GDD 10, 2026-11-21): a companion on the table is worth having (somewhere to hide); a hero hidden in
+## one is worth a lot when it is hurt and an enemy could reach it, a little when only hurt, and costs when it is
+## healthy (it holds no stage and fights no battle). Seen from `team`'s side.
+func _shelter_value(engine: RulesEngine, s: GameState, team: int) -> float:
+	var score: float = 0.0
+	for c: CompanionState in s.companions:
+		score += (1.0 if s.team_of(c.owner) == team else -1.0) * 3.0
+	for h: HeroState in s.heroes:
+		if not h.is_hidden():
+			continue
+		var sign: float = 1.0 if s.team_of(h.owner) == team else -1.0
+		var c: CompanionState = s.shelter_of(h.id)
+		var hurt: bool = h.hp * 2 <= engine.max_hp(s, h)
+		var threat: bool = c != null and _enemy_near(engine, s, c.hex, h.owner)
+		score += sign * (8.0 if hurt and threat else (2.0 if hurt else -4.0))
+	return score
+
+
+## An enemy hero on the map that could reach `at` next turn (its range and a throw).
+func _enemy_near(engine: RulesEngine, s: GameState, at: Vector2i, owner: int) -> bool:
+	for e: HeroState in s.heroes:
+		if e.is_on_map() and s.team_of(e.owner) != s.team_of(owner) and Hex.distance(at, e.hex) <= engine.stat(s, e, "rng") + 4:
+			return true
+	return false
 
 
 ## The energy claim variant: what a player's energy in the stages is worth (a claimed stage is
@@ -144,6 +171,26 @@ func _energy_value(engine: RulesEngine, s: GameState, p: PlayerState) -> float:
 func _try(engine: RulesEngine, s: GameState, m: Move) -> GameState:
 	var trial: GameState = GameState.from_dict(s.to_dict())
 	return trial if engine.apply(trial, m).is_empty() else null
+
+
+## The state after a card or ability once the choices it asks of `slot` are answered (the first option each):
+## a card that asks where to put a companion is worth what the companion is, not a card gone from the hand
+## (2026-11-22: the bot never played one). Null when the engine refuses it.
+func _try_through(engine: RulesEngine, s: GameState, m: Move, slot: int) -> GameState:
+	var trial: GameState = _try(engine, s, m)
+	for _i: int in 4:
+		if trial == null or trial.pending.is_empty():
+			break
+		var d: Dictionary = trial.pending[0]
+		if str(d.get("type", "")) != FxRuntime.DECISION_CHOOSE or JsonUtil.as_int(d.get("player", -1), -1) != slot:
+			break
+		var options: Array = JsonUtil.as_array(d.get("options", []))
+		if options.is_empty():
+			break
+		var value: Variant = 0 if str(d.get("kind", "")) == "option" else options[0]
+		if not engine.apply(trial, Move.make(Move.CHOOSE, slot, {"value": value})).is_empty():
+			break
+	return trial
 
 
 # =====================================================================================
@@ -445,7 +492,12 @@ func _select(engine: RulesEngine, s: GameState, slot: int) -> Move:
 	var best_v: float = -INF
 	for h: HeroState in options:
 		var v: float = h.hp * 0.5
-		if h.zone == HeroState.ZONE_STRIP:
+		if h.is_hidden():
+			# Hidden in a companion: it stays in while it is hurt and an enemy is close; healthy, it comes out.
+			var comp: CompanionState = s.shelter_of(h.id)
+			var hurt: bool = h.hp * 2 <= engine.max_hp(s, h)
+			v += -40.0 if hurt and comp != null and _enemy_near(engine, s, comp.hex, h.owner) else 8.0
+		elif h.zone == HeroState.ZONE_STRIP:
 			v += 20.0
 		else:
 			var st: StageState = s.stage_at(h.hex)
@@ -658,7 +710,7 @@ func _card_round(engine: RulesEngine, s: GameState, slot: int) -> Move:
 		var best: Move = null
 		var best_gain: float = 0.5
 		for m: Move in options:
-			var after: GameState = _try(engine, s, m)
+			var after: GameState = _try_through(engine, s, m, slot)
 			if after == null or _reckless(engine, s, after, slot):
 				continue
 			var gain: float = evaluate(engine, after, slot) - now
@@ -668,7 +720,7 @@ func _card_round(engine: RulesEngine, s: GameState, slot: int) -> Move:
 		return best if best != null else Move.make(Move.PASS, slot)
 	# Easy: the first thing in hand that helps right away.
 	for m: Move in options:
-		var after: GameState = _try(engine, s, m)
+		var after: GameState = _try_through(engine, s, m, slot)
 		if after != null and not _reckless(engine, s, after, slot) and evaluate(engine, after, slot) > now:
 			return m
 	return Move.make(Move.PASS, slot)
