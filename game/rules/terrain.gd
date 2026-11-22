@@ -2,9 +2,10 @@ class_name Terrain
 extends RefCounted
 ## Ground types a stage can turn its 7 hexes into (GDD 6). Ice and Mud change the slow-down;
 ## Ramp is a hill (balls slow going up, speed up going down, rest only near the top); Wind
-## pushes rolling balls one way. The ids are also the terrain ids in the ground shader.
+## pushes rolling balls one way. Fire (Marko 2026-11-22) leaves the roll alone and burns: in the End phase each hero on
+## it takes 1 DMG. The ids are also the terrain ids in the ground shader.
 
-enum Type { NONE, ICE, MUD, RAMP, WIND }
+enum Type { NONE, ICE, MUD, RAMP, WIND, FIRE }
 
 
 static func name_of(t: Type) -> String:
@@ -17,6 +18,8 @@ static func name_of(t: Type) -> String:
 			return "Ramp"
 		Type.WIND:
 			return "Wind"
+		Type.FIRE:
+			return "Fire"
 	return "None"
 
 
@@ -31,4 +34,6 @@ static func parse(name: String) -> Type:
 			return Type.RAMP
 		"wind":
 			return Type.WIND
+		"fire":
+			return Type.FIRE
 	return Type.NONE

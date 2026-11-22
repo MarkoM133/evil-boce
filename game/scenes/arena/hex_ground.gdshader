@@ -2,7 +2,7 @@ shader_type spatial;
 // Top of the hex map. Hex lines are faint and get stronger with `emphasis` (aiming, placing).
 // Colours are mixed in sRGB (so small mixes stay small) and converted at the end.
 // Per-hex data comes from `cells` (one texel per hex, odd-r offset layout):
-//   r = terrain id (0 none, 1 ice, 2 mud, 3 ramp, 4 wind), g = in range, b = marked.
+//   r = terrain id (0 none, 1 ice, 2 mud, 3 ramp, 4 wind, 5 fire), g = in range, b = marked.
 
 uniform sampler2D cells : filter_nearest, repeat_disable;
 uniform int map_n = 17;
@@ -20,6 +20,7 @@ uniform vec3 ice_color = vec3(0.62, 0.85, 1.0);
 uniform vec3 mud_color = vec3(0.3, 0.2, 0.12);
 uniform vec3 ramp_color = vec3(0.55, 0.42, 0.26);
 uniform vec3 wind_color = vec3(0.55, 0.8, 0.78);
+uniform vec3 fire_color = vec3(0.95, 0.32, 0.08);
 
 varying vec3 wpos;
 
@@ -105,12 +106,20 @@ void fragment() {
 		col = mix(col, ramp_color, 0.5);
 	} else if (ter == 4) {
 		col = mix(col, wind_color, 0.22);
+	} else if (ter == 5) {
+		// Fire: a scorched, glowing floor.
+		col = mix(col * 0.55, fire_color, 0.38);
+		rough = 0.95;
+		spec = 0.15;
 	}
 
 	float thin = 1.0 - smoothstep(0.0, aa * 1.5 + 0.01, edge);
 	float thick = 1.0 - smoothstep(0.0, aa * 1.5 + 0.045, edge);
 
 	vec3 emit = vec3(0.0);
+	if (ter == 5) {
+		emit += fire_color * (0.16 + 0.08 * sin(TIME * 2.3 + wpos.x * 1.7 + wpos.z * 1.3));
+	}
 	if (ter != ter_nb) {
 		col = mix(col, vec3(0.9), 0.35 * thin);
 	}

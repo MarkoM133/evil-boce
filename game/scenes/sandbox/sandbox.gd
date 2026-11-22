@@ -790,6 +790,14 @@ func demo_setup() -> void:
 	_select(luffy)
 
 
+## A Fire patch beside the Ice and the Mud of demo_setup (Fire terrain, 2026-11-22).
+func demo_fire() -> void:
+	var c: Vector2i = arena.map.center_cell()
+	terrain.set_patch(c + Vector2i(0, -1), Terrain.Type.FIRE, arena.map)
+	arena.refresh_terrain()
+	cam.focus(arena.hex_center(c + Vector2i(0, -1)), 12.0)
+
+
 func demo_closeup() -> void:
 	if _selected != null:
 		cam.focus(_selected.body.global_position + Vector3(0, 0, -0.5), 7.0)

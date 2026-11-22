@@ -1618,7 +1618,7 @@ export function createEditor(env) {
     g.fillStyle = 'rgba(0, 0, 0, 0.18)';
     g.fillRect(cx - fw / 2, cy - fh / 2, fw, fh);
     g.restore();
-    const tc = { Ice: '#bfe9ff', Mud: '#c89a6a', Ramp: '#f4c22f', Wind: '#c8fff4' }[card.terrain];
+    const tc = { Ice: '#bfe9ff', Mud: '#c89a6a', Ramp: '#f4c22f', Wind: '#c8fff4', Fire: '#ff9a5c' }[card.terrain];
     g.textAlign = 'center';
     if (tc) {
       g.font = 'italic 800 34px "Barlow Condensed", sans-serif';

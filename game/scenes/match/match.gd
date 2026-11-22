@@ -2063,6 +2063,9 @@ func _stage_art(st: StageState) -> Node3D:
 		Terrain.Type.MUD:
 			mat.albedo_color = Color(0.72, 0.55, 0.38, STAGE_ART_ALPHA + 0.15)
 			mat.roughness = 1.0
+		Terrain.Type.FIRE:
+			mat.albedo_color = Color(1.15, 0.72, 0.5, STAGE_ART_ALPHA + 0.1)
+			mat.roughness = 0.9
 	# A Ramp shows as contour lines and downhill arrows on the hill (Arena._add_hill_marks), no
 	# label (Marko 2026-11-02).
 	return mi
@@ -5344,14 +5347,14 @@ func demo_locked() -> void:
 
 ## Weather on the stages whose terrain is on (playtest 2026-10-30: a label was not what was
 ## meant, it should look like the mockup's snow): snow falls on Ice, mud bubbles on Mud, streaks
-## blow along a Wind. A Ramp is its hill. Kept between syncs so the particles do not restart.
+## blow along a Wind, embers rise from Fire. A Ramp is its hill. Kept between syncs so the particles do not restart.
 func _refresh_terrain_fx() -> void:
 	var want: Dictionary[String, bool] = {}
 	for st: StageState in state.stages:
 		if not st.placed or not st.revealed or world.terrain == null:
 			continue
 		var kind: Terrain.Type = world.terrain.at(st.center)
-		if kind != Terrain.Type.ICE and kind != Terrain.Type.MUD and kind != Terrain.Type.WIND:
+		if kind != Terrain.Type.ICE and kind != Terrain.Type.MUD and kind != Terrain.Type.WIND and kind != Terrain.Type.FIRE:
 			continue
 		var key: String = "%s|%d|%d" % [st.id, kind, world.terrain.dir_of(st.center)]
 		want[key] = true
@@ -5446,6 +5449,31 @@ func _terrain_effect(st: StageState, kind: Terrain.Type, dir: int) -> Node3D:
 			ramp.set_color(0, Color(0.8, 1.0, 0.95, 0.0))
 			ramp.add_point(0.3, Color(0.85, 1.0, 0.97, 0.55))
 			ramp.set_color(ramp.get_point_count() - 1, Color(0.8, 1.0, 0.95, 0.0))
+		Terrain.Type.FIRE:
+			# Embers rise off the burning stage, flicker and go out.
+			p.amount = 46
+			p.lifetime = 1.8
+			p.emission_box_extents = Vector3(span * 0.9, 0.05, span * 0.9)
+			p.position.y = 0.08
+			p.direction = Vector3.UP
+			p.spread = 14.0
+			p.initial_velocity_min = 0.6
+			p.initial_velocity_max = 1.4
+			p.gravity = Vector3(0.05, 0.25, 0.0)
+			var q := QuadMesh.new()
+			q.size = Vector2(0.08, 0.08)
+			mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+			mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			q.surface_set_material(0, mat)
+			p.mesh = q
+			var fade := Curve.new()
+			fade.add_point(Vector2(0, 1.0))
+			fade.add_point(Vector2(1, 0.3))
+			p.scale_amount_curve = fade
+			ramp.set_color(0, Color(1.0, 0.85, 0.3, 0.0))
+			ramp.add_point(0.12, Color(1.0, 0.7, 0.2, 0.95))
+			ramp.add_point(0.6, Color(1.0, 0.35, 0.08, 0.7))
+			ramp.set_color(ramp.get_point_count() - 1, Color(0.6, 0.1, 0.02, 0.0))
 	p.color_ramp = ramp
 	p.local_coords = false
 	p.preprocess = p.lifetime

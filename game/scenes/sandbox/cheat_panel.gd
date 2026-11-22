@@ -120,8 +120,8 @@ func _init() -> void:
 	rm.pressed.connect(func() -> void: remove_pressed.emit())
 
 	_header(col, "TERRAIN (7 HEXES)")
-	var names: Array[String] = ["Ice", "Mud", "Clear", "Ramp", "Wind"]
-	var types: Array[int] = [Terrain.Type.ICE, Terrain.Type.MUD, Terrain.Type.NONE, Terrain.Type.RAMP, Terrain.Type.WIND]
+	var names: Array[String] = ["Ice", "Mud", "Clear", "Ramp", "Wind", "Fire"]
+	var types: Array[int] = [Terrain.Type.ICE, Terrain.Type.MUD, Terrain.Type.NONE, Terrain.Type.RAMP, Terrain.Type.WIND, Terrain.Type.FIRE]
 	var ter_row := _row(col)
 	for i: int in names.size():
 		if i == 3:

@@ -23,7 +23,8 @@ const COLORLESS_TYPES = ['Stage', 'Core'];
 const TYPE_TEXTS = { Character: 'Hero', Hero: 'Hero', Action: 'Action', Assist: 'Assist', Equipment: 'Equipment', Evolution: 'Evolution', Core: 'Core' };
 
 // Teren stagea: zaseban redak "Terrain: Ice" u tekstu stage karte (vodič za tekst karata).
-export const TERRAINS = ['Ice', 'Mud', 'Ramp', 'Wind', 'None'];
+// Fire (Marko 2026-11-22): no change to the physics; in the End phase each Hero on the Stage takes 1 DMG.
+export const TERRAINS = ['Ice', 'Mud', 'Ramp', 'Wind', 'Fire', 'None'];
 const TERRAIN_RE = /\bTerrain:\s*([A-Za-z]+)/;
 
 // Novi layout: okvir nosi slovo boje frakcije (ista boja kao stara tinta p_frame_11).
