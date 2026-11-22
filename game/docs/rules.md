@@ -143,9 +143,8 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
   and resolves as ever; then, when the first card was played this battle by the same player, is not in a
   combo yet, and the player can pay X, the move puts `combo_offer {player, card, hero, combos: [{id, with,
   with_hero, extra}]}` on `pending`, behind the choices the card itself asked for.
-- The pair, by the Combo card's kind (`comboKind`, Marko 2026-11-22; `CardDef.combo_kind`): a **team** combo (the
-  default) is two cards played for two different heroes of the player, who has two or more heroes in the battle
-  (an Assist pairs with any); a **solo** combo is both cards played for the same hero. The same holds when the
+- The pair, by the Combo card's kind (`comboKind`, Marko 2026-11-22; `CardDef.combo_kind`): a **team** combo is two cards played for two different heroes of the player, who has two or more heroes in the battle
+  (an Assist pairs with any); a **solo** combo (the default: a Combo card without the team mark) is both cards played for the same hero. The same holds when the
   pair is two copies of one card (`ingredients: [id, id]`). A solo combo so works for one hero, a team combo for
   both.
 - `choose {value: combo id}` accepts: X is paid, both records are marked used, event `combo`, and the Combo

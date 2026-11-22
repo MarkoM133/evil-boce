@@ -47,9 +47,9 @@ var ability_names: PackedStringArray = PackedStringArray()
 ## and the set it came out with. Combo cards are never in a deck.
 var ingredients: PackedStringArray = PackedStringArray()
 var extra_cost: int = 0
-## A Combo card's kind (Marko 2026-11-22): "solo" = one hero plays both cards and gets the combo; "team" (the default)
-## = two different heroes of the player play one each and both get it.
-var combo_kind: String = "team"
+## A Combo card's kind (Marko 2026-11-22): "solo" (the default: a card with no mark) = one hero plays both cards
+## and gets the combo; "team" = two different heroes of the player play one each and both get it.
+var combo_kind: String = "solo"
 var introduced_in: String = ""
 ## Token (GDD 10, 2026-11-14): an Action another card or a hero ability makes (fx TOKEN). It is never in a deck,
 ## a pack or a graveyard: it waits beside the hand (PlayerState.tokens) and is gone at the end of the turn.
@@ -158,7 +158,7 @@ static func from_card(c: Dictionary) -> CardDef:
 	d.ability_names = JsonUtil.as_strings(c.get("abilityNames", []))
 	d.ingredients = JsonUtil.as_strings(c.get("ingredients", []))
 	d.extra_cost = JsonUtil.as_int(c.get("extraCost", 0))
-	d.combo_kind = "solo" if str(c.get("comboKind", "")).to_lower() == "solo" else "team"
+	d.combo_kind = "team" if str(c.get("comboKind", "")).to_lower() == "team" else "solo"
 	d.introduced_in = str(c.get("introducedIn", "")) if c.get("introducedIn") != null else ""
 	var bonus: Dictionary = JsonUtil.as_dict(c.get("bonus", {}))
 	for k: Variant in bonus:
@@ -209,8 +209,8 @@ func to_record() -> Dictionary:
 	if type == "Combo":
 		rec["ingredients"] = Array(ingredients)
 		rec["extraCost"] = extra_cost
-		if combo_kind == "solo":
-			rec["comboKind"] = "solo"
+		if combo_kind == "team":
+			rec["comboKind"] = "team"
 		if not introduced_in.is_empty():
 			rec["introducedIn"] = introduced_in
 	if terrain != Terrain.Type.NONE and parse_terrain(text) == Terrain.Type.NONE:
