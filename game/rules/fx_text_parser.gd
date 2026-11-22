@@ -42,6 +42,9 @@ static func parse(card: CardDef) -> Dictionary:
 		if _rx("^(?:\\[Range\\]\\s*)?(?:Start|Preroll|Roll|Postroll|Battle|End) Phase\\b").search(l.strip_edges()) != null and not kept.is_empty() \
 				and not kept[kept.size() - 1].strip_edges().is_empty() and _rx("[.!?:]\\s*$").search(kept[kept.size() - 1]) == null:
 			kept[kept.size() - 1] = kept[kept.size() - 1].strip_edges() + "."
+		# A bare stat line ("+4 DMG") is a sentence of its own, whatever comes on the next line.
+		if _rx("(?i)^(?:[+-]\\d+ " + STAT_WORD + "(?:,? and |, )?)+$").search(l.strip_edges()) != null:
+			l = l.strip_edges() + "."
 		kept.append(l)
 	text = "\n".join(kept)
 	if text.strip_edges().is_empty():
@@ -54,7 +57,7 @@ static func parse(card: CardDef) -> Dictionary:
 		_token_names.append(tk.get_string(3).strip_edges())
 		tk = _rx(TOKEN_SENTENCE).search(text)
 	var self_name: String = card.hero if card.type == "Evolution" and not card.hero.is_empty() else card.name
-	var t: String = _normalise(text, self_name)
+	var t: String = _normalise(text, self_name, card.type == "Hero" or card.type == "Evolution")
 	# Elbaph (2026-11-05): a duel in every battle on the stage; the winner picks one hero in it for the bonus.
 	var duel: RegExMatch = _rx("(?i)each player reveals the top card of their deck\\. the player who revealed the higher[- ]cost card chooses one of their heroes in this battle\\. that hero gets \\+(\\d+) (\\w+)\\.?").search(t)
 	if duel != null:
@@ -226,17 +229,28 @@ static func _parse_bonus(colors: String, rest: String, card: CardDef, prev: FxEf
 	return e
 
 
-static func _normalise(text: String, self_name: String) -> String:
+## The card's own name becomes SELF. A {Tag} is never touched ("{Avan Style}" on Avan, "{Brave Hero}" on Hero
+## Trainer), and only a Hero or an Evolution is also called by one word of its name ("Giorno may …"): on any other
+## card a word of the name is just a word ("Place a Wall" on Boulder Wall).
+static func _normalise(text: String, self_name: String, by_word: bool = true) -> String:
 	var t: String = text
+	var tags := PackedStringArray()
+	var tag: RegExMatch = _rx("\\{[^}]+\\}").search(t)
+	while tag != null:
+		t = t.substr(0, tag.get_start()) + "\u0001%d\u0002" % tags.size() + t.substr(tag.get_end())
+		tags.append(tag.get_string())
+		tag = _rx("\\{[^}]+\\}").search(t)
 	if not self_name.is_empty():
 		var first: String = self_name.split(",")[0].strip_edges()
 		t = t.replace(self_name + "'s", "SELF's").replace(self_name, "SELF")
 		if first != self_name:
 			t = t.replace(first + "'s", "SELF's").replace(first, "SELF")
 		# The first name alone ("Giorno may …", cards name the hero only on Hero and Evolution cards, 2026-11-05).
-		for word: String in first.split(" "):
+		for word: String in (first.split(" ") if by_word else PackedStringArray()):
 			if word != first and word.length() >= 4:
 				t = _rx("\\b" + word + "\\b").sub(t, "SELF", true)
+	for i: int in tags.size():
+		t = t.replace("\u0001%d\u0002" % i, tags[i])
 	t = t.replace("\n- ", " | ").replace("\n", " ")
 	t = _rx("\\s+").sub(t, " ", true).strip_edges()
 	return t
@@ -264,7 +278,7 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 			tagged.bonus_tag = bm.get_string(1).strip_edges()
 		return tagged
 	_traits = PackedStringArray()
-	for tm: RegExMatch in _rx("\\{(\\w+)\\}").search_all(s):
+	for tm: RegExMatch in _rx("\\{([^}]+)\\}").search_all(s):
 		_traits.append(tm.get_string(1))
 	if s.begins_with("[Range] ") or s.begins_with("[Range]"):
 		e.range = true
@@ -304,7 +318,7 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 		e.cond = "ACTIVATED"
 		low = m.get_string(1)
 	# "If the Opponent's Hero in this Battle has a {Sword} equipped, …" (Mihawk)
-	m = _rx("^if (?:the|an) opponent's hero(?: in this battle)? (?:has|is equipped with) an? \\{(\\w+)\\}(?: equipped)?, (.*)$").search(low)
+	m = _rx("^if (?:the|an) opponent's hero(?: in this battle)? (?:has|is equipped with) an? \\{([^}]+)\\}(?: equipped)?, (.*)$").search(low)
 	if m != null:
 		e.cond = "OPP_EQUIPPED"
 		e.cond_arg = _trait_case("{%s}" % m.get_string(1))
@@ -484,7 +498,7 @@ static func _match(low: String) -> Array[Dictionary]:
 	if _rx("^(?:your )?opponent's heroes (?:can't|cannot) claim a stage this turn$").search(low) != null:
 		return [_act("NO_CLAIM", "OPP", [])]
 	# "deactivate a Core to play a {Sword} Equipment with a cost of 3 or less without paying its cost" (Zoro)
-	m = _rx("^(?:deactivate a core to )?play an? (?:\\{(\\w+)\\} )?(action|equipment|assist)?(?: card)? ?with a cost of (\\d+) or less (?:without paying its cost|for free)$").search(low)
+	m = _rx("^(?:deactivate a core to )?play an? (?:\\{([^}]+)\\} )?(action|equipment|assist)?(?: card)? ?with a cost of (\\d+) or less (?:without paying its cost|for free)$").search(low)
 	if m != null:
 		var args: Array = [m.get_string(3)]
 		if not m.get_string(1).is_empty():
@@ -535,7 +549,7 @@ static func _match(low: String) -> Array[Dictionary]:
 		var verb: String = "CHARGE" if m.get_string(1) in ["gain", "charge"] else "DISCHARGE"
 		return [_act(verb, who, [m.get_string(2)])]
 
-	m = _rx("^your \\{(\\w+)\\} cards cost (\\d+) (?:energy )?(less|more)(?: to play)?$").search(low)
+	m = _rx("^your \\{([^}]+)\\} cards cost (\\d+) (?:energy )?(less|more)(?: to play)?$").search(low)
 	if m != null:
 		return [_act("COST", "ME", [("-" if m.get_string(3) == "less" else "") + m.get_string(2), "{%s}" % m.get_string(1)])]
 	m = _rx("^your opponent's cards (?:have \\+(\\d+) cost|cost (\\d+) (?:energy )?more)$").search(low)
@@ -620,10 +634,10 @@ static func _counter(raw: String) -> PackedStringArray:
 	var s: String = raw.strip_edges()
 	if s.is_empty():
 		return PackedStringArray()
-	var m: RegExMatch = _rx("^\\{(\\w+)\\} (?:equipped|they have equipped|equipped to them)$").search(s)
+	var m: RegExMatch = _rx("^\\{([^}]+)\\} (?:equipped|they have equipped|equipped to them)$").search(s)
 	if m != null:
 		return PackedStringArray(["TRAIT_EQUIPPED", "{%s}" % m.get_string(1)])
-	m = _rx("^equipped \\{(\\w+)\\}(?: they have)?$").search(s)
+	m = _rx("^equipped \\{([^}]+)\\}(?: they have)?$").search(s)
 	if m != null:
 		return PackedStringArray(["TRAIT_EQUIPPED", "{%s}" % m.get_string(1)])
 	if _rx("^activated core(?: they have)?$").search(s) != null:

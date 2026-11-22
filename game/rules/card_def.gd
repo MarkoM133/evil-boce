@@ -103,10 +103,17 @@ func plays_for_color(hero_color: String) -> bool:
 	return is_colorless() or color == hero_color
 
 
+## Does the card carry this tag? Each part of a tag joined by "&" counts as that tag ("Mage & Brave Hero" is a
+## {Mage} card and a {Brave Hero} card, Marko 2026-11-22).
 func has_trait(t: String) -> bool:
+	var want: String = t.strip_edges().to_lower()
 	for x: String in traits:
-		if x.to_lower() == t.to_lower():
+		if x.to_lower() == want:
 			return true
+		if x.contains("&"):
+			for part: String in x.split("&"):
+				if part.strip_edges().to_lower() == want:
+					return true
 	return false
 
 

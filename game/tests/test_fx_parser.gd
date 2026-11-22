@@ -243,3 +243,22 @@ func test_colour_bonus_lines() -> void:
 	# Two colours with the same bonus: no colour on the flag, the card's bonusColors decide.
 	_assert_fx(_fx("Action", "Peek", "[Range] Preroll Phase: Reveal a Core.\nCyan / Purple Bonus: This card costs 1 less to play.", {"color": "None", "bonusColors": ["Cyan", "Purple"]}),
 		"PREROLL RANGE: REVEAL_CORE\nPLAY BONUS: OWN_COST -1")
+
+
+## A {Tag} keeps its words even when they are the card's own name; only a Hero or an Evolution is called by one
+## word of its name; a tag joined by "&" is each of its parts (2026-11-22).
+func test_tags_and_names() -> void:
+	_assert_fx(_fx("Assist", "Stone Sage", "Your {Old Stone} cards cost 1 Energy less."), "PASSIVE: COST ME -1 {Old Stone}")
+	_assert_fx(_fx("Action", "Boulder Wall", "Preroll Phase: Place a Wall on an empty space in Range."), "PREROLL RANGE: WALL")
+	_assert_fx(_fx("Hero", "Bruno Bucciarati", "Postroll Phase Once Per Turn: Bruno may move up to 2 spaces."), "POSTROLL ONCE OPTIONAL: MOVE SELF 2")
+	var both: CardDef = _fx("Action", "Spark", "Battle Phase:", {"traits": ["Mage & Brave Hero", "Fire"], "bonus": {"pwr": 1000}})
+	assert_true(both.has_trait("Mage"))
+	assert_true(both.has_trait("brave hero"))
+	assert_true(both.has_trait("Mage & Brave Hero"))
+	assert_false(both.has_trait("Brave"))
+
+
+## A bare stat line ends its sentence, so the line after it is read on its own (a Combo card, 2026-11-22).
+func test_bare_stat_line() -> void:
+	_assert_fx(_fx("Combo", "Flares", "Battle Phase: \n+4 DMG\nAs an additional cost, your Hero takes 3 DMG.\n{Ember} Bonus: Do not pay the additional cost."),
+		"BATTLE: BUFF SELF DMG 4\nPASSIVE: COST_DAMAGE 3\nPASSIVE INSTEAD BONUS {Ember}: COST_DAMAGE 0")
