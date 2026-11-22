@@ -30,7 +30,7 @@ export function artCode(path) {
 
 // Prijašnji art jedne karte: nekorišteni art spremljen pod istim kodom kao njezin sadašnji art, inače pod njezinim
 // kodom (bez amblema). Karta pomaknuta na drugi kod prije 22. 11. 2026. zadržala je art pod starim kodom, pa bi se
-// po kodu karte nudio art karte koja je prije bila na tom kodu (Tarik, 2026-11-22).
+// po kodu karte nudio art karte koja je prije bila na tom kodu (2026-11-22).
 export function previousArtOf(id, unused, art = null) {
   const code = artCode(art) ?? id;
   return unused.filter(p => p.startsWith(`art/${code}.`));
