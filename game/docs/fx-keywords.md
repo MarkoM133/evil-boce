@@ -155,6 +155,51 @@ Counters for `PER`: `TRAIT_EQUIPPED {Trait}` (equipment with the trait on the ta
 `CORES` (cores on the target), `MISSING_HP <n>` (per n HP missing), `ENERGY` (the owner's
 energy), `LOW_HP_FRIENDLY <n>` (the owner's heroes with ≤ n HP, the hero itself included, KO heroes not), `LOW_HP_OTHER_FRIENDLY <n>` (the same without the hero whose effect it is: "every other friendly Hero").
 
+## Words that came with DQ1 (2026-11-22)
+
+Tested in `tests/test_dq1_fx.gd` on small cards written as card text.
+
+**A {Tag} may be several words** (`{Avan Style}`) anywhere in a line, and a tag joined by "&" on a card counts as
+each of its parts (`CardDef.has_trait`: "Mage & Brave Hero" is a {Mage} card and a {Brave Hero} card).
+
+**Conditions** (`IF <COND> [args…]`; the condition is the last thing in the head, every word after its name is
+its argument):
+
+| condition | holds when | card text |
+|---|---|---|
+| `OPP_COUNT <n>` | at least n opponent heroes are in SELF's battle | "If there are at least 2 Opponent's Heroes in this Battle, …" |
+| `OPP_PWR <n>` | an opponent hero in SELF's battle has n Power or more. Asked while a power is being worked out it is false, so two such passives never chase each other | "… if an Opponent's Hero in this Battle has 8000 Power or more" |
+| `GRAVE {Tag} <n>` | the player has at least n cards with the tag in the graveyard | (with REQUIRE) |
+| `GRAVE_MORE {A} {B}` | more {A} than {B} cards in the player's graveyard; a tie is neither | "X gets +2 Knockback if you have more {A} than {B} cards in your graveyard, or +2 DMG if you have more {B} than {A}." (two lines) |
+| `OPP_PLAYED <TURN|BATTLE> {Tag} [{Tag}…]` | an opponent played a card with one of the tags this turn, or in SELF's battle (`GameState.turn_plays`) | "… if your Opponent played a {Fire} or {Explosion} card in this Battle" |
+| `PWR_TIED` | the player's side and an opposing side of SELF's battle have the same Power now (on an Action: after its stat box) | "If after playing this card you have the same Power as your Opponent, …" |
+| `LOW_HP <n>` | SELF has n HP or less | |
+| `ON_STAGE` | SELF stands on a revealed, unclaimed stage | (with REQUIRE) |
+| `CLAIMED_LAST_TURN` | the player claimed a stage last turn | (with REQUIRE) |
+| `WIN_ALLY` | waits for the battle like `WIN`: SELF's side won and another hero of that side was in it | "Whenever X wins a Battle with another friendly Hero in it, …" |
+| `LOSE_BELOW <n>` | waits for the battle: SELF's side lost and SELF has less than n HP once the hits have landed (a KO counts) | "If you lose this Battle and your Hero falls below 4 HP, …" |
+
+A "Battle Phase:" line with `OPP_PWR` or `OPP_PLAYED` on a card that stays in play (Hero, Evolution, Equipment,
+Assist) is written as `PASSIVE`: the condition changes while the battle is fought, so it is asked all the time,
+and it only holds in a battle.
+
+**Counters** (`BUFF … PER <COUNTER>`): `OPP_IN_BATTLE` (opponent heroes in the hero's battle, "for each
+Opponent's Hero in this Battle"), `HP` (the hero's HP now, "for each HP they have"), `MISSING_HP 1` ("for each HP
+they are missing"), `GRAVE {Tag} [n]` (one for each n cards with the tag in the hero's player's graveyard, "for
+each 3 {Strash Mastery} cards in your graveyard").
+
+**Verbs**
+
+| verb | effect |
+|---|---|
+| `REQUIRE <COND> [args]` | the card is played only while the condition holds; otherwise it stays in the hand and nothing is paid (`RulesEngine._requirement`). "Play this card only if you have at least 3 {Avan Style} cards in your graveyard." is `REQUIRE GRAVE {Avan Style} 3`; "… only while your Hero is on a Stage." `REQUIRE ON_STAGE`; "… only if you claimed a Stage last turn." `REQUIRE CLAIMED_LAST_TURN` |
+| `RECYCLE <p> <n> <TOP|BOTTOM|SHUFFLE> {Tag}` | with a tag: the newest n cards with it, wherever they lie in the graveyard. "Put 3 of them on the bottom of your deck." after a REQUIRE GRAVE sentence takes that tag. Which three is not the player's choice yet |
+| `OWN_COST` on a plain line | "This card costs 1 Energy less if your Opponent played a {Fire} card this turn." is `BATTLE IF OPP_PLAYED TURN {Fire}: OWN_COST -1` |
+
+**INSTEAD after a bare phase line** replaces the card's stat box for the hero it holds for
+(`FxRuntime.box_replaced`): "Battle Phase: / Yellow Bonus: Your Hero gets +1000 Power for each Opponent's Hero in
+this Battle instead." gives a Yellow hero +1000 per opponent in place of the box, any other hero the box.
+
 ## Choices
 
 When an effect needs a decision, the engine pushes `{"type": "choose", "player", "kind":

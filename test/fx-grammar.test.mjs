@@ -31,6 +31,22 @@ test('lines from fx-keywords.md read as the game reads them', () => {
     'POSTROLL OPTIONAL: HIDE 2',
     'END: WANDER 2',
     'POSTROLL: TERRAIN FIRE',
+    // DQ1 conditions, counters and play requirements (2026-11-22).
+    'BATTLE: BUFF SELF PWR 4000 PER OPP_IN_BATTLE',
+    'BATTLE: BUFF SELF PWR 2000 PER HP; BUFF SELF DMG 1 PER HP',
+    'BATTLE: BUFF SELF PWR 1000 PER GRAVE {Strash Mastery} 3',
+    'BATTLE BONUS IF OPP_COUNT 2: BUFF SELF DMG 2',
+    'PASSIVE IF OPP_PWR 8000: BUFF SELF PWR 3000',
+    'PASSIVE IF GRAVE_MORE {Avan Style} {Dark Army}: BUFF SELF KB 2',
+    'PASSIVE IF OPP_PLAYED BATTLE {Fire} {Explosion}: DAMAGE_MOD SELF -2',
+    'BATTLE IF OPP_PLAYED TURN {Fire}: OWN_COST -1',
+    'BATTLE IF PWR_TIED: BUFF SELF PWR 2000',
+    'BATTLE IF LOSE_BELOW 4: DAMAGE ENEMY 2',
+    'BATTLE IF WIN_ALLY: DRAW ME 1',
+    'BATTLE: REQUIRE GRAVE {Avan Style} 3',
+    'POSTROLL: REQUIRE ON_STAGE',
+    'PREROLL: REQUIRE CLAIMED_LAST_TURN',
+    'PLAY: RECYCLE ME 3 BOTTOM {Avan Style}',
     'PASSIVE: STATUS SELF IGNORE_TERRAIN',
   ]) assert.equal(lineProblem(line), '', line);
 });

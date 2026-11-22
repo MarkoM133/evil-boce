@@ -14,6 +14,10 @@ const DECISION_CHOOSE: String = "choose"
 var engine: RulesEngine
 
 
+## Set while OPP_PWR reads the opponents' power (see cond_holds).
+var _pwr_guard: bool = false
+
+
 func _init(engine_: RulesEngine) -> void:
 	engine = engine_
 
@@ -82,7 +86,7 @@ func fire_phase(s: GameState, phase: String) -> void:
 			var ctx: Dictionary = _ctx_of(src)
 			if not cond_ok(s, ctx, e):
 				continue
-			if e.cond == "WIN" and not e.arms_on_play():
+			if e.waits_for_battle() and not e.arms_on_play():
 				s.deferred.append({"player": ctx["player"], "hero": ctx["hero"], "fx": e.line, "ctx": ctx})
 				continue
 			# A hero's own ability that fires by itself ("If Fugo is activated…"): the HUD shows its
@@ -220,7 +224,7 @@ func usable_abilities(s: GameState, slot: int) -> Array[Dictionary]:
 			continue
 		for i: int in card.effects.size():
 			var e: FxEffect = card.effects[i]
-			if not e.optional or e.when != when or e.cond == "WIN":
+			if not e.optional or e.when != when or e.waits_for_battle():
 				continue
 			var key: String = "%s|%s|%d" % [h.id if h != null else "", card.id, i]
 			if e.once and s.abilities_used.has(key):
@@ -271,17 +275,35 @@ func on_reveal(s: GameState, st: StageState, by: HeroState) -> void:
 ## After a battle: deferred "if you win" effects of the winners run, the losers' are dropped.
 func on_battle_done(s: GameState, winners: Array[HeroState], members: Array[HeroState]) -> void:
 	var keep: Array[Dictionary] = []
+	var due: Array[Dictionary] = []
 	for d: Dictionary in s.deferred:
 		var h: HeroState = s.hero(str(d.get("hero", "")))
 		if h == null or not members.has(h):
 			keep.append(d)
-			continue
-		if winners.has(h):
-			var e: FxEffect = FxEffect.parse_line(str(d.get("fx", "")))
-			if e != null:
-				e.cond = ""
-				run(s, JsonUtil.as_dict(d.get("ctx", {})), e)
+		else:
+			due.append(d)
 	s.deferred = keep
+	for d: Dictionary in due:
+		var h: HeroState = s.hero(str(d.get("hero", "")))
+		var e: FxEffect = FxEffect.parse_line(str(d.get("fx", "")))
+		if e == null:
+			continue
+		var won: bool = winners.has(h)
+		var holds: bool = false
+		match e.cond:
+			"WIN":
+				holds = won
+			"WIN_ALLY":
+				# "… wins a Battle with another friendly Hero in it".
+				for o: HeroState in members:
+					if won and o != h and s.same_team(o, h):
+						holds = true
+			"LOSE_BELOW":
+				# "If you lose this Battle and your Hero falls below N HP": its HP once the hits have landed.
+				holds = not won and h.hp < e.cond_arg.to_int()
+		if holds:
+			e.set_cond("")
+			run(s, JsonUtil.as_dict(d.get("ctx", {})), e)
 
 
 ## Does the effect count now? Its IF condition and BONUS, and, for an effect that an INSTEAD
@@ -339,9 +361,64 @@ func own_cost(s: GameState, p: PlayerState, card: CardDef, hero: HeroState) -> i
 func _holds(s: GameState, ctx: Dictionary, e: FxEffect) -> bool:
 	if e.bonus and not bonus_ok(s, ctx, e):
 		return false
-	match e.cond:
-		"", "WIN":
+	if e.waits_for_battle():
+		return true
+	var args: PackedStringArray = e.cond_args
+	if args.is_empty() and not e.cond_arg.is_empty():
+		args = PackedStringArray([e.cond_arg])
+	return cond_holds(s, ctx, e.cond, args)
+
+
+## Does the condition hold now for the card and hero the context names? Also what REQUIRE asks.
+func cond_holds(s: GameState, ctx: Dictionary, cond: String, args: PackedStringArray) -> bool:
+	var arg0: String = args[0] if not args.is_empty() else ""
+	var player: int = JsonUtil.as_int(ctx.get("player", -1), -1)
+	match cond:
+		"":
 			return true
+		"OPP_COUNT":
+			return battle_enemies(s, ctx).size() >= maxi(arg0.to_int(), 1)
+		"OPP_PWR":
+			# Asked while a power is being worked out, it does not hold: two such passives never chase each other.
+			if _pwr_guard:
+				return false
+			_pwr_guard = true
+			var strong: bool = false
+			for h: HeroState in battle_enemies(s, ctx):
+				if engine.stat(s, h, "pwr") >= arg0.to_int():
+					strong = true
+			_pwr_guard = false
+			return strong
+		"GRAVE":
+			return grave_count(s, player, arg0) >= maxi(args[1].to_int() if args.size() > 1 else 1, 1)
+		"GRAVE_MORE":
+			return args.size() >= 2 and grave_count(s, player, args[0]) > grave_count(s, player, args[1])
+		"OPP_PLAYED":
+			return _opp_played(s, ctx, args)
+		"PWR_TIED":
+			var mine: int = 0
+			var theirs: Dictionary[int, int] = {}
+			for id: String in _battle_ids(s, ctx):
+				var h: HeroState = s.hero(id)
+				if h == null or not h.is_on_map():
+					continue
+				var t: int = s.team_of(h.owner)
+				if t == s.team_of(player):
+					mine += engine.stat(s, h, "pwr")
+				else:
+					theirs[t] = JsonUtil.as_int(theirs.get(t, 0)) + engine.stat(s, h, "pwr")
+			return theirs.values().has(mine)
+		"LOW_HP":
+			var low: HeroState = s.hero(str(ctx.get("hero", "")))
+			return low != null and low.hp <= arg0.to_int()
+		"ON_STAGE":
+			return engine.stage_under(s, s.hero(str(ctx.get("hero", "")))) != null
+		"CLAIMED_LAST_TURN":
+			# A claim keeps the stage's terrain through the turn after it: that stamp says when it was.
+			for st: StageState in s.stages:
+				if st.is_claimed() and st.claimed_by == player and st.terrain_until_turn == s.turn:
+					return true
+			return false
 		"ACTIVATED":
 			var hero_id: String = str(ctx.get("hero", ""))
 			return not hero_id.is_empty() and s.active.get(JsonUtil.as_int(ctx.get("player", -1)), "") == hero_id
@@ -358,7 +435,7 @@ func _holds(s: GameState, ctx: Dictionary, e: FxEffect) -> bool:
 					continue
 				for eid: String in h.equipment:
 					var c: CardDef = engine.catalog.get_card(eid)
-					if c != null and c.has_trait(e.cond_arg.trim_prefix("{").trim_suffix("}")):
+					if c != null and c.has_trait(arg0.trim_prefix("{").trim_suffix("}")):
 						return true
 			return false
 		"COPIES":
@@ -369,7 +446,76 @@ func _holds(s: GameState, ctx: Dictionary, e: FxEffect) -> bool:
 						and str(ev.get("type", "")) == "action" and str(ev.get("card", "")) == str(ctx.get("card", "")) \
 						and JsonUtil.as_int(ev.get("player", -1)) == JsonUtil.as_int(ctx.get("player", -2)):
 					n += 1
-			return n >= maxi(e.cond_arg.to_int(), 1)
+			return n >= maxi(arg0.to_int(), 1)
+	return false
+
+
+## Heroes of the battle the context is about: the one it names, else the one being fought, as long as the
+## context's hero is in it. Empty outside a battle.
+func _battle_ids(s: GameState, ctx: Dictionary) -> PackedStringArray:
+	if s.phase != GameState.PHASE_BATTLE:
+		return PackedStringArray()
+	var index: int = JsonUtil.as_int(ctx.get("battle", s.battle_index), -1)
+	if index < 0 or index >= s.battles.size():
+		return PackedStringArray()
+	var ids: PackedStringArray = JsonUtil.as_strings(s.battles[index].get("heroes", []))
+	var hero_id: String = str(ctx.get("hero", ""))
+	if not hero_id.is_empty() and not ids.has(hero_id):
+		return PackedStringArray()
+	return ids
+
+
+## The opponents' heroes in that battle.
+func battle_enemies(s: GameState, ctx: Dictionary) -> Array[HeroState]:
+	var out: Array[HeroState] = []
+	var team: int = s.team_of(JsonUtil.as_int(ctx.get("player", 0)))
+	for id: String in _battle_ids(s, ctx):
+		var h: HeroState = s.hero(id)
+		if h != null and h.is_on_map() and s.team_of(h.owner) != team:
+			out.append(h)
+	return out
+
+
+## Cards with that tag in the player's graveyard.
+func grave_count(s: GameState, slot: int, tag: String) -> int:
+	var n: int = 0
+	if slot < 0 or slot >= s.players.size():
+		return 0
+	for cid: String in s.player(slot).graveyard:
+		var c: CardDef = engine.catalog.get_card(cid)
+		if c != null and c.has_trait(tag.trim_prefix("{").trim_suffix("}")):
+			n += 1
+	return n
+
+
+## OPP_PLAYED <TURN|BATTLE> {Tag} [{Tag}…]: an opponent played a card with one of the tags this turn, or in the
+## battle the context is about.
+func _opp_played(s: GameState, ctx: Dictionary, args: PackedStringArray) -> bool:
+	var team: int = s.team_of(JsonUtil.as_int(ctx.get("player", 0)))
+	var in_battle: bool = not args.is_empty() and args[0] == "BATTLE"
+	var index: int = JsonUtil.as_int(ctx.get("battle", s.battle_index), -1)
+	if in_battle and _battle_ids(s, ctx).is_empty():
+		return false
+	for x: Dictionary in s.turn_plays:
+		if s.team_of(JsonUtil.as_int(x.get("player", 0))) == team:
+			continue
+		if in_battle and JsonUtil.as_int(x.get("battle", -1), -1) != index:
+			continue
+		var c: CardDef = engine.catalog.get_card(str(x.get("card", "")))
+		for tag: String in args:
+			if c != null and tag.begins_with("{") and c.has_trait(tag.trim_prefix("{").trim_suffix("}")):
+				return true
+	return false
+
+
+## A bonus line that says "instead" right after a bare phase line replaces the card's stat box for the hero it
+## holds for ("Battle Phase: / Yellow Bonus: Your Hero gets +1000 Power for each Opponent's Hero … instead").
+func box_replaced(s: GameState, slot: int, target: HeroState, card: CardDef) -> bool:
+	var ctx: Dictionary = {"player": slot, "hero": target.id if target != null else "", "card": card.id, "stage": ""}
+	for i: int in range(1, card.effects.size()):
+		var e: FxEffect = card.effects[i]
+		if e.instead and card.effects[i - 1].actions.is_empty() and card.effects[i - 1].when == e.when and _holds(s, ctx, e):
+			return true
 	return false
 
 
@@ -559,6 +705,15 @@ func _per(s: GameState, src: Dictionary, h: HeroState, args: PackedStringArray) 
 		"COUNT":
 			# How many things the effect's earlier action did (e.g. cores deactivated).
 			return JsonUtil.as_int(src.get("count", 0))
+		"OPP_IN_BATTLE":
+			return battle_enemies(s, {"player": h.owner, "hero": h.id}).size()
+		"HP":
+			return h.hp
+		"GRAVE":
+			# PER GRAVE {Tag} [n]: one for each n cards with the tag in the hero's player's graveyard.
+			var each: int = maxi(args[i + 3].to_int() if i + 3 < args.size() else 1, 1)
+			@warning_ignore("integer_division")
+			return grave_count(s, h.owner, arg) / each
 	return 1
 
 
@@ -766,6 +921,9 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			if near.size() == 1:
 				return {}
 			return {"player": player, "kind": "hero", "options": near.map(func(h: HeroState) -> Variant: return h.id), "prompt": "Who hides inside"}
+		"REQUIRE":
+			if not cond_holds(s, ctx, args[0], args.slice(1)):
+				return {"error": _require_error(args)}
 		"TERRAIN":
 			if engine.stage_under(s, me) == null:
 				return {"error": "your hero is not on a stage"}
@@ -835,7 +993,7 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
 	match verb:
-		"OWN_COST":
+		"OWN_COST", "REQUIRE":
 			return ""
 		"BUFF":
 			if e.when == "PASSIVE":
@@ -895,12 +1053,23 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 				engine.end_move(s, who, who_was, s.team_of(player))
 		"RECYCLE":
 			var p: PlayerState = s.player(player if target == "ME" else engine.other_slot(s, player))
-			var mode: String = args[1] if args.size() > 1 else "TOP"
+			var mode: String = args[1] if args.size() > 1 and not args[1].begins_with("{") else "TOP"
+			# A {Tag} picks the cards: the newest ones with it, wherever they lie in the graveyard.
+			var only: String = ""
+			for x: String in args:
+				if x.begins_with("{"):
+					only = x.trim_prefix("{").trim_suffix("}")
 			for _i: int in args[0].to_int():
-				if p.graveyard.is_empty():
+				var at: int = p.graveyard.size() - 1
+				while at >= 0 and not only.is_empty():
+					var gc: CardDef = engine.catalog.get_card(p.graveyard[at])
+					if gc != null and gc.has_trait(only):
+						break
+					at -= 1
+				if at < 0:
 					break
-				var cid: String = p.graveyard[p.graveyard.size() - 1]
-				p.graveyard.remove_at(p.graveyard.size() - 1)
+				var cid: String = p.graveyard[at]
+				p.graveyard.remove_at(at)
 				if mode == "TOP":
 					p.deck.insert(0, cid)
 				else:
@@ -1129,6 +1298,17 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 
 
 ## The companion the context's card put on the table (its player's, from that very Assist), or null.
+static func _require_error(args: PackedStringArray) -> String:
+	match args[0]:
+		"GRAVE":
+			return "needs %s %s cards in your graveyard" % [args[2] if args.size() > 2 else "1", args[1] if args.size() > 1 else ""]
+		"ON_STAGE":
+			return "your hero is not on a stage"
+		"CLAIMED_LAST_TURN":
+			return "you did not claim a stage last turn"
+	return "this card cannot be played now"
+
+
 func _own_companion(s: GameState, ctx: Dictionary) -> CompanionState:
 	var c: CompanionState = s.companion_of(JsonUtil.as_int(ctx.get("player", 0)))
 	return c if c != null and c.card_id == str(ctx.get("card", "")) else null

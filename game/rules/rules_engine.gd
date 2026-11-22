@@ -2464,22 +2464,30 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 				return "cannot pay %d damage" % extra
 			# An Action whose effect has nothing to work on (no hex for its wall, no core in reach)
 			# is not played: it stays in the hand and costs nothing.
-			var blocked: String = _play_blocker(s, slot, target, card)
+			var blocked: String = _requirement(s, slot, target, card)
+			if blocked.is_empty():
+				blocked = _play_blocker(s, slot, target, card)
 			if not blocked.is_empty():
 				return blocked
 			_take_from_hand(p, cid)
-			for key: String in card.bonus:
-				target.add_bonus(target.phase_bonus, key, card.bonus[key])
+			# The stat box, unless a bonus line says "instead" of it for this hero ("Yellow Bonus: … instead").
+			var box: Dictionary[String, int] = {}
+			if not fx.box_replaced(s, slot, target, card):
+				box = card.bonus
+			for key: String in box:
+				target.add_bonus(target.phase_bonus, key, box[key])
 			# A played token is gone: it never reaches the graveyard.
 			if card.token:
 				s.event("action", {"card": cid, "hero": target.id, "token": true})
 			else:
 				p.graveyard.append(cid)
 				s.event("action", {"card": cid, "hero": target.id})
-			_note_played(s, slot, cid, target.id, card.bonus)
+			_note_played(s, slot, cid, target.id, box)
 		_:
 			return "%s cards cannot be played" % card.type
 	p.energy -= cost
+	s.turn_plays.append({"player": slot, "card": cid, "hero": target.id if target != null else "", "phase": s.phase,
+		"battle": s.battle_index if s.phase == GameState.PHASE_BATTLE else -1})
 	_run_play_effects(s, slot, target, card)
 	return ""
 
@@ -2636,11 +2644,22 @@ func _for_each_hero(e: FxEffect) -> bool:
 func _play_blocker(s: GameState, slot: int, target: HeroState, card: CardDef) -> String:
 	var ctx: Dictionary = {"player": slot, "hero": target.id if target != null else "", "card": card.id, "stage": ""}
 	for e: FxEffect in card.effects:
-		if e.when == "PASSIVE" or e.when == "REVEAL" or e.cond == "WIN":
+		if e.when == "PASSIVE" or e.when == "REVEAL" or e.waits_for_battle():
 			continue
 		if not fx.cond_ok(s, ctx, e):
 			continue
 		return fx.first_error(s, ctx, e)
+	return ""
+
+
+## "Play this card only if …" (REQUIRE): why the card may not be played now, "" when it may.
+func _requirement(s: GameState, slot: int, target: HeroState, card: CardDef) -> String:
+	var ctx: Dictionary = {"player": slot, "hero": target.id if target != null else "", "card": card.id, "stage": ""}
+	for e: FxEffect in card.effects:
+		if e.has_verb("REQUIRE") and fx.cond_ok(s, ctx, e):
+			var err: String = fx.first_error(s, ctx, e)
+			if not err.is_empty():
+				return err
 	return ""
 
 
@@ -2666,7 +2685,7 @@ func _run_play_effect(s: GameState, slot: int, target: HeroState, card: CardDef,
 		return
 	if not fx.cond_ok(s, ctx, e):
 		return
-	if e.cond == "WIN" and not e.arms_on_play():
+	if e.waits_for_battle() and not e.arms_on_play():
 		s.deferred.append({"player": slot, "hero": ctx["hero"], "fx": e.line, "ctx": ctx})
 		return
 	var err: String = fx.run(s, ctx, e)

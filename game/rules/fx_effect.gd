@@ -19,7 +19,12 @@ extends RefCounted
 ##        hold; otherwise it is skipped. Both share the WHEN of the one before.
 
 const WHENS: Array[String] = ["PLAY", "PREROLL", "ROLL", "POSTROLL", "BATTLE", "END", "PASSIVE", "REVEAL"]
-const CONDS: Array[String] = ["ACTIVATED", "WIN", "OPP_EQUIPPED", "COPIES"]
+const CONDS: Array[String] = ["ACTIVATED", "WIN", "OPP_EQUIPPED", "COPIES",
+	# DQ1 (2026-11-22), see docs/fx-keywords.md:
+	"OPP_COUNT", "OPP_PWR", "GRAVE", "GRAVE_MORE", "OPP_PLAYED", "PWR_TIED", "LOW_HP", "ON_STAGE", "CLAIMED_LAST_TURN",
+	"WIN_ALLY", "LOSE_BELOW"]
+## Conditions known only once the battle is over: the effect waits for it (FxRuntime.on_battle_done).
+const BATTLE_END_CONDS: Array[String] = ["WIN", "WIN_ALLY", "LOSE_BELOW"]
 const COLORS: Array[String] = ["CYAN", "YELLOW", "PURPLE", "RED", "BLUE", "GREEN"]
 ## Verb -> [takes a target, number of extra args at least].
 const VERBS: Dictionary[String, Array] = {
@@ -61,6 +66,7 @@ const VERBS: Dictionary[String, Array] = {
 	"HIDE": [false, 1],         # HIDE <reach> [energy]  (the Assist's companion: one hero of its player within reach hides inside, for that energy)
 	"WANDER": [false, 1],       # WANDER <n>  (END: the Assist's companion walks 1..n hexes in a direction drawn by lot)
 	"TOKEN": [true, 1],         # TOKEN <ME|OPP> <token card id> [n]  (that player gets n of that token beside the hand)
+	"REQUIRE": [false, 1],      # REQUIRE <COND> [args]  (the card is played only when the condition holds: "Play this card only if …")
 	"TERRAIN": [false, 1],      # TERRAIN <Ice|Mud|Ramp|Wind|Fire>  (the stage SELF stands on gets that terrain)
 }
 ## A TOKEN is never made in the End phase (it would be gone at once) nor by a passive (GDD 10, 2026-11-14).
@@ -69,7 +75,8 @@ const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "A
 	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_ENEMY_IN_RANGE", "ALL_FRIENDLY_IN_BATTLE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR", "MOST_ENERGY"]
 const PLAYER_TARGETS: Array[String] = ["ME", "OPP"]
 const STATS: Array[String] = ["PWR", "DMG", "KB", "RNG", "HP"]
-const COUNTERS: Array[String] = ["TRAIT_EQUIPPED", "CORES", "MISSING_HP", "ENERGY", "LOW_HP_FRIENDLY", "LOW_HP_OTHER_FRIENDLY", "COUNT"]
+const COUNTERS: Array[String] = ["TRAIT_EQUIPPED", "CORES", "MISSING_HP", "ENERGY", "LOW_HP_FRIENDLY", "LOW_HP_OTHER_FRIENDLY", "COUNT",
+	"OPP_IN_BATTLE", "HP", "GRAVE"]
 
 var when: String = "PLAY"
 var once: bool = false
@@ -77,6 +84,8 @@ var optional: bool = false
 var range: bool = false
 var cond: String = ""
 var cond_arg: String = ""
+## Every word after the condition's name ("GRAVE {Avan Style} 3"); cond_arg is the first of them.
+var cond_args: PackedStringArray = PackedStringArray()
 var bonus: bool = false
 var bonus_color: String = ""
 ## BONUS {Tag}: the bonus counts for a hero called that or carrying that tag (2026-11-21).
@@ -108,7 +117,9 @@ func to_fx() -> String:
 	if not cond.is_empty():
 		head.append("IF")
 		head.append(cond)
-		if not cond_arg.is_empty():
+		if not cond_args.is_empty():
+			head.append_array(cond_args)
+		elif not cond_arg.is_empty():
 			head.append(cond_arg)
 	var parts := PackedStringArray()
 	for a: Dictionary in actions:
@@ -181,6 +192,20 @@ func arms_on_play() -> bool:
 	return true
 
 
+## An effect whose condition is known only when the battle is over ("If you win this Battle, …").
+func waits_for_battle() -> bool:
+	return BATTLE_END_CONDS.has(cond)
+
+
+## Sets the condition and its arguments.
+func set_cond(name: String, args: Array = []) -> void:
+	cond = name
+	cond_args = PackedStringArray()
+	for a: Variant in args:
+		cond_args.append(str(a))
+	cond_arg = cond_args[0] if not cond_args.is_empty() else ""
+
+
 ## Does this effect fire or become usable in `phase` (GameState phase name)?
 func matches_phase(phase: String) -> bool:
 	return when == phase.to_upper()
@@ -246,9 +271,13 @@ static func parse_line(line: String) -> FxEffect:
 					return null
 				e.cond = head[i + 1]
 				i += 1
-				if i + 1 < head.size():
-					e.cond_arg = head[i + 1]
+				# The condition is the last thing in the head: every word after its name is its argument. A {Tag}
+				# keeps its spelling.
+				while i + 1 < head.size():
+					e.cond_args.append(spelt[i + 1] if head[i + 1].begins_with("{") else head[i + 1])
 					i += 1
+				if not e.cond_args.is_empty():
+					e.cond_arg = e.cond_args[0]
 			_:
 				return null
 		i += 1

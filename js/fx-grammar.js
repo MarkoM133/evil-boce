@@ -3,7 +3,9 @@
 // Mijenja li se gramatika u igri, mijenja se i ovdje (test/fx-grammar.test.mjs drži primjere iz fx-keywords.md).
 
 export const WHENS = ['PLAY', 'PREROLL', 'ROLL', 'POSTROLL', 'BATTLE', 'END', 'PASSIVE', 'REVEAL'];
-export const CONDS = ['ACTIVATED', 'WIN', 'OPP_EQUIPPED', 'COPIES'];
+export const CONDS = ['ACTIVATED', 'WIN', 'OPP_EQUIPPED', 'COPIES',
+  // DQ1 (2026-11-22): uvjet smije imati više argumenata (GRAVE {Tag} 3), sve do dvotočke.
+  'OPP_COUNT', 'OPP_PWR', 'GRAVE', 'GRAVE_MORE', 'OPP_PLAYED', 'PWR_TIED', 'LOW_HP', 'ON_STAGE', 'CLAIMED_LAST_TURN', 'WIN_ALLY', 'LOSE_BELOW'];
 export const COLORS = ['CYAN', 'YELLOW', 'PURPLE', 'RED', 'BLUE', 'GREEN'];
 // Glagol -> [ima metu, najmanje dodatnih argumenata].
 export const VERBS = {
@@ -17,7 +19,7 @@ export const VERBS = {
   // Pratilac (GDD 10, 2026-11-21): COMPANION na PLAY Assista, HIDE <domet> [energija], WANDER <n> na END.
   COMPANION: [false, 0], HIDE: [false, 1], WANDER: [false, 1],
   // DQ1 (2026-11-22): TERRAIN <ime terena> mijenja teren stagea na kojem heroj stoji.
-  TERRAIN: [false, 1],
+  TERRAIN: [false, 1], REQUIRE: [false, 1],
 };
 // TOKEN se ne stvara u End fazi (odmah bi nestao) ni pasivno (GDD 10, 2026-11-14).
 export const NO_TOKEN_WHENS = ['END', 'PASSIVE'];
@@ -102,8 +104,8 @@ export function lineProblem(line) {
     if (w === 'BONUS') { if (COLORS.includes(head[i + 1]) || /^\{.+\}$/.test(head[i + 1] ?? '')) i++; continue; }
     if (w === 'IF') {
       if (!CONDS.includes(head[i + 1])) return `IF needs one of ${CONDS.join(', ')}`;
-      i++;
-      if (i + 1 < head.length) i++;
+      // Uvjet je zadnji u glavi: sve iza njegova imena su njegovi argumenti.
+      i = head.length;
       continue;
     }
     return `"${w}" is not a flag the game knows`;

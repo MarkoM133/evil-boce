@@ -66,6 +66,14 @@ static func parse(card: CardDef) -> Dictionary:
 	var rich: RegExMatch = _rx("(?i)the player with (?:more|the most) energy chooses one of their heroes in this battle\\. that hero gets \\+(\\d+) (\\w+)\\.?").search(t)
 	if rich != null:
 		t = t.substr(0, rich.get_start()) + "Most energy pick for +%s %s." % [rich.get_string(1), rich.get_string(2)] + t.substr(rich.get_end())
+	# "X gets +2 Knockback if you have more {A} than {B} cards in your graveyard, or +2 DMG if you have more {B} than {A}."
+	# is two sentences, one for each side (2026-11-22).
+	var either: RegExMatch = _rx("(?i)([^.]*?)(\\+\\d+ \\w+) if you have more (\\{[^}]+\\}) than (\\{[^}]+\\}) cards in your graveyard, or (\\+\\d+ \\w+) if you have more \\{[^}]+\\} than \\{[^}]+\\}(?: cards in your graveyard)?\\.?").search(t)
+	if either != null:
+		var who: String = either.get_string(1).strip_edges()
+		t = t.substr(0, either.get_start()) + "%s %s if you have more %s than %s cards in your graveyard. %s %s if you have more %s than %s cards in your graveyard." % [
+			who, either.get_string(2), either.get_string(3), either.get_string(4),
+			who.substr(0, 1).to_upper() + who.substr(1), either.get_string(5), either.get_string(4), either.get_string(3)] + t.substr(either.get_end())
 	# A colour bonus sentence ("Red Bonus: …", 2026-11-01) leans on the sentence before it.
 	var prev: FxEffect = null
 	var prev_sentence: String = ""
@@ -106,6 +114,16 @@ static func parse(card: CardDef) -> Dictionary:
 				prev.range = prev.range or tail.range
 				lines[prev_line] = prev.to_fx()
 				prev_sentence = sentence
+				continue
+		# "Put 3 of them on the bottom of your deck": the cards the sentence before asked for (REQUIRE GRAVE {Tag}).
+		var them: RegExMatch = _rx("^put (\\d+) of them on the (bottom|top) of your deck$").search(low)
+		if them != null and prev != null and prev.has_verb("REQUIRE"):
+			var need: PackedStringArray = prev.actions[0]["args"]
+			if need.size() >= 2 and need[0] == "GRAVE":
+				var back := FxEffect.new()
+				back.when = "PLAY"
+				back.actions = [{"verb": "RECYCLE", "target": "ME", "args": PackedStringArray([them.get_string(1), them.get_string(2).to_upper(), need[1]])}]
+				lines.append(back.to_fx())
 				continue
 		var e: FxEffect = _parse_sentence(sentence, card, prev, prev_sentence)
 		if e == null:
@@ -342,6 +360,49 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 	if m != null:
 		e.cond = "WIN"
 		low = m.get_string(1)
+	# Conditions that came with DQ1 (2026-11-22).
+	m = _rx("^if there are at least (\\d+) opponent's heroes in this battle, (.*)$").search(low)
+	if m != null:
+		e.set_cond("OPP_COUNT", [m.get_string(1)])
+		low = m.get_string(2)
+	m = _rx("^if an opponent's hero(?: in this battle)? has (\\d+) power or more, (.*)$").search(low)
+	if m != null:
+		e.set_cond("OPP_PWR", [m.get_string(1)])
+		low = m.get_string(2)
+	m = _rx("^(.*?),? if an opponent's hero(?: in this battle)? has (\\d+) power or more$").search(low)
+	if m != null:
+		e.set_cond("OPP_PWR", [m.get_string(2)])
+		low = m.get_string(1)
+	m = _rx("^(.*?),? if you have more \\{([^}]+)\\} than \\{([^}]+)\\} cards in your graveyard$").search(low)
+	if m != null:
+		e.set_cond("GRAVE_MORE", [_trait_case("{%s}" % m.get_string(2)), _trait_case("{%s}" % m.get_string(3))])
+		low = m.get_string(1)
+	m = _rx("^(.*?),? if your opponent played an? \\{([^}]+)\\}(?: or \\{([^}]+)\\})? card (this turn|in this battle)$").search(low)
+	if m != null:
+		var played: Array = ["TURN" if m.get_string(4) == "this turn" else "BATTLE", _trait_case("{%s}" % m.get_string(2))]
+		if not m.get_string(3).is_empty():
+			played.append(_trait_case("{%s}" % m.get_string(3)))
+		e.set_cond("OPP_PLAYED", played)
+		low = m.get_string(1)
+	m = _rx("^if after playing this card you have the same power as your opponent, (.*)$").search(low)
+	if m != null:
+		e.set_cond("PWR_TIED")
+		low = m.get_string(1)
+	m = _rx("^whenever (?:self|your hero) wins a battle with another friendly hero in it, (.*)$").search(low)
+	if m != null:
+		e.when = "BATTLE"
+		e.set_cond("WIN_ALLY")
+		low = m.get_string(1)
+	m = _rx("^if you lose this battle and (?:your hero|self) falls below (\\d+) hp, (.*)$").search(low)
+	if m != null:
+		e.set_cond("LOSE_BELOW", [m.get_string(1)])
+		low = m.get_string(2)
+	# A condition that can change while the battle is fought (the opponent's power, what they played) is asked all
+	# the time, not once as the phase starts: on a card that stays in play the line is a passive of the battle.
+	if card.type != "Action" and card.type != "Combo" and e.when == "BATTLE" and ["OPP_PWR", "OPP_PLAYED"].has(e.cond):
+		e.when = "PASSIVE"
+	# "gets an additional +2000 Power" outside a bonus line is just the bonus.
+	low = _rx("\\b(gets?|gains?) an additional ").sub(low, "$1 ")
 	m = _rx("^if self (?:is|was) activated(?: this turn)?, (.*)$").search(low)
 	if m != null:
 		e.cond = "ACTIVATED"
@@ -412,6 +473,22 @@ static func _match(low: String) -> Array[Dictionary]:
 		out.append({"verb": "CHOOSE", "target": "OPP", "args": PackedStringArray(), "branches": [a, b]})
 		return out
 
+	# "Play this card only if you have at least 3 {Avan Style} cards in your graveyard." (2026-11-22)
+	m = _rx("^play this card only (?:if|while) (.+)$").search(low)
+	if m != null:
+		var need: String = m.get_string(1)
+		var g: RegExMatch = _rx("^you have at least (\\d+) \\{([^}]+)\\} cards? in your graveyard$").search(need)
+		if g != null:
+			return [_act("REQUIRE", "", ["GRAVE", "{%s}" % g.get_string(2), g.get_string(1)])]
+		if _rx("^(?:your hero|self) is on a stage$").search(need) != null:
+			return [_act("REQUIRE", "", ["ON_STAGE"])]
+		if _rx("^you claimed a stage last turn$").search(need) != null:
+			return [_act("REQUIRE", "", ["CLAIMED_LAST_TURN"])]
+		return out
+	m = _rx("^this card costs (\\d+) (?:energy )?(less|more)(?: to play)?$").search(low)
+	if m != null:
+		return [_act("OWN_COST", "", [("-" if m.get_string(2) == "less" else "") + m.get_string(1)])]
+
 	# "As an additional cost, take 3 DMG." or "…, your Hero takes 3 DMG." (Marko 2026-11-05).
 	m = _rx("^as an additional cost, (?:take|your hero takes) (\\d+) dmg$").search(low)
 	if m != null:
@@ -436,7 +513,7 @@ static func _match(low: String) -> Array[Dictionary]:
 				return out
 
 	# "takes -1 DMG from all sources", "takes 1 less DMG from each source" (Kaido, 2026-11-05)
-	m = _rx("^(.*?)\\s*takes? (?:([+-]\\d+) dmg|(\\d+) (less|more) dmg) from (?:all|each|every) sources?( this turn)?$").search(low)
+	m = _rx("^(.*?)\\s*takes? (?:([+-]\\d+) dmg from (?:all|each|every) sources?|(\\d+) (less|more) dmg(?: from (?:all|each|every) sources?)?)( this turn)?$").search(low)
 	if m != null:
 		var target: String = _subject(m.get_string(1))
 		if not target.is_empty():
@@ -589,9 +666,9 @@ static func _match(low: String) -> Array[Dictionary]:
 		if m.get_string(2).to_int() > 1:
 			made.append(m.get_string(2))
 		return [_act("TOKEN", "ME", made)]
-	m = _rx("^(?:you )?draw (\\d+) cards?$").search(low)
+	m = _rx("^(?:you )?draw (\\d+|a) cards?$").search(low)
 	if m != null:
-		return [_act("DRAW", "ME", [m.get_string(1)])]
+		return [_act("DRAW", "ME", [m.get_string(1) if m.get_string(1).is_valid_int() else "1"])]
 	if _rx("^remove (?:an|the top) evolution from (?:your|the) opponent's hero(?: in this battle)?$").search(low) != null:
 		return [_act("REMOVE_EVO", "ENEMY", [])]
 	# "After your Hero's roll, you may roll them again" (Gomu Gomu no Rocket; "may" was read above)
@@ -615,7 +692,8 @@ static func _subject(raw: String) -> String:
 			return "SELF"
 		"the equipped hero", "equipped hero":
 			return "EQUIPPED"
-		"an opponent's hero", "your opponent's hero", "their hero", "the opponent's hero", "they":
+		"an opponent's hero", "your opponent's hero", "their hero", "the opponent's hero", "they", \
+				"an opponent's hero in this battle", "your opponent's hero in this battle", "the opponent's hero in this battle":
 			return "ENEMY"
 		"a friendly hero", "friendly hero", "another friendly hero":
 			return "FRIENDLY"
@@ -660,6 +738,16 @@ static func _counter(raw: String) -> PackedStringArray:
 		return PackedStringArray(["MISSING_HP", m.get_string(1)])
 	if _rx("^(?:charged )?energy(?: their player has)?$").search(s) != null:
 		return PackedStringArray(["ENERGY"])
+	# DQ1 (2026-11-22): opponents in the battle, the hero's HP, cards of a tag in the graveyard.
+	if _rx("^opponent's hero in (?:this|the) battle$").search(s) != null:
+		return PackedStringArray(["OPP_IN_BATTLE"])
+	if _rx("^hp (?:they have|(?:he|she|it) has|self has)$").search(s) != null:
+		return PackedStringArray(["HP"])
+	if _rx("^(?:hp (?:they are|(?:he|she|it) is|self is) missing|missing hp)$").search(s) != null:
+		return PackedStringArray(["MISSING_HP", "1"])
+	m = _rx("^(?:(\\d+) )?\\{([^}]+)\\} cards? in your graveyard$").search(s)
+	if m != null:
+		return PackedStringArray(["GRAVE", _trait_case("{%s}" % m.get_string(2)), m.get_string(1) if not m.get_string(1).is_empty() else "1"])
 	# "friendly Hero who has 5 or less HP" / "with 5 HP or less"; "other" leaves the hero itself out.
 	m = _rx("^(other )?friendly (?:character|hero) (?:who has (\\d+) or less hp|with (\\d+) hp or less)$").search(s)
 	if m != null:

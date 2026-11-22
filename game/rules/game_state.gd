@@ -61,6 +61,9 @@ var pending_rolls: PackedStringArray = PackedStringArray()
 var roll_snapshot: Dictionary[String, Dictionary] = {}
 ## The "Roll Phase:" offers after this roll went out already (once per stop).
 var roll_offered: bool = false
+## Every card played this turn, in order: {"player", "card", "hero" ("" for an Assist), "phase"}. Conditions and
+## triggers count them ("your Opponent played a {Fire} card this turn", "your third {Mage} card in a turn").
+var turn_plays: Array[Dictionary] = []
 ## Knockbacks waiting for the physics (knockback "physics"), [{hero,
 ## dir, steps}]: the engine stops until apply_knockback brings the sim's outcome (GDD 10).
 var pending_knockbacks: Array[Dictionary] = []
@@ -296,6 +299,7 @@ func reset_turn_data() -> void:
 	abilities_used = PackedStringArray()
 	deferred.clear()
 	turn_mods.clear()
+	turn_plays.clear()
 	energy_banked = false
 
 
@@ -364,6 +368,7 @@ func to_dict() -> Dictionary:
 		"pending_rolls": Array(pending_rolls),
 		"roll_snapshot": roll_snapshot.duplicate(true),
 		"roll_offered": roll_offered,
+		"turn_plays": turn_plays.duplicate(true),
 		"pending_knockbacks": pending_knockbacks.duplicate(true),
 		"abilities_used": Array(abilities_used),
 		"deferred": deferred.duplicate(true),
@@ -445,6 +450,8 @@ static func from_dict(d: Dictionary) -> GameState:
 	for k: Variant in snap:
 		s.roll_snapshot[str(k)] = JsonUtil.as_dict(snap[k])
 	s.roll_offered = JsonUtil.as_bool(d.get("roll_offered", false))
+	for x: Variant in JsonUtil.as_array(d.get("turn_plays", [])):
+		s.turn_plays.append(JsonUtil.as_dict(x))
 	for x: Variant in JsonUtil.as_array(d.get("pending_knockbacks", [])):
 		s.pending_knockbacks.append(JsonUtil.as_dict(x))
 	s.abilities_used = JsonUtil.as_strings(d.get("abilities_used", []))
