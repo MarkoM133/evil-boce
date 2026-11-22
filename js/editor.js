@@ -1168,6 +1168,18 @@ export function createEditor(env) {
     }
     const others = moved.filter(id => id !== from).map(id => `${id} → ${plan.get(id)}`);
     if (!confirm(`Move ${from} to ${to}?${others.length ? `\n\nThese move one place:\n${others.join('\n')}` : ''}`)) return;
+    await applyCodes(fresh, plan);
+    env.toast(`${from} is now ${to}${others.length ? `; ${others.length} ${others.length === 1 ? 'card' : 'cards'} moved one place` : ''}.`);
+    releaseLock();
+    ed.id = null;
+    ed.work = null;
+    env.go(to);
+  }
+
+  // Every card in `plan` (Map old code → new code) gets its new code: its art files, its draft (with `patch`: Map new
+  // code → fields to set), notes, history, intent and Claude's answers. Used by moving a code and by Make token of….
+  async function applyCodes(fresh, plan, { patch = new Map(), note = id => `code changed from ${id}` } = {}) {
+    const moved = [...plan.keys()];
     // The art goes along (2026-11-22: "Previous art" showed the art of the card that held the code before): every art
     // file saved under the code a moved card's art carries gets the new code, in two steps (a card moving into a code
     // never meets the files of the one moving out), and the drafts point at the new names.
@@ -1184,6 +1196,7 @@ export function createEditor(env) {
     ed.artList = null;
     const renamed = new Map(renames);
     fresh.cards = moveDrafts(fresh.cards, plan);
+    for (const [id, fields] of patch) if (fresh.cards[id]) Object.assign(fresh.cards[id], fields);
     for (const d of Object.values(fresh.cards)) if (d?.art && renamed.has(d.art)) d.art = renamed.get(d.art);
     await writeJson(DRAFTS_PATH, fresh);
     ed.drafts = fresh;
@@ -1205,8 +1218,39 @@ export function createEditor(env) {
     ed.textCheck = renameKeys(ed.textCheck, plan);
     ed.pubOff = new Set([...ed.pubOff].map(id => plan.get(id) ?? id));
     ed.thumbs.clear();
-    for (const id of moved) await logHistory(plan.get(id), `code changed from ${id}`).catch(() => {});
-    env.toast(`${from} is now ${to}${others.length ? `; ${others.length} ${others.length === 1 ? 'card' : 'cards'} moved one place` : ''}.`);
+    for (const id of moved) await logHistory(plan.get(id), note(id)).catch(() => {});
+  }
+
+  // Make token of… (Marko 2026-11-22: Magic Cylinder Gush was made as a card of its own): an unpublished Action becomes
+  // a token of the card that makes it, with the next token code of that card; everything goes with it as when a code
+  // moves, and its old code is left empty.
+  async function makeToken() {
+    if (!canPublish()) throw new Error('Making a token needs the shared folder open on a computer (Chrome or Edge).');
+    if (ed.dirty) throw new Error('Save the card first, then make it a token.');
+    const from = ed.id;
+    const w = ed.drafts?.cards?.[from];
+    if (!w?.new || w.token) throw new Error('Only a new card that is not a token yet can become one.');
+    if (w.type !== 'Action') throw new Error('A token is always an Action card.');
+    const answer = prompt(`Which card makes ${w.name || from}? Its code, e.g. ${setOf(from)}-093 (or just 93).`, '');
+    if (answer == null || !answer.trim()) return;
+    const makerId = targetCode(setOf(from), answer) ?? answer.trim().toUpperCase();
+    const maker = allCards().find(c => c.id === makerId);
+    if (!maker) throw new Error(`There is no card ${makerId}.`);
+    if (maker.id === from) throw new Error('A card cannot make itself.');
+    if (maker.token || !MAKER_TYPES.includes(maker.type)) throw new Error(`${maker.name} (${maker.type}${maker.token ? ', a token' : ''}) cannot make tokens.`);
+    await env.assertFresh();
+    const fresh = await readDrafts();
+    await readLocks();
+    if (ed.locks[from] && ed.locks[from].who !== who()) throw new Error(`${ed.locks[from].who} has ${from} open. Try again after they close it.`);
+    const combo = [...db().cards, ...Object.values(fresh.cards ?? {})].find(c => c?.type === 'Combo' && (c.ingredients ?? []).includes(from));
+    if (combo) throw new Error(`${combo.name || combo.id} uses ${from}, and a token is never part of a combo.`);
+    for (const path of [CLAUDE_REQ(from), TEXT_REQ(from)]) {
+      if ((await fs.readText(store().root, path).catch(() => null)) != null) throw new Error(`Claude is still reading ${from}. Try again in a minute.`);
+    }
+    const to = nextTokenId(maker.id);
+    if (!confirm(`Make ${w.name || from} a token of ${maker.name} (${maker.id})?\n\nIt becomes ${to}, and ${from} is left empty.`)) return;
+    await applyCodes(fresh, new Map([[from, to]]), { patch: new Map([[to, { token: true }]]), note: id => `made a token of ${maker.id} (was ${id})` });
+    env.toast(`${w.name || from} is now the token ${to} of ${maker.name}.`);
     releaseLock();
     ed.id = null;
     ed.work = null;
@@ -1263,6 +1307,9 @@ export function createEditor(env) {
       if (w.new && !w.token && ed.drafts?.cards?.[w.id]) rare.push(h('button', { class: 'ghost', type: 'button', disabled: !canPublish() || lockBusy(),
         title: canPublish() ? 'Give this card another code in its set; the unpublished cards in between move one place' : 'Moving a card needs the shared folder open on a computer',
         onclick: () => env.guard(moveCard) }, 'Move to another code…'));
+      if (w.new && !w.token && w.type === 'Action' && ed.drafts?.cards?.[w.id]) rare.push(h('button', { class: 'ghost', type: 'button', disabled: !canPublish() || lockBusy(),
+        title: canPublish() ? 'Turn this card into a token of the card that makes it (its code becomes that card\'s, e.g. DQ1-093-1)' : 'Making a token needs the shared folder open on a computer',
+        onclick: () => env.guard(makeToken) }, 'Make token of…'));
       if (ed.drafts?.cards?.[w.id]) rare.push(h('div', { class: 'ce-more-sep', 'aria-hidden': 'true' }),
         h('button', { class: 'ghost ce-more-danger', type: 'button', disabled: !canWrite() || lockBusy(), onclick: () => env.guard(discardDraft) },
           w.new ? 'Throw away this new card' : 'Discard the unpublished changes'));
@@ -2307,7 +2354,8 @@ export function createEditor(env) {
       out.push(w.type === 'Action' ? [true, 'Token: an Action, never in a deck'] : [false, 'A token can only be an Action']);
       const maker = allCards().find(c => c.id === makerOf(w.id));
       if (!maker) out.push([false, `No card ${makerOf(w.id)} makes this token`]);
-      else if (!new RegExp(`\\bcreate (?:an?|\\d+) ${(w.name ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} tokens?\\b`, 'i').test(maker.text ?? '') && !(maker.fx ?? '').includes(w.id))
+      // "Create a Gush Token." or "Then return this to your hand as Magic Cylinder Gush." (Marko 2026-11-22: the same).
+      else if (!new RegExp(`\\b(?:create (?:an?|\\d+) ${(w.name ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} tokens?|return this to your hand as ${(w.name ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b`, 'i').test(maker.text ?? '') && !(maker.fx ?? '').includes(w.id))
         out.push([false, `${maker.name || maker.id} does not say "Create a ${w.name || '…'} Token." yet`]);
       else out.push([true, `${maker.name || maker.id} makes it`]);
     }
