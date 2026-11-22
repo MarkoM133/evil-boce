@@ -107,7 +107,8 @@ static func parse(card: CardDef) -> Dictionary:
 				tail = FxEffect.new()
 				tail.actions = [_act("TRAP_CORE", "", [trap.get_string(1)])]
 			else:
-				var rest: String = fm.get_string(1) if not fm.get_string(1).is_empty() else fm.get_string(2)
+				# Taken from the sentence as written, so a {Tag} in it keeps its spelling.
+				var rest: String = sentence.substr(fm.get_start(1 if not fm.get_string(1).is_empty() else 2))
 				tail = _parse_sentence(rest[0].to_upper() + rest.substr(1), card)
 			if tail != null and not tail.actions.is_empty():
 				prev.actions.append_array(tail.actions)
@@ -549,6 +550,53 @@ static func _match(low: String) -> Array[Dictionary]:
 	if m != null:
 		return [_act("COST_DAMAGE", "", [m.get_string(1)])]
 
+	# Heroes picked out by a tag (2026-11-22): "A friendly Hero with {Brave Hero} in this Battle gets +5000 Power",
+	# "Your {Dark Army} Heroes in this Battle get +3000 Power".
+	m = _rx("^a friendly hero with \\{([^}]+)\\} in this battle (?:gets?|gains?) \\+(\\d+) (\\S+)$").search(low)
+	if m != null and STAT_WORDS.has(m.get_string(3)):
+		return [_act("BUFF", "ALL_FRIENDLY_IN_BATTLE", [STAT_WORDS[m.get_string(3)], m.get_string(2), "PICK", "WITH", "{%s}" % m.get_string(1)])]
+	m = _rx("^your \\{([^}]+)\\} heroes in this battle (?:gets?|gains?) \\+(\\d+) (\\S+)$").search(low)
+	if m != null and STAT_WORDS.has(m.get_string(3)):
+		return [_act("BUFF", "ALL_FRIENDLY_IN_BATTLE", [STAT_WORDS[m.get_string(3)], m.get_string(2), "WITH", "{%s}" % m.get_string(1)])]
+	# "Each of your {Dark Army} Heroes may pay 1 HP to get +2000 Power" (the "may" is already taken off): the ones in
+	# the battle that can spare it pay, and get the bonus.
+	m = _rx("^each of your \\{([^}]+)\\} heroes pays? (\\d+) hp to (?:gets?|gains?) \\+(\\d+) (\\S+)$").search(low)
+	if m != null and STAT_WORDS.has(m.get_string(4)):
+		return [_act("PAY_HP", "ALL_FRIENDLY_IN_BATTLE", [m.get_string(2), "WITH", "{%s}" % m.get_string(1)]),
+			_act("BUFF", "PAID", [STAT_WORDS[m.get_string(4)], m.get_string(3)])]
+	# Tags gained in the match: "The equipped Hero gains {Mage}", "Your Heroes gain {Brave Hero} until the end of the turn",
+	# "the equipped Hero gets +2 Range and gains {Mage} until the end of the turn".
+	m = _rx("^(.*?)\\s*(?:gets?|gains?) \\+(\\d+) (\\S+) and gains? \\{([^}]+)\\}( until the end of the turn| this turn)?$").search(low)
+	if m != null and STAT_WORDS.has(m.get_string(3)) and not _subject(m.get_string(1)).is_empty():
+		var both: String = _subject(m.get_string(1))
+		var lasts: Array = ["TURN"] if not m.get_string(5).is_empty() else []
+		return [_act("BUFF", both, [STAT_WORDS[m.get_string(3)], m.get_string(2)] + lasts), _act("GAIN_TAG", both, ["{%s}" % m.get_string(4)] + lasts)]
+	m = _rx("^(.*?)\\s*gains? \\{([^}]+)\\}( until the end of the turn| this turn)?$").search(low)
+	if m != null and not _subject(m.get_string(1)).is_empty():
+		return [_act("GAIN_TAG", _subject(m.get_string(1)), ["{%s}" % m.get_string(2)] + (["TURN"] if not m.get_string(3).is_empty() else []))]
+	m = _rx("^pay (\\d+) energy$").search(low)
+	if m != null:
+		return [_act("PAY", "", [m.get_string(1)])]
+	# "Another friendly Hero has 0 Power and cannot take DMG this turn" (Kaclang).
+	m = _rx("^(.*?)\\s*has 0 power and (?:cannot|can't) take dmg this turn$").search(low)
+	if m != null and not _subject(m.get_string(1)).is_empty():
+		return [_act("STATUS", _subject(m.get_string(1)), ["STONE", "TURN"])]
+	# "KO an Opponent's Hero with 1 HP" / "Your Hero is KO'd during the End Phase".
+	m = _rx("^ko (.+?)(?: with (\\d+) hp(?: or less)?)?$").search(low)
+	if m != null and not _subject(m.get_string(1)).is_empty():
+		return [_act("KO", _subject(m.get_string(1)), ["HP", m.get_string(2)] if not m.get_string(2).is_empty() else [])]
+	m = _rx("^(.*?)\\s*is ko'd during the end phase$").search(low)
+	if m != null and not _subject(m.get_string(1)).is_empty():
+		return [_act("STATUS", _subject(m.get_string(1)), ["DOOMED", "TURN"])]
+	# "… cannot be activated next turn" / "… for 2 turns, or until Flazzard is KO'd or ringed out" (the hero whose
+	# card it is; then it ends early when that hero leaves the map).
+	m = _rx("^(.*?)\\s*(?:cannot|can't) be activated (?:next turn|for (\\d+) turns?)(,? or until .+ is ko'd or ringed out)?$").search(low)
+	if m != null and not _subject(m.get_string(1)).is_empty():
+		var still: Array = ["STUN", str((m.get_string(2).to_int() if not m.get_string(2).is_empty() else 1) + 1)]
+		if not m.get_string(3).is_empty():
+			still.append("LINKED")
+		return [_act("STATUS", _subject(m.get_string(1)), still)]
+
 	# Stat bonuses: "<subject> gains +2000 Power [and +1 DMG] [for every X] [until the end of the turn]"
 	m = _rx("^(.*?)(?:gains?|has|have|gets?)?\\s*((?:[+-]\\d+ (?:power|pwr|\\[pwr\\]|dmg|damage|\\[dmg\\]|kb|knockback|\\[kb\\]|range|rng|\\[rng\\]|hp|\\[hp\\])(?:,? and |, )?)+)(?: for (?:every|each) (.+?))?( until the end of the turn| this turn)?$").search(low)
 	if m != null:
@@ -600,7 +648,7 @@ static func _match(low: String) -> Array[Dictionary]:
 			out.append(_act("HEAL", target, [m.get_string(2)]))
 			return out
 
-	m = _rx("^(.*?)\\s*move up to (\\d+) spaces?$").search(low)
+	m = _rx("^(.*?)\\s*moves? (?:up to )?(\\d+) spaces?$").search(low)
 	if m != null:
 		# Only the card's own hero moves for now; group moves need per-hero choices.
 		if _subject(m.get_string(1)) == "SELF":
@@ -794,7 +842,7 @@ static func _subject(raw: String) -> String:
 			return "FRIENDLY"
 		"the hero it was played for":
 			return "CARD_HERO"
-		"all friendly heroes", "all friendly characters", "friendly heroes":
+		"all friendly heroes", "all friendly characters", "friendly heroes", "your heroes", "each of your heroes", "all of your heroes":
 			return "ALL_FRIENDLY"
 		"all other heroes in range", "all other heroes in self's range":
 			return "ALL_OTHER_IN_RANGE"
@@ -803,7 +851,7 @@ static func _subject(raw: String) -> String:
 			return "ALL_FRIENDLY_IN_RANGE"
 		"each of your heroes in this battle", "all of your heroes in this battle", "your heroes in this battle", "all your heroes in this battle", "each of your heroes in the battle":
 			return "ALL_FRIENDLY_IN_BATTLE"
-		"each hero", "all heroes", "each hero on this stage", "all heroes on this stage", "every hero on this stage":
+		"each hero", "all heroes", "each hero on this stage", "all heroes on this stage", "every hero on this stage", "each hero on it":
 			return "EACH_HERO"
 		"the hero with more hp", "the hero on this stage with the most hp", "the hero with the most hp on this stage":
 			return "MOST_HP"

@@ -30,6 +30,8 @@ var temp_evo: String = ""
 var temp_until: int = 0
 ## Status name -> turns left (-1 = until removed).
 var statuses: Dictionary[String, int] = {}
+## The hero whose card holds this one still ("stun … or until X is KO'd or ringed out"); "" when nobody.
+var stun_by: String = ""
 ## Stat bonuses that end with the phase / with the turn: {"pwr": 2000, ...}.
 var phase_bonus: Dictionary[String, int] = {}
 var turn_bonus: Dictionary[String, int] = {}
@@ -74,6 +76,7 @@ func to_dict() -> Dictionary:
 		"temp_evo": temp_evo,
 		"temp_until": temp_until,
 		"statuses": statuses.duplicate(),
+		"stun_by": stun_by,
 		"phase_bonus": phase_bonus.duplicate(),
 		"turn_bonus": turn_bonus.duplicate(),
 		"tie_turns": tie_turns,
@@ -104,6 +107,7 @@ static func from_dict(d: Dictionary) -> HeroState:
 	h.temp_evo = str(d.get("temp_evo", ""))
 	h.temp_until = JsonUtil.as_int(d.get("temp_until", 0))
 	h.statuses = _int_dict(d.get("statuses", {}), -1)
+	h.stun_by = str(d.get("stun_by", ""))
 	h.phase_bonus = _int_dict(d.get("phase_bonus", {}), 0)
 	h.turn_bonus = _int_dict(d.get("turn_bonus", {}), 0)
 	h.tie_turns = JsonUtil.as_int(d.get("tie_turns", 0))

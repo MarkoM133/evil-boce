@@ -69,6 +69,10 @@ const VERBS: Dictionary[String, Array] = {
 	"HIDE": [false, 1],         # HIDE <reach> [energy]  (the Assist's companion: one hero of its player within reach hides inside, for that energy)
 	"WANDER": [false, 1],       # WANDER <n>  (END: the Assist's companion walks 1..n hexes in a direction drawn by lot)
 	"TOKEN": [true, 1],         # TOKEN <ME|OPP> <token card id> [n]  (that player gets n of that token beside the hand)
+	"GAIN_TAG": [true, 1],      # GAIN_TAG <target> {Tag} [TURN]  (those heroes carry the tag: while the card is in play, or this turn)
+	"PAY": [false, 1],          # PAY <n>  (the player pays n Energy; without it the effect does not start)
+	"PAY_HP": [true, 1],        # PAY_HP <target> <n>  (each of those heroes with more than n HP loses n; PAID are the ones that did)
+	"KO": [true, 0],            # KO <target> [HP <n>]  (that hero goes down; HP n: only one with n HP or less)
 	"HEAL_MOD": [true, 1],      # HEAL_MOD <target> <n> [BY]  (passive: those heroes heal n more; BY: heals from cards played for the source's hero)
 	"NEXT_CARD": [false, 3],    # NEXT_CARD {Tag} <STAT> <n>  (the next card with the tag the player plays this turn gives its hero that much more)
 	"WEAKEN_CARD": [false, 1],  # WEAKEN_CARD <n>  (PLAYED: the card just played gives its hero up to n less Power)
@@ -78,7 +82,7 @@ const VERBS: Dictionary[String, Array] = {
 }
 ## A TOKEN is never made in the End phase (it would be gone at once) nor by a passive (GDD 10, 2026-11-14).
 const NO_TOKEN_WHENS: Array[String] = ["END", "PASSIVE"]
-const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "ALL_FRIENDLY", "ALL_ENEMY", "CARD_HERO",
+const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "ALL_FRIENDLY", "ALL_ENEMY", "CARD_HERO", "PAID",
 	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_ENEMY_IN_RANGE", "ALL_FRIENDLY_IN_BATTLE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR", "MOST_ENERGY"]
 const PLAYER_TARGETS: Array[String] = ["ME", "OPP"]
 const STATS: Array[String] = ["PWR", "DMG", "KB", "RNG", "HP"]

@@ -781,7 +781,7 @@ func _offer_roll_effects(s: GameState) -> void:
 					continue
 				if hero_card != null and not card.plays_for_color(hero_card.color):
 					continue
-				if hero_card != null and not JsonUtil.as_bool(FirstTag.play_verdict(catalog, card, hero_card, stat_card(h))["ok"]):
+				if hero_card != null and not JsonUtil.as_bool(FirstTag.play_verdict(catalog, card, hero_card, stat_card(h), gained_tags(s, h))["ok"]):
 					continue
 				if card_cost(s, p, card, h) <= p.energy:
 					cards.append(cid)
@@ -1176,6 +1176,7 @@ func _set_phase(s: GameState, phase: String) -> void:
 			s.roll_snapshot[h.id] = {"zone": h.zone, "hex": Hex.to_json(h.hex)}
 	if phase == GameState.PHASE_END:
 		_burn(s)
+		_doom(s)
 	match phase:
 		GameState.PHASE_START, GameState.PHASE_PREROLL, GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, \
 				GameState.PHASE_BATTLE, GameState.PHASE_END:
@@ -1590,6 +1591,9 @@ func _battle_tie(s: GameState, members: Array[HeroState]) -> void:
 func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = false, by: String = "", card: String = "") -> void:
 	if h == null or h.is_ko() or amount <= 0:
 		return
+	if h.has_status("stone"):
+		s.event("damage", {"hero": h.id, "amount": 0, "hp": h.hp, "blocked": "stone"})
+		return
 	if not unblockable:
 		# Less damage taken never brings a hit under 1 (Marko 2026-11-08: Kaido paid 0 for a
 		# ring-out); more damage taken adds as before.
@@ -1656,10 +1660,12 @@ func knock_out(s: GameState, h: HeroState) -> void:
 	h.temp_until = 0
 	_drop_cores(s, h)
 	h.statuses.clear()
+	h.stun_by = ""
 	h.tie_turns = 0
 	h.locked_with = PackedStringArray()
 	_lost_active(s, h)
 	s.event("ko", {"hero": h.id})
+	_release_stunned_by(s, h)
 
 
 func ring_out(s: GameState, h: HeroState, reason: String) -> void:
@@ -1673,6 +1679,7 @@ func ring_out(s: GameState, h: HeroState, reason: String) -> void:
 	h.locked_with = PackedStringArray()
 	_lost_active(s, h)
 	s.event("ring_out", {"hero": h.id, "reason": reason})
+	_release_stunned_by(s, h)
 	# Every ring-out costs 1 DMG (Marko 2026-11-07, in place of wall damage): with a card in the
 	# hand the player may discard one instead (the usual damage decision, nothing has to land on
 	# the hero); with none it lands at once. A hero at 1 HP can be knocked out by it.
@@ -1808,6 +1815,8 @@ func _end_phase(s: GameState) -> void:
 					gone.append(name)
 		for name: String in gone:
 			h.statuses.erase(name)
+			if name == "stun":
+				h.stun_by = ""
 	_check_win(s)
 	if s.is_over():
 		return
@@ -2220,6 +2229,9 @@ func stat_card(h: HeroState) -> CardDef:
 ## One current stat: "hp" (max), "dmg", "pwr", "rng" or "kb": the flat value plus what
 ## passive effects in play add. Never below 0 (a Debuff core can pull a small stat under).
 func stat(s: GameState, h: HeroState, key: String) -> int:
+	# "has 0 Power and cannot take DMG this turn".
+	if key == "pwr" and h.has_status("stone"):
+		return 0
 	return maxi(0, stat_flat(s, h, key) + fx.passive_stat(s, h, key))
 
 
@@ -2375,7 +2387,7 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 	var fit: Array[HeroState] = []
 	var unfit: String = ""
 	for h: HeroState in same_colour:
-		var v: Dictionary = FirstTag.play_verdict(catalog, card, catalog.get_card(h.card_id), stat_card(h))
+		var v: Dictionary = FirstTag.play_verdict(catalog, card, catalog.get_card(h.card_id), stat_card(h), gained_tags(s, h))
 		if JsonUtil.as_bool(v["ok"]):
 			fit.append(h)
 		else:
@@ -2772,7 +2784,7 @@ func playable_heroes(s: GameState, slot: int, card: CardDef) -> Array[HeroState]
 		var hc: CardDef = catalog.get_card(h.card_id)
 		if hc == null or not card.plays_for_color(hc.color):
 			continue
-		if JsonUtil.as_bool(FirstTag.play_verdict(catalog, card, hc, stat_card(h))["ok"]):
+		if JsonUtil.as_bool(FirstTag.play_verdict(catalog, card, hc, stat_card(h), gained_tags(s, h))["ok"]):
 			out.append(h)
 	return out
 
@@ -2911,7 +2923,7 @@ func _drop_unfit_equipment(s: GameState, h: HeroState) -> void:
 		var c: CardDef = catalog.get_card(cid)
 		if c == null:
 			continue
-		var v: Dictionary = FirstTag.play_verdict(catalog, c, catalog.get_card(h.card_id), stat_card(h))
+		var v: Dictionary = FirstTag.play_verdict(catalog, c, catalog.get_card(h.card_id), stat_card(h), gained_tags(s, h))
 		if not JsonUtil.as_bool(v["ok"]):
 			remove_equipment(s, h, cid)
 			s.event("equipment_unfit", {"card": cid, "hero": h.id, "why": str(v["why"])})
@@ -3225,6 +3237,60 @@ func stage_under(s: GameState, h: HeroState) -> StageState:
 ## Does the hero carry this status now: one put on it, or one a passive in play gives it ("is immune to Knockback")?
 func has_status(s: GameState, h: HeroState, name: String) -> bool:
 	return h.has_status(name) or fx.passive_status(s, h, name.to_upper())
+
+
+## Tags the hero got in the match ("The equipped Hero gains {Mage}", "Your Heroes gain {Brave Hero}"): from passives
+## in play and from this turn's effects. They count like tags it carries, for playing cards and for effects.
+func gained_tags(s: GameState, h: HeroState) -> PackedStringArray:
+	var out: PackedStringArray = fx.passive_tags(s, h)
+	for m: Dictionary in s.turn_mods:
+		if str(m.get("kind", "")) == "tag" and str(m.get("hero", "")) == h.id:
+			out.append(str(m.get("tag", "")))
+	return out
+
+
+## Does the hero carry the tag now: on the card it plays as, or gained in the match?
+func hero_has_tag(s: GameState, h: HeroState, tag: String) -> bool:
+	var want: String = FirstTag.norm(tag.trim_prefix("{").trim_suffix("}"))
+	var card: CardDef = stat_card(h)
+	if card != null and FirstTag.has_trait(card, want):
+		return true
+	for g: String in gained_tags(s, h):
+		if FirstTag.norm(g) == want:
+			return true
+	return false
+
+
+## Is this the hero a name or tag speaks of: it is called that, or it has the tag?
+func hero_is(s: GameState, h: HeroState, tag: String) -> bool:
+	var base: CardDef = catalog.get_card(h.card_id)
+	var want: String = FirstTag.norm(tag.trim_prefix("{").trim_suffix("}"))
+	return (base != null and FirstTag.aliases_of(base).has(want)) or hero_has_tag(s, h, tag)
+
+
+## The hero goes down whatever HP it has (a card's "KO", the End of a doomed hero), as a hit for all its HP: what
+## saves a hero from a KO can save it here too.
+func ko_hero(s: GameState, h: HeroState, by: String = "", card: String = "") -> void:
+	if h == null or h.is_ko():
+		return
+	hero_damage(s, h, maxi(h.hp, 1), true, by, card)
+
+
+## As the End phase starts: a hero marked to go down ("Your Hero is KO'd during the End Phase") does.
+func _doom(s: GameState) -> void:
+	for h: HeroState in s.heroes:
+		if h.has_status("doomed") and not h.is_ko():
+			s.event("doomed", {"hero": h.id})
+			ko_hero(s, h, "doom")
+
+
+## A hero that held others still ("… or until X is KO'd or ringed out") lets them go as it leaves the map.
+func _release_stunned_by(s: GameState, h: HeroState) -> void:
+	for o: HeroState in s.heroes:
+		if o.stun_by == h.id:
+			o.stun_by = ""
+			o.statuses.erase("stun")
+			s.event("released", {"hero": o.id, "by": h.id})
 
 
 ## A hero that ignores terrain: Ice, Mud, Wind and Fire do nothing to it; a Ramp still does.

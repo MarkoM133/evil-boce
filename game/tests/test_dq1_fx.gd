@@ -78,6 +78,29 @@ const CARDS: Array = [
 		"text": "When you play this Evolution, Alpha heals to full HP.\nBattle Phase: Your {Haki} and {Gear Second} cards that cost 3 cost 1 Energy less."},
 	{"id": "TD-055", "name": "Grey Mend", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
 		"text": "Postroll Phase: Your Hero heals 2 HP."},
+	{"id": "TD-060", "name": "Tag Axe", "type": "Equipment", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "The equipped Hero gains {Gear Second}."},
+	{"id": "TD-061", "name": "Gear Card", "type": "Action", "color": "Red", "cost": 1, "traits": ["Gear Second"], "bonus": {"pwr": 1000}, "text": ""},
+	{"id": "TD-062", "name": "Fake Party", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Preroll Phase: Your Heroes gain {Gear Second} until the end of the turn."},
+	{"id": "TD-063", "name": "Bullet Gun", "type": "Equipment", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: You may pay 2 Energy. If you do, the equipped Hero gets +2 Range and gains {Gear Second} until the end of the turn."},
+	{"id": "TD-064", "name": "Trainer", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: A friendly Hero with {Haki} in this Battle gets +5000 Power."},
+	{"id": "TD-065", "name": "Presence", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: Your {Haki} Heroes in this Battle get +3000 Power."},
+	{"id": "TD-066", "name": "Legions", "type": "Assist", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase Once Per Turn: Each of your {Haki} Heroes may pay 1 HP to get +2000 Power."},
+	{"id": "TD-067", "name": "Stoneskin", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: Another friendly Hero in Range has 0 Power and cannot take DMG this turn."},
+	{"id": "TD-068", "name": "Finisher", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: KO an Opponent's Hero in Range with 1 HP."},
+	{"id": "TD-069", "name": "Final Spark", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: Your Hero gets +2000 Power.\nYour Hero is KO'd during the End Phase."},
+	{"id": "TD-070", "name": "Puppet Hand", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: An Opponent's Hero in Range cannot be activated next turn."},
+	{"id": "TD-071", "name": "Ice Coffin", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: If you win this Battle, an Opponent's Hero in this Battle cannot be activated for 2 turns, or until Alpha is KO'd or ringed out."},
 ]
 
 
@@ -650,3 +673,168 @@ func test_the_opponents_cards_give_less_power_in_range() -> void:
 	var own: int = engine.stat(s, warden, "pwr")
 	assert_eq(_play(s, 1, "TA-040", warden.id), "")
 	assert_eq(engine.stat(s, warden, "pwr"), own + 1000, "its own side's cards are whole")
+
+
+# --- gained tags, heroes picked out by a tag, payments, stone, KO, heroes held still ------------------
+
+func test_tags_and_statuses_read() -> void:
+	assert_eq(_fx_of("TD-060"), "PASSIVE: GAIN_TAG EQUIPPED {Gear Second}")
+	assert_eq(_fx_of("TD-062"), "PREROLL: GAIN_TAG ALL_FRIENDLY {Gear Second} TURN")
+	assert_eq(_fx_of("TD-063"), "POSTROLL OPTIONAL: PAY 2; BUFF EQUIPPED RNG 2 TURN; GAIN_TAG EQUIPPED {Gear Second} TURN")
+	assert_eq(_fx_of("TD-064"), "BATTLE: BUFF ALL_FRIENDLY_IN_BATTLE PWR 5000 PICK WITH {Haki}")
+	assert_eq(_fx_of("TD-065"), "BATTLE: BUFF ALL_FRIENDLY_IN_BATTLE PWR 3000 WITH {Haki}")
+	assert_eq(_fx_of("TD-066"), "BATTLE ONCE OPTIONAL: PAY_HP ALL_FRIENDLY_IN_BATTLE 1 WITH {Haki}; BUFF PAID PWR 2000")
+	assert_eq(_fx_of("TD-067"), "POSTROLL RANGE: STATUS FRIENDLY STONE TURN")
+	assert_eq(_fx_of("TD-068"), "POSTROLL RANGE: KO ENEMY HP 1")
+	assert_eq(_fx_of("TD-069"), "BATTLE: BUFF SELF PWR 2000\nPLAY: STATUS SELF DOOMED TURN")
+	assert_eq(_fx_of("TD-070"), "POSTROLL RANGE: STATUS ENEMY STUN 2")
+	assert_eq(_fx_of("TD-071"), "BATTLE IF WIN: STATUS ENEMY STUN 3 LINKED")
+
+
+func test_a_gained_tag_counts_like_one_the_hero_carries() -> void:
+	var s: GameState = _state()
+	_on_map(s, BRAVO, Hex.offset_to_axial(4, 10))
+	s.active = {0: BRAVO, 1: ECHO}
+	s.player(0).hand.append("TD-061")
+	assert_false(engine.hero_has_tag(s, s.hero(BRAVO), "Gear Second"))
+	assert_eq(engine.playable_heroes(s, 0, catalog.get_card("TD-061")).size(), 0, "a {Gear Second} card: Bravo has no such tag")
+	s.hero(BRAVO).equipment.append("TD-060")
+	assert_true(engine.hero_has_tag(s, s.hero(BRAVO), "{Gear Second}"))
+	assert_false(engine.hero_has_tag(s, s.hero(ALPHA), "Gear Second"), "only the equipped hero")
+	# Bravo is Blue and the card Red: the colour still has to fit, so ask the first-tag check itself.
+	var v: Dictionary = FirstTag.play_verdict(catalog, catalog.get_card("TD-061"), catalog.get_card("TA-002"), catalog.get_card("TA-002"), engine.gained_tags(s, s.hero(BRAVO)))
+	assert_true(JsonUtil.as_bool(v["ok"]))
+
+
+func test_a_tag_for_the_turn_lets_a_card_be_played() -> void:
+	var s: GameState = _state()
+	s.phase = GameState.PHASE_PREROLL
+	assert_eq(_play(s, 0, "TD-061"), "Requires Gear Second")
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-061"))
+	assert_eq(_play(s, 0, "TD-062"), "")
+	assert_true(engine.hero_has_tag(s, s.hero(ALPHA), "Gear Second"))
+	assert_true(engine.hero_has_tag(s, s.hero(BRAVO), "Gear Second"), "every hero of the player")
+	assert_false(engine.hero_has_tag(s, s.hero(ECHO), "Gear Second"))
+	assert_eq(_play(s, 0, "TD-061"), "")
+	s.reset_turn_data()
+	assert_false(engine.hero_has_tag(s, s.hero(ALPHA), "Gear Second"), "gone with the turn")
+
+
+func test_an_ability_paid_with_energy() -> void:
+	var s: GameState = _state()
+	s.hero(ALPHA).equipment.append("TD-063")
+	s.player(0).energy = 1
+	assert_eq(engine.fx.usable_abilities(s, 0).filter(func(a: Dictionary) -> bool: return str(a["card"]) == "TD-063").size(), 0, "cannot pay: not offered")
+	s.player(0).energy = 3
+	var rng: int = engine.stat(s, s.hero(ALPHA), "rng")
+	assert_eq(engine.fx.use_ability(s, 0, ALPHA, "TD-063", 0), "")
+	assert_eq(s.player(0).energy, 1)
+	assert_eq(engine.stat(s, s.hero(ALPHA), "rng"), rng + 2)
+	assert_true(engine.hero_has_tag(s, s.hero(ALPHA), "Gear Second"))
+
+
+func test_power_for_a_hero_with_a_tag_in_the_battle() -> void:
+	var s: GameState = _state()
+	_battle(s, PackedStringArray([BRAVO]))
+	var alpha: int = engine.stat(s, s.hero(ALPHA), "pwr")
+	var bravo: int = engine.stat(s, s.hero(BRAVO), "pwr")
+	assert_eq(_play(s, 0, "TD-064", ALPHA), "")
+	assert_eq(s.pending.size(), 0, "only Alpha carries {Haki}: no pick")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), alpha + 5000)
+	assert_eq(engine.stat(s, s.hero(BRAVO), "pwr"), bravo)
+	assert_eq(_play(s, 0, "TD-065", ALPHA), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), alpha + 8000)
+	assert_eq(engine.stat(s, s.hero(BRAVO), "pwr"), bravo, "no tag, no bonus")
+	# Nobody with the tag in the battle: the card is not played.
+	s = _state()
+	_battle(s)
+	s.battles = [{"heroes": [BRAVO, ECHO], "resolved": false}]
+	_on_map(s, BRAVO, s.hero(ECHO).hex + Hex.DIRECTIONS[2])
+	s.player(0).hand.append("TD-065")
+	assert_eq(engine._play(s, 0, "TD-065", BRAVO, false, s.hero(BRAVO)), "no hero it could work on")
+
+
+func test_heroes_pay_hp_for_power() -> void:
+	var s: GameState = _state()
+	_battle(s, PackedStringArray([BRAVO]))
+	s.player(0).assists.append("TD-066")
+	var alpha: int = engine.stat(s, s.hero(ALPHA), "pwr")
+	assert_eq(engine.fx.use_ability(s, 0, "", "TD-066", 0), "")
+	assert_eq(s.hero(ALPHA).hp, 9)
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), alpha + 2000)
+	assert_eq(s.hero(BRAVO).hp, 12, "no tag: it does not pay")
+	assert_eq(engine.fx.use_ability(s, 0, "", "TD-066", 0), "that ability cannot be used now", "once per turn")
+	# A hero at 1 HP cannot spare it.
+	s = _state()
+	_battle(s)
+	s.player(0).assists.append("TD-066")
+	s.hero(ALPHA).hp = 1
+	assert_eq(engine.fx.usable_abilities(s, 0).size(), 0)
+
+
+func test_a_hero_of_stone_has_no_power_and_takes_no_damage() -> void:
+	var s: GameState = _state()
+	_on_map(s, BRAVO, s.hero(ALPHA).hex + Hex.DIRECTIONS[1])
+	assert_eq(_play(s, 0, "TD-067"), "")
+	assert_eq(engine.stat(s, s.hero(BRAVO), "pwr"), 0)
+	engine.hero_damage(s, s.hero(BRAVO), 5)
+	assert_eq(s.hero(BRAVO).hp, 12)
+	assert_gt(engine.stat(s, s.hero(ALPHA), "pwr"), 0, "another hero, not the one whose card it is")
+	engine._end_phase(s)
+	assert_gt(engine.stat(s, s.hero(BRAVO), "pwr"), 0, "this turn only")
+
+
+func test_a_ko_for_a_hero_at_one_hp() -> void:
+	var s: GameState = _state()
+	_on_map(s, ECHO, s.hero(ALPHA).hex + Hex.DIRECTIONS[0])
+	assert_eq(_play(s, 0, "TD-068"), "no hero to target", "Echo has 10 HP")
+	s.player(0).hand.remove_at(s.player(0).hand.find("TD-068"))
+	s.hero(ECHO).hp = 1
+	assert_eq(_play(s, 0, "TD-068"), "")
+	assert_true(s.hero(ECHO).is_ko())
+
+
+func test_a_hero_that_goes_down_in_the_end_phase() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	assert_eq(_play(s, 0, "TD-069"), "")
+	assert_false(s.hero(ALPHA).is_ko())
+	engine._set_phase(s, GameState.PHASE_END)
+	assert_true(s.hero(ALPHA).is_ko())
+
+
+func test_a_hero_that_cannot_be_activated_next_turn() -> void:
+	var s: GameState = _state()
+	_on_map(s, ECHO, s.hero(ALPHA).hex + Hex.DIRECTIONS[0])
+	assert_eq(_play(s, 0, "TD-070"), "")
+	assert_eq(engine.activation_error(s, s.hero(ECHO)), "hero is stunned")
+	engine._end_phase(s)
+	assert_eq(engine.activation_error(s, s.hero(ECHO)), "hero is stunned", "the turn after the card")
+	engine._end_phase(s)
+	assert_eq(engine.activation_error(s, s.hero(ECHO)), "", "and free again")
+
+
+func test_a_hero_held_until_its_holder_leaves_the_map() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	assert_eq(_play(s, 0, "TD-071"), "")
+	var members: Array[HeroState] = [s.hero(ALPHA), s.hero(ECHO)]
+	var winners: Array[HeroState] = [s.hero(ALPHA)]
+	engine.fx.on_battle_done(s, winners, members)
+	assert_eq(s.hero(ECHO).stun_by, ALPHA)
+	engine._end_phase(s)
+	engine._end_phase(s)
+	assert_eq(engine.activation_error(s, s.hero(ECHO)), "hero is stunned", "two turns")
+	engine._end_phase(s)
+	assert_eq(engine.activation_error(s, s.hero(ECHO)), "")
+	assert_eq(s.hero(ECHO).stun_by, "")
+	# Its holder ringed out: free at once.
+	s = _state()
+	_battle(s)
+	assert_eq(_play(s, 0, "TD-071"), "")
+	members = [s.hero(ALPHA), s.hero(ECHO)]
+	winners = [s.hero(ALPHA)]
+	engine.fx.on_battle_done(s, winners, members)
+	s.player(0).hand.clear()
+	engine.ring_out(s, s.hero(ALPHA), "test")
+	assert_eq(engine.activation_error(s, s.hero(ECHO)), "")

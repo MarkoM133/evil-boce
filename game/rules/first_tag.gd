@@ -197,8 +197,8 @@ static func evolutions_in(catalog: CardCatalog, ids: Array) -> Array[CardDef]:
 
 ## May `card` be played for the hero whose base card is `base` and whose current card (the
 ## last evolution, else the base) is `current`? The hero's name follows it through evolutions;
-## a trait is read off the current card only (GDD 10). {ok, why}.
-static func play_verdict(catalog: CardCatalog, card: CardDef, base: CardDef, current: CardDef) -> Dictionary:
+## a trait is read off the current card only (GDD 10), plus the tags the hero `gained` in the match. {ok, why}.
+static func play_verdict(catalog: CardCatalog, card: CardDef, base: CardDef, current: CardDef, gained: PackedStringArray = PackedStringArray()) -> Dictionary:
 	if card.type == "Evolution":
 		return _ok()
 	var k: Dictionary = kind_of(catalog, card)
@@ -212,6 +212,11 @@ static func play_verdict(catalog: CardCatalog, card: CardDef, base: CardDef, cur
 				return _ok()
 			if current != null and has_any_trait(current, traits):
 				return _ok()
+			# A tag the hero got in the match counts as one it carries (Marko 2026-11-22).
+			for g: String in gained:
+				for t: String in traits:
+					if norm(g) == norm(t):
+						return _ok()
 			if traits.is_empty():
 				return _no("only for %s" % " or ".join(only))
 			if only.is_empty():

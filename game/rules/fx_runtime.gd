@@ -358,6 +358,39 @@ static func _play_fits(card: CardDef, tag: String, type: String) -> bool:
 	return type.is_empty() or card.type.to_upper() == type
 
 
+## Tags passives in play give `h` ("PASSIVE: GAIN_TAG EQUIPPED {Mage}").
+func passive_tags(s: GameState, h: HeroState) -> PackedStringArray:
+	var out := PackedStringArray()
+	for src: Dictionary in sources(s):
+		var card: CardDef = src["card"]
+		for e: FxEffect in card.effects_when("PASSIVE"):
+			for a: Dictionary in e.actions:
+				if str(a["verb"]) != "GAIN_TAG":
+					continue
+				var args: PackedStringArray = a["args"]
+				# No condition is asked here: a tag bonus asks for tags, and would ask for itself.
+				if _passive_applies(s, src, str(a["target"]), h):
+					out.append(args[0].trim_prefix("{").trim_suffix("}"))
+	return out
+
+
+## The words of an action that narrow its heroes: WITH {Tag} (a hero called that or carrying the tag) and HP <n>
+## (a hero with n HP or less). Kept in the context while the action is worked out.
+static func _narrow(ctx: Dictionary, args: PackedStringArray) -> void:
+	var w: int = args.find("WITH")
+	ctx["with"] = args[w + 1] if w >= 0 and w + 1 < args.size() else ""
+	var hp: int = args.find("HP")
+	ctx["max_hp"] = args[hp + 1].to_int() if hp >= 0 and hp + 1 < args.size() and args[hp + 1].is_valid_int() else -1
+
+
+func _narrowed(s: GameState, ctx: Dictionary, h: HeroState) -> bool:
+	var with: String = str(ctx.get("with", ""))
+	if not with.is_empty() and not engine.hero_is(s, h, with):
+		return false
+	var cap: int = JsonUtil.as_int(ctx.get("max_hp", -1), -1)
+	return cap < 0 or h.hp <= cap
+
+
 ## HEAL_MOD: how much more `h` heals from the effect the context names. A plain HEAL_MOD is about the heroes its
 ## target names ("Whenever a Hero on this Stage is healed, they heal an additional 1 HP"); with BY it is about the
 ## healer: heals from cards played for the hero whose passive it is ("Cards played for X heal an additional 1 HP").
@@ -458,7 +491,7 @@ func bonus_ok(s: GameState, ctx: Dictionary, e: FxEffect) -> bool:
 	# A tag bonus ("{Flazzard} Bonus:", Marko 2026-11-21): the hero is called that (name or alias), or the card it
 	# plays as now carries the tag, read as the first tag is.
 	if not e.bonus_tag.is_empty():
-		return FirstTag.aliases_of(hc).has(FirstTag.norm(e.bonus_tag)) or FirstTag.has_trait(engine.stat_card(hero), e.bonus_tag)
+		return engine.hero_is(s, hero, e.bonus_tag)
 	if not e.bonus_color.is_empty():
 		return hc.color.to_upper() == e.bonus_color
 	return card.has_bonus_for(hc.color)
@@ -950,6 +983,12 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 	var args: PackedStringArray = a["args"]
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
+	_narrow(ctx, args)
+	# A group narrowed to nobody ("Your {Dark Army} Heroes in this Battle …" with none there): not played, as the
+	# effect's first step.
+	if (args.has("WITH") or verb == "PAY_HP") and e.actions.find(a) == 0 and FxEffect.HERO_TARGETS.has(target) \
+			and not ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY"].has(target) and _targets(s, ctx, e, target, null, verb).is_empty():
+		return {"error": "no hero it could work on"}
 	# "Opponent's Heroes in Range" with nobody there: the card is not played (Marko 2026-11-07,
 	# Conqueror's Haki), as with an effect on the opponent that needs an enemy in range. Only as the
 	# effect's first step, so a later step of a card already let through is not refused.
@@ -978,7 +1017,18 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			prompt += " · %s" % card.name
 		return {"player": who, "kind": "hero", "options": ids, "prompt": prompt}
 	match verb:
-		"DAMAGE", "HEAL", "KNOCKBACK", "STATUS", "REMOVE_EVO", "BUFF", "DAMAGE_MOD":
+		"PAY":
+			if s.player(player).energy < args[0].to_int():
+				return {"error": "not enough energy (%d, costs %s)" % [s.player(player).energy, args[0]]}
+		"PAY_HP":
+			# Somebody has to be able to spare it.
+			var can_pay: bool = false
+			for h: HeroState in _targets(s, ctx, e, target, null, verb):
+				if h.hp > args[0].to_int():
+					can_pay = true
+			if not can_pay:
+				return {"error": "no hero can pay %s HP" % args[0]}
+		"DAMAGE", "HEAL", "KNOCKBACK", "STATUS", "REMOVE_EVO", "BUFF", "DAMAGE_MOD", "KO", "GAIN_TAG":
 			if target == "ENEMY" or target == "FRIENDLY":
 				var options: Array = _hero_options(s, ctx, e, target, verb)
 				if options.is_empty():
@@ -1135,9 +1185,34 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 	var args: PackedStringArray = a["args"]
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
+	_narrow(ctx, args)
 	match verb:
 		"OWN_COST", "REQUIRE", "HEAL_MOD":
 			return ""
+		"GAIN_TAG":
+			if e.when == "PASSIVE":
+				return ""
+			for h: HeroState in _targets(s, ctx, e, target, answer):
+				s.turn_mods.append({"kind": "tag", "hero": h.id, "tag": args[0].trim_prefix("{").trim_suffix("}")})
+				s.event("tag_gained", {"hero": h.id, "tag": args[0], "card": ctx.get("card", "")})
+		"PAY":
+			var payer: PlayerState = s.player(player)
+			if payer.energy < args[0].to_int():
+				return "not enough energy"
+			payer.energy -= args[0].to_int()
+			s.event("paid", {"player": player, "energy": args[0].to_int(), "card": ctx.get("card", "")})
+		"PAY_HP":
+			# Each of those heroes that can spare it pays; the ones that did are PAID for the actions after.
+			var paid: Array = []
+			for h: HeroState in _targets(s, ctx, e, target, answer):
+				if h.hp > args[0].to_int():
+					h.hp -= args[0].to_int()
+					paid.append(h.id)
+					s.event("damage", {"hero": h.id, "amount": args[0].to_int(), "hp": h.hp, "by": "cost", "card": ctx.get("card", "")})
+			ctx["paid"] = paid
+		"KO":
+			for h: HeroState in _targets(s, ctx, e, target, answer):
+				engine.ko_hero(s, h, me.id if me != null else "", str(ctx.get("card", "")))
 		"NEXT_CARD":
 			s.turn_mods.append({"kind": "next_card", "player": player, "tag": args[0].trim_prefix("{").trim_suffix("}"),
 				"stat": args[1].to_lower(), "amount": args[2].to_int(), "play": s.turn_plays.size(), "card": ctx.get("card", "")})
@@ -1326,9 +1401,13 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 		"STATUS":
 			if e.when == "PASSIVE":
 				return ""
-			var turns: int = 1 if args.size() < 2 or args[1] == "TURN" else args[1].to_int()
+			var turns: int = 1 if args.size() < 2 or not args[1].is_valid_int() else args[1].to_int()
 			for h: HeroState in _targets(s, ctx, e, target, answer):
 				h.statuses[args[0].to_lower()] = turns
+				# LINKED: it ends early when the hero whose card it is leaves the map (KO or ring-out).
+				if args[0] == "STUN":
+					h.stun_by = me.id if args.has("LINKED") and me != null else ""
+					s.event("stunned", {"hero": h.id, "turns": turns - 1, "card": ctx.get("card", "")})
 		"DAMAGE_MOD":
 			if e.when == "PASSIVE":
 				return ""
@@ -1571,6 +1650,11 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 		"SELF", "EQUIPPED":
 			if me != null:
 				out.append(me)
+		"PAID":
+			for id: Variant in JsonUtil.as_array(ctx.get("paid", [])):
+				var payer: HeroState = s.hero(str(id))
+				if payer != null:
+					out.append(payer)
 		"CARD_HERO":
 			# The hero the card that set off a PLAYED line was played for.
 			var for_hero: HeroState = s.hero(str(ctx.get("card_hero", "")))
@@ -1654,6 +1738,9 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 			for h: HeroState in pool:
 				if richest >= 0 and h.owner == richest:
 					out.append(h)
+	# WITH {Tag} and HP <n> narrow a group (one hero picked by the player was narrowed as it was offered).
+	if not ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "PAID", "CARD_HERO"].has(target):
+		out = out.filter(func(h: HeroState) -> bool: return _narrowed(s, ctx, h))
 	return out
 
 
@@ -1700,6 +1787,8 @@ func _hero_options(s: GameState, ctx: Dictionary, e: FxEffect, target: String, v
 		if target == "FRIENDLY" and h == me:
 			continue
 		if e.range and (me == null or not engine.in_range(s, me, h)):
+			continue
+		if not _narrowed(s, ctx, h):
 			continue
 		out.append(h.id)
 	return out
