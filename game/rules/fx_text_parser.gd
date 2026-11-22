@@ -21,6 +21,10 @@ static var _traits: PackedStringArray = PackedStringArray()
 ## "Create a Spark Token." / "Create 2 Spark Tokens." (Marko 2026-11-14): the names of the tokens the text being
 ## parsed makes, kept aside before the card's own name is read as SELF (a token may carry its maker's name).
 static var _token_names: PackedStringArray = PackedStringArray()
+## The hero a card that is not a hero's own speaks of by name: its first tag ("Hyunckel gets +2 Knockback" on an
+## Assist tagged Hyunckel). Lower case for matching, and as written.
+static var _named: String = ""
+static var _named_spelt: String = ""
 const TOKEN_SENTENCE: String = "(?i)\\b(create) (an?|\\d+) ([^.\\n|]+?) tokens?\\b"
 
 
@@ -56,6 +60,12 @@ static func parse(card: CardDef) -> Dictionary:
 		text = text.substr(0, tk.get_start()) + "%s token #%d x%s" % [tk.get_string(1), _token_names.size(), count] + text.substr(tk.get_end())
 		_token_names.append(tk.get_string(3).strip_edges())
 		tk = _rx(TOKEN_SENTENCE).search(text)
+	_named = ""
+	_named_spelt = ""
+	if card.type != "Hero" and card.type != "Evolution" and not card.traits.is_empty() and card.traits[0].to_lower() != "general" \
+			and not card.traits[0].contains("&"):
+		_named_spelt = card.traits[0]
+		_named = _named_spelt.to_lower()
 	var self_name: String = card.hero if card.type == "Evolution" and not card.hero.is_empty() else card.name
 	var t: String = _normalise(text, self_name, card.type == "Hero" or card.type == "Evolution")
 	# Elbaph (2026-11-05): a duel in every battle on the stage; the winner picks one hero in it for the bonus.
@@ -116,6 +126,19 @@ static func parse(card: CardDef) -> Dictionary:
 				lines[prev_line] = prev.to_fx()
 				prev_sentence = sentence
 				continue
+		# Sentences that only finish what the one before said: the Assist that saves a hero goes to the graveyard, the
+		# hero that gave the battle up is ringed out.
+		if prev != null and prev.has_verb("SAVE_KO") and _rx("^then put this assist into the graveyard$").search(low) != null:
+			continue
+		if prev != null and prev.to_fx().contains("STATUS SELF FLEE") and _rx("^after the battle,? (?:they are|it is|self is|your hero is) ringed out$").search(low) != null:
+			continue
+		# "If an Opponent's Hero is ringed out in this Battle Phase, draw 1 card." after an Assist put itself into the
+		# graveyard: armed by that.
+		var out_draw: RegExMatch = _rx("^if an opponent's hero is ringed out in this battle phase, draw (\\d+|a) cards?$").search(low)
+		if out_draw != null and prev != null and prev_line >= 0 and prev.has_verb("SACRIFICE"):
+			prev.actions.append({"verb": "RING_OUT_DRAW", "target": "", "args": PackedStringArray([out_draw.get_string(1) if out_draw.get_string(1).is_valid_int() else "1"])})
+			lines[prev_line] = prev.to_fx()
+			continue
 		# "This happens up to 3 times a turn." caps the PLAYED line before it.
 		var cap: RegExMatch = _rx("^this happens up to (\\d+) times a turn$").search(low)
 		if cap != null and prev != null and prev_line >= 0 and prev.when == "PLAYED":
@@ -330,8 +353,14 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 	else:
 		e.when = "PASSIVE"
 	var low: String = s.to_lower()
-	# The phase the sentence names, for a line that watches cards being played.
+	# The phase the sentence names, for a line that watches cards being played (read before "m" is used again).
 	var in_phase: Array = ["PHASE", e.when] if m != null else []
+	# "Battle Phase: If Hyunckel would take 5 or less DMG, you may put this Assist into the graveyard instead."
+	m = _rx("^if (.+?) would take (\\d+) or less dmg, you may put this assist into the graveyard instead$").search(low)
+	if m != null and not _subject(m.get_string(1)).is_empty():
+		e.when = "PASSIVE"
+		e.actions = [_act("SHIELD", _subject(m.get_string(1)), [m.get_string(2)])]
+		return e
 	# Cards in play that watch for a card being played (2026-11-22): the line is PLAYED, IF TAG says which card.
 	var watch: Array = []
 	m = _rx("^whenever you play an? \\{([^}]+)\\} card, (.*)$").search(low)
@@ -574,6 +603,16 @@ static func _match(low: String) -> Array[Dictionary]:
 	m = _rx("^(.*?)\\s*gains? \\{([^}]+)\\}( until the end of the turn| this turn)?$").search(low)
 	if m != null and not _subject(m.get_string(1)).is_empty():
 		return [_act("GAIN_TAG", _subject(m.get_string(1)), ["{%s}" % m.get_string(2)] + (["TURN"] if not m.get_string(3).is_empty() else []))]
+	if _rx("^(?:you )?put this assist into the graveyard$").search(low) != null:
+		return [_act("SACRIFICE", "", [])]
+	if _rx("^the first time one of your heroes would be ko'd, they stay at 1 hp instead$").search(low) != null:
+		return [_act("SAVE_KO", "ALL_FRIENDLY", [])]
+	m = _rx("^(.*?)\\s*loses this battle without taking dmg$").search(low)
+	if m != null and not _subject(m.get_string(1)).is_empty():
+		return [_act("STATUS", _subject(m.get_string(1)), ["FLEE", "TURN"])]
+	m = _rx("^(.*?)\\s*heals? (\\d+) hp at the end of the turn$").search(low)
+	if m != null and not _subject(m.get_string(1)).is_empty():
+		return [_act("HEAL_LATER", _subject(m.get_string(1)), [m.get_string(2)])]
 	m = _rx("^pay (\\d+) energy$").search(low)
 	if m != null:
 		return [_act("PAY", "", [m.get_string(1)])]
@@ -830,6 +869,8 @@ static func _match(low: String) -> Array[Dictionary]:
 ## Target for a sentence subject; "" when the subject is unknown.
 static func _subject(raw: String) -> String:
 	var s: String = raw.strip_edges().trim_suffix(",").strip_edges()
+	if not _named.is_empty() and s == _named:
+		return "NAMED"
 	match s:
 		"", "self", "this hero", "your hero", "he", "she", "you", "self's", "i":
 			return "SELF"
@@ -905,6 +946,10 @@ static func _act(verb: String, target: String, args: Array) -> Dictionary:
 	var packed := PackedStringArray()
 	for a: Variant in args:
 		packed.append(_trait_case(str(a)))
+	# A hero spoken of by name: the player's heroes called that (or carrying it as a tag).
+	if target == "NAMED":
+		packed.append_array(PackedStringArray(["WITH", "{%s}" % _named_spelt]))
+		return {"verb": verb, "target": "ALL_FRIENDLY", "args": packed}
 	return {"verb": verb, "target": target, "args": packed}
 
 

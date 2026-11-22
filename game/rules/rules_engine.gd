@@ -1177,6 +1177,7 @@ func _set_phase(s: GameState, phase: String) -> void:
 	if phase == GameState.PHASE_END:
 		_burn(s)
 		_doom(s)
+		_late_heals(s)
 	match phase:
 		GameState.PHASE_START, GameState.PHASE_PREROLL, GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, \
 				GameState.PHASE_BATTLE, GameState.PHASE_END:
@@ -1454,10 +1455,17 @@ func _resolve_battle(s: GameState, index: int) -> void:
 	if teams.size() < 2:
 		b["resolved"] = true
 		return
+	# A side with a hero that gives the battle up ("loses this Battle without taking DMG") cannot win it.
+	var fled: Array[int] = []
+	for h: HeroState in members:
+		if h.has_status("flee") and not fled.has(s.team_of(h.owner)):
+			fled.append(s.team_of(h.owner))
 	var best: int = -1
 	var best_pow: int = -1
 	var tie: bool = false
 	for t: int in teams:
+		if fled.has(t):
+			continue
 		if power[t] > best_pow:
 			best_pow = power[t]
 			best = t
@@ -1468,6 +1476,10 @@ func _resolve_battle(s: GameState, index: int) -> void:
 	for h: HeroState in members:
 		fighters.append(h.id)
 	s.event("battle", {"index": index, "power": power.duplicate(), "heroes": fighters})
+	if best < 0:
+		# Every side gave up: nobody wins, nobody is hit.
+		b["winner_team"] = -2
+		return
 	if tie:
 		b["tie"] = true
 		_battle_tie(s, members)
@@ -1484,7 +1496,7 @@ func _resolve_battle(s: GameState, index: int) -> void:
 	for w: HeroState in winners:
 		var targets: Array = []
 		for l: HeroState in losers:
-			if in_range(s, w, l):
+			if in_range(s, w, l) and not l.has_status("flee"):
 				targets.append(l.id)
 		if targets.is_empty():
 			# Said in the log (playtest 2026-11-06): a win with nothing after it looked like a bug.
@@ -1498,6 +1510,8 @@ func _resolve_battle(s: GameState, index: int) -> void:
 			fx.offer_hold_hit(s, w)
 		var loser_owner: int = s.hero(str(targets[0])).owner
 		var amount: int = stat(s, w, "dmg")
+		# An Assist that may go to the graveyard in place of a small hit is offered first.
+		fx.offer_shields(s, targets, amount)
 		# FULL_HIT (Divine Departure, 2026-11-05): the whole hit lands on the hero, none on cards from the hand.
 		var min_hero: int = amount if fx.full_hit(s, w) else hero_share(amount)
 		s.pending.append({
@@ -1525,6 +1539,13 @@ func _finish_battle(s: GameState, index: int) -> void:
 		else:
 			losers.append(h)
 	fx.on_battle_done(s, winners, members)
+	# "After the Battle, they are ringed out": a full ring-out, before any knockback.
+	for h: HeroState in members:
+		if h.has_status("flee") and h.is_on_map():
+			h.statuses.erase("flee")
+			var fled_from: StageState = begin_move(s, h)
+			ring_out(s, h, "fled")
+			end_move(s, h, fled_from, -1)
 	var kb: int = 0
 	for w: HeroState in winners:
 		kb = maxi(kb, stat(s, w, "kb") * (2 if w.has_status("hold_hit") else 1))
@@ -1594,6 +1615,13 @@ func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = fa
 	if h.has_status("stone"):
 		s.event("damage", {"hero": h.id, "amount": 0, "hp": h.hp, "blocked": "stone"})
 		return
+	# A hit of that size was bought off this turn (an Assist put into the graveyard instead).
+	for i: int in s.turn_mods.size():
+		var pm: Dictionary = s.turn_mods[i]
+		if str(pm.get("kind", "")) == "prevent" and str(pm.get("hero", "")) == h.id and amount <= JsonUtil.as_int(pm.get("max", 0)):
+			s.turn_mods.remove_at(i)
+			s.event("damage", {"hero": h.id, "amount": 0, "hp": h.hp, "blocked": "prevented"})
+			return
 	if not unblockable:
 		# Less damage taken never brings a hit under 1 (Marko 2026-11-08: Kaido paid 0 for a
 		# ring-out); more damage taken adds as before.
@@ -1610,6 +1638,11 @@ func hero_damage(s: GameState, h: HeroState, amount: int, unblockable: bool = fa
 	h.hp -= amount
 	info["hp"] = h.hp
 	s.event("damage", info)
+	if h.hp <= 0 and fx.save_from_ko(s, h):
+		# "The first time one of your Heroes would be KO'd, they stay at 1 HP instead."
+		h.hp = 1
+		s.event("saved", {"hero": h.id})
+		return
 	if h.hp <= 0:
 		h.hp = 0
 		var was: StageState = begin_move(s, h)
@@ -1680,6 +1713,14 @@ func ring_out(s: GameState, h: HeroState, reason: String) -> void:
 	_lost_active(s, h)
 	s.event("ring_out", {"hero": h.id, "reason": reason})
 	_release_stunned_by(s, h)
+	# "If an Opponent's Hero is ringed out in this Battle Phase, draw 1 card": once, for whoever armed it.
+	if s.phase == GameState.PHASE_BATTLE:
+		for i: int in s.turn_mods.size():
+			var rm: Dictionary = s.turn_mods[i]
+			if str(rm.get("kind", "")) == "ring_out_draw" and s.team_of(JsonUtil.as_int(rm.get("player", 0))) != s.team_of(h.owner):
+				s.turn_mods.remove_at(i)
+				draw(s, s.player(JsonUtil.as_int(rm.get("player", 0))), JsonUtil.as_int(rm.get("amount", 1)))
+				break
 	# Every ring-out costs 1 DMG (Marko 2026-11-07, in place of wall damage): with a card in the
 	# hand the player may discard one instead (the usual damage decision, nothing has to land on
 	# the hero); with none it lands at once. A hero at 1 HP can be knocked out by it.
@@ -3266,6 +3307,30 @@ func hero_is(s: GameState, h: HeroState, tag: String) -> bool:
 	var base: CardDef = catalog.get_card(h.card_id)
 	var want: String = FirstTag.norm(tag.trim_prefix("{").trim_suffix("}"))
 	return (base != null and FirstTag.aliases_of(base).has(want)) or hero_has_tag(s, h, tag)
+
+
+## An Assist leaves play for the graveyard (sacrificed by its own text, or used up).
+func discard_assist(s: GameState, slot: int, cid: String, why: String) -> bool:
+	var p: PlayerState = s.player(slot)
+	var at: int = p.assists.find(cid)
+	if at < 0:
+		return false
+	p.assists.remove_at(at)
+	p.graveyard.append(cid)
+	s.event("assist_gone", {"card": cid, "player": slot, "why": why})
+	return true
+
+
+## As the End phase starts: the heals that were put off till then ("heals 1 HP at the end of the turn").
+func _late_heals(s: GameState) -> void:
+	for m: Dictionary in s.turn_mods:
+		if str(m.get("kind", "")) != "end_heal":
+			continue
+		var h: HeroState = s.hero(str(m.get("hero", "")))
+		if h == null or h.is_ko():
+			continue
+		heal(s, h, JsonUtil.as_int(m.get("amount", 0)))
+		s.event("heal", {"hero": h.id, "amount": JsonUtil.as_int(m.get("amount", 0)), "hp": h.hp})
 
 
 ## The hero goes down whatever HP it has (a card's "KO", the End of a doomed hero), as a hit for all its HP: what

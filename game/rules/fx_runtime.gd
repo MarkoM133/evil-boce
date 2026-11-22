@@ -229,7 +229,7 @@ func usable_abilities(s: GameState, slot: int) -> Array[Dictionary]:
 			var key: String = "%s|%s|%d" % [h.id if h != null else "", card.id, i]
 			if e.once and s.abilities_used.has(key):
 				continue
-			var ctx: Dictionary = _ctx_of(src)
+			var ctx: Dictionary = _ability_ctx(s, src)
 			if not cond_ok(s, ctx, e):
 				continue
 			# Not offered when its first step cannot start (Zoro without a core to deactivate).
@@ -237,6 +237,60 @@ func usable_abilities(s: GameState, slot: int) -> Array[Dictionary]:
 				continue
 			out.append({"hero": h.id if h != null else "", "card": card.id, "index": i, "effect": e, "key": key})
 	return out
+
+
+## The context of an ability: an Assist has no hero of its own, so "your Hero" in its text is the player's hero that
+## acts now (the first one in the battle being fought, else the activated one).
+func _ability_ctx(s: GameState, src: Dictionary) -> Dictionary:
+	var ctx: Dictionary = _ctx_of(src)
+	if src["hero"] == null and JsonUtil.as_int(src["player"]) >= 0:
+		ctx["hero"] = _acting_hero(s, JsonUtil.as_int(src["player"]))
+	return ctx
+
+
+func _acting_hero(s: GameState, slot: int) -> String:
+	var acting: Array[HeroState] = engine.card_context_heroes(s, slot)
+	return acting[0].id if not acting.is_empty() else ""
+
+
+## SAVE_KO: an Assist of the hero's player keeps it up at 1 HP and goes to the graveyard for it. True when one did.
+func save_from_ko(s: GameState, h: HeroState) -> bool:
+	for src: Dictionary in sources(s):
+		var card: CardDef = src["card"]
+		if src["hero"] != null or src["stage"] != null:
+			continue
+		for e: FxEffect in card.effects_when("PASSIVE"):
+			for a: Dictionary in e.actions:
+				if str(a["verb"]) == "SAVE_KO" and _passive_applies(s, src, str(a["target"]), h) and cond_ok(s, _ctx_of(src), e):
+					if engine.discard_assist(s, JsonUtil.as_int(src["player"]), card.id, "saved a hero"):
+						return true
+	return false
+
+
+## SHIELD: before a battle hit of `amount` is dealt to one of `targets`, each Assist of their player that may go to
+## the graveyard in its place is offered ("If X would take 5 or less DMG, you may put this Assist into the graveyard
+## instead"). A yes keeps the next such hit off that hero.
+func offer_shields(s: GameState, targets: Array, amount: int) -> void:
+	for src: Dictionary in sources(s):
+		var card: CardDef = src["card"]
+		if src["hero"] != null or src["stage"] != null:
+			continue
+		for e: FxEffect in card.effects_when("PASSIVE"):
+			for a: Dictionary in e.actions:
+				if str(a["verb"]) != "SHIELD":
+					continue
+				var args: PackedStringArray = a["args"]
+				if amount > args[0].to_int():
+					continue
+				var ctx: Dictionary = _ctx_of(src)
+				_narrow(ctx, args)
+				for id: Variant in targets:
+					var h: HeroState = s.hero(str(id))
+					if h == null or h.owner != JsonUtil.as_int(src["player"]) or not _passive_applies(s, src, str(a["target"]), h) or not _narrowed(s, ctx, h):
+						continue
+					var offer: FxEffect = FxEffect.parse_line("BATTLE: CHOOSE ME [NOOP] [SACRIFICE; PREVENT %s %d]" % [h.id, amount])
+					run(s, {"player": h.owner, "hero": h.id, "card": card.id, "stage": ""}, offer)
+					break
 
 
 ## Whether `h` acts now: in the Battle phase it is in the battle being fought, else it is the
@@ -256,7 +310,7 @@ func use_ability(s: GameState, slot: int, hero_id: String, card_id: String, inde
 			var e: FxEffect = a["effect"]
 			if e.once:
 				s.abilities_used.append(str(a["key"]))
-			var ctx: Dictionary = {"player": slot, "hero": hero_id, "card": card_id, "stage": ""}
+			var ctx: Dictionary = {"player": slot, "hero": hero_id if not hero_id.is_empty() else _acting_hero(s, slot), "card": card_id, "stage": ""}
 			s.event("ability", {"hero": hero_id, "card": card_id, "index": index})
 			return run(s, ctx, e)
 	return "that ability cannot be used now"
@@ -1017,6 +1071,9 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			prompt += " · %s" % card.name
 		return {"player": who, "kind": "hero", "options": ids, "prompt": prompt}
 	match verb:
+		"SACRIFICE":
+			if not s.player(player).assists.has(str(ctx.get("card", ""))):
+				return {"error": "that Assist is not in play"}
 		"PAY":
 			if s.player(player).energy < args[0].to_int():
 				return {"error": "not enough energy (%d, costs %s)" % [s.player(player).energy, args[0]]}
@@ -1187,8 +1244,18 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
 	_narrow(ctx, args)
 	match verb:
-		"OWN_COST", "REQUIRE", "HEAL_MOD":
+		"OWN_COST", "REQUIRE", "HEAL_MOD", "SAVE_KO", "SHIELD":
 			return ""
+		"SACRIFICE":
+			if not engine.discard_assist(s, player, str(ctx.get("card", "")), "sacrificed"):
+				return "that Assist is not in play"
+		"PREVENT":
+			s.turn_mods.append({"kind": "prevent", "hero": args[0], "max": args[1].to_int()})
+		"HEAL_LATER":
+			for h: HeroState in _targets(s, ctx, e, target, answer):
+				s.turn_mods.append({"kind": "end_heal", "hero": h.id, "amount": args[0].to_int()})
+		"RING_OUT_DRAW":
+			s.turn_mods.append({"kind": "ring_out_draw", "player": player, "amount": args[0].to_int()})
 		"GAIN_TAG":
 			if e.when == "PASSIVE":
 				return ""

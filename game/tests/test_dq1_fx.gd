@@ -101,6 +101,18 @@ const CARDS: Array = [
 		"text": "Postroll Phase: An Opponent's Hero in Range cannot be activated next turn."},
 	{"id": "TD-071", "name": "Ice Coffin", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
 		"text": "Battle Phase: If you win this Battle, an Opponent's Hero in this Battle cannot be activated for 2 turns, or until Alpha is KO'd or ringed out."},
+	{"id": "TD-080", "name": "Guardian Slime", "type": "Assist", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "The first time one of your Heroes would be KO'd, they stay at 1 HP instead. Then put this Assist into the graveyard."},
+	{"id": "TD-081", "name": "Shieldbearer", "type": "Assist", "color": "Red", "cost": 1, "traits": ["Alpha"],
+		"text": "Battle Phase: If Alpha would take 5 or less DMG, you may put this Assist into the graveyard instead."},
+	{"id": "TD-082", "name": "Bannerman", "type": "Assist", "color": "Red", "cost": 1, "traits": ["Alpha"],
+		"text": "Battle Phase: You may put this Assist into the graveyard. If you do, Alpha gets +2 Knockback.\nIf an Opponent's Hero is ringed out in this Battle Phase, draw 1 card."},
+	{"id": "TD-083", "name": "Squire", "type": "Assist", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: You may put this Assist into the graveyard. If you do, your Hero is immune to Knockback this turn."},
+	{"id": "TD-084", "name": "Wing", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: Your Hero loses this Battle without taking DMG. After the Battle, they are ringed out."},
+	{"id": "TD-085", "name": "Nurse", "type": "Assist", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase Once Per Turn: You may pay 1 Energy. If you do, your Hero heals 1 HP at the end of the turn."},
 ]
 
 
@@ -838,3 +850,120 @@ func test_a_hero_held_until_its_holder_leaves_the_map() -> void:
 	s.player(0).hand.clear()
 	engine.ring_out(s, s.hero(ALPHA), "test")
 	assert_eq(engine.activation_error(s, s.hero(ECHO)), "")
+
+
+# --- Assists that go to the graveyard for something, a hero saved, a battle given up, a heal put off ------
+
+func test_sacrifices_read() -> void:
+	assert_eq(_fx_of("TD-080"), "PASSIVE: SAVE_KO ALL_FRIENDLY")
+	assert_eq(_fx_of("TD-081"), "PASSIVE: SHIELD ALL_FRIENDLY 5 WITH {Alpha}")
+	assert_eq(_fx_of("TD-082"), "BATTLE OPTIONAL: SACRIFICE; BUFF ALL_FRIENDLY KB 2 WITH {Alpha}; RING_OUT_DRAW 1")
+	assert_eq(_fx_of("TD-083"), "BATTLE OPTIONAL: SACRIFICE; STATUS SELF IMMUNE_KB TURN")
+	assert_eq(_fx_of("TD-084"), "BATTLE: STATUS SELF FLEE TURN")
+	assert_eq(_fx_of("TD-085"), "POSTROLL ONCE OPTIONAL: PAY 1; HEAL_LATER SELF 1")
+
+
+func test_an_assist_keeps_a_hero_up_once() -> void:
+	var s: GameState = _state()
+	s.player(0).assists.append("TD-080")
+	engine.hero_damage(s, s.hero(ALPHA), 20)
+	assert_eq(s.hero(ALPHA).hp, 1)
+	assert_false(s.hero(ALPHA).is_ko())
+	assert_false(s.player(0).assists.has("TD-080"))
+	assert_true(s.player(0).graveyard.has("TD-080"))
+	engine.hero_damage(s, s.hero(ALPHA), 20)
+	assert_true(s.hero(ALPHA).is_ko(), "only the first time")
+	# The opponent's Assist saves nobody of ours.
+	s = _state()
+	s.player(1).assists.append("TD-080")
+	engine.hero_damage(s, s.hero(ALPHA), 20)
+	assert_true(s.hero(ALPHA).is_ko())
+
+
+func test_the_assist_saves_a_doomed_hero_too() -> void:
+	var s: GameState = _state()
+	s.player(0).assists.append("TD-080")
+	s.hero(ALPHA).statuses["doomed"] = 1
+	engine._set_phase(s, GameState.PHASE_END)
+	assert_eq(s.hero(ALPHA).hp, 1)
+	assert_false(s.hero(ALPHA).is_ko())
+
+
+func test_an_assist_may_take_a_small_hit() -> void:
+	var s: GameState = _state()
+	_battle(s, PackedStringArray([BRAVO]))
+	s.player(0).assists.append("TD-081")
+	engine.fx.offer_shields(s, [BRAVO], 4)
+	assert_eq(s.pending.size(), 0, "only for the hero it names")
+	engine.fx.offer_shields(s, [ALPHA], 6)
+	assert_eq(s.pending.size(), 0, "too large a hit")
+	engine.fx.offer_shields(s, [ALPHA], 4)
+	assert_eq(s.pending.size(), 1)
+	assert_eq(JsonUtil.as_int(s.pending[0]["player"]), 0)
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": 1})), "")
+	assert_true(s.player(0).graveyard.has("TD-081"))
+	engine.hero_damage(s, s.hero(ALPHA), 4, false, ECHO)
+	assert_eq(s.hero(ALPHA).hp, 10, "the hit is kept off")
+	engine.hero_damage(s, s.hero(ALPHA), 4, false, ECHO)
+	assert_eq(s.hero(ALPHA).hp, 6, "only that one")
+	# Saying no keeps the Assist and takes the hit.
+	s = _state()
+	_battle(s)
+	s.player(0).assists.append("TD-081")
+	engine.fx.offer_shields(s, [ALPHA], 4)
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": 0})), "")
+	assert_true(s.player(0).assists.has("TD-081"))
+	engine.hero_damage(s, s.hero(ALPHA), 4, false, ECHO)
+	assert_eq(s.hero(ALPHA).hp, 6)
+
+
+func test_an_assist_given_up_for_knockback_and_a_draw() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	s.player(0).assists.append("TD-082")
+	var kb: int = engine.stat(s, s.hero(ALPHA), "kb")
+	assert_eq(engine.fx.use_ability(s, 0, "", "TD-082", 0), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "kb"), kb + 2)
+	assert_true(s.player(0).graveyard.has("TD-082"))
+	var hand: int = s.player(0).hand.size()
+	s.player(1).hand.clear()
+	engine.ring_out(s, s.hero(ECHO), "knockback")
+	assert_eq(s.player(0).hand.size(), hand + 1, "an opponent's hero went out in this Battle phase")
+	engine.ring_out(s, s.hero(FOXTROT), "knockback")
+	assert_eq(s.player(0).hand.size(), hand + 1, "once")
+
+
+func test_an_assist_given_up_for_standing_firm() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	s.player(0).assists.append("TD-083")
+	assert_eq(engine.fx.use_ability(s, 0, "", "TD-083", 0), "")
+	assert_true(s.hero(ALPHA).has_status("immune_kb"), "your Hero: the one in the battle")
+	assert_false(s.player(0).assists.has("TD-083"))
+
+
+func test_a_hero_gives_the_battle_up() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	assert_eq(_play(s, 0, "TD-084"), "")
+	s.hero(ALPHA).add_bonus(s.hero(ALPHA).phase_bonus, "pwr", 9000)
+	s.player(0).hand.clear()
+	engine._resolve_battle(s, 0)
+	assert_eq(JsonUtil.as_int(s.battles[0]["winner_team"]), 1, "the stronger side gave up")
+	assert_eq(s.pending.size(), 0, "no hit for the hero that left")
+	engine._finish_battle(s, 0)
+	assert_eq(s.hero(ALPHA).zone, HeroState.ZONE_STRIP, "ringed out after the battle")
+	assert_eq(s.hero(ALPHA).hp, 9, "a ring-out costs its 1 DMG, with no card to pay it")
+	assert_eq(s.hero(ECHO).hp, 10)
+
+
+func test_a_heal_at_the_end_of_the_turn() -> void:
+	var s: GameState = _state()
+	s.player(0).assists.append("TD-085")
+	s.hero(ALPHA).hp = 5
+	assert_eq(engine.fx.use_ability(s, 0, "", "TD-085", 0), "")
+	assert_eq(s.player(0).energy, 9)
+	assert_eq(s.hero(ALPHA).hp, 5, "not yet")
+	assert_eq(engine.fx.use_ability(s, 0, "", "TD-085", 0), "that ability cannot be used now", "once per turn")
+	engine._set_phase(s, GameState.PHASE_END)
+	assert_eq(s.hero(ALPHA).hp, 6)
