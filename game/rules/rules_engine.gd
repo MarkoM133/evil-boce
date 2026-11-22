@@ -2398,6 +2398,11 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 	# The cost depends on the hero the card is played for (a colorless card's bonus): with no
 	# target picked (an Assist), the cheapest of the heroes that fit.
 	var cost: int = 0 if free else card_cost(s, p, card, target if target != null else _cheapest_for(s, p, card, same_colour))
+	var hp_before: int = target.hp if target != null else 0
+	var gain_before: int = _bonus_pwr(target)
+	# The cards in play as the card is played: they are the ones that see it (a hero's own card still answers the
+	# Evolution that takes its place).
+	var watchers: Array[Dictionary] = fx.sources(s)
 	if cost > p.energy:
 		return "not enough energy (%d, costs %d)" % [p.energy, cost]
 	match card.type:
@@ -2489,7 +2494,16 @@ func _play(s: GameState, slot: int, cid: String, wanted: String, free: bool, for
 	s.turn_plays.append({"player": slot, "card": cid, "hero": target.id if target != null else "", "phase": s.phase,
 		"battle": s.battle_index if s.phase == GameState.PHASE_BATTLE else -1})
 	_run_play_effects(s, slot, target, card)
+	# Cards in play that watch for a card being played ("Whenever you play a {Fire} card, …").
+	fx.on_card_played(s, slot, card, target, {"hp_before": hp_before, "pwr_gain": _bonus_pwr(target) - gain_before}, watchers)
 	return ""
+
+
+## The Power the hero has from this phase and this turn's bonuses (what cards gave it).
+func _bonus_pwr(h: HeroState) -> int:
+	if h == null:
+		return 0
+	return JsonUtil.as_int(h.phase_bonus.get("pwr", 0)) + JsonUtil.as_int(h.turn_bonus.get("pwr", 0))
 
 
 ## A card played in the battle being fought, for the combo offer: who, which hero (an Assist has none)
@@ -2501,6 +2515,22 @@ func _note_played(s: GameState, slot: int, cid: String, hero: String, bonus: Dic
 	var played: Array = JsonUtil.as_array(b.get("played", []))
 	played.append({"player": slot, "card": cid, "hero": hero, "bonus": bonus.duplicate(), "used": false})
 	b["played"] = played
+
+
+## A bonus something in play put on the card played last in this battle ("The first {Mage} card you play gets
+## +2000 Power"): kept with that card, so whatever takes the card back takes the bonus too.
+func note_card_bonus(s: GameState, stat_key: String, amount: int) -> void:
+	if s.phase != GameState.PHASE_BATTLE or s.battle_index < 0 or s.battle_index >= s.battles.size():
+		return
+	var played: Array = JsonUtil.as_array(s.battles[s.battle_index].get("played", []))
+	if played.is_empty():
+		return
+	var last: Dictionary = JsonUtil.as_dict(played[played.size() - 1])
+	var bonus: Dictionary = JsonUtil.as_dict(last.get("bonus", {}))
+	bonus[stat_key] = JsonUtil.as_int(bonus.get(stat_key, 0)) + amount
+	last["bonus"] = bonus
+	played[played.size() - 1] = last
+	s.battles[s.battle_index]["played"] = played
 
 
 ## Combo (2026-11-07; Marko 2026-11-21: a bonus on top, not a replacement): two cards of a combo's pair played by
@@ -2527,12 +2557,12 @@ func _combo_offer(s: GameState, slot: int, cid: String) -> Dictionary:
 		if other_card != null and other_card.token:
 			continue
 		var pair: Array[Dictionary] = _combo_pair(s, slot, other, cid, combo.combo_kind == "solo")
-		if pair.is_empty() or s.player(slot).energy < combo.extra_cost:
+		if pair.is_empty() or s.player(slot).energy < combo_cost(s, slot, combo):
 			continue
 		if not _combo_payable(s, slot, combo, _combo_heroes(s, pair)):
 			continue
 		hero = str(pair[1].get("hero", ""))
-		options.append({"id": combo.id, "with": other, "with_hero": str(pair[0].get("hero", "")), "extra": combo.extra_cost})
+		options.append({"id": combo.id, "with": other, "with_hero": str(pair[0].get("hero", "")), "extra": combo_cost(s, slot, combo)})
 	if options.is_empty():
 		return {}
 	return {"type": DECISION_COMBO, "player": slot, "card": cid, "hero": hero, "combos": options}
@@ -2601,18 +2631,19 @@ func _accept_combo(s: GameState, slot: int, d: Dictionary, option: Dictionary) -
 	var combo: CardDef = catalog.get_card(str(option.get("id", "")))
 	if combo == null:
 		return "that combo cannot be made now"
-	if p.energy < combo.extra_cost:
-		return "not enough energy (%d, costs %d)" % [p.energy, combo.extra_cost]
+	var extra: int = combo_cost(s, slot, combo)
+	if p.energy < extra:
+		return "not enough energy (%d, costs %d)" % [p.energy, extra]
 	var pair: Array[Dictionary] = _combo_pair(s, slot, str(option.get("with", "")), cid, combo.combo_kind == "solo")
 	if pair.is_empty():
 		return "the other card of the combo is no longer in this battle"
 	var heroes: Array[HeroState] = _combo_heroes(s, pair)
 	if not _combo_payable(s, slot, combo, heroes):
 		return "a hero cannot pay the combo's additional cost"
-	p.energy -= combo.extra_cost
+	p.energy -= extra
 	pair[0]["used"] = true
 	pair[1]["used"] = true
-	s.event("combo", {"combo": combo.id, "cards": [str(pair[0].get("card", "")), cid], "heroes": [str(pair[0].get("hero", "")), str(pair[1].get("hero", ""))], "player": slot, "extra": combo.extra_cost})
+	s.event("combo", {"combo": combo.id, "cards": [str(pair[0].get("card", "")), cid], "heroes": [str(pair[0].get("hero", "")), str(pair[1].get("hero", ""))], "player": slot, "extra": extra})
 	for h: HeroState in heroes:
 		for k: String in combo.bonus:
 			h.add_bonus(h.phase_bonus, k, combo.bonus[k])
@@ -2630,6 +2661,11 @@ func _accept_combo(s: GameState, slot: int, d: Dictionary, option: Dictionary) -
 	return ""
 
 
+## The extra energy a combo costs this player now ("Your combos cost 2 Energy less"); never under 0.
+func combo_cost(s: GameState, slot: int, combo: CardDef) -> int:
+	return maxi(combo.extra_cost + fx.cost_mod(s, s.player(slot), combo, null), 0)
+
+
 ## Does a combo's effect speak of "your Hero" (then it runs for each hero of the combo), or of targets of its own?
 func _for_each_hero(e: FxEffect) -> bool:
 	if e.bonus or e.cond == "ACTIVATED":
@@ -2644,7 +2680,7 @@ func _for_each_hero(e: FxEffect) -> bool:
 func _play_blocker(s: GameState, slot: int, target: HeroState, card: CardDef) -> String:
 	var ctx: Dictionary = {"player": slot, "hero": target.id if target != null else "", "card": card.id, "stage": ""}
 	for e: FxEffect in card.effects:
-		if e.when == "PASSIVE" or e.when == "REVEAL" or e.waits_for_battle():
+		if e.when == "PASSIVE" or e.when == "REVEAL" or e.when == "PLAYED" or e.waits_for_battle():
 			continue
 		if not fx.cond_ok(s, ctx, e):
 			continue
@@ -2677,7 +2713,7 @@ func _run_play_effect(s: GameState, slot: int, target: HeroState, card: CardDef,
 	var ctx: Dictionary = {"player": slot, "hero": target.id if target != null else "", "card": card.id, "stage": ""}
 	if battle >= 0:
 		ctx["battle"] = battle
-	if e.when == "PASSIVE" or e.when == "REVEAL":
+	if e.when == "PASSIVE" or e.when == "REVEAL" or e.when == "PLAYED":
 		return
 	if card.type != "Action" and card.type != "Combo" and e.when != "PLAY":
 		return
@@ -2698,7 +2734,7 @@ func _play_phase(card: CardDef) -> String:
 	if card.type != "Action":
 		return ""
 	for e: FxEffect in card.effects:
-		if e.when != "PLAY" and e.when != "PASSIVE":
+		if e.when != "PLAY" and e.when != "PASSIVE" and e.when != "PLAYED":
 			return e.when
 	return ""
 
@@ -2721,10 +2757,9 @@ func _cost_damage(s: GameState, slot: int, target: HeroState, card: CardDef) -> 
 ## the card is played for (a colorless card's own-cost bonus); without one, the cheapest of the
 ## heroes it could go to now, so the hand shows the price the player can get.
 func card_cost(s: GameState, p: PlayerState, card: CardDef, hero: HeroState = null) -> int:
-	var mod: int = fx.cost_mod(s, p, card)
 	if hero == null:
 		hero = _cheapest_for(s, p, card, playable_heroes(s, p.slot, card))
-	mod += fx.own_cost(s, p, card, hero)
+	var mod: int = fx.cost_mod(s, p, card, hero) + fx.own_cost(s, p, card, hero)
 	if card.cost <= 0:
 		return maxi(card.cost + mod, 0)
 	return maxi(card.cost + mod, 1)
@@ -2747,7 +2782,7 @@ func _cheapest_for(s: GameState, p: PlayerState, card: CardDef, heroes: Array[He
 	var best: HeroState = null
 	var best_cost: int = 0
 	for h: HeroState in heroes:
-		var c: int = fx.own_cost(s, p, card, h)
+		var c: int = fx.own_cost(s, p, card, h) + fx.cost_mod(s, p, card, h)
 		if best == null or c < best_cost:
 			best = h
 			best_cost = c

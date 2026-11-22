@@ -115,6 +115,23 @@ static func parse(card: CardDef) -> Dictionary:
 				lines[prev_line] = prev.to_fx()
 				prev_sentence = sentence
 				continue
+		# "This happens up to 3 times a turn." caps the PLAYED line before it.
+		var cap: RegExMatch = _rx("^this happens up to (\\d+) times a turn$").search(low)
+		if cap != null and prev != null and prev_line >= 0 and prev.when == "PLAYED":
+			var capped: Array = Array(prev.cond_args)
+			capped.append_array(["MAX", cap.get_string(1)])
+			prev.set_cond("TAG" if prev.cond.is_empty() else prev.cond, capped if prev.cond == "TAG" else ["ANY", "MAX", cap.get_string(1)])
+			lines[prev_line] = prev.to_fx()
+			continue
+		# "If Dai has 5 or less HP, his Evolution cards cost 2 Energy less and heal him 3 HP.": a cheaper Evolution
+		# while he is that low, and a heal as one is played for him then.
+		var low_evo: RegExMatch = _rx("^if self has (\\d+) or less hp, (?:his|her|its|their) evolution cards cost (\\d+) energy less and heal (?:him|her|it|them) (\\d+) hp$").search(low)
+		if low_evo != null:
+			lines.append("PASSIVE IF LOW_HP %s: COST ME -%s EVOLUTION FOR_SELF" % [low_evo.get_string(1), low_evo.get_string(2)])
+			lines.append("PLAYED IF TAG ANY EVOLUTION FOR_SELF HP_BEFORE %s: HEAL SELF %s" % [low_evo.get_string(1), low_evo.get_string(3)])
+			prev = null
+			prev_line = -1
+			continue
 		# "Put 3 of them on the bottom of your deck": the cards the sentence before asked for (REQUIRE GRAVE {Tag}).
 		var them: RegExMatch = _rx("^put (\\d+) of them on the (bottom|top) of your deck$").search(low)
 		if them != null and prev != null and prev.has_verb("REQUIRE"):
@@ -276,7 +293,8 @@ static func _normalise(text: String, self_name: String, by_word: bool = true) ->
 
 static func _sentences(t: String) -> PackedStringArray:
 	var out := PackedStringArray()
-	for s: String in _rx("(?<=[.!?])\\s+(?=[A-Z\\[]|\\{[^}]+\\}\\s+Bonus:)").sub(t, "\n", true).split("\n"):
+	# A sentence may open with a {Tag} ("{Wind} cards played for the equipped Hero …").
+	for s: String in _rx("(?<=[.!?])\\s+(?=[A-Z\\[{])").sub(t, "\n", true).split("\n"):
 		var x: String = s.strip_edges().trim_suffix(".").strip_edges()
 		if not x.is_empty():
 			out.append(x)
@@ -311,8 +329,40 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 	else:
 		e.when = "PASSIVE"
 	var low: String = s.to_lower()
+	# The phase the sentence names, for a line that watches cards being played.
+	var in_phase: Array = ["PHASE", e.when] if m != null else []
+	# Cards in play that watch for a card being played (2026-11-22): the line is PLAYED, IF TAG says which card.
+	var watch: Array = []
+	m = _rx("^whenever you play an? \\{([^}]+)\\} card, (.*)$").search(low)
+	if m != null:
+		watch = [_trait_case("{%s}" % m.get_string(1))]
+		low = m.get_string(2)
+	m = _rx("^whenever you play your (first|second|third|fourth|fifth) \\{([^}]+)\\} card in a turn, (.*)$").search(low)
+	if m != null:
+		watch = [_trait_case("{%s}" % m.get_string(2)), "NTH", str(["first", "second", "third", "fourth", "fifth"].find(m.get_string(1)) + 1)]
+		low = m.get_string(3)
+	m = _rx("^the first \\{([^}]+)\\} card you play in a turn gets (?:an additional )?(\\+\\d+ \\S+)$").search(low)
+	if m != null:
+		watch = [_trait_case("{%s}" % m.get_string(1)), "NTH", "1"]
+		low = "the hero it was played for gets " + m.get_string(2)
+	m = _rx("^\\{([^}]+)\\} cards played for (?:self|the equipped hero) gets? (?:an additional )?(\\+\\d+ \\S+)$").search(low)
+	if m != null:
+		watch = [_trait_case("{%s}" % m.get_string(1)), "FOR_SELF"]
+		low = "the hero it was played for gets " + m.get_string(2)
+	m = _rx("^if an opponent's hero is in range, your opponent's cards give (\\d+) less power$").search(low)
+	if m != null:
+		watch = ["ANY", "OPP", "IN_RANGE"]
+		low = "weaken card " + m.get_string(1)
+	if not watch.is_empty():
+		e.when = "PLAYED"
+		watch.append_array(in_phase)
+		e.set_cond("TAG", watch)
+	m = _rx("^if self has (\\d+) or less hp, (.*)$").search(low)
+	if m != null:
+		e.set_cond("LOW_HP", [m.get_string(1)])
+		low = m.get_string(2)
 	# "When you play this card, …" (an Assist that brings a companion, 2026-11-21): runs as the card enters play.
-	m = _rx("^when you play this card, (.*)$").search(low)
+	m = _rx("^when you play this (?:card|evolution|equipment|assist), (.*)$").search(low)
 	if m != null:
 		e.when = "PLAY"
 		low = m.get_string(1)
@@ -428,6 +478,11 @@ static func _parse_sentence(sentence: String, card: CardDef, prev: FxEffect = nu
 	if actions.is_empty():
 		return null
 	e.actions = actions
+	# A cost change on a card that stays in play holds all the time, whatever phase the sentence opens with
+	# ("Battle Phase: Your {Fire} cards that cost 3 cost 1 Energy less").
+	if card.type != "Action" and card.type != "Combo" and PHASES.values().has(e.when) and actions.size() == 1 \
+			and str(actions[0]["verb"]) == "COST" and not JsonUtil.as_strings(actions[0]["args"]).has("TURN"):
+		e.when = "PASSIVE"
 	return e
 
 
@@ -636,9 +691,49 @@ static func _match(low: String) -> Array[Dictionary]:
 		var verb: String = "CHARGE" if m.get_string(1) in ["gain", "charge"] else "DISCHARGE"
 		return [_act(verb, who, [m.get_string(2)])]
 
-	m = _rx("^your \\{([^}]+)\\} cards cost (\\d+) (?:energy )?(less|more)(?: to play)?$").search(low)
+	# "Your {Haki} cards cost 1 less to play", "Your Equipment cards cost 1 Energy less", "Your {Fire} and {Explosion}
+	# cards that cost 3 cost 1 Energy less" (2026-11-22: several tags, a card type, a printed cost).
+	m = _rx("^your (?:\\{([^}]+)\\}(?: (?:and|or) \\{([^}]+)\\})? )?(equipment |evolution |action |assist )?cards(?: that cost (\\d+))? cost (\\d+) (?:energy )?(less|more)(?: to play)?$").search(low)
 	if m != null:
-		return [_act("COST", "ME", [("-" if m.get_string(3) == "less" else "") + m.get_string(2), "{%s}" % m.get_string(1)])]
+		var cost_args: Array = [("-" if m.get_string(6) == "less" else "") + m.get_string(5)]
+		for g: int in [1, 2]:
+			if not m.get_string(g).is_empty():
+				cost_args.append("{%s}" % m.get_string(g))
+		if not m.get_string(3).is_empty():
+			cost_args.append(m.get_string(3).strip_edges().to_upper())
+		if not m.get_string(4).is_empty():
+			cost_args.append_array(["COSTS", m.get_string(4)])
+		return [_act("COST", "ME", cost_args)]
+	m = _rx("^your combos cost (\\d+) (?:energy )?(less|more)$").search(low)
+	if m != null:
+		return [_act("COST", "ME", [("-" if m.get_string(2) == "less" else "") + m.get_string(1), "COMBO"])]
+	m = _rx("^\\{([^}]+)\\} cards played for (?:self|the equipped hero) cost (\\d+) (?:energy )?(less|more)$").search(low)
+	if m != null:
+		return [_act("COST", "ME", [("-" if m.get_string(3) == "less" else "") + m.get_string(2), "{%s}" % m.get_string(1), "FOR_SELF"])]
+	# Healing (2026-11-22).
+	m = _rx("^cards played for (self|the equipped hero) heal an additional (\\d+) hp$").search(low)
+	if m != null:
+		return [_act("HEAL_MOD", "SELF" if m.get_string(1) == "self" else "EQUIPPED", [m.get_string(2), "BY"])]
+	m = _rx("^whenever a hero on this stage is healed, they heal an additional (\\d+) hp$").search(low)
+	if m != null:
+		return [_act("HEAL_MOD", "EACH_HERO", [m.get_string(1)])]
+	m = _rx("^(.*?)\\s*heals? to full hp$").search(low)
+	if m != null:
+		var full: String = _subject(m.get_string(1))
+		if not full.is_empty():
+			return [_act("HEAL", full, ["FULL"])]
+	# Cards played later (2026-11-22).
+	m = _rx("^the next \\{([^}]+)\\} card you play this turn gets (?:an additional )?\\+(\\d+) (\\S+)$").search(low)
+	if m != null and STAT_WORDS.has(m.get_string(3)):
+		return [_act("NEXT_CARD", "", ["{%s}" % m.get_string(1), STAT_WORDS[m.get_string(3)], m.get_string(2)])]
+	m = _rx("^weaken card (\\d+)$").search(low)
+	if m != null:
+		return [_act("WEAKEN_CARD", "", [m.get_string(1)])]
+	m = _rx("^(?:then )?put (\\d+|a) cards? from your hand (?:to|on) the bottom of your deck$").search(low)
+	if m != null:
+		for _i: int in (m.get_string(1).to_int() if m.get_string(1).is_valid_int() else 1):
+			out.append(_act("BOTTOM", "ME", ["1"]))
+		return out
 	m = _rx("^your opponent's cards (?:have \\+(\\d+) cost|cost (\\d+) (?:energy )?more)$").search(low)
 	if m != null:
 		return [_act("COST", "OPP", [m.get_string(1) if not m.get_string(1).is_empty() else m.get_string(2)])]
@@ -697,6 +792,8 @@ static func _subject(raw: String) -> String:
 			return "ENEMY"
 		"a friendly hero", "friendly hero", "another friendly hero":
 			return "FRIENDLY"
+		"the hero it was played for":
+			return "CARD_HERO"
 		"all friendly heroes", "all friendly characters", "friendly heroes":
 			return "ALL_FRIENDLY"
 		"all other heroes in range", "all other heroes in self's range":

@@ -2,10 +2,11 @@
 // Služi za provjeru prijedloga prije nego ih Card Studio ponudi: redak koji igra ne bi pročitala se ne nudi.
 // Mijenja li se gramatika u igri, mijenja se i ovdje (test/fx-grammar.test.mjs drži primjere iz fx-keywords.md).
 
-export const WHENS = ['PLAY', 'PREROLL', 'ROLL', 'POSTROLL', 'BATTLE', 'END', 'PASSIVE', 'REVEAL'];
+// PLAYED (DQ1, 2026-11-22): karta u igri reagira na svaku odigranu kartu; IF TAG … kaže na koju.
+export const WHENS = ['PLAY', 'PREROLL', 'ROLL', 'POSTROLL', 'BATTLE', 'END', 'PASSIVE', 'REVEAL', 'PLAYED'];
 export const CONDS = ['ACTIVATED', 'WIN', 'OPP_EQUIPPED', 'COPIES',
   // DQ1 (2026-11-22): uvjet smije imati više argumenata (GRAVE {Tag} 3), sve do dvotočke.
-  'OPP_COUNT', 'OPP_PWR', 'GRAVE', 'GRAVE_MORE', 'OPP_PLAYED', 'PWR_TIED', 'LOW_HP', 'ON_STAGE', 'CLAIMED_LAST_TURN', 'WIN_ALLY', 'LOSE_BELOW'];
+  'OPP_COUNT', 'OPP_PWR', 'GRAVE', 'GRAVE_MORE', 'OPP_PLAYED', 'PWR_TIED', 'LOW_HP', 'ON_STAGE', 'CLAIMED_LAST_TURN', 'WIN_ALLY', 'LOSE_BELOW', 'TAG'];
 export const COLORS = ['CYAN', 'YELLOW', 'PURPLE', 'RED', 'BLUE', 'GREEN'];
 // Glagol -> [ima metu, najmanje dodatnih argumenata].
 export const VERBS = {
@@ -20,10 +21,11 @@ export const VERBS = {
   COMPANION: [false, 0], HIDE: [false, 1], WANDER: [false, 1],
   // DQ1 (2026-11-22): TERRAIN <ime terena> mijenja teren stagea na kojem heroj stoji.
   TERRAIN: [false, 1], REQUIRE: [false, 1],
+  HEAL_MOD: [true, 1], NEXT_CARD: [false, 3], WEAKEN_CARD: [false, 1], BOTTOM: [true, 1],
 };
 // TOKEN se ne stvara u End fazi (odmah bi nestao) ni pasivno (GDD 10, 2026-11-14).
 export const NO_TOKEN_WHENS = ['END', 'PASSIVE'];
-export const HERO_TARGETS = ['SELF', 'EQUIPPED', 'ENEMY', 'FRIENDLY', 'ALL_FRIENDLY', 'ALL_ENEMY', 'ALL_OTHER_IN_RANGE',
+export const HERO_TARGETS = ['SELF', 'EQUIPPED', 'ENEMY', 'FRIENDLY', 'ALL_FRIENDLY', 'ALL_ENEMY', 'CARD_HERO', 'ALL_OTHER_IN_RANGE',
   'ALL_FRIENDLY_IN_RANGE', 'ALL_ENEMY_IN_RANGE', 'ALL_FRIENDLY_IN_BATTLE', 'ALL_HEROES', 'EACH_HERO', 'MOST_HP', 'MOST_PWR', 'MOST_ENERGY'];
 export const PLAYER_TARGETS = ['ME', 'OPP'];
 export const STATS = ['PWR', 'DMG', 'KB', 'RNG', 'HP'];

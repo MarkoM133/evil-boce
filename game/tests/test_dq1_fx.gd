@@ -46,6 +46,38 @@ const CARDS: Array = [
 		"text": "Battle Phase: Whenever Packleader wins a Battle with another friendly Hero in it, draw a card."},
 	{"id": "TD-034", "name": "Fireproof", "type": "Hero", "color": "Green", "wt": 2, "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2},
 		"text": "Battle Phase: Fireproof takes 2 less DMG if your Opponent played a {Haki} or {Gear Second} card in this Battle."},
+	{"id": "TD-040", "name": "Scholar", "type": "Hero", "color": "Red", "wt": 2, "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2},
+		"text": "Whenever you play a {Haki} card, draw 1 card, then put 1 card from your hand to the bottom of your deck."},
+	{"id": "TD-041", "name": "Flare", "type": "Hero", "color": "Red", "wt": 2, "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2},
+		"text": "Battle Phase: Whenever you play a {Haki} card, Flare gets +1000 Power until the end of the turn. This happens up to 3 times a turn."},
+	{"id": "TD-042", "name": "Old Tutor", "type": "Assist", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Whenever you play your third {Haki} card in a turn, draw a card."},
+	{"id": "TD-043", "name": "Focus Staff", "type": "Equipment", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: The first {Haki} card you play in a turn gets +2000 Power."},
+	{"id": "TD-044", "name": "Charge Up", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Battle Phase: The next {Haki} card you play this turn gets an additional +3000 Power."},
+	{"id": "TD-045", "name": "Gale Axe", "type": "Equipment", "color": "Red", "cost": 1, "traits": ["General"], "bonus": {"pwr": 1000},
+		"text": "{Haki} cards played for the equipped Hero get +1000 Power."},
+	{"id": "TD-046", "name": "Mender", "type": "Hero", "color": "Red", "wt": 2, "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2},
+		"text": "Cards played for Mender heal an additional 1 HP."},
+	{"id": "TD-047", "name": "Spring", "type": "Stage", "text": "Whenever a Hero on this Stage is healed, they heal an additional 1 HP."},
+	{"id": "TD-048", "name": "Alpha, Crested", "type": "Evolution", "color": "Red", "cost": 2, "traits": ["Haki"], "evo": 1, "hero": "Alpha",
+		"stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2}, "text": "{Haki} cards played for Alpha cost 1 Energy less."},
+	{"id": "TD-049", "name": "Quartermaster", "type": "Assist", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Your Equipment cards cost 1 Energy less."},
+	{"id": "TD-050", "name": "Strategist", "type": "Assist", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Your combos cost 2 Energy less."},
+	{"id": "TD-051", "name": "Phoenix", "type": "Hero", "color": "Red", "wt": 2, "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2},
+		"text": "If Phoenix has 5 or less HP, his Evolution cards cost 2 Energy less and heal him 3 HP."},
+	{"id": "TD-052", "name": "Phoenix, Risen", "type": "Evolution", "color": "Red", "cost": 4, "traits": ["General"], "evo": 1, "hero": "Phoenix",
+		"stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2}, "text": ""},
+	{"id": "TD-053", "name": "Warden", "type": "Hero", "color": "Red", "wt": 2, "stats": {"hp": 10, "dmg": 3, "pwr": 2000, "rng": 3, "kb": 2},
+		"text": "Battle Phase: If an Opponent's Hero is in Range, your Opponent's cards give 2000 less Power."},
+	{"id": "TD-054", "name": "Alpha, Lord of Embers", "type": "Evolution", "color": "Red", "cost": 2, "traits": ["Haki"], "evo": 1, "hero": "Alpha",
+		"stats": {"hp": 12, "dmg": 4, "pwr": 3000, "rng": 3, "kb": 2},
+		"text": "When you play this Evolution, Alpha heals to full HP.\nBattle Phase: Your {Haki} and {Gear Second} cards that cost 3 cost 1 Energy less."},
+	{"id": "TD-055", "name": "Grey Mend", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: Your Hero heals 2 HP."},
 ]
 
 
@@ -420,3 +452,201 @@ func test_a_draw_for_a_win_beside_a_friend() -> void:
 	winners = [lead]
 	engine.fx.on_battle_done(s, winners, members)
 	assert_eq(s.player(1).hand.size(), hand)
+
+
+# --- cards in play that watch cards being played; costs and heals by the hero a card is for -----------
+
+func test_card_watchers_read() -> void:
+	assert_eq(_fx_of("TD-040"), "PLAYED IF TAG {Haki}: DRAW ME 1; BOTTOM ME 1")
+	assert_eq(_fx_of("TD-041"), "PLAYED IF TAG {Haki} PHASE BATTLE MAX 3: BUFF SELF PWR 1000 TURN")
+	assert_eq(_fx_of("TD-042"), "PLAYED IF TAG {Haki} NTH 3: DRAW ME 1")
+	assert_eq(_fx_of("TD-043"), "PLAYED IF TAG {Haki} NTH 1 PHASE BATTLE: BUFF CARD_HERO PWR 2000")
+	assert_eq(_fx_of("TD-044"), "BATTLE: NEXT_CARD {Haki} PWR 3000")
+	assert_eq(_fx_of("TD-045"), "PLAYED IF TAG {Haki} FOR_SELF: BUFF CARD_HERO PWR 1000")
+	assert_eq(_fx_of("TD-046"), "PASSIVE: HEAL_MOD SELF 1 BY")
+	assert_eq(_fx_of("TD-047"), "PASSIVE: HEAL_MOD EACH_HERO 1")
+	assert_eq(_fx_of("TD-048"), "PASSIVE: COST ME -1 {Haki} FOR_SELF")
+	assert_eq(_fx_of("TD-049"), "PASSIVE: COST ME -1 EQUIPMENT")
+	assert_eq(_fx_of("TD-050"), "PASSIVE: COST ME -2 COMBO")
+	assert_eq(_fx_of("TD-051"), "PASSIVE IF LOW_HP 5: COST ME -2 EVOLUTION FOR_SELF\nPLAYED IF TAG ANY EVOLUTION FOR_SELF HP_BEFORE 5: HEAL SELF 3")
+	assert_eq(_fx_of("TD-053"), "PLAYED IF TAG ANY OPP IN_RANGE PHASE BATTLE: WEAKEN_CARD 2000")
+	assert_eq(_fx_of("TD-054"), "PLAY: HEAL SELF FULL\nPASSIVE: COST ME -1 {Haki} {Gear Second} COSTS 3")
+
+
+func test_a_draw_and_a_card_to_the_bottom_for_each_tagged_card() -> void:
+	var s: GameState = _state("TD-040")
+	var scholar: HeroState = _on_map(s, "p1:TD-040", Hex.offset_to_axial(8, 2))
+	s.active = {0: ALPHA, 1: scholar.id}
+	s.player(1).hand = PackedStringArray(["TX-010"])
+	var deck: int = s.player(1).deck.size()
+	assert_eq(_play(s, 1, "TA-049"), "")
+	# The card drawn and the filler: the player picks which goes under the deck.
+	assert_eq(s.pending.size(), 1)
+	assert_eq(str(s.pending[0]["kind"]), "card")
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 1, {"value": "TX-010"})), "")
+	assert_eq(s.player(1).hand.size(), 1, "one drawn, one put back")
+	assert_eq(s.player(1).deck.size(), deck, "the deck is as large as it was")
+	assert_eq(s.player(1).deck[deck - 1], "TX-010")
+	# A card without the tag: nothing.
+	assert_eq(_play(s, 1, "TA-040"), "")
+	assert_eq(s.pending.size(), 0)
+	assert_eq(s.player(1).deck.size(), deck)
+
+
+func test_power_for_each_tagged_card_up_to_three_times() -> void:
+	var s: GameState = _state("TD-041")
+	var flare: HeroState = s.hero("p1:TD-041")
+	_battle(s, PackedStringArray([flare.id]))
+	var base: int = engine.stat(s, flare, "pwr")
+	s.player(1).energy = 20
+	for i: int in 4:
+		assert_eq(_play(s, 1, "TA-049", ECHO), "")
+	assert_eq(engine.stat(s, flare, "pwr"), base + 3000, "four cards, three bonuses")
+	assert_eq(JsonUtil.as_int(flare.turn_bonus.get("pwr", 0)), 3000, "until the end of the turn")
+	# Outside the Battle phase the line does not watch.
+	s = _state("TD-041")
+	flare = _on_map(s, "p1:TD-041", Hex.offset_to_axial(8, 2))
+	s.active = {0: ALPHA, 1: flare.id}
+	assert_eq(_play(s, 1, "TA-049"), "")
+	assert_eq(JsonUtil.as_int(flare.turn_bonus.get("pwr", 0)), 0)
+
+
+func test_a_draw_for_the_third_tagged_card_of_the_turn() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	s.player(0).assists.append("TD-042")
+	s.player(0).energy = 20
+	var hand: int = s.player(0).hand.size()
+	assert_eq(_play(s, 0, "TA-049"), "")
+	assert_eq(_play(s, 0, "TA-049"), "")
+	assert_eq(s.player(0).hand.size(), hand, "two: nothing yet")
+	assert_eq(_play(s, 0, "TA-049"), "")
+	assert_eq(s.player(0).hand.size(), hand + 1)
+	assert_eq(_play(s, 0, "TA-049"), "")
+	assert_eq(s.player(0).hand.size(), hand + 1, "the fourth is not the third")
+
+
+func test_the_first_tagged_card_of_the_battle_phase_gets_more_power() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	s.hero(ALPHA).equipment.append("TD-043")
+	var base: int = engine.stat(s, s.hero(ALPHA), "pwr")
+	assert_eq(_play(s, 0, "TA-040"), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), base + 1000, "no tag: only its box")
+	assert_eq(_play(s, 0, "TA-049"), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), base + 1000 + 1000 + 2000)
+	assert_eq(_play(s, 0, "TA-049"), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), base + 1000 + 1000 + 2000 + 1000, "the second gets nothing more")
+	# The bonus is kept with the card it went to.
+	var played: Array = JsonUtil.as_array(s.battles[0]["played"])
+	assert_eq(JsonUtil.as_int(JsonUtil.as_dict(JsonUtil.as_dict(played[1])["bonus"])["pwr"]), 3000)
+
+
+func test_the_next_tagged_card_gets_more_power() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	var base: int = engine.stat(s, s.hero(ALPHA), "pwr")
+	assert_eq(_play(s, 0, "TD-044"), "")
+	assert_eq(_play(s, 0, "TA-040"), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), base + 1000, "not that tag: it still waits")
+	assert_eq(_play(s, 0, "TA-049"), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), base + 1000 + 1000 + 3000)
+	assert_eq(_play(s, 0, "TA-049"), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), base + 1000 + 1000 + 3000 + 1000, "only the next one")
+
+
+func test_tagged_cards_played_for_the_equipped_hero_get_more_power() -> void:
+	var s: GameState = _state()
+	_battle(s, PackedStringArray([BRAVO]))
+	s.hero(ALPHA).equipment.append("TD-045")
+	var base: int = engine.stat(s, s.hero(ALPHA), "pwr")
+	assert_eq(_play(s, 0, "TA-049", ALPHA), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), base + 1000 + 1000)
+
+
+func test_cards_played_for_a_hero_heal_more() -> void:
+	var s: GameState = _state("TD-046")
+	var mender: HeroState = _on_map(s, "p1:TD-046", Hex.offset_to_axial(8, 2))
+	s.active = {0: ALPHA, 1: mender.id}
+	mender.hp = 4
+	assert_eq(_play(s, 1, "TD-055"), "")
+	assert_eq(mender.hp, 7, "2 and the 1 more")
+	s.hero(ALPHA).hp = 4
+	assert_eq(_play(s, 0, "TD-055"), "")
+	assert_eq(s.hero(ALPHA).hp, 6, "a card played for another hero heals as written")
+
+
+func test_a_stage_on_which_heroes_heal_more() -> void:
+	var s: GameState = _state()
+	_stage(s, "TS-003").card_id = "TD-047"
+	s.hero(ALPHA).hp = 4
+	assert_eq(_play(s, 0, "TD-055"), "")
+	assert_eq(s.hero(ALPHA).hp, 7)
+	s.hero(ALPHA).hex = Hex.offset_to_axial(3, 10)
+	assert_eq(_play(s, 0, "TD-055"), "")
+	assert_eq(s.hero(ALPHA).hp, 9, "off the stage: as written")
+
+
+func test_cards_cheaper_for_the_hero_they_are_played_for() -> void:
+	var s: GameState = _state()
+	s.hero(ALPHA).evolutions.append("TD-048")
+	_on_map(s, BRAVO, Hex.offset_to_axial(4, 10))
+	var haki: CardDef = catalog.get_card("TA-049")
+	assert_eq(engine.card_cost(s, s.player(0), haki, s.hero(ALPHA)), 2)
+	assert_eq(engine.card_cost(s, s.player(0), haki, s.hero(BRAVO)), 3, "only for the hero whose card says so")
+	assert_eq(engine.card_cost(s, s.player(0), catalog.get_card("TA-040"), s.hero(ALPHA)), 1, "another tag: its own cost")
+
+
+func test_cards_cheaper_by_type_and_by_printed_cost() -> void:
+	var s: GameState = _state()
+	s.player(0).assists.append("TD-049")
+	assert_eq(engine.card_cost(s, s.player(0), catalog.get_card("TA-020"), s.hero(ALPHA)), 1, "Equipment of cost 2")
+	assert_eq(engine.card_cost(s, s.player(0), catalog.get_card("TA-049"), s.hero(ALPHA)), 3, "an Action is not Equipment")
+	s.player(0).assists.clear()
+	s.hero(ALPHA).evolutions.append("TD-054")
+	assert_eq(engine.card_cost(s, s.player(0), catalog.get_card("TA-049"), s.hero(ALPHA)), 2, "{Haki}, costs 3")
+	assert_eq(engine.card_cost(s, s.player(0), catalog.get_card("TA-012"), s.hero(ALPHA)), 2, "{Haki} and {Gear Second}, costs 3")
+	assert_eq(engine.card_cost(s, s.player(0), catalog.get_card("TD-048"), s.hero(ALPHA)), 2, "{Haki} but costs 2: no change")
+
+
+func test_combos_cost_less() -> void:
+	var s: GameState = _state()
+	var combo: CardDef = catalog.get_card("TC-001")
+	assert_eq(engine.combo_cost(s, 0, combo), 1)
+	s.player(0).assists.append("TD-050")
+	assert_eq(engine.combo_cost(s, 0, combo), 0, "never under nothing")
+	assert_eq(engine.combo_cost(s, 1, combo), 1)
+
+
+func test_a_hero_low_on_hp_evolves_cheaper_and_heals() -> void:
+	var s: GameState = _state("TD-051")
+	var phoenix: HeroState = _on_map(s, "p1:TD-051", Hex.offset_to_axial(8, 2))
+	s.active = {0: ALPHA, 1: phoenix.id}
+	var evo: CardDef = catalog.get_card("TD-052")
+	assert_eq(engine.card_cost(s, s.player(1), evo, phoenix), 4)
+	phoenix.hp = 5
+	assert_eq(engine.card_cost(s, s.player(1), evo, phoenix), 2)
+	assert_eq(_play(s, 1, "TD-052"), "")
+	assert_eq(s.player(1).energy, 8)
+	assert_eq(phoenix.hp, 10, "5 of 10, then 7 of 12 as it evolves, and the 3")
+
+
+func test_an_evolution_that_heals_to_full() -> void:
+	var s: GameState = _state()
+	s.hero(ALPHA).hp = 2
+	assert_eq(_play(s, 0, "TD-054"), "")
+	assert_eq(s.hero(ALPHA).hp, 12)
+
+
+func test_the_opponents_cards_give_less_power_in_range() -> void:
+	var s: GameState = _state("TD-053")
+	var warden: HeroState = s.hero("p1:TD-053")
+	_battle(s, PackedStringArray([warden.id]))
+	var base: int = engine.stat(s, s.hero(ALPHA), "pwr")
+	assert_eq(_play(s, 0, "TA-040"), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), base, "+1000 less up to 2000: nothing, never a loss")
+	assert_eq(_play(s, 0, "TD-020"), "")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), base + 8000 - 2000, "two opponents: +8000, 2000 less")
+	var own: int = engine.stat(s, warden, "pwr")
+	assert_eq(_play(s, 1, "TA-040", warden.id), "")
+	assert_eq(engine.stat(s, warden, "pwr"), own + 1000, "its own side's cards are whole")

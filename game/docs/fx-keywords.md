@@ -200,6 +200,45 @@ each 3 {Strash Mastery} cards in your graveyard").
 (`FxRuntime.box_replaced`): "Battle Phase: / Yellow Bonus: Your Hero gets +1000 Power for each Opponent's Hero in
 this Battle instead." gives a Yellow hero +1000 per opponent in place of the box, any other hero the box.
 
+**Cards in play that watch cards being played** (`PLAYED`, a WHEN of its own). Each time a card is played, after
+its own effects, every `PLAYED` line of the cards that were in play as it was played runs if its filter fits
+(`FxRuntime.on_card_played`; a card never answers its own play, and a hero's own card still answers the Evolution
+that takes its place). In such a line `SELF` is the hero whose card it is and `CARD_HERO` the hero the card was
+played for. The filter is the condition `TAG`:
+
+`PLAYED IF TAG <{Tag}|ANY> [ACTION|EQUIPMENT|EVOLUTION|ASSIST] [NTH n] [MAX n] [PHASE P] [FOR_SELF] [OPP] [IN_RANGE] [HP_BEFORE n]: …`
+
+- without `OPP` it is about cards its own player plays; with it, cards an opponent plays;
+- `NTH n`: the n-th such card that player plays this turn (in phase P when the line names one);
+- `MAX n`: the line runs at most n times a turn ("This happens up to 3 times a turn.");
+- `PHASE P`: only in that phase (the sentence opens with "Battle Phase:");
+- `FOR_SELF`: the card is played for the hero whose card the line is on; `IN_RANGE`: for a hero in its range;
+- `HP_BEFORE n`: the card's hero had n HP or less before the card.
+
+| card text | fx |
+|---|---|
+| "Whenever you play an {Avan Style} card, draw 1 card, then put 1 card from your hand to the bottom of your deck." | `PLAYED IF TAG {Avan Style}: DRAW ME 1; BOTTOM ME 1` |
+| "Battle Phase: Whenever you play a {Fire} card, X gets +1000 Power until the end of the turn. This happens up to 3 times a turn." | `PLAYED IF TAG {Fire} PHASE BATTLE MAX 3: BUFF SELF PWR 1000 TURN` |
+| "Whenever you play your third {Mage} card in a turn, draw a card." | `PLAYED IF TAG {Mage} NTH 3: DRAW ME 1` |
+| "Battle Phase: The first {Mage} card you play in a turn gets +2000 Power." | `PLAYED IF TAG {Mage} NTH 1 PHASE BATTLE: BUFF CARD_HERO PWR 2000` |
+| "{Wind} cards played for the equipped Hero get +1000 Power." | `PLAYED IF TAG {Wind} FOR_SELF: BUFF CARD_HERO PWR 1000` |
+| "Battle Phase: If an Opponent's Hero is in Range, your Opponent's cards give 2000 less Power." | `PLAYED IF TAG ANY OPP IN_RANGE PHASE BATTLE: WEAKEN_CARD 2000` |
+
+A bonus a `PLAYED` line puts on `CARD_HERO` is kept with the card it went to (the battle's list of played cards), so
+whatever takes that card back takes the bonus too.
+
+| verb | effect |
+|---|---|
+| `NEXT_CARD {Tag} <STAT> <n>` | the next card with the tag the player plays this turn gives its hero that much more ("The next {Lightning} card you play this turn gets an additional +3000 Power.") |
+| `WEAKEN_CARD <n>` | in a `PLAYED` line: the card just played gives its hero up to n less Power, never less than nothing |
+| `BOTTOM <p> <n>` | that player puts a card from the hand on the bottom of the deck (their pick) |
+| `HEAL_MOD <t> <n> [BY]` | passive: those heroes heal n more ("Whenever a Hero on this Stage is healed, they heal an additional 1 HP." is `HEAL_MOD EACH_HERO 1`); with `BY` it is about the healer: heals from cards played for the hero whose passive it is ("Cards played for X heal an additional 1 HP." is `HEAL_MOD SELF 1 BY`) |
+| `HEAL <t> FULL` | to full HP ("When you play this Evolution, X heals to full HP." is `PLAY: HEAL SELF FULL`) |
+| `COST <p> <n> …` filters | the words after the amount say which cards: {Tag}s (one of them is enough), a card type (`EQUIPMENT`, `EVOLUTION`, `ACTION`, `ASSIST`, `COMBO`: a combo's extra energy, never under 0), `COSTS <n>` (printed cost n), `FOR_SELF` (cards played for the hero whose card it is). "Your Equipment cards cost 1 Energy less.", "Your combos cost 2 Energy less.", "{Mage} cards played for X cost 1 Energy less.", "Your {Fire} and {Explosion} cards that cost 3 cost 1 Energy less." On a card that stays in play a cost line is `PASSIVE` whatever phase the sentence opens with |
+
+"If X has 5 or less HP, his Evolution cards cost 2 Energy less and heal him 3 HP." is two lines:
+`PASSIVE IF LOW_HP 5: COST ME -2 EVOLUTION FOR_SELF` and `PLAYED IF TAG ANY EVOLUTION FOR_SELF HP_BEFORE 5: HEAL SELF 3`.
+
 ## Choices
 
 When an effect needs a decision, the engine pushes `{"type": "choose", "player", "kind":

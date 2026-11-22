@@ -8,7 +8,8 @@ extends RefCounted
 ##
 ## WHEN:  PLAY (as the card is played), PREROLL / ROLL / POSTROLL / BATTLE / END (an Action
 ##        is playable only then; a hero, equipment, evolution, assist or stage ability fires
-##        or may be used then), PASSIVE (while in play), REVEAL (stage turned face up).
+##        or may be used then), PASSIVE (while in play), REVEAL (stage turned face up),
+##        PLAYED (a card in play: each time a card is played; IF TAG … says which, CARD_HERO is the hero it was played for).
 ## Flags: ONCE = once per turn, OPTIONAL = "may" (used through the use_ability move),
 ##        RANGE = targets must be within the hero's range.
 ## IF:    ACTIVATED (the hero is activated this turn), WIN (runs after the hero's side wins
@@ -18,11 +19,13 @@ extends RefCounted
 ## INSTEAD: the effect replaces the one right before it on the card when its own BONUS / IF
 ##        hold; otherwise it is skipped. Both share the WHEN of the one before.
 
-const WHENS: Array[String] = ["PLAY", "PREROLL", "ROLL", "POSTROLL", "BATTLE", "END", "PASSIVE", "REVEAL"]
+const WHENS: Array[String] = ["PLAY", "PREROLL", "ROLL", "POSTROLL", "BATTLE", "END", "PASSIVE", "REVEAL", "PLAYED"]
 const CONDS: Array[String] = ["ACTIVATED", "WIN", "OPP_EQUIPPED", "COPIES",
 	# DQ1 (2026-11-22), see docs/fx-keywords.md:
 	"OPP_COUNT", "OPP_PWR", "GRAVE", "GRAVE_MORE", "OPP_PLAYED", "PWR_TIED", "LOW_HP", "ON_STAGE", "CLAIMED_LAST_TURN",
-	"WIN_ALLY", "LOSE_BELOW"]
+	"WIN_ALLY", "LOSE_BELOW", "TAG"]
+## Card types as a filter word (COST, the TAG condition of a PLAYED line).
+const TYPE_WORDS: Array[String] = ["ACTION", "EQUIPMENT", "EVOLUTION", "ASSIST", "COMBO"]
 ## Conditions known only once the battle is over: the effect waits for it (FxRuntime.on_battle_done).
 const BATTLE_END_CONDS: Array[String] = ["WIN", "WIN_ALLY", "LOSE_BELOW"]
 const COLORS: Array[String] = ["CYAN", "YELLOW", "PURPLE", "RED", "BLUE", "GREEN"]
@@ -66,12 +69,16 @@ const VERBS: Dictionary[String, Array] = {
 	"HIDE": [false, 1],         # HIDE <reach> [energy]  (the Assist's companion: one hero of its player within reach hides inside, for that energy)
 	"WANDER": [false, 1],       # WANDER <n>  (END: the Assist's companion walks 1..n hexes in a direction drawn by lot)
 	"TOKEN": [true, 1],         # TOKEN <ME|OPP> <token card id> [n]  (that player gets n of that token beside the hand)
+	"HEAL_MOD": [true, 1],      # HEAL_MOD <target> <n> [BY]  (passive: those heroes heal n more; BY: heals from cards played for the source's hero)
+	"NEXT_CARD": [false, 3],    # NEXT_CARD {Tag} <STAT> <n>  (the next card with the tag the player plays this turn gives its hero that much more)
+	"WEAKEN_CARD": [false, 1],  # WEAKEN_CARD <n>  (PLAYED: the card just played gives its hero up to n less Power)
+	"BOTTOM": [true, 1],        # BOTTOM <ME|OPP> <n>  (that player puts n cards from the hand on the bottom of the deck)
 	"REQUIRE": [false, 1],      # REQUIRE <COND> [args]  (the card is played only when the condition holds: "Play this card only if …")
 	"TERRAIN": [false, 1],      # TERRAIN <Ice|Mud|Ramp|Wind|Fire>  (the stage SELF stands on gets that terrain)
 }
 ## A TOKEN is never made in the End phase (it would be gone at once) nor by a passive (GDD 10, 2026-11-14).
 const NO_TOKEN_WHENS: Array[String] = ["END", "PASSIVE"]
-const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "ALL_FRIENDLY", "ALL_ENEMY",
+const HERO_TARGETS: Array[String] = ["SELF", "EQUIPPED", "ENEMY", "FRIENDLY", "ALL_FRIENDLY", "ALL_ENEMY", "CARD_HERO",
 	"ALL_OTHER_IN_RANGE", "ALL_FRIENDLY_IN_RANGE", "ALL_ENEMY_IN_RANGE", "ALL_FRIENDLY_IN_BATTLE", "ALL_HEROES", "EACH_HERO", "MOST_HP", "MOST_PWR", "MOST_ENERGY"]
 const PLAYER_TARGETS: Array[String] = ["ME", "OPP"]
 const STATS: Array[String] = ["PWR", "DMG", "KB", "RNG", "HP"]

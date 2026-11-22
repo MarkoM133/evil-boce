@@ -47,6 +47,21 @@ test('lines from fx-keywords.md read as the game reads them', () => {
     'POSTROLL: REQUIRE ON_STAGE',
     'PREROLL: REQUIRE CLAIMED_LAST_TURN',
     'PLAY: RECYCLE ME 3 BOTTOM {Avan Style}',
+    // Cards in play that watch cards being played; costs and heals by the hero a card is for.
+    'PLAYED IF TAG {Avan Style}: DRAW ME 1; BOTTOM ME 1',
+    'PLAYED IF TAG {Fire} PHASE BATTLE MAX 3: BUFF SELF PWR 1000 TURN',
+    'PLAYED IF TAG {Mage} NTH 3: DRAW ME 1',
+    'PLAYED IF TAG {Mage} NTH 1 PHASE BATTLE: BUFF CARD_HERO PWR 2000',
+    'PLAYED IF TAG ANY OPP IN_RANGE PHASE BATTLE: WEAKEN_CARD 2000',
+    'PLAYED IF TAG ANY EVOLUTION FOR_SELF HP_BEFORE 5: HEAL SELF 3',
+    'BATTLE: NEXT_CARD {Lightning} PWR 3000',
+    'PASSIVE: HEAL_MOD SELF 1 BY',
+    'PASSIVE: HEAL_MOD EACH_HERO 1',
+    'PASSIVE: COST ME -1 {Mage} FOR_SELF',
+    'PASSIVE: COST ME -1 {Fire} {Explosion} COSTS 3',
+    'PASSIVE: COST ME -2 COMBO',
+    'PASSIVE IF LOW_HP 5: COST ME -2 EVOLUTION FOR_SELF',
+    'PLAY: HEAL SELF FULL',
     'PASSIVE: STATUS SELF IGNORE_TERRAIN',
   ]) assert.equal(lineProblem(line), '', line);
 });

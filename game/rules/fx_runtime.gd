@@ -262,6 +262,126 @@ func use_ability(s: GameState, slot: int, hero_id: String, card_id: String, inde
 	return "that ability cannot be used now"
 
 
+## A card was just played by `slot` for `target` (null for an Assist), its own effects done. First the "next {Tag}
+## card" bonuses armed earlier this turn, then every PLAYED line of the cards in play whose TAG filter fits.
+## `info`: {"hp_before": the hero's HP before the card, "pwr_gain": the Power the card gave it}.
+## `watchers`: the sources as they were when the card was played (empty: as they are now).
+func on_card_played(s: GameState, slot: int, card: CardDef, target: HeroState, info: Dictionary, watchers: Array[Dictionary] = []) -> void:
+	var plays: int = s.turn_plays.size()
+	var left: Array[Dictionary] = []
+	for m: Dictionary in s.turn_mods:
+		if str(m.get("kind", "")) != "next_card" or JsonUtil.as_int(m.get("player", -1)) != slot or JsonUtil.as_int(m.get("play", 0)) >= plays \
+				or target == null or not card.has_trait(str(m.get("tag", ""))):
+			left.append(m)
+			continue
+		target.add_bonus(target.phase_bonus, str(m.get("stat", "pwr")), JsonUtil.as_int(m.get("amount", 0)))
+		engine.note_card_bonus(s, str(m.get("stat", "pwr")), JsonUtil.as_int(m.get("amount", 0)))
+		s.event("fx_buff", {"card": m.get("card", ""), "stat": str(m.get("stat", "pwr")).to_upper(), "amount": m.get("amount", 0)})
+	s.turn_mods = left
+	for src: Dictionary in (watchers if not watchers.is_empty() else sources(s)):
+		var src_card: CardDef = src["card"]
+		# A card never answers its own play.
+		if src["stage"] != null or src_card.id == card.id:
+			continue
+		for index: int in src_card.effects.size():
+			var e: FxEffect = src_card.effects[index]
+			if e.when != "PLAYED" or not _played_matches(s, src, e, slot, card, target, info):
+				continue
+			var ctx: Dictionary = _ctx_of(src)
+			if not cond_ok(s, ctx, e):
+				continue
+			# MAX n: at most n times a turn.
+			var owner: HeroState = src["hero"]
+			var key: String = "played|%s|%s|%d" % [owner.id if owner != null else str(src["player"]), src_card.id, index]
+			var cap: int = _tag_word(e, "MAX")
+			if cap > 0 and s.abilities_used.count(key) >= cap:
+				continue
+			s.abilities_used.append(key)
+			ctx["card_hero"] = target.id if target != null else ""
+			ctx["played"] = card.id
+			ctx["pwr_gain"] = JsonUtil.as_int(info.get("pwr_gain", 0))
+			run(s, ctx, e)
+
+
+## The number after a word of a TAG condition ("NTH 3", "MAX 3", "HP_BEFORE 5"); 0 when the word is not there.
+static func _tag_word(e: FxEffect, word: String) -> int:
+	var at: int = e.cond_args.find(word)
+	return e.cond_args[at + 1].to_int() if e.cond == "TAG" and at >= 0 and at + 1 < e.cond_args.size() else 0
+
+
+## Does a PLAYED line watch for this play? IF TAG <{Tag}|ANY> [TYPE] [NTH n] [MAX n] [PHASE P] [FOR_SELF] [OPP]
+## [IN_RANGE] [HP_BEFORE n]. Without OPP it is about cards its own player plays.
+func _played_matches(s: GameState, src: Dictionary, e: FxEffect, slot: int, card: CardDef, target: HeroState, info: Dictionary) -> bool:
+	var mine: int = JsonUtil.as_int(src["player"])
+	var owner: HeroState = src["hero"]
+	var args: PackedStringArray = e.cond_args if e.cond == "TAG" else PackedStringArray()
+	if args.has("OPP"):
+		if s.team_of(slot) == s.team_of(mine):
+			return false
+	elif slot != mine:
+		return false
+	var tag: String = args[0] if not args.is_empty() and args[0].begins_with("{") else ""
+	var type: String = ""
+	var phase: String = ""
+	for i: int in args.size():
+		if FxEffect.TYPE_WORDS.has(args[i]):
+			type = args[i]
+		if args[i] == "PHASE" and i + 1 < args.size():
+			phase = args[i + 1]
+	if not _play_fits(card, tag, type) or (not phase.is_empty() and s.phase.to_upper() != phase):
+		return false
+	if args.has("FOR_SELF") and (owner == null or target != owner):
+		return false
+	if args.has("IN_RANGE") and (owner == null or target == null or not engine.in_range(s, owner, target)):
+		return false
+	if args.has("HP_BEFORE") and JsonUtil.as_int(info.get("hp_before", 0)) > _tag_word(e, "HP_BEFORE"):
+		return false
+	var nth: int = _tag_word(e, "NTH")
+	if nth > 0:
+		# The n-th such card the player plays this turn (in that phase, when the line names one).
+		var n: int = 0
+		for x: Dictionary in s.turn_plays:
+			if JsonUtil.as_int(x.get("player", -1)) != slot or (not phase.is_empty() and str(x.get("phase", "")).to_upper() != phase):
+				continue
+			if _play_fits(engine.catalog.get_card(str(x.get("card", ""))), tag, type):
+				n += 1
+		if n != nth:
+			return false
+	return true
+
+
+static func _play_fits(card: CardDef, tag: String, type: String) -> bool:
+	if card == null:
+		return false
+	if not tag.is_empty() and not card.has_trait(tag.trim_prefix("{").trim_suffix("}")):
+		return false
+	return type.is_empty() or card.type.to_upper() == type
+
+
+## HEAL_MOD: how much more `h` heals from the effect the context names. A plain HEAL_MOD is about the heroes its
+## target names ("Whenever a Hero on this Stage is healed, they heal an additional 1 HP"); with BY it is about the
+## healer: heals from cards played for the hero whose passive it is ("Cards played for X heal an additional 1 HP").
+func heal_mod(s: GameState, ctx: Dictionary, h: HeroState) -> int:
+	var total: int = 0
+	var by: CardDef = engine.catalog.get_card(str(ctx.get("card", "")))
+	var played: bool = by != null and str(ctx.get("stage", "")).is_empty() and by.type != "Hero" and by.type != "Stage" and by.type != "Core"
+	for src: Dictionary in sources(s):
+		var card: CardDef = src["card"]
+		var src_ctx: Dictionary = _ctx_of(src)
+		for e: FxEffect in card.effects_when("PASSIVE"):
+			for a: Dictionary in e.actions:
+				if str(a["verb"]) != "HEAL_MOD" or not cond_ok(s, src_ctx, e):
+					continue
+				var args: PackedStringArray = a["args"]
+				var owner: HeroState = src["hero"]
+				if args.has("BY"):
+					if played and owner != null and str(ctx.get("hero", "")) == owner.id:
+						total += args[0].to_int()
+				elif _passive_applies(s, src, str(a["target"]), h):
+					total += args[0].to_int()
+	return total
+
+
 ## A stage just turned face up.
 func on_reveal(s: GameState, st: StageState, by: HeroState) -> void:
 	var card: CardDef = engine.catalog.get_card(st.card_id)
@@ -419,6 +539,9 @@ func cond_holds(s: GameState, ctx: Dictionary, cond: String, args: PackedStringA
 				if st.is_claimed() and st.claimed_by == player and st.terrain_until_turn == s.turn:
 					return true
 			return false
+		"TAG":
+			# The filter of a PLAYED line: on_card_played checks it against the card.
+			return true
 		"ACTIVATED":
 			var hero_id: String = str(ctx.get("hero", ""))
 			return not hero_id.is_empty() and s.active.get(JsonUtil.as_int(ctx.get("player", -1)), "") == hero_id
@@ -579,8 +702,9 @@ func damage_mod(s: GameState, h: HeroState) -> int:
 	return total
 
 
-## Cost change for player `p` playing `card` now.
-func cost_mod(s: GameState, p: PlayerState, card: CardDef) -> int:
+## Cost change for player `p` playing `card` now, for `hero` (null: no hero named; then "cards played for X" does
+## not count).
+func cost_mod(s: GameState, p: PlayerState, card: CardDef, hero: HeroState = null) -> int:
 	var total: int = 0
 	for src: Dictionary in sources(s):
 		var src_card: CardDef = src["card"]
@@ -595,7 +719,8 @@ func cost_mod(s: GameState, p: PlayerState, card: CardDef) -> int:
 				var mine: bool = JsonUtil.as_int(src["player"]) == p.slot
 				if (str(a["target"]) == "ME") != mine:
 					continue
-				if _cost_filter_ok(args, card):
+				var owner: HeroState = src["hero"]
+				if _cost_filter_ok(args, card, owner != null and owner == hero):
 					total += args[0].to_int()
 	for m: Dictionary in s.turn_mods:
 		if str(m.get("kind", "")) != "cost" or JsonUtil.as_int(m.get("player", -1)) != p.slot:
@@ -605,13 +730,31 @@ func cost_mod(s: GameState, p: PlayerState, card: CardDef) -> int:
 	return total
 
 
-static func _cost_filter_ok(args: PackedStringArray, card: CardDef) -> bool:
-	for i: int in range(1, args.size()):
+## The words after a COST amount say which cards it is for: {Tag}s (one of them is enough), a card type
+## (EQUIPMENT, COMBO, …), COSTS <n> (cards whose printed cost is n), FOR_SELF (cards played for the hero whose
+## card this is: `for_source`), a phase (cards with an effect of that phase).
+static func _cost_filter_ok(args: PackedStringArray, card: CardDef, for_source: bool = false) -> bool:
+	var tags: int = 0
+	var tag_hit: bool = false
+	var i: int = 0
+	while i + 1 < args.size():
+		i += 1
 		var f: String = args[i]
 		if f == "TURN":
 			continue
 		if f.begins_with("{"):
-			if not card.has_trait(f.trim_prefix("{").trim_suffix("}")):
+			tags += 1
+			if card.has_trait(f.trim_prefix("{").trim_suffix("}")):
+				tag_hit = true
+		elif f == "FOR_SELF":
+			if not for_source:
+				return false
+		elif f == "COSTS":
+			i += 1
+			if i >= args.size() or card.cost != args[i].to_int():
+				return false
+		elif FxEffect.TYPE_WORDS.has(f):
+			if card.type.to_upper() != f:
 				return false
 		elif FxEffect.WHENS.has(f):
 			var ok: bool = false
@@ -620,7 +763,7 @@ static func _cost_filter_ok(args: PackedStringArray, card: CardDef) -> bool:
 					ok = true
 			if not ok:
 				return false
-	return true
+	return tags == 0 or tag_hit
 
 
 ## Does a passive action with this target reach hero `h`?
@@ -956,14 +1099,14 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			if me.cores.size() == 1:
 				return {}
 			return {"player": player, "kind": "core", "options": Array(me.cores), "prompt": "Choose a core to deactivate"}
-		"DISCARD":
+		"DISCARD", "BOTTOM":
 			var who: int = player if target == "ME" else engine.other_slot(s, player)
 			var hand: PackedStringArray = s.player(who).hand
 			if hand.is_empty():
 				return {}
 			if hand.size() == 1:
 				return {}
-			return {"player": who, "kind": "card", "options": Array(hand), "prompt": "Discard a card"}
+			return {"player": who, "kind": "card", "options": Array(hand), "prompt": "Discard a card" if verb == "DISCARD" else "Put a card on the bottom of your deck"}
 		"DUEL_TOP":
 			# PICK: the winner chooses one of their heroes (in the battle, else on the stage); one needs no pick.
 			if args.has("PICK"):
@@ -993,8 +1136,29 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 	var me: HeroState = s.hero(str(ctx.get("hero", "")))
 	var player: int = JsonUtil.as_int(ctx.get("player", 0))
 	match verb:
-		"OWN_COST", "REQUIRE":
+		"OWN_COST", "REQUIRE", "HEAL_MOD":
 			return ""
+		"NEXT_CARD":
+			s.turn_mods.append({"kind": "next_card", "player": player, "tag": args[0].trim_prefix("{").trim_suffix("}"),
+				"stat": args[1].to_lower(), "amount": args[2].to_int(), "play": s.turn_plays.size(), "card": ctx.get("card", "")})
+		"WEAKEN_CARD":
+			# The card just played gives its hero up to n less Power, never less than nothing.
+			var weak: HeroState = s.hero(str(ctx.get("card_hero", "")))
+			var less: int = mini(args[0].to_int(), maxi(JsonUtil.as_int(ctx.get("pwr_gain", 0)), 0))
+			if weak != null and less > 0:
+				weak.add_bonus(weak.phase_bonus, "pwr", -less)
+				engine.note_card_bonus(s, "pwr", -less)
+				s.event("fx_buff", {"card": ctx.get("card", ""), "stat": "PWR", "amount": -less})
+		"BOTTOM":
+			var bp: PlayerState = s.player(player if target == "ME" else engine.other_slot(s, player))
+			if bp.hand.is_empty():
+				return ""
+			var bottom: String = str(answer) if answer != null else bp.hand[0]
+			if not bp.hand.has(bottom):
+				return "card not in hand"
+			bp.hand.remove_at(bp.hand.find(bottom))
+			bp.deck.append(bottom)
+			s.event("bottomed", {"player": bp.slot})
 		"BUFF":
 			if e.when == "PASSIVE":
 				return ""
@@ -1008,6 +1172,9 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 					continue
 				h.add_bonus(h.turn_bonus if turn else h.phase_bonus, args[0].to_lower(), n)
 				engine.clamp_hp(s, h)
+				# What a card in play adds to the card just played counts as that card's own bonus.
+				if target == "CARD_HERO" and not turn:
+					engine.note_card_bonus(s, args[0].to_lower(), n)
 			s.event("fx_buff", {"card": ctx.get("card", ""), "stat": args[0], "amount": amount})
 		"DAMAGE":
 			var n: int = engine.stat(s, me, "dmg") if args[0] == "DMG" and me != null else args[0].to_int()
@@ -1017,8 +1184,10 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 				engine.hero_damage(s, h, n, unblockable, me.id if me != null else "", str(ctx.get("card", "")))
 		"HEAL":
 			for h: HeroState in _targets(s, ctx, e, target, answer):
-				engine.heal(s, h, args[0].to_int())
-				s.event("heal", {"hero": h.id, "amount": args[0].to_int(), "hp": h.hp})
+				# FULL: to full HP ("heals to full HP"); else the amount and what HEAL_MOD passives add.
+				var amount: int = engine.max_hp(s, h) if args[0] == "FULL" else args[0].to_int() + heal_mod(s, ctx, h)
+				engine.heal(s, h, amount)
+				s.event("heal", {"hero": h.id, "amount": amount, "hp": h.hp})
 		"MOVE":
 			if target != "SELF":
 				var sub := FxEffect.new()
@@ -1402,6 +1571,11 @@ func _targets(s: GameState, ctx: Dictionary, e: FxEffect, target: String, answer
 		"SELF", "EQUIPPED":
 			if me != null:
 				out.append(me)
+		"CARD_HERO":
+			# The hero the card that set off a PLAYED line was played for.
+			var for_hero: HeroState = s.hero(str(ctx.get("card_hero", "")))
+			if for_hero != null:
+				out.append(for_hero)
 		"ENEMY", "FRIENDLY":
 			var options: Array = _hero_options(s, ctx, e, target, verb)
 			var id: String = str(answer) if answer != null else (str(options[0]) if not options.is_empty() else "")
