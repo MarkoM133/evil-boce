@@ -1223,24 +1223,64 @@ export function createEditor(env) {
 
   // Make token of… (Marko 2026-11-22: Magic Cylinder Gush was made as a card of its own): an unpublished Action becomes
   // a token of the card that makes it, with the next token code of that card; everything goes with it as when a code
-  // moves, and its old code is left empty.
-  async function makeToken() {
+  // moves, and its old code is left empty. The maker is picked from the cards (pictures, search); the card whose
+  // text says it makes this one comes first.
+  function makeToken() {
     if (!canPublish()) throw new Error('Making a token needs the shared folder open on a computer (Chrome or Edge).');
     if (ed.dirty) throw new Error('Save the card first, then make it a token.');
     const from = ed.id;
     const w = ed.drafts?.cards?.[from];
     if (!w?.new || w.token) throw new Error('Only a new card that is not a token yet can become one.');
     if (w.type !== 'Action') throw new Error('A token is always an Action card.');
-    const answer = prompt(`Which card makes ${w.name || from}? Its code, e.g. ${setOf(from)}-093 (or just 93).`, '');
-    if (answer == null || !answer.trim()) return;
-    const makerId = targetCode(setOf(from), answer) ?? answer.trim().toUpperCase();
-    const maker = allCards().find(c => c.id === makerId);
-    if (!maker) throw new Error(`There is no card ${makerId}.`);
-    if (maker.id === from) throw new Error('A card cannot make itself.');
-    if (maker.token || !MAKER_TYPES.includes(maker.type)) throw new Error(`${maker.name} (${maker.type}${maker.token ? ', a token' : ''}) cannot make tokens.`);
+    const esc = String(w.name ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const says = esc ? new RegExp(`\\b(?:create (?:an?|\\d+) ${esc} tokens?|return this to your hand as ${esc})\\b`, 'i') : null;
+    const pool = allCards().filter(c => c.id !== from && !c.token && !c.deleted && MAKER_TYPES.includes(c.type));
+    const named = pool.filter(c => says?.test(c.text ?? ''));
+    const rest = pool.filter(c => !named.includes(c)).sort((x, y) => (setOf(x.id) === setOf(from) ? 0 : 1) - (setOf(y.id) === setOf(from) ? 0 : 1)
+      || x.id.localeCompare(y.id, undefined, { numeric: true }));
+    let q = '';
+    const grid = h('div', { class: 'ce-combo-grid' });
+    const foot = h('div', { class: 'ce-maketoken-foot' });
+    const option = (c, mark) => {
+      const cv = h('canvas', { class: 'ce-combo-pic' });
+      thumbInto(cv, c, 120);
+      return h('button', { type: 'button', class: `ce-combo-option${mark ? ' current' : ''}`, title: `${c.name} · ${c.id}`, onclick: () => ask(c) },
+        cv, h('span', { class: 'small' }, c.name || c.id), h('span', { class: 'small muted' }, mark ? `${c.id} · says it makes it` : `${c.id} · ${c.type}`));
+    };
+    const fill = () => {
+      const hit = c => !q || `${c.name} ${c.id} ${c.text ?? ''}`.toLowerCase().includes(q);
+      const list = [...named.filter(hit).map(c => option(c, true)), ...rest.filter(hit).map(c => option(c, false))];
+      grid.replaceChildren(...(list.length ? list : [h('p', { class: 'small muted' }, 'No card matches.')]));
+    };
+    const close = () => { document.removeEventListener('keydown', onKey, true); veil.remove(); };
+    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+    // The picked card: say what happens, then do it (no browser dialog).
+    const ask = maker => {
+      const to = nextTokenId(maker.id);
+      foot.replaceChildren(
+        h('p', {}, h('strong', {}, w.name || from), ` becomes `, h('strong', {}, to), `, a token of ${maker.name || maker.id}. ${from} is left empty. Notes, history, intent, Claude's answers and the art go with it.`),
+        h('div', { class: 'ce-maketoken-btns' },
+          h('button', { type: 'button', class: 'primary', onclick: () => { close(); env.guard(() => makeTokenOf(from, w, maker)); } }, 'Make token'),
+          h('button', { type: 'button', class: 'ghost', onclick: () => foot.replaceChildren() }, 'Back')));
+    };
+    const input = h('input', { type: 'search', placeholder: 'Card that makes it: name, code or text…', 'aria-label': 'Search the card that makes this token',
+      oninput: e => { q = e.target.value.trim().toLowerCase(); fill(); } });
+    fill();
+    const panel = h('div', { class: 'ce-maketoken', role: 'dialog', 'aria-label': 'Make token of' },
+      h('div', { class: 'ce-maketoken-head' }, h('h3', {}, `Which card makes ${w.name || from}?`),
+        h('button', { type: 'button', class: 'ghost', onclick: close }, 'Cancel')),
+      input, grid, foot);
+    const veil = h('div', { class: 'ce-maketoken-veil', onclick: e => { if (e.target === veil) close(); } }, panel);
+    document.body.append(veil);
+    document.addEventListener('keydown', onKey, true);
+    input.focus();
+  }
+
+  async function makeTokenOf(from, w, maker) {
     await env.assertFresh();
     const fresh = await readDrafts();
     await readLocks();
+    if (!fresh.cards?.[from]) throw new Error(`${from} is no longer a draft.`);
     if (ed.locks[from] && ed.locks[from].who !== who()) throw new Error(`${ed.locks[from].who} has ${from} open. Try again after they close it.`);
     const combo = [...db().cards, ...Object.values(fresh.cards ?? {})].find(c => c?.type === 'Combo' && (c.ingredients ?? []).includes(from));
     if (combo) throw new Error(`${combo.name || combo.id} uses ${from}, and a token is never part of a combo.`);
@@ -1248,7 +1288,6 @@ export function createEditor(env) {
       if ((await fs.readText(store().root, path).catch(() => null)) != null) throw new Error(`Claude is still reading ${from}. Try again in a minute.`);
     }
     const to = nextTokenId(maker.id);
-    if (!confirm(`Make ${w.name || from} a token of ${maker.name} (${maker.id})?\n\nIt becomes ${to}, and ${from} is left empty.`)) return;
     await applyCodes(fresh, new Map([[from, to]]), { patch: new Map([[to, { token: true }]]), note: id => `made a token of ${maker.id} (was ${id})` });
     env.toast(`${w.name || from} is now the token ${to} of ${maker.name}.`);
     releaseLock();
