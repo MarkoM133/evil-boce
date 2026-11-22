@@ -527,7 +527,29 @@ async function saveEdits(id, edits) {
 
 // ---------- prikaz: okvir ----------
 
+// A field being typed in keeps the cursor when the page is drawn again (Marko 2026-11-22: the Sets search lost it as soon
+// as the grid refreshed, and so did every heartbeat redraw). The new field is found by what the old one looked like.
+function focusKey(el) {
+  if (!el || !el.matches?.('input:not([type=checkbox]):not([type=radio]):not([type=button]), textarea')) return null;
+  return { tag: el.tagName, type: el.getAttribute('type') ?? '', placeholder: el.getAttribute('placeholder') ?? '', label: el.getAttribute('aria-label') ?? '',
+    name: el.getAttribute('name') ?? '', start: el.selectionStart, end: el.selectionEnd };
+}
+
+function restoreFocus(k) {
+  if (!k || document.activeElement && document.activeElement !== document.body) return;
+  const match = [...document.querySelectorAll(k.tag)].find(el => (el.getAttribute('type') ?? '') === k.type && (el.getAttribute('placeholder') ?? '') === k.placeholder
+    && (el.getAttribute('aria-label') ?? '') === k.label && (el.getAttribute('name') ?? '') === k.name);
+  if (!match || match.disabled) return;
+  match.focus({ preventScroll: true });
+  try { if (k.start != null) match.setSelectionRange(Math.min(k.start, match.value.length), Math.min(k.end ?? k.start, match.value.length)); } catch {}
+}
+
 function render() {
+  const keep = focusKey(document.activeElement);
+  try { renderPage(); } finally { restoreFocus(keep); }
+}
+
+function renderPage() {
   const app = $('#app');
   if (state.store) {
     document.body.classList.remove('detail-open'); // pregled ga vrati kad nacrta detalj
