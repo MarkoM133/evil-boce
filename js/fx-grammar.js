@@ -16,6 +16,8 @@ export const VERBS = {
   TOKEN: [true, 1],
   // Pratilac (GDD 10, 2026-11-21): COMPANION na PLAY Assista, HIDE <domet> [energija], WANDER <n> na END.
   COMPANION: [false, 0], HIDE: [false, 1], WANDER: [false, 1],
+  // DQ1 (2026-11-22): TERRAIN <ime terena> mijenja teren stagea na kojem heroj stoji.
+  TERRAIN: [false, 1],
 };
 // TOKEN se ne stvara u End fazi (odmah bi nestao) ni pasivno (GDD 10, 2026-11-14).
 export const NO_TOKEN_WHENS = ['END', 'PASSIVE'];

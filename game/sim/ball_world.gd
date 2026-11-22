@@ -27,7 +27,7 @@ func friction_factor_at(_pos: Vector3) -> float:
 
 
 ## Extra horizontal acceleration on a rolling ball here (hill slope, wind), m/s^2 as (x, z).
-func push_at(_pos: Vector3) -> Vector2:
+func push_at(_pos: Vector3, _hill_only: bool = false) -> Vector2:
 	return Vector2.ZERO
 
 

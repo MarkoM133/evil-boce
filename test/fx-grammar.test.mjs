@@ -30,6 +30,8 @@ test('lines from fx-keywords.md read as the game reads them', () => {
     'POSTROLL OPTIONAL: HIDE 1 1',
     'POSTROLL OPTIONAL: HIDE 2',
     'END: WANDER 2',
+    'POSTROLL: TERRAIN FIRE',
+    'PASSIVE: STATUS SELF IGNORE_TERRAIN',
   ]) assert.equal(lineProblem(line), '', line);
 });
 

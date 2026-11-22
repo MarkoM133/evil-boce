@@ -29,8 +29,8 @@ func friction_factor_at(pos: Vector3) -> float:
 	return TerrainPhysics.friction(terrain, tuning, arena.hex_at(pos))
 
 
-func push_at(pos: Vector3) -> Vector2:
-	return TerrainPhysics.push(terrain, arena.map, tuning, Vector2(pos.x, pos.z))
+func push_at(pos: Vector3, hill_only: bool = false) -> Vector2:
+	return TerrainPhysics.push(terrain, arena.map, tuning, Vector2(pos.x, pos.z), hill_only)
 
 
 func height_at(pos: Vector3) -> float:

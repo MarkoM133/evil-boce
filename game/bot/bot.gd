@@ -600,6 +600,8 @@ func _aim(engine: RulesEngine, s: GameState, h: HeroState, positions: Dictionary
 	var wt: int = card.wt if card != null else 2
 	# The ground in force (Ice, Mud, hills, wind): throws are previewed over it.
 	var tm: TerrainMap = engine.terrain(s)
+	# A hero that ignores terrain rolls as on plain ground, hills aside.
+	var flat: bool = engine.ignores_terrain(s, h)
 	var m: HexMap = s.map()
 	var best_dir := Vector2(0, -1 if s.team_of(h.owner) == 0 else 1)
 	var best_power: float = 0.5
@@ -616,7 +618,7 @@ func _aim(engine: RulesEngine, s: GameState, h: HeroState, positions: Dictionary
 			dir = Vector2.from_angle(rng.randf_range(0.0, TAU))
 			dist = full * rng.randf_range(0.15, 1.0)
 		var power: float = clampf(dist / full, 0.05, 1.0)
-		var path: PackedVector2Array = TerrainPhysics.roll_path(tm, m, tuning, wt, from, dir, power)
+		var path: PackedVector2Array = TerrainPhysics.roll_path(tm, m, tuning, wt, from, dir, power, 1.0 / 60.0, flat)
 		if aimed and hard() and not tm.is_empty():
 			# Mud stops short, Ice and a tailwind carry on: Hard corrects the power to the target
 			# (on plain ground the distance grows with the power, so a ratio is close enough).
@@ -625,7 +627,7 @@ func _aim(engine: RulesEngine, s: GameState, h: HeroState, positions: Dictionary
 				if went < 0.05 or absf(went - dist) < 0.3:
 					break
 				power = clampf(power * dist / went, 0.05, 1.0)
-				path = TerrainPhysics.roll_path(tm, m, tuning, wt, from, dir, power)
+				path = TerrainPhysics.roll_path(tm, m, tuning, wt, from, dir, power, 1.0 / 60.0, flat)
 		var v: float = _score_path(engine, s, h, path)
 		if v > best_v:
 			best_v = v

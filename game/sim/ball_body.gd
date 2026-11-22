@@ -43,6 +43,8 @@ var _snap_tween: Tween
 ## ball that hit it goes on with planted_hitter_keep of its speed (playtest 2026-10-30). The
 ## scene sets it; a throw or a knockback lifts it (launch).
 var planted: bool = false
+## A ball that ignores terrain (set by whoever runs the game): Ice, Mud and Wind do nothing to it, a hill still does.
+var ignores_terrain: bool = false
 ## Velocity one and two physics steps back: by the time a contact is reported the step that
 ## made it is already solved, so the speed before the hit is the older one.
 var _prev_velocity: Vector3 = Vector3.ZERO
@@ -170,14 +172,14 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	# the ground, and only on rolling balls, so a ball at rest stays put.
 	v.y = minf(v.y, 0.0)
 	if motion == Motion.MOVING:
-		var push: Vector2 = world.push_at(state.transform.origin) * state.step
+		var push: Vector2 = world.push_at(state.transform.origin, ignores_terrain) * state.step
 		v.x += push.x
 		v.z += push.y
 	var speed: float = Vector2(v.x, v.z).length()
 	if speed <= 0.0:
 		state.linear_velocity = v
 		return
-	var drop: float = tuning.deceleration * world.friction_factor_at(state.transform.origin) * state.step
+	var drop: float = tuning.deceleration * (1.0 if ignores_terrain else world.friction_factor_at(state.transform.origin)) * state.step
 	var k: float = maxf(0.0, speed - drop) / speed
 	if planted and motion == Motion.MOVING:
 		# Only as fast as still stops within the planted distance from where it was bumped.

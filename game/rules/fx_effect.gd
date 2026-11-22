@@ -61,6 +61,7 @@ const VERBS: Dictionary[String, Array] = {
 	"HIDE": [false, 1],         # HIDE <reach> [energy]  (the Assist's companion: one hero of its player within reach hides inside, for that energy)
 	"WANDER": [false, 1],       # WANDER <n>  (END: the Assist's companion walks 1..n hexes in a direction drawn by lot)
 	"TOKEN": [true, 1],         # TOKEN <ME|OPP> <token card id> [n]  (that player gets n of that token beside the hand)
+	"TERRAIN": [false, 1],      # TERRAIN <Ice|Mud|Ramp|Wind|Fire>  (the stage SELF stands on gets that terrain)
 }
 ## A TOKEN is never made in the End phase (it would be gone at once) nor by a passive (GDD 10, 2026-11-14).
 const NO_TOKEN_WHENS: Array[String] = ["END", "PASSIVE"]

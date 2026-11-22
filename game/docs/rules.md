@@ -198,6 +198,20 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
 - Card Studio: New token on the maker's page (id = maker + number), violet frame and the hourglass mark from the
   renderer, tokens follow their card in a code move, never a combo ingredient.
 
+## Fire terrain, terrain from a card, ignoring terrain (decided and built 2026-11-22)
+
+- **Fire** is a fifth terrain (`Terrain.Type.FIRE`). It leaves the roll alone. As the End phase starts (`_set_phase`, before
+  the End effects, the energy claims and the win check) each hero standing on it takes `FIRE_DAMAGE` (1), through
+  `hero_damage` with `by: "fire"`, after a `burn` event.
+- A card can put a terrain on a stage (`TERRAIN <name>`): `StageState.terrain_override` replaces the stage card's own
+  terrain in `terrain()` (`stage_terrain`). It fades after a claim like any terrain.
+- A hero that **ignores terrain** (`PASSIVE: STATUS SELF IGNORE_TERRAIN`, `ignores_terrain`): Fire does not burn it and
+  the sim rolls its ball as on plain ground (`BallBody.ignores_terrain`, set by the match from the state; the bot's
+  `TerrainPhysics.roll_path` takes the same flag). A Ramp still moves it.
+- A status on a `PASSIVE` line holds while its card is in play: the engine asks `has_status(s, h, name)` (the hero's own
+  statuses, then `FxRuntime.passive_status`), so "X is immune to Knockback" on an Evolution now works.
+- Tests: `tests/test_dq1_fx.gd` (the DQ1 words are tested there on small cards written as card text).
+
 ## Scenario tests
 
 `tests/test_scenarios.gd` runs every `tests/scenarios/*.json` against the fixture catalog

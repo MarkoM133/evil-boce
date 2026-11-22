@@ -8,6 +8,8 @@ extends RefCounted
 const DECISION_DAMAGE: String = "damage"
 ## What a ring-out costs (Marko 2026-11-07): 1 DMG, or a card from the hand instead.
 const RING_OUT_DAMAGE: int = 1
+## Fire terrain: what a hero standing on it takes as the End phase starts.
+const FIRE_DAMAGE: int = 1
 ## The least a hit lands as after damage reduction (Marko 2026-11-08).
 const MIN_HIT: int = 1
 const DECISION_RETURN_CORE: String = "return_core"
@@ -1172,6 +1174,8 @@ func _set_phase(s: GameState, phase: String) -> void:
 		s.roll_snapshot.clear()
 		for h: HeroState in s.heroes:
 			s.roll_snapshot[h.id] = {"zone": h.zone, "hex": Hex.to_json(h.hex)}
+	if phase == GameState.PHASE_END:
+		_burn(s)
 	match phase:
 		GameState.PHASE_START, GameState.PHASE_PREROLL, GameState.PHASE_ROLL, GameState.PHASE_POSTROLL, \
 				GameState.PHASE_BATTLE, GameState.PHASE_END:
@@ -1750,7 +1754,7 @@ func pass_only(s: GameState, slot: int) -> bool:
 ## `by_team`: the team whose doing it is (a battle's winners, an effect's player), for the
 ## energy claim variant (end_move).
 func knockback(s: GameState, h: HeroState, dir: int, steps: int, by_team: int = -1) -> void:
-	if steps <= 0 or not h.is_on_map() or h.has_status("immune_kb"):
+	if steps <= 0 or not h.is_on_map() or has_status(s, h, "immune_kb"):
 		return
 	if s.settings.knockback == "physics":
 		s.pending_knockbacks.append({"hero": h.id, "dir": dir, "steps": steps, "by_team": by_team})
@@ -3139,8 +3143,48 @@ func terrain(s: GameState) -> TerrainMap:
 			continue
 		if st.is_claimed() and s.turn > st.terrain_until_turn:
 			continue
-		var card: CardDef = catalog.get_card(st.card_id)
-		if card == null or card.terrain == Terrain.Type.NONE:
+		var kind: Terrain.Type = stage_terrain(st)
+		if kind == Terrain.Type.NONE:
 			continue
-		tm.set_patch(st.center, card.terrain, s.map(), maxi(0, st.wind_dir))
+		tm.set_patch(st.center, kind, s.map(), maxi(0, st.wind_dir))
 	return tm
+
+
+## The stage's terrain: the one a card put on it, else its own.
+func stage_terrain(st: StageState) -> Terrain.Type:
+	if not st.terrain_override.is_empty():
+		return Terrain.parse(st.terrain_override)
+	var card: CardDef = catalog.get_card(st.card_id)
+	return card.terrain if card != null else Terrain.Type.NONE
+
+
+## The revealed, unclaimed stage this hero stands on; null when none.
+func stage_under(s: GameState, h: HeroState) -> StageState:
+	if h == null or not h.is_on_map():
+		return null
+	for st: StageState in s.stages:
+		if st.placed and st.revealed and not st.is_claimed() and st.covers(h.hex):
+			return st
+	return null
+
+
+## Does the hero carry this status now: one put on it, or one a passive in play gives it ("is immune to Knockback")?
+func has_status(s: GameState, h: HeroState, name: String) -> bool:
+	return h.has_status(name) or fx.passive_status(s, h, name.to_upper())
+
+
+## A hero that ignores terrain: Ice, Mud, Wind and Fire do nothing to it; a Ramp still does.
+func ignores_terrain(s: GameState, h: HeroState) -> bool:
+	return has_status(s, h, "ignore_terrain")
+
+
+## Fire terrain (Marko 2026-11-22): as the End phase starts, each hero standing on it takes 1 DMG.
+func _burn(s: GameState) -> void:
+	var tm: TerrainMap = terrain(s)
+	if not tm.has(Terrain.Type.FIRE):
+		return
+	for h: HeroState in s.heroes:
+		if not h.is_on_map() or tm.at(h.hex) != Terrain.Type.FIRE or ignores_terrain(s, h):
+			continue
+		s.event("burn", {"hero": h.id})
+		hero_damage(s, h, FIRE_DAMAGE, false, "fire")

@@ -1441,6 +1441,9 @@ func _sync() -> void:
 	_sync_companions()
 	for h: HeroState in state.heroes:
 		_sync_hero(h)
+		# A hero that ignores terrain (its card says so): the sim rolls its ball as on plain ground.
+		if _bodies.has(h.id):
+			_bodies[h.id].ignores_terrain = engine.ignores_terrain(state, h)
 	_rebuild_tokens()
 	# The bands first: they say which battle the table still shows (MatchHud.shown_battle).
 	hud.scan_log()

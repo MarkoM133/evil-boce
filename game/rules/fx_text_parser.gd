@@ -519,6 +519,16 @@ static func _match(low: String) -> Array[Dictionary]:
 		if not target.is_empty():
 			return [_act("STATUS", target, ["IMMUNE_KB", "TURN"])]
 
+	# "Flazzard ignores Terrain, except Ramp" / "The Terrain of a Stage your Hero stands on becomes Fire" (2026-11-22).
+	m = _rx("^(.*?)\\s*ignores? terrain,? except ramps?$").search(low)
+	if m != null:
+		var target: String = _subject(m.get_string(1))
+		if not target.is_empty():
+			return [_act("STATUS", target, ["IGNORE_TERRAIN"])]
+	m = _rx("^the terrain of (?:a|the) stage (?:your hero|self) stands on becomes (ice|mud|ramp|wind|fire)$").search(low)
+	if m != null:
+		return [_act("TERRAIN", "", [m.get_string(1).to_upper()])]
+
 	# Companions (GDD 10, 2026-11-21): "place Coco Jumbo next to your Hero", "A friendly Hero within 1 space may
 	# pay 1 Energy to hide inside" (the "may" is already taken off), "It moves up to 2 spaces in a random direction".
 	if _rx("^place .+ next to your hero$").search(low) != null:

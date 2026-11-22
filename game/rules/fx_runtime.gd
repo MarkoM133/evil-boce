@@ -398,6 +398,22 @@ func passive_stat(s: GameState, h: HeroState, key: String) -> int:
 	return total
 
 
+## A status a passive in play gives `h` ("STATUS SELF IMMUNE_KB", "STATUS SELF IGNORE_TERRAIN"): it holds while the
+## card is in play, whatever duration the line names.
+func passive_status(s: GameState, h: HeroState, name: String) -> bool:
+	for src: Dictionary in sources(s):
+		var card: CardDef = src["card"]
+		var ctx: Dictionary = _ctx_of(src)
+		for e: FxEffect in card.effects_when("PASSIVE"):
+			for a: Dictionary in e.actions:
+				if str(a["verb"]) != "STATUS":
+					continue
+				var args: PackedStringArray = a["args"]
+				if args[0] == name and _passive_applies(s, src, str(a["target"]), h) and cond_ok(s, ctx, e):
+					return true
+	return false
+
+
 ## Damage-taken change for `h`: passive DAMAGE_MOD plus this turn's.
 func damage_mod(s: GameState, h: HeroState) -> int:
 	var total: int = 0
@@ -750,6 +766,11 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			if near.size() == 1:
 				return {}
 			return {"player": player, "kind": "hero", "options": near.map(func(h: HeroState) -> Variant: return h.id), "prompt": "Who hides inside"}
+		"TERRAIN":
+			if engine.stage_under(s, me) == null:
+				return {"error": "your hero is not on a stage"}
+			if Terrain.parse(args[0]) == Terrain.Type.NONE:
+				return {"error": "unknown terrain"}
 		"WALL":
 			var hexes: Array = _wall_options(s, ctx, e)
 			if hexes.is_empty():
@@ -965,6 +986,8 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 					dir = (dir + 3) % 6
 				engine.knockback(s, h, dir, args[0].to_int(), s.team_of(player))
 		"STATUS":
+			if e.when == "PASSIVE":
+				return ""
 			var turns: int = 1 if args.size() < 2 or args[1] == "TURN" else args[1].to_int()
 			for h: HeroState in _targets(s, ctx, e, target, answer):
 				h.statuses[args[0].to_lower()] = turns
@@ -1000,6 +1023,12 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			engine.enter_shelter(s, who, comp)
 		"WANDER":
 			engine.wander_companion(s, _own_companion(s, ctx), args[0].to_int())
+		"TERRAIN":
+			var under: StageState = engine.stage_under(s, me)
+			if under == null:
+				return "your hero is not on a stage"
+			under.terrain_override = Terrain.name_of(Terrain.parse(args[0]))
+			s.event("terrain", {"stage": under.id, "terrain": under.terrain_override, "card": ctx.get("card", "")})
 		"WALL":
 			var w := WallState.new()
 			w.id = "wall:%d" % (s.walls.size() + 1)

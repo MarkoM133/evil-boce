@@ -14,7 +14,7 @@ class FlatWorld:
 	func friction_factor_at(_pos: Vector3) -> float:
 		return factor
 
-	func push_at(pos: Vector3) -> Vector2:
+	func push_at(pos: Vector3, _hill_only: bool = false) -> Vector2:
 		var p: Vector2 = wind
 		if hill_r > 0.0:
 			var off := Vector2(pos.x - hill_at.x, pos.z - hill_at.z)
