@@ -325,6 +325,9 @@ var target_slot: int = -1
 var picks: Dictionary = {}
 ## Start: whether each local player's pick rolls (slot -> bool; missing = rolls).
 var pick_rolls: Dictionary = {}
+## Start phase, a hero hidden in a companion: the hex it comes out on, per slot (Marko 2026-11-22; the match sets it
+## from a click on a lit hex).
+var pick_exits: Dictionary = {}
 var _piles: VBoxContainer
 var _prompt_card: PanelContainer
 ## The graveyard pile, left of the hand.
@@ -2208,9 +2211,13 @@ func _refresh_prompt() -> void:
 				else:
 					var must_roll: bool = picked.zone == HeroState.ZONE_STRIP
 					var rolls: bool = must_roll or pick_rolls.get(slot, true) == true
+					# Hidden in a companion: it comes out first, where a click on a lit hex says.
+					var out_where: String = ""
+					if picked.is_hidden() and engine.shelter_exits(state, picked).size() > 1:
+						out_where = " Click a lit hex where it comes out." if not pick_exits.has(slot) else " It comes out on the marked hex; click another lit one to change."
 					_start_card(("%s · " % who.to_upper() if many else "") + "START · PICK A HERO",
 						"%s %s" % [hero_name(picked), "rolls into the arena" if rolls else "stays where it is"],
-						"Click another hero to change." + (" In the start zone a hero must roll." if must_roll else ""))
+						"Click another hero to change." + (" In the start zone a hero must roll." if must_roll else "") + out_where)
 					var row := HBoxContainer.new()
 					row.add_theme_constant_override("separation", 6)
 					row.size_flags_horizontal = Control.SIZE_FILL

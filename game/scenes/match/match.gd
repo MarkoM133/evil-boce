@@ -604,9 +604,21 @@ func _build_hud() -> void:
 		_apply(Move.make(Move.PLAY_CARD, slot, data)))
 	hud.targeting_changed.connect(_refresh_target_fx)
 	hud.pick_confirmed.connect(func(slot: int, hero_id: String, roll: bool) -> void:
+		var data: Dictionary = {"hero": hero_id, "roll": roll}
+		# A hero hidden in a companion comes out where its player clicked (Marko 2026-11-22); with one exit, there.
+		var hid: HeroState = state.hero(hero_id)
+		if hid != null and hid.is_hidden():
+			var exits: Array[Vector2i] = engine.shelter_exits(state, hid)
+			if exits.size() > 1 and not (hud.pick_exits.has(slot) and exits.has(hud.pick_exits[slot])):
+				hud.toast("Click a lit hex where %s comes out" % hud.hero_name(hid), Palette.GOLD)
+				return
+			if not exits.is_empty():
+				var at: Vector2i = hud.pick_exits.get(slot, exits[0])
+				data["hex"] = Hex.to_json(at)
 		hud.picks.erase(slot)
 		hud.pick_rolls.erase(slot)
-		_apply(Move.make(Move.SELECT, slot, {"hero": hero_id, "roll": roll})))
+		hud.pick_exits.erase(slot)
+		_apply(Move.make(Move.SELECT, slot, data)))
 	hud.battle_cam_pressed.connect(_toggle_battle_cam)
 	hud.battle_resolved.connect(_on_battle_resolved)
 	hud.shown_battle_changed.connect(_on_shown_battle_changed)
@@ -1794,6 +1806,24 @@ func _hop(id: String, at: Vector3, into: bool) -> void:
 			v.settle())
 
 
+## A player at this screen who picked a hero hidden in a companion in the Start phase, with more than one hex to come
+## out on: {slot, hero, exits}, else {}.
+func _exit_choice() -> Dictionary:
+	if state == null or state.phase != GameState.PHASE_START or _replay != null:
+		return {}
+	for slot: int in hud.local_slots:
+		if bots.has(slot) or state.active.has(slot):
+			continue
+		var h: HeroState = state.hero(str(hud.picks.get(slot, "")))
+		if h == null or not h.is_hidden():
+			hud.pick_exits.erase(slot)
+			continue
+		var exits: Array[Vector2i] = engine.shelter_exits(state, h)
+		if exits.size() > 1:
+			return {"slot": slot, "hero": h.id, "exits": exits}
+	return {}
+
+
 ## The HIDE ability of this companion that a player at this screen (not a bot) may use now, or {}.
 func _hide_ability(c: CompanionState) -> Dictionary:
 	if _replay != null or not hud.local_slots.has(c.owner) or bots.has(c.owner) or state.is_over():
@@ -2386,6 +2416,15 @@ func _refresh_range() -> void:
 		cells.clear()
 		for cid: String in hud.choice_cores:
 			cells.append(state.core(cid).hex)
+	elif not _exit_choice().is_empty():
+		var ex: Dictionary = _exit_choice()
+		var exits: Array[Vector2i] = ex["exits"]
+		cells.clear()
+		cells.append_array(exits)
+		var slot_x: int = ex["slot"]
+		if hud.pick_exits.has(slot_x):
+			marked.append(hud.pick_exits[slot_x])
+		key += "exit:%s:%s" % [str(exits), str(hud.pick_exits.get(slot_x, ""))]
 	elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hex":
 		key += "choose:%d" % state.pending.size()
 		cells.clear()
@@ -3274,6 +3313,19 @@ func _on_left(pressed: bool) -> void:
 					if c != null and c.hex == at:
 						_apply(Move.make(Move.CHOOSE, hud.choice_slot, {"value": cid}))
 						return
+		# A hidden hero picked in the Start phase: a click on a lit hex says where it comes out (Marko 2026-11-22).
+		var ex: Dictionary = _exit_choice()
+		if not ex.is_empty():
+			var gx: Variant = _ground_under_mouse()
+			if gx != null:
+				var gxp: Vector3 = gx
+				var at_x: Vector2i = arena.hex_at(gxp)
+				var exits_x: Array[Vector2i] = ex["exits"]
+				if exits_x.has(at_x):
+					hud.pick_exits[ex["slot"]] = at_x
+					_range_key = "-"
+					hud.refresh()
+					return
 		# A companion a hero of this screen may hide in now (its gold ring): the click is that ability.
 		var comp_id: String = _companion_under_mouse()
 		if not comp_id.is_empty() and _hide_by_click(comp_id):
@@ -3952,6 +4004,32 @@ func demo_companion_eat() -> void:
 		_comp_bodies[c.id].global_position = _bochet.to_global(Vector3(1.0, 0.3, _bochet._ext.y + 0.6))
 		cam.reset_view()
 	_companion_off(c.id)
+
+
+## The Start phase with the hidden hero picked: the hexes it may come out on lit; then one of them clicked.
+func demo_companion_exit() -> void:
+	var c: CompanionState = state.companion_of(0)
+	if c == null or c.inside.is_empty():
+		return
+	state.phase = GameState.PHASE_START
+	state.turn += 1
+	state.active = {}
+	state.pending.clear()
+	hud.picks[0] = c.inside
+	cam.focus(arena.hex_center(c.hex), 9.0)
+	_range_key = "-"
+	_sync()
+
+
+func demo_companion_exit_pick() -> void:
+	var ex: Dictionary = _exit_choice()
+	if ex.is_empty():
+		print("demo exit: no choice")
+		return
+	var exits: Array[Vector2i] = ex["exits"]
+	hud.pick_exits[0] = exits[2]
+	_range_key = "-"
+	hud.refresh()
 
 
 ## The same over a long edge: a hand from below takes it into the dark, and he gulps.
