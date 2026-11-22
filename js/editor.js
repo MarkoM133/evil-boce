@@ -17,7 +17,7 @@ import { toTokens, toWords, headAt, withHeadAt, stripTerrain, withTerrain, coreB
 import { deckPool, heroEvolutions, setTraits } from './deck.js';
 import { decorate, comboProblems, touchedIngredients, INGREDIENT_TYPES } from './combo.js';
 import { planMove, targetCode, renameKeys, moveDrafts } from './card-move.js';
-import { artRefs, unusedArt, previousArtOf, artToDrop } from './art-files.js';
+import { artRefs, unusedArt, previousArtOf, artToDrop, artCode, artMoves } from './art-files.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -1168,7 +1168,19 @@ export function createEditor(env) {
     }
     const others = moved.filter(id => id !== from).map(id => `${id} → ${plan.get(id)}`);
     if (!confirm(`Move ${from} to ${to}?${others.length ? `\n\nThese move one place:\n${others.join('\n')}` : ''}`)) return;
+    // The art goes along (2026-11-22: "Previous art" showed the art of the card that held the code before): every art
+    // file saved under the code a moved card's art carries gets the new code, in two steps (a card moving into a code
+    // never meets the files of the one moving out), and the drafts point at the new names.
+    const codes = new Map();
+    for (const id of moved) codes.set(artCode(fresh.cards[id]?.art) ?? id, plan.get(id));
+    const renames = artMoves(await artFiles(true), codes);
+    // (Art paths are under data/: "art/DQ1-005.ab12.png" is data/art/DQ1-005.ab12.png in the folder.)
+    for (const [a, b] of renames) await fs.moveFile(store().root, `data/${a}`, `data/${b}.moving`);
+    for (const [, b] of renames) await fs.moveFile(store().root, `data/${b}.moving`, `data/${b}`);
+    ed.artList = null;
+    const renamed = new Map(renames);
     fresh.cards = moveDrafts(fresh.cards, plan);
+    for (const d of Object.values(fresh.cards)) if (d?.art && renamed.has(d.art)) d.art = renamed.get(d.art);
     await writeJson(DRAFTS_PATH, fresh);
     ed.drafts = fresh;
     for (const path of [NOTES_PATH, HISTORY_PATH, INTENT_PATH]) {
@@ -2543,7 +2555,7 @@ export function createEditor(env) {
     if (w.type === 'Core' || w.new && !w.art) return null;
     const row = h('div', { class: 'ce-prev-art', hidden: true });
     unusedArtNow().then(async unused => {
-      const list = previousArtOf(w.id, unused).filter(p => p !== w.art).slice(-4);
+      const list = previousArtOf(w.id, unused, w.art).filter(p => p !== w.art).slice(-4);
       if (!list.length || !row.isConnected || ed.work !== w) return;
       const thumbs = [];
       for (const p of list) {

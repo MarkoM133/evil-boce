@@ -22,9 +22,29 @@ export function unusedArt(paths, refs) {
   return paths.filter(p => IMG.test(p) && !refs.has(p)).sort();
 }
 
-// Prijašnji art jedne karte: nekorišteni art s njezinim kodom (bez amblema).
-export function previousArtOf(id, unused) {
-  return unused.filter(p => p.startsWith(`art/${id}.`));
+// Kod pod kojim je art spremljen ("art/DQ1-012.ab12cd34.png" → "DQ1-012"), ili null (amblemi, drugo).
+export function artCode(path) {
+  const m = /^art\/([A-Za-z]{2,4}\d{1,2}-\d{3}(?:-\d+)?)\.[^/]+$/.exec(String(path ?? ''));
+  return m ? m[1] : null;
+}
+
+// Prijašnji art jedne karte: nekorišteni art spremljen pod istim kodom kao njezin sadašnji art, inače pod njezinim
+// kodom (bez amblema). Karta pomaknuta na drugi kod prije 22. 11. 2026. zadržala je art pod starim kodom, pa bi se
+// po kodu karte nudio art karte koja je prije bila na tom kodu (Tarik, 2026-11-22).
+export function previousArtOf(id, unused, art = null) {
+  const code = artCode(art) ?? id;
+  return unused.filter(p => p.startsWith(`art/${code}.`));
+}
+
+// Kad se kodovi pomiču: svaka datoteka arta spremljena pod kodom iz `codes` (Map stari kod → novi kod) dobiva novi
+// kod u imenu. Vraća [[stara putanja, nova putanja]].
+export function artMoves(files, codes) {
+  const out = [];
+  for (const p of files ?? []) {
+    const c = artCode(p);
+    if (c && codes.has(c)) out.push([p, p.replace(`art/${c}.`, `art/${codes.get(c)}.`)]);
+  }
+  return out;
 }
 
 // Što Objava briše: ono što je bilo nekorišteno već pri prošloj Objavi i još je nekorišteno.
