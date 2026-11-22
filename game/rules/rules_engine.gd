@@ -2493,9 +2493,9 @@ func _note_played(s: GameState, slot: int, cid: String, hero: String, bonus: Dic
 
 ## Combo (2026-11-07; Marko 2026-11-21: a bonus on top, not a replacement): two cards of a combo's pair played by
 ## one player in the same battle. Both resolve as ever; right after the second, its player may pay the combo's
-## extra energy and the Combo card's effect comes on top of them. Two different cards go to two different heroes of
-## the player in the battle (an Assist has no hero and pairs with any); two copies of the same card may also be
-## played for one hero. The decision, or {} when no combo is on offer.
+## extra energy and the Combo card's effect comes on top of them. The Combo card says who plays them (Marko
+## 2026-11-22): a team combo two different heroes, a solo combo one hero both. The decision, or {} when no combo
+## is on offer.
 func _combo_offer(s: GameState, slot: int, cid: String) -> Dictionary:
 	if s.phase != GameState.PHASE_BATTLE or s.battle_index < 0 or s.battle_index >= s.battles.size():
 		return {}
@@ -2514,7 +2514,7 @@ func _combo_offer(s: GameState, slot: int, cid: String) -> Dictionary:
 		var other_card: CardDef = catalog.get_card(other)
 		if other_card != null and other_card.token:
 			continue
-		var pair: Array[Dictionary] = _combo_pair(s, slot, other, cid)
+		var pair: Array[Dictionary] = _combo_pair(s, slot, other, cid, combo.combo_kind == "solo")
 		if pair.is_empty() or s.player(slot).energy < combo.extra_cost:
 			continue
 		if not _combo_payable(s, slot, combo, _combo_heroes(s, pair)):
@@ -2528,8 +2528,10 @@ func _combo_offer(s: GameState, slot: int, cid: String) -> Dictionary:
 
 ## The two played cards a combo of `first_id` and `second_id` would be made of now: [the earlier one, the one
 ## played last], records of this battle's card round not yet in a combo; [] when they are not both there.
-## Different cards need two heroes of the player in the battle and may not be on the same hero.
-func _combo_pair(s: GameState, slot: int, first_id: String, second_id: String) -> Array[Dictionary]:
+## A team combo (Marko 2026-11-22): the two cards were played for two different heroes of the player in the battle
+## (an Assist has no hero and pairs with any). A solo combo: both were played for the same hero (an Assist goes with
+## the other card's hero). The same holds when the pair is two copies of one card.
+func _combo_pair(s: GameState, slot: int, first_id: String, second_id: String, solo: bool = false) -> Array[Dictionary]:
 	var none: Array[Dictionary] = []
 	var played: Array = JsonUtil.as_array(s.battles[s.battle_index].get("played", []))
 	var last: int = -1
@@ -2541,8 +2543,7 @@ func _combo_pair(s: GameState, slot: int, first_id: String, second_id: String) -
 	if last < 0:
 		return none
 	var second: Dictionary = JsonUtil.as_dict(played[last])
-	var same: bool = first_id == second_id
-	if not same and card_context_heroes(s, slot).size() < 2:
+	if not solo and card_context_heroes(s, slot).size() < 2:
 		return none
 	for i: int in played.size():
 		if i == last:
@@ -2552,7 +2553,8 @@ func _combo_pair(s: GameState, slot: int, first_id: String, second_id: String) -
 			continue
 		var a: String = str(r.get("hero", ""))
 		var b: String = str(second.get("hero", ""))
-		if not same and not a.is_empty() and a == b:
+		# Team: not both on one hero. Solo: not on two different heroes.
+		if not a.is_empty() and not b.is_empty() and (a == b) != solo:
 			continue
 		var out: Array[Dictionary] = [r, second]
 		return out
@@ -2589,7 +2591,7 @@ func _accept_combo(s: GameState, slot: int, d: Dictionary, option: Dictionary) -
 		return "that combo cannot be made now"
 	if p.energy < combo.extra_cost:
 		return "not enough energy (%d, costs %d)" % [p.energy, combo.extra_cost]
-	var pair: Array[Dictionary] = _combo_pair(s, slot, str(option.get("with", "")), cid)
+	var pair: Array[Dictionary] = _combo_pair(s, slot, str(option.get("with", "")), cid, combo.combo_kind == "solo")
 	if pair.is_empty():
 		return "the other card of the combo is no longer in this battle"
 	var heroes: Array[HeroState] = _combo_heroes(s, pair)

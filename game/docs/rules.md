@@ -143,9 +143,11 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
   and resolves as ever; then, when the first card was played this battle by the same player, is not in a
   combo yet, and the player can pay X, the move puts `combo_offer {player, card, hero, combos: [{id, with,
   with_hero, extra}]}` on `pending`, behind the choices the card itself asked for.
-- The pair: two different cards go to two different heroes of the player, who has two or more heroes in the
-  battle (an Assist pairs with any). Two copies of the same card are a pair too (`ingredients: [id, id]`),
-  and one hero may play both.
+- The pair, by the Combo card's kind (`comboKind`, Marko 2026-11-22; `CardDef.combo_kind`): a **team** combo (the
+  default) is two cards played for two different heroes of the player, who has two or more heroes in the battle
+  (an Assist pairs with any); a **solo** combo is both cards played for the same hero. The same holds when the
+  pair is two copies of one card (`ingredients: [id, id]`). A solo combo so works for one hero, a team combo for
+  both.
 - `choose {value: combo id}` accepts: X is paid, both records are marked used, event `combo`, and the Combo
   card comes on top: its stat boxes go on both heroes the cards were played for (one hero, when it played
   both), and its `BATTLE:` lines run like an Action's. A line that speaks of "your Hero" (target SELF,
@@ -155,7 +157,7 @@ above holds (`energy_claims()` is true for it too) except how energy goes in
   HP than it takes) is not offered. `choose {value: ""}` or `pass` declines: nothing changes.
 - Same combo again: any time the condition holds. A card may be in several combos; all that fit are offered.
 - `ALL_FRIENDLY_IN_BATTLE`: every hero of the card's player in the battle the context names, else the one
-  being fought. Scenarios 57, 58, 87 (two copies, one hero, tag bonus) and 88 (both heroes); the bot takes the first combo on offer.
+  being fought. Scenarios 57, 58, 87 (a solo combo: two copies, one hero, tag bonus) and 88 (a team combo: both heroes); the bot takes the first combo on offer.
 - Match scene (no rules): the offer dialog shows the combo card above its buttons. Event `combo` shows the
   combo card over the screen (`MatchHud._combo_show`, queued with the bands; a click or Enter skips it).
   The pause menu's right side has tabs MATCH LOG and COMBO LIST (when there are combos); COMBO LIST shows the

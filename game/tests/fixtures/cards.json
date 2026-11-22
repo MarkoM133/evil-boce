@@ -1172,7 +1172,25 @@
         "dmg": 2
       },
       "text": "Battle Phase: As an additional cost, your Hero takes 2 DMG.\n{Alpha} Bonus: Do not pay the additional cost.",
-      "fx": "BATTLE: COST_DAMAGE 2\nBATTLE INSTEAD BONUS {Alpha}: COST_DAMAGE 0"
+      "fx": "BATTLE: COST_DAMAGE 2\nBATTLE INSTEAD BONUS {Alpha}: COST_DAMAGE 0",
+      "comboKind": "solo"
+    },
+    {
+      "id": "TC-004",
+      "name": "Twin Jab Together",
+      "type": "Combo",
+      "ingredients": [
+        "TF-040",
+        "TF-040"
+      ],
+      "extraCost": 1,
+      "introducedIn": "TA",
+      "bonus": {
+        "dmg": 2
+      },
+      "text": "Battle Phase: As an additional cost, your Hero takes 2 DMG.\n{Alpha} Bonus: Do not pay the additional cost.",
+      "fx": "BATTLE: COST_DAMAGE 2\nBATTLE INSTEAD BONUS {Alpha}: COST_DAMAGE 0",
+      "comboKind": "team"
     }
   ]
 }

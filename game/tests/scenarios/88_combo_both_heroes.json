@@ -1,5 +1,5 @@
 {
-  "name": "combo on top (Marko 2026-11-21): the Combo card's stat boxes and its \"your Hero\" go to both heroes its cards were played for; each pays the additional cost unless its bonus says otherwise",
+  "name": "team combo (Marko 2026-11-22): two different heroes play one card of the pair each; the Combo card's stat boxes and its \"your Hero\" go to both, and each pays the additional cost unless its bonus says otherwise",
   "steps": [
     {
       "setup": {
@@ -108,14 +108,18 @@
         },
         "pending.0.type": "combo_offer",
         "pending.0.hero": "p0:TA-002",
-        "pending.0.combos.0.with_hero": "p0:TA-001"
+        "pending.0.combos.0.with_hero": "p0:TA-001",
+        "pending.0.combos": {
+          "$size": 1
+        },
+        "pending.0.combos.0.id": "TC-004"
       }
     },
     {
       "move": {
         "type": "choose",
         "player": 0,
-        "value": "TC-003"
+        "value": "TC-004"
       }
     },
     {

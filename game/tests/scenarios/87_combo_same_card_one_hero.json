@@ -1,5 +1,5 @@
 {
-  "name": "combo of two copies of one card (Marko 2026-11-21): one hero may play both; the Combo card comes on top, and a tag bonus ({Alpha}) takes its additional cost away",
+  "name": "solo combo (Marko 2026-11-22): one hero plays both cards of the pair (here two copies of one card) and it alone gets the Combo card; a tag bonus ({Alpha}) takes its additional cost away",
   "steps": [
     {
       "setup": {
@@ -122,7 +122,10 @@
         "pending.0.combos.0.with": "TF-040",
         "pending.0.combos.0.with_hero": "p0:TA-001",
         "heroes.p0:TA-001.phase_bonus.pwr": 2000,
-        "players.p0.energy": 2
+        "players.p0.energy": 2,
+        "pending.0.combos": {
+          "$size": 1
+        }
       }
     },
     {
