@@ -13,6 +13,13 @@ var thumbs: Dictionary[String, String] = {}
 var heroes: Array[HeroDef] = []
 ## Card id -> its standee sprite (heroes and evolutions that have one).
 var sprite_paths: Dictionary[String, String] = {}
+## The art of each card (data/art/…) and how the card crops it ({x, y, zoom}): a companion's token shows it.
+var art_paths: Dictionary[String, String] = {}
+var art_crops: Dictionary[String, Dictionary] = {}
+## A card's subtype (Companion), and the rule terms of data/terms.json ({name, text, subtype?}), for the
+## box beside a card (Marko 2026-11-21).
+var subtypes: Dictionary[String, String] = {}
+var terms: Array[Dictionary] = []
 ## Rules-side view of the same cards (placeholder fx applied).
 var catalog: CardCatalog = CardCatalog.new()
 var error: String = ""
@@ -41,6 +48,10 @@ func data_dir() -> String:
 func parse(text: String) -> void:
 	heroes.clear()
 	sprite_paths.clear()
+	art_paths.clear()
+	art_crops.clear()
+	subtypes.clear()
+	terms.clear()
 	var json := JSON.new()
 	if json.parse(text) != OK or not json.data is Dictionary:
 		error = "cards.json is not valid JSON (line %d)" % json.get_error_line()
@@ -71,12 +82,62 @@ func parse(text: String) -> void:
 		var image: String = str(card.get("image", ""))
 		if not image.is_empty():
 			thumbs[str(card.get("id", ""))] = data_dir().path_join("thumbs/%s.jpg" % image.get_file().get_basename())
+		var art: String = str(card.get("art", ""))
+		if not art.is_empty():
+			art_paths[str(card.get("id", ""))] = data_dir().path_join(art)
+			art_crops[str(card.get("id", ""))] = JsonUtil.as_dict(card.get("artCrop", {}))
+		if not str(card.get("subtype", "")).is_empty():
+			subtypes[str(card.get("id", ""))] = str(card.get("subtype", ""))
 		var sprite: String = str(card.get("sprite", ""))
 		if not sprite.is_empty():
 			sprite_paths[str(card.get("id", ""))] = data_dir().path_join(sprite)
 		if str(card.get("type", "")) == "Hero":
 			heroes.append(HeroDef.from_card(card, data_dir()))
 	heroes.sort_custom(func(a: HeroDef, b: HeroDef) -> bool: return a.id < b.id)
+	var terms_path: String = data_dir().path_join("terms.json")
+	if FileAccess.file_exists(terms_path):
+		for t: Variant in JsonUtil.as_array(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(terms_path))).get("terms", [])):
+			var term: Dictionary = JsonUtil.as_dict(t)
+			if not str(term.get("name", "")).strip_edges().is_empty():
+				terms.append(term)
+
+
+## The card's own art (not the rendered card), or null.
+func art_of(card_id: String) -> Texture2D:
+	return texture(art_paths[card_id]) if art_paths.has(card_id) else null
+
+
+## The rule terms a card uses (Marko 2026-11-21): its subtype, then each term its text names (whole words, any
+## case, longest first so "hide inside" is not also "hide"), each once: [{name, text}].
+func terms_of(card_id: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var card: CardDef = catalog.get_card(card_id)
+	if card == null:
+		return out
+	var sub: String = str(subtypes.get(card_id, "")).to_lower()
+	var words: Array[Dictionary] = []
+	for t: Dictionary in terms:
+		if JsonUtil.as_bool(t.get("subtype", false)):
+			if not sub.is_empty() and str(t["name"]).to_lower() == sub:
+				out.append(t)
+		else:
+			words.append(t)
+	words.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a["name"]).length() > str(b["name"]).length())
+	var text: String = " %s " % card.text.to_lower()
+	for t: Dictionary in words:
+		var rx := RegEx.create_from_string("(?<![\\p{L}\\p{N}])%s(?![\\p{L}\\p{N}])" % _rx_escape(str(t["name"]).to_lower()))
+		var m: RegExMatch = rx.search(text)
+		if m != null:
+			out.append(t)
+			text = text.substr(0, m.get_start()) + " ".repeat(m.get_end() - m.get_start()) + text.substr(m.get_end())
+	return out
+
+
+static func _rx_escape(s: String) -> String:
+	var out: String = ""
+	for ch: String in s:
+		out += ("\\" + ch) if ".*+?^${}()|[]\\/".contains(ch) else ch
+	return out
 
 
 func is_ok() -> bool:

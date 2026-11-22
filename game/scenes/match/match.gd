@@ -119,6 +119,19 @@ var _pulse_t: float = 0.0
 var _line_mat: StandardMaterial3D
 var _bodies: Dictionary[String, BallBody] = {}
 var _views: Dictionary[String, BallView] = {}
+## Companions on the table (GDD 10, Marko 2026-11-21): a light ball each, so balls push them as they push each
+## other, with a CompanionToken on it; the card each came from (a new one replaces the old under the same id).
+var _comp_bodies: Dictionary[String, BallBody] = {}
+var _comp_tokens: Dictionary[String, CompanionToken] = {}
+var _comp_cards: Dictionary[String, String] = {}
+## Tokens that left the table during a roll: Evil Bochet has them now (or they fell into the dark).
+var _comp_gone: Dictionary[String, bool] = {}
+## Heroes hidden in a companion and the hex of that companion (they come out from there); and the pictures
+## that hop in or out now, which the frame update leaves alone.
+var _hidden: Dictionary[String, Vector2i] = {}
+var _hopping: Dictionary[String, bool] = {}
+## Screenshot helper demo_companion_push: its roll is only printed, and the token's own result applied.
+var _demo_outcome: bool = false
 var _core_tokens: Dictionary[String, Node3D] = {}
 var _hovered: String = ""
 ## The flags of claimed stages by stage id (_sync_flags), and whether the table has been drawn once (a
@@ -1229,6 +1242,12 @@ func _on_net_balls(positions: Dictionary) -> void:
 		hud.rolling = true
 		hud.refresh()
 	for id: Variant in positions:
+		if _comp_bodies.has(str(id)):
+			var cp: Array = JsonUtil.as_array(positions[id])
+			if cp.size() == 3:
+				_comp_bodies[str(id)].freeze = true
+				_net_to[str(id)] = Vector3(JsonUtil.as_float(cp[0]), JsonUtil.as_float(cp[1]), JsonUtil.as_float(cp[2]))
+			continue
 		if not _bodies.has(str(id)):
 			continue
 		var p: Array = JsonUtil.as_array(positions[id])
@@ -1407,6 +1426,7 @@ func _sync() -> void:
 	for w: WallState in state.walls:
 		for a: Vector2i in w.hexes:
 			world.blocked[a] = true
+	_sync_companions()
 	for h: HeroState in state.heroes:
 		_sync_hero(h)
 	_rebuild_tokens()
@@ -1427,6 +1447,8 @@ func _sync() -> void:
 		hud.rolling = net_role == "client" and (state.awaiting_roll or not state.pending_knockbacks.is_empty())
 		hud.refresh()
 		for b: BallBody in _bodies.values():
+			b.freeze = true
+		for b: BallBody in _comp_bodies.values():
 			b.freeze = true
 		return
 	if state.awaiting_roll and not _runner.is_running() and not _launching:
@@ -1480,6 +1502,36 @@ func _sync_hero(h: HeroState) -> void:
 			else:
 				b.visible = false
 		return
+	# Hidden in a companion (GDD 10, 2026-11-21): off the table, its picture above the token. It hops in, and out
+	# again when it is activated (or the companion is gone).
+	if h.is_hidden():
+		var comp: CompanionState = state.shelter_of(h.id)
+		var at: Vector2i = comp.hex if comp != null else h.hex
+		var going_in: bool = not _hidden.has(h.id)
+		_hidden[h.id] = at
+		if going_in:
+			b.set_in_play(false)
+			world.bodies.erase(b)
+			if animate and b.visible:
+				_hop(h.id, arena.hex_center(at), true)
+				return
+		if not _hopping.has(h.id):
+			b.visible = false
+			b.place(arena.hex_center(at))
+			b.freeze = true
+		return
+	if _hidden.has(h.id):
+		var from: Vector3 = arena.hex_center(_hidden[h.id])
+		_hidden.erase(h.id)
+		b.set_in_play(true)
+		world.bodies.append(b)
+		var out_to: Vector3 = arena.hex_center(h.hex) if h.is_on_map() else _strip_spot(h)
+		v.close_now()
+		b.place(out_to)
+		v.settle()
+		b.visible = true
+		if animate and h.is_on_map():
+			_hop(h.id, from, false)
 	if _ko_shown.has(h.id):
 		# Back from a KO: a replay stepped back over it.
 		_ko_shown.erase(h.id)
@@ -1582,10 +1634,221 @@ func _slide(b: BallBody, target: Vector3, v: BallView) -> void:
 			v.open())
 
 
+# --- companions (GDD 10, Marko 2026-11-21) ---------------------------------------------------------------------
+
+## The tokens follow the state: a new one pops up on its hex, a moved one (End phase, by itself) glides over, one
+## whose Assist left sinks away; the picture of the hero inside and the gold ring when one may hide in it.
+func _sync_companions() -> void:
+	var live: Dictionary[String, bool] = {}
+	for c: CompanionState in state.companions:
+		live[c.id] = true
+		if _comp_gone.has(c.id) and _comp_cards.get(c.id, "") == c.card_id:
+			continue
+		if _comp_bodies.has(c.id) and _comp_cards.get(c.id, "") != c.card_id:
+			_drop_companion(c.id)
+		var at: Vector3 = arena.hex_center(c.hex)
+		var b: BallBody = _comp_bodies.get(c.id, null)
+		if b == null:
+			b = _make_companion(c)
+			b.place(at)
+			if not _quiet:
+				var tok: CompanionToken = _comp_tokens[c.id]
+				tok.scale = Vector3.ONE * 0.05
+				tok.create_tween().tween_property(tok, "scale", Vector3.ONE, 0.35 * GameSettings.anim_scale()).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		elif not _runner.is_running() and not _launching and b.motion != BallBody.Motion.MOVING \
+				and Vector2(b.global_position.x - at.x, b.global_position.z - at.z).length() > 0.05:
+			if _quiet:
+				b.place(at)
+			else:
+				_glide(b, at)
+		var inside: HeroState = state.hero(c.inside)
+		_comp_tokens[c.id].set_inside(db.thumb(inside.card_id) if inside != null else null, c.inside)
+		_comp_tokens[c.id].set_ring(not _hide_ability(c).is_empty())
+	for id: String in _comp_bodies.keys():
+		if not live.has(id):
+			_drop_companion(id)
+
+
+func _make_companion(c: CompanionState) -> BallBody:
+	var b := BallBody.new()
+	b.name = c.id.replace(":", "_")
+	b.setup(c.id, 1, world)
+	var tok := CompanionToken.new()
+	tok.build(db.art_of(c.card_id), JsonUtil.as_dict(db.art_crops.get(c.card_id, {})), Palette.team(state.team_of(c.owner)), b.radius())
+	tok.position.y = -b.radius()
+	b.add_child(tok)
+	_balls.add_child(b)
+	var id: String = c.id
+	b.bumped.connect(func(_ball: BallBody, wall: bool, strength: float) -> void:
+		Sound.play(get_tree(), "bump_wall" if wall else "bump_ball", strength))
+	b.went_out.connect(func(_ball: BallBody, _reason: String) -> void:
+		Sound.play(get_tree(), "ring_out")
+		_companion_off(id))
+	_comp_bodies[c.id] = b
+	_comp_tokens[c.id] = tok
+	_comp_cards[c.id] = c.card_id
+	world.bodies.append(b)
+	_runner.watch(b)
+	return b
+
+
+## A token went over the edge during a roll: Evil Bochet's hand takes it to his mouth (Marko 2026-11-21), or it
+## drops into the dark. The rules take it off with its Assist when the roll is over.
+func _companion_off(id: String) -> void:
+	var b: BallBody = _comp_bodies.get(id, null)
+	var tok: CompanionToken = _comp_tokens.get(id, null)
+	if b == null or tok == null or _comp_gone.has(id):
+		return
+	_comp_gone[id] = true
+	# The token is Evil Bochet's now (or falling): the table no longer draws or asks it.
+	_comp_tokens.erase(id)
+	tok.set_ring(false)
+	tok.set_inside(null, "")
+	if _bochet != null:
+		_bochet.eat(tok)
+	else:
+		var g: Transform3D = tok.global_transform
+		b.remove_child(tok)
+		_tokens.get_parent().add_child(tok)
+		tok.global_transform = g
+		var t: Tween = tok.create_tween()
+		t.tween_property(tok, "position:y", tok.position.y - 6.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		t.tween_callback(tok.queue_free)
+	b.visible = false
+
+
+## The companion is gone from the state: its Assist left (it sinks into the table) or it fell (already taken).
+## A token still on a start strip, pushed there, is taken by Evil Bochet like one off the edge.
+func _drop_companion(id: String) -> void:
+	var b: BallBody = _comp_bodies.get(id, null)
+	var tok: CompanionToken = _comp_tokens.get(id, null)
+	if b != null and tok != null and not _comp_gone.has(id) and not _quiet and arena.area_at(b.global_position) != BallWorld.Area.MAP:
+		_companion_off(id)
+		tok = null
+	_comp_bodies.erase(id)
+	_comp_tokens.erase(id)
+	_comp_cards.erase(id)
+	_comp_gone.erase(id)
+	if b == null:
+		return
+	world.bodies.erase(b)
+	_runner.unwatch(b)
+	if tok != null and is_instance_valid(tok) and tok.get_parent() == b and not _quiet:
+		var g: Transform3D = tok.global_transform
+		b.remove_child(tok)
+		_tokens.get_parent().add_child(tok)
+		tok.global_transform = g
+		var t: Tween = tok.create_tween()
+		t.tween_property(tok, "scale", Vector3(1.0, 0.05, 1.0), 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		t.parallel().tween_property(tok, "position:y", tok.position.y - 0.1, 0.3)
+		t.tween_callback(tok.queue_free)
+	b.queue_free()
+
+
+## The token walks by itself (End phase): a flat glide over the table, no hop.
+func _glide(b: BallBody, target: Vector3) -> void:
+	b.freeze = true
+	var from: Vector3 = b.global_position
+	var to := Vector3(target.x, from.y, target.z)
+	var time: float = clampf(0.35 + 0.18 * from.distance_to(to) / maxf(tuning.hex_size * 1.7, 0.01), 0.35, 0.9) * GameSettings.anim_scale()
+	var t: Tween = create_tween()
+	t.tween_property(b, "global_position", to, time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.tween_callback(func() -> void:
+		if is_instance_valid(b):
+			b.place(target))
+
+
+## A hero's picture hops into the token on `at` (`into`), or out of it onto the ball's own spot.
+func _hop(id: String, at: Vector3, into: bool) -> void:
+	var b: BallBody = _bodies[id]
+	var v: BallView = _views[id]
+	_hopping[id] = true
+	var rest := Vector3(0, arena.height_at(b.global_position), 0)
+	var off: Vector3 = at - b.global_position
+	off.y = rest.y
+	var time: float = 0.45 * GameSettings.anim_scale()
+	if v.is_open():
+		v.close_now()
+	var start: Vector3 = rest if into else off
+	var end: Vector3 = off if into else rest
+	v.position = start
+	v.scale = Vector3.ONE if into else Vector3.ONE * 0.25
+	var t: Tween = create_tween()
+	t.tween_method(func(k: float) -> void:
+		var p: Vector3 = start.lerp(end, k)
+		p.y += sin(k * PI) * 0.9
+		v.position = p, 0.0, 1.0, time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.parallel().tween_property(v, "scale", Vector3.ONE * 0.25 if into else Vector3.ONE, time)
+	t.tween_callback(func() -> void:
+		_hopping.erase(id)
+		v.scale = Vector3.ONE
+		if into:
+			b.visible = false
+			var h: HeroState = state.hero(id) if state != null else null
+			if h != null and h.is_hidden():
+				var spot: Vector2i = _hidden[id] if _hidden.has(id) else h.hex
+				b.place(arena.hex_center(spot))
+				b.freeze = true
+		else:
+			v.land()
+			v.settle())
+
+
+## The HIDE ability of this companion that a player at this screen (not a bot) may use now, or {}.
+func _hide_ability(c: CompanionState) -> Dictionary:
+	if _replay != null or not hud.local_slots.has(c.owner) or bots.has(c.owner) or state.is_over():
+		return {}
+	for a: Dictionary in engine.fx.usable_abilities(state, c.owner):
+		var e: FxEffect = a["effect"]
+		if str(a["card"]) == c.card_id and e.has_verb("HIDE"):
+			return a
+	return {}
+
+
+## A click on a companion with its gold ring: a hero hides inside (with two near, the panels ask which).
+func _hide_by_click(id: String) -> bool:
+	var c: CompanionState = state.companion(id)
+	if c == null:
+		return false
+	var a: Dictionary = _hide_ability(c)
+	if a.is_empty():
+		return false
+	_apply(Move.make(Move.USE_ABILITY, c.owner, {"hero": a["hero"], "card": a["card"], "index": a["index"]}))
+	return true
+
+
+## The companion whose token is under the mouse, or "".
+func _companion_under_mouse() -> String:
+	var mouse: Vector2 = get_viewport().get_mouse_position()
+	var from: Vector3 = cam.camera.project_ray_origin(mouse)
+	var q := PhysicsRayQueryParameters3D.create(from, from + cam.camera.project_ray_normal(mouse) * 500.0, BallBody.LAYER_BALLS)
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
+	var obj: Object = hit.get("collider")
+	if obj is BallBody and _comp_bodies.has((obj as BallBody).ball_id):
+		return (obj as BallBody).ball_id
+	return ""
+
+
+## The hero whose picture over a companion is under the mouse, or "".
+func _hidden_icon_under_mouse() -> String:
+	var mouse: Vector2 = get_viewport().get_mouse_position()
+	for id: String in _comp_tokens:
+		var tok: CompanionToken = _comp_tokens[id]
+		if not tok.shows_icon() or not tok.is_inside_tree() or cam.camera.is_position_behind(tok.icon_position()):
+			continue
+		var at: Vector2 = cam.camera.unproject_position(tok.icon_position())
+		var edge: Vector2 = cam.camera.unproject_position(tok.icon_position() + cam.camera.global_transform.basis.x * tok.radius * 0.78)
+		if mouse.distance_to(at) <= maxf(at.distance_to(edge), 14.0):
+			return str(tok.get_meta("inside", ""))
+	return ""
+
+
 ## A ball's picture rides over hills on its ball (the physics stays flat; see ArenaWorld.push_at), or is
 ## where Evil Bochet holds it (caught off the table, or on its way back to its spot).
 func _place_view(id: String) -> void:
 	var v: BallView = _views[id]
+	if _hopping.has(id):
+		return
 	if _bochet != null and _bochet.holds(id):
 		v.global_position = _bochet.held_at(id)
 		v.visible = _bochet.held_shown(id)
@@ -2270,6 +2533,9 @@ func _physics_process(delta: float) -> void:
 			for id: String in _bodies:
 				var p: Vector3 = _bodies[id].global_position
 				positions[id] = [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01)]
+			for id: String in _comp_bodies:
+				var q: Vector3 = _comp_bodies[id].global_position
+				positions[id] = [snappedf(q.x, 0.01), snappedf(q.y, 0.01), snappedf(q.z, 0.01)]
 			net_host.send_balls(positions)
 	if not _slowed:
 		for b: BallBody in _bodies.values():
@@ -2294,6 +2560,13 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_roll_finished(o: RollOutcome) -> void:
+	if _demo_outcome:
+		_demo_outcome = false
+		for r: RollResult in o.results:
+			print("demo roll: %s end %s area %d out %s" % [r.ball_id, Hex.to_json(r.end_hex), r.end_area, r.ring_out])
+			engine._apply_companion_result(state, r)
+		_sync()
+		return
 	for cid: String in _pick_order:
 		var r: RollResult = o.result_for(_picked[cid])
 		if r != null:
@@ -2546,6 +2819,9 @@ func _process(delta: float) -> void:
 	if not _net_to.is_empty():
 		var k: float = 1.0 - exp(-delta * 18.0)
 		for id: String in _net_to:
+			if _comp_bodies.has(id):
+				_comp_bodies[id].global_position = _comp_bodies[id].global_position.lerp(_net_to[id], k)
+				continue
 			if not _bodies.has(id):
 				continue
 			var b: BallBody = _bodies[id]
@@ -2570,6 +2846,10 @@ func _process(delta: float) -> void:
 			_start_ko_holes()
 	for id: String in _views:
 		_place_view(id)
+	for id: String in _comp_tokens:
+		if _comp_bodies.has(id) and is_instance_valid(_comp_tokens[id]) and _comp_tokens[id].get_parent() == _comp_bodies[id]:
+			var cb: BallBody = _comp_bodies[id]
+			_comp_tokens[id].position.y = -cb.radius() + arena.height_at(cb.global_position)
 	if _replay != null:
 		_run_playback(delta)
 		return
@@ -2994,6 +3274,10 @@ func _on_left(pressed: bool) -> void:
 					if c != null and c.hex == at:
 						_apply(Move.make(Move.CHOOSE, hud.choice_slot, {"value": cid}))
 						return
+		# A companion a hero of this screen may hide in now (its gold ring): the click is that ability.
+		var comp_id: String = _companion_under_mouse()
+		if not comp_id.is_empty() and _hide_by_click(comp_id):
+			return
 		var id: String = _hero_under_mouse()
 		if hud.is_targeting() and not id.is_empty() and hud.play_target(id):
 			return
@@ -3150,8 +3434,12 @@ func _hero_under_mouse() -> String:
 	if hit.is_empty():
 		return ""
 	var obj: Object = hit.get("collider")
-	if obj is BallBody:
+	if obj is BallBody and not (obj as BallBody).ball_id.begins_with(CompanionState.id_for(0).get_slice(":", 0)):
 		return (obj as BallBody).ball_id
+	# The picture of a hero hidden in a companion stands for that hero (click: activate it, Marko 2026-11-21).
+	var inside: String = _hidden_icon_under_mouse()
+	if not inside.is_empty():
+		return inside
 	return ""
 
 
@@ -3560,6 +3848,120 @@ func demo_temp_evo() -> void:
 	cam.focus(arena.hex_center(h.hex), 14.0)
 	_sync()
 	hud.refresh()
+
+
+## Screenshot helpers for companions (GDD 10, 2026-11-21): Coco Jumbo from the drafts (not published yet) in the
+## catalog, played by player 1's activated hero in the Preroll; then hidden in it, the gold ring, a ball thrown into
+## it and Evil Bochet eating it.
+func _demo_companion_card() -> String:
+	var id: String = "JO1-014"
+	if engine.catalog.has(id):
+		return id
+	var drafts: Dictionary = JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(db.data_dir().path_join("editor/drafts.json"))))
+	var rec: Dictionary = JsonUtil.as_dict(JsonUtil.as_dict(drafts.get("cards", {})).get(id, {})).duplicate()
+	if rec.is_empty():
+		rec = {"name": "Coco Jumbo", "type": "Assist", "color": "None", "cost": 4, "subtype": "Companion", "traits": ["General"],
+			"text": "When you play this card, place Coco Jumbo next to your Hero.\nPostroll Phase: A friendly Hero within 1 space may pay 1 Energy to hide inside.\nEnd Phase: It moves up to 2 spaces in a random direction."}
+	rec["id"] = id
+	rec["traits"] = ["General"]
+	rec["text"] = str(rec.get("text", "")).replace("[EN]", " Energy")
+	rec["fx"] = str(FxTextParser.parse(CardDef.from_card(rec))["fx"])
+	engine.catalog.cards[id] = CardDef.from_card(rec)
+	if not str(rec.get("art", "")).is_empty():
+		db.art_paths[id] = db.data_dir().path_join(str(rec["art"]))
+		db.art_crops[id] = JsonUtil.as_dict(rec.get("artCrop", {}))
+	db.subtypes[id] = str(rec.get("subtype", "Companion"))
+	print("demo companion fx: ", engine.catalog.get_card(id).fx.replace("\n", " / "))
+	return id
+
+
+func demo_companion() -> void:
+	_demo = true
+	var id: String = _demo_companion_card()
+	var h: HeroState = state.heroes_of(0)[0]
+	var c: int = state.settings.map_size / 2
+	h.zone = HeroState.ZONE_MAP
+	h.hex = Hex.offset_to_axial(c - 1, c + 2)
+	state.active[0] = h.id
+	state.turn = maxi(state.turn, 1)
+	state.phase = GameState.PHASE_PREROLL
+	state.to_act = 0
+	state.passed = PackedInt32Array()
+	state.round_over = false
+	state.player(0).hand.append(id)
+	state.player(0).energy = 10
+	var err: String = engine.apply(state, Move.make(Move.PLAY_CARD, 0, {"card": id}))
+	if err.is_empty() and not state.pending.is_empty():
+		err = engine.apply(state, Move.make(Move.CHOOSE, 0, {"value": Hex.to_json(Hex.neighbor(h.hex, 0))}))
+	print("demo companion: ", err if not err.is_empty() else "placed at %s" % str(Hex.to_json(state.companion_of(0).hex)))
+	cam.focus(arena.hex_center(h.hex), 10.0)
+	_sync()
+	hud.refresh()
+
+
+## The Postroll with the hero next to it: the gold ring.
+func demo_companion_ring() -> void:
+	state.phase = GameState.PHASE_POSTROLL
+	state.to_act = 0
+	state.passed = PackedInt32Array()
+	state.round_over = false
+	state.pending.clear()
+	_sync()
+	hud.refresh()
+
+
+## A click on the ring: the hero hops in; its picture over the token, IN SHELTER on its panel.
+func demo_companion_hide() -> void:
+	var c: CompanionState = state.companion_of(0)
+	print("demo hide: ", _hide_by_click(c.id) if c != null else "no companion")
+	if c != null:
+		cam.focus(arena.hex_center(c.hex), 9.0)
+	hud.hover_hero = state.heroes_of(0)[0].id
+	hud.refresh()
+
+
+## The End phase walk.
+func demo_companion_wander() -> void:
+	engine.wander_companion(state, state.companion_of(0), 2)
+	_sync()
+
+
+## An enemy ball thrown at the token towards the near edge: the sim pushes it; a hard one sends it off the table.
+func demo_companion_push() -> void:
+	var c: CompanionState = state.companion_of(0)
+	var e: HeroState = state.heroes_of(1)[0]
+	e.zone = HeroState.ZONE_MAP
+	var dir: int = 1
+	e.hex = Hex.neighbor(Hex.neighbor(c.hex, (dir + 3) % 6), (dir + 3) % 6)
+	_sync()
+	await get_tree().create_timer(0.3).timeout
+	var from: Vector3 = arena.hex_center(e.hex)
+	var to: Vector3 = arena.hex_center(c.hex)
+	_demo_outcome = true
+	_runner.start(_bodies[e.id], to - from, 1.0)
+
+
+## Evil Bochet takes the token as if it went over the edge here.
+func demo_companion_eat() -> void:
+	var c: CompanionState = state.companion_of(0)
+	if c == null or not _comp_bodies.has(c.id):
+		return
+	print("demo eat: bochet ", _bochet != null)
+	if _bochet != null:
+		# Just past the near edge, where a token pushed off it would be.
+		_comp_bodies[c.id].global_position = _bochet.to_global(Vector3(1.0, 0.3, _bochet._ext.y + 0.6))
+		cam.reset_view()
+	_companion_off(c.id)
+
+
+## The same over a long edge: a hand from below takes it into the dark, and he gulps.
+func demo_companion_eat_side() -> void:
+	var c: CompanionState = state.companion_of(0)
+	if c == null or not _comp_bodies.has(c.id) or _bochet == null:
+		return
+	_comp_bodies[c.id].global_position = _bochet.to_global(Vector3(_bochet._ext.x + 0.6, 0.3, 6.0))
+	cam.reset_view()
+	_companion_off(c.id)
 
 
 ## Screenshot helper: the shared ring (the default claim, 2026-11-10): stages with both sides' energy in one

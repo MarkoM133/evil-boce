@@ -58,8 +58,8 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
 - **Throw ranges** (headless, prints a table):
   `godot_console --headless --path game --fixed-fps 120 -s res://tools/measure_throws.gd`
   Physics numbers live in `game/sim/physics_tuning.tres`.
-- **Screenshot** (needs a window; saves to `game/.shots/`):
-  `godot_console --path game -s res://tools/screenshot.gd -- --scene=res://scenes/sandbox/sandbox.tscn --call=demo_setup,demo_closeup --out=closeup.png`
+- **Screenshot** (needs a window; saves to `game/.shots/`; `--audio-driver Dummy` keeps it silent):
+  `godot_console --audio-driver Dummy --path game -s res://tools/screenshot.gd -- --scene=res://scenes/sandbox/sandbox.tscn --call=demo_setup,demo_closeup --out=closeup.png`
   Sandbox helpers for `--call`: `demo_setup`, `demo_closeup`, `demo_aim`, `demo_throw`,
   `demo_ringout`, `demo_strip`, `demo_big`, `debug_dump`. Use `--wait=240` or more after a
   throw so the roll has finished before the next call.
@@ -71,6 +71,7 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
   `demo_banner_shot` with `--banner=` start, preroll, roll, postroll, battle_phase, battle, win, win_team,
   damage, deck, ringout, ko, combo (the combo card over the screen), equip, assist (the other side's card in, then to its place), stage, triggered, tie, tie_again, merged,
   merged_many (one band per run), `demo_combo_list` (the pause menu with the combo list), `demo_drop` (the drop screen and the ping), `demo_boards` (both stage boxes with energy, the assist boxes), `demo_boards_states` (claimed, energy just in, face down), `demo_panel_hover` (the mouse on a hero panel), `demo_defeat` (the end screen, lost), `demo_end_moment` (the table moment before it), `demo_ring_out_damage` (the ring-out's 1 DMG or a card),
+  `demo_companion` (Coco Jumbo from the drafts played next to the activated hero; then `demo_companion_ring`, `demo_companion_hide`, `demo_companion_wander`, `demo_companion_push` (a ball thrown into it, the roll only printed), `demo_companion_eat` / `demo_companion_eat_side` (Evil Bochet takes it; needs turn 1, which demo_companion sets)),
   `demo_autoplay` (bots play both sides; give it `--wait=3600` for about a minute),
   `debug_dump` (turn, phase, heroes, last log lines).
 

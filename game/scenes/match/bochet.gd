@@ -1306,6 +1306,99 @@ func _catch_below(held: Held, side: float, short_end: bool) -> void:
 	_under(held, c)
 
 
+## A companion's token off the table (Marko 2026-11-21): taken as a ball is (the moves already chosen), but it never
+## comes back. Over the near end the face slides under it and the mouth eats it (K10); anywhere else a hand comes up
+## from below, closes on it and takes it into the dark, and the face gulps. The token node (the match hands it over)
+## is freed at the end, or by a reset.
+func eat(token: Node3D) -> void:
+	var gen: int = _gen
+	come_out(3.0)
+	var g: Transform3D = token.global_transform
+	if token.get_parent() != null:
+		token.get_parent().remove_child(token)
+	add_child(token)
+	token.global_transform = g
+	_ko_nodes.append(token)
+	var at: Vector3 = token.position
+	if not _shown:
+		var fall: Tween = _btw()
+		fall.tween_property(token, "position:y", at.y - 8.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		await fall.finished
+		_eaten(token, null)
+		return
+	var side: float = 1.0 if at.x >= 0.0 else -1.0
+	var short_end: bool = absf(at.z) > _ext.y - 0.3 and absf(at.x) < _ext.x - 0.3
+	var up_dy: float = -0.85 - EYES_DOWN
+	if short_end and at.z > 0.0 and eyes_on:
+		# The mouth, as for a ball over the near end (_catch_mouth).
+		var tilt: float = -_lids.rotation.x
+		var up := Vector3(at.x, -0.85, _eyes.position.z)
+		var into: Vector3 = up + Basis(Vector3.UP, _eyes.rotation.y) * Vector3(0, -1.25 * cos(tilt), 1.25 * sin(tilt))
+		_mouth.visible = true
+		var t: Tween = _btw()
+		t.tween_property(self, "face_x", at.x, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(self, "face_dy", up_dy, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(_mouth, "scale:y", 1.0, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(token, "position:x", into.x, 0.26).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(token, "position:z", into.z, 0.26).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.parallel().tween_property(token, "position:y", into.y, 0.42).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		t.tween_property(_mouth, "scale:y", 0.02, 0.07)
+		await t.finished
+		if gen != _gen:
+			_eaten(token, null)
+			return
+		_mouth.visible = false
+		token.visible = false
+		_cam.shake(0.25, 0.2)
+		_gulp(up_dy, at.x)
+		_eaten(token, null)
+		return
+	# A hand from below, palm up, as for a ball away from the edge hand (_catch_below), and down into the dark.
+	var hold := Vector3(at.x + CATCH_REACH * side, CATCH_DOWN, at.z)
+	var psi: float = PI if side > 0.0 else 0.0
+	if short_end:
+		hold = Vector3(at.x, CATCH_DOWN, at.z + CATCH_REACH * signf(at.z))
+		psi = PI * 0.5 if at.z > 0.0 else -PI * 0.5
+	var c: Claw = _make_claw(psi)
+	var palm: Vector3 = hold - Vector3(0, 0.95, 0)
+	c.position = palm + Vector3(0, -3.0, 0)
+	c.lean.rotation.z = -1.5
+	_cam.shake(0.3, 0.35)
+	var h: Tween = _btw()
+	h.tween_property(c, "position", palm, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	h.parallel().tween_property(c.lean, "rotation:z", 0.0, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	h.parallel().tween_property(token, "position", hold, 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	h.tween_callback(_grip.bind(c, true, 0.1))
+	h.tween_interval(0.3)
+	h.tween_property(c, "position", palm + Vector3(0, -10, 0), 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	h.parallel().tween_property(token, "position", hold + Vector3(0, -10, 0), 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await h.finished
+	if gen != _gen:
+		_eaten(token, c)
+		return
+	if eyes_on:
+		_gulp(up_dy, 0.0)
+	_eaten(token, c)
+
+
+## A swallow: the face dips and comes back to the middle.
+func _gulp(up_dy: float, x: float) -> void:
+	var gulp: Tween = _btw()
+	gulp.tween_property(self, "face_x", x, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	gulp.parallel().tween_property(self, "face_dy", up_dy - 0.35, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	gulp.tween_property(self, "face_dy", up_dy, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	gulp.tween_interval(0.14)
+	gulp.tween_property(self, "face_x", 0.0, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	gulp.parallel().tween_property(self, "face_dy", 0.0, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+
+
+func _eaten(token: Node3D, c: Claw) -> void:
+	_ko_nodes.erase(token)
+	if is_instance_valid(token):
+		token.queue_free()
+	_free_claw(c)
+
+
 ## Over the near end, by the face (K10): the face slides under the ball and comes up a little, the mouth
 ## opens before the ball arrives, the ball drops in, the mouth snaps shut and is gone, a small gulp.
 func _catch_mouth(held: Held) -> void:

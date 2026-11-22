@@ -176,6 +176,8 @@ const BANNER_EVENTS: Array[String] = ["battle", "battle_locked", "battle_tie_bre
 var engine: RulesEngine
 var state: GameState
 var db: CardDb
+## The rule terms of the card under the mouse or shown big (Marko 2026-11-21): each term gold, then its text.
+var _terms_box: PanelContainer
 var local_slots: PackedInt32Array = PackedInt32Array()
 ## Hero highlighted from the table (hover on a ball).
 var hover_hero: String = ""
@@ -1554,6 +1556,14 @@ func _hero_slice(h: HeroState, right: bool) -> Control:
 		var tc: CardDef = engine.catalog.get_card(h.temp_evo)
 		temp.tooltip_text = "%s: gone at the end of %s" % [tc.name if tc != null else "Temporary evolution", "this turn" if left == 1 else ("the next turn" if left == 2 else "%d turns" % left)]
 		top.add_child(temp)
+	# Hidden in a companion (GDD 10, 2026-11-21): off the table until it is activated.
+	if h.is_hidden():
+		var shelter: UiShape = UiShape.chip("IN SHELTER", Palette.GOLD, Color.BLACK, 12, 20.0, 8.0)
+		shelter.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var comp: CompanionState = state.shelter_of(h.id)
+		var cc: CardDef = engine.catalog.get_card(comp.card_id) if comp != null else null
+		shelter.tooltip_text = "Hidden in %s: not on the table. Activate it to come out." % (cc.name if cc != null else "its companion")
+		top.add_child(shelter)
 	var tag: UiShape = _hero_tag(h, active, pickable, in_battle)
 	# A card effect asks for a hero (heal, swap…): the ones it may take are lit, the rest fade.
 	if not choice_heroes.is_empty() and not ko:
@@ -2248,6 +2258,11 @@ func _refresh_prompt() -> void:
 					if not c.ability_name(n).is_empty():
 						title = c.ability_name(n)
 				var text: String = "%s: %s" % [hero_name(h) if h != null else (c.name if c != null else "?"), title]
+				# A companion's shelter (GDD 10, 2026-11-21): "HIDE IN COCO JUMBO · 1 ENERGY".
+				if e.has_verb("HIDE") and c != null:
+					var hide_args: PackedStringArray = e.actions[0]["args"]
+					var price: int = hide_args[1].to_int() if hide_args.size() > 1 else 0
+					text = "HIDE IN %s%s" % [c.name.to_upper(), ("  ·  %d ENERGY" % price) if price > 0 else ""]
 				var ab: Button = _action(text, func() -> void: ability_pressed.emit(slot, str(a["hero"]), str(a["card"]), JsonUtil.as_int(a["index"])), &"Gold")
 				if c != null:
 					ab.tooltip_text = _card_tip(c.text)
@@ -3027,10 +3042,14 @@ func _hand_card(slot: int, cid: String, playable: bool, my_round: bool, why: Str
 		face.add_child(chip)
 	root.mouse_entered.connect(func() -> void:
 		_hovered(cid)
+		if GameSettings.hover_text():
+			_show_terms(cid, root.get_global_rect(), true)
 		_lift(root, true, playable or picks_it))
 	root.mouse_exited.connect(func() -> void:
 		if _hover_cid == cid:
 			_hover_cid = ""
+		if _big_cid.is_empty():
+			_show_terms("", Rect2(), true)
 		_lift(root, false, playable or picks_it))
 	root.gui_input.connect(func(e: InputEvent) -> void:
 		if _card_click(e, cid):
@@ -3063,6 +3082,50 @@ func _toggle_big(cid: String) -> void:
 	_show_big("" if cid == _big_cid else cid)
 
 
+## The rule terms of a card (Card editor › Words › Terms) in a box beside it: above a hand card (`above`), right
+## of the big card; nothing when the card uses none or `cid` is "".
+func _show_terms(cid: String, beside: Rect2, above: bool) -> void:
+	var list: Array[Dictionary] = db.terms_of(cid) if db != null and not cid.is_empty() else ([] as Array[Dictionary])
+	if list.is_empty():
+		if _terms_box != null:
+			_terms_box.visible = false
+		return
+	if _terms_box == null:
+		_terms_box = PanelContainer.new()
+		_terms_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_terms_box.z_index = 60
+		_terms_box.add_theme_stylebox_override("panel", UiTheme.box(Color(0.05, 0.05, 0.06, 0.94), 6, Color(Palette.GOLD, 0.55), 14, 10))
+		add_child(_terms_box)
+	for ch: Node in _terms_box.get_children():
+		ch.queue_free()
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_terms_box.add_child(col)
+	for t: Dictionary in list:
+		var name_l: Label = UiTheme.label(str(t.get("name", "")), 18, Color("ffd36a"))
+		name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(name_l)
+		var body: Label = UiTheme.label(str(t.get("text", "")), 15, Palette.FG, false)
+		body.add_theme_font_override("font", UiTheme.body_font())
+		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.custom_minimum_size.x = 300
+		body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(body)
+	_terms_box.visible = true
+	_terms_box.reset_size()
+	move_child(_terms_box, -1)
+	var box_size: Vector2 = _terms_box.get_combined_minimum_size()
+	var at: Vector2
+	if above:
+		at = Vector2(beside.position.x + beside.size.x * 0.5 - box_size.x * 0.5, beside.position.y - box_size.y - 70.0)
+	else:
+		at = Vector2(beside.end.x + 16.0, beside.position.y + 12.0)
+	at.x = clampf(at.x, 8.0, size.x - box_size.x - 8.0)
+	at.y = clampf(at.y, 8.0, size.y - box_size.y - 8.0)
+	_terms_box.position = at
+
+
 func _show_big(cid: String) -> void:
 	var tex: Texture2D = null
 	if not cid.is_empty() and db != null:
@@ -3085,6 +3148,7 @@ func _show_big(cid: String) -> void:
 		add_child(_big)
 	_big.visible = tex != null
 	if tex == null:
+		_show_terms("", Rect2(), false)
 		return
 	move_child(_big, -1)
 	_big.texture = tex
@@ -3093,6 +3157,7 @@ func _show_big(cid: String) -> void:
 	_big.size = Vector2(w, w / aspect)
 	_big.position = Vector2(size.x * 0.5 - w * 0.5, size.y - _big.size.y - 190.0)
 	(_big.material as ShaderMaterial).set_shader_parameter("aspect", aspect)
+	_show_terms(cid, Rect2(_big.position, _big.size), false)
 	_big.modulate.a = 0.0
 	_big.create_tween().tween_property(_big, "modulate:a", 1.0, 0.1)
 
