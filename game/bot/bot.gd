@@ -93,6 +93,8 @@ func evaluate(engine: RulesEngine, s: GameState, slot: int) -> float:
 	for p: PlayerState in s.players:
 		var sign: float = 1.0 if p.team == team else -1.0
 		score += sign * (engine.claimed_count(s, p.slot) * 30.0 + mini(p.hand.size(), 8) * 0.5)
+		# An Assist in play keeps working (a discount, a battle bonus): worth about a piece of equipment (2026-11-22).
+		score += sign * p.assists.size() * 2.5
 		if p.deck.is_empty():
 			score -= sign * 3.0
 		if s.settings.energy_claims():
@@ -102,16 +104,25 @@ func evaluate(engine: RulesEngine, s: GameState, slot: int) -> float:
 	if s.phase == GameState.PHASE_BATTLE and s.battle_index >= 0 and s.battle_index < s.battles.size():
 		var mine: int = 0
 		var theirs: int = 0
+		var my_hit: float = 0.0
+		var their_hit: float = 0.0
 		for id: String in JsonUtil.as_strings(s.battles[s.battle_index].get("heroes", [])):
 			var h: HeroState = s.hero(id)
 			if h == null or not h.is_on_map():
 				continue
 			if s.team_of(h.owner) == team:
 				mine += engine.stat(s, h, "pwr")
+				my_hit += engine.stat(s, h, "dmg") * 1.5 + engine.stat(s, h, "kb") * 0.4
 			else:
 				theirs += engine.stat(s, h, "pwr")
+				their_hit += engine.stat(s, h, "dmg") * 1.5
 		if mine > 0 and theirs > 0:
 			score += clampf((mine - theirs) / 1000.0, -5.0, 5.0) * 4.0 + (8.0 if mine > theirs else -8.0 if mine < theirs else 0.0)
+			# The winner hits: more DMG and KB for the side ahead are worth playing (2026-11-22: Armament Haki was never).
+			if mine > theirs:
+				score += my_hit
+			elif mine < theirs:
+				score -= their_hit
 	return score
 
 
@@ -151,7 +162,12 @@ func _energy_value(engine: RulesEngine, s: GameState, p: PlayerState) -> float:
 	for st: StageState in s.stages:
 		if not st.is_claimed():
 			v += st.progress_of(p.slot) / goal * 30.0 * HELD
-	var open: Array[StageState] = engine.energy_stages(s, p.slot) if p.energy > 0 else ([] as Array[StageState])
+	var open: Array[StageState] = []
+	if p.energy > 0:
+		# A stage its player may not claim this turn takes no energy then (NO_CLAIM, Conqueror's Haki).
+		for st: StageState in engine.energy_stages(s, p.slot):
+			if not engine._claim_blocked(s, p.slot, st):
+				open.append(st)
 	if not open.is_empty():
 		v += p.energy / goal * 30.0 * BANKED
 		if s.settings.shared_ring():
@@ -182,12 +198,28 @@ func _try_through(engine: RulesEngine, s: GameState, m: Move, slot: int) -> Game
 		if trial == null or trial.pending.is_empty():
 			break
 		var d: Dictionary = trial.pending[0]
-		if str(d.get("type", "")) != FxRuntime.DECISION_CHOOSE or JsonUtil.as_int(d.get("player", -1), -1) != slot:
+		if str(d.get("type", "")) != FxRuntime.DECISION_CHOOSE:
 			break
 		var options: Array = JsonUtil.as_array(d.get("options", []))
 		if options.is_empty():
 			break
-		var value: Variant = 0 if str(d.get("kind", "")) == "option" else options[0]
+		var by_index: bool = str(d.get("kind", "")) == "option"
+		var who: int = JsonUtil.as_int(d.get("player", -1), -1)
+		var value: Variant = 0 if by_index else options[0]
+		# The opponent answers too (Soul Pocus: "Your Opponent chooses"): the answer worst for the bot.
+		if who != slot and options.size() <= 6:
+			var worst: float = INF
+			for i: int in options.size():
+				var v: Variant = i if by_index else options[i]
+				var t2: GameState = GameState.from_dict(trial.to_dict())
+				if engine.apply(t2, Move.make(Move.CHOOSE, who, {"value": v})).is_empty():
+					var e2: float = evaluate(engine, t2, slot)
+					if e2 < worst:
+						worst = e2
+						value = v
+			if not engine.apply(trial, Move.make(Move.CHOOSE, who, {"value": value})).is_empty():
+				break
+			continue
 		if not engine.apply(trial, Move.make(Move.CHOOSE, slot, {"value": value})).is_empty():
 			break
 	return trial
