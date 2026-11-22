@@ -16,6 +16,8 @@ var engine: RulesEngine
 
 ## Set while OPP_PWR reads the opponents' power (see cond_holds).
 var _pwr_guard: bool = false
+## Set by an action that handed the rest of its effect on to an effect of its own (_hand_on): run() stops there.
+var _handed_on: bool = false
 
 
 func _init(engine_: RulesEngine) -> void:
@@ -312,6 +314,15 @@ func use_ability(s: GameState, slot: int, hero_id: String, card_id: String, inde
 				s.abilities_used.append(str(a["key"]))
 			var ctx: Dictionary = {"player": slot, "hero": hero_id if not hero_id.is_empty() else _acting_hero(s, slot), "card": card_id, "stage": ""}
 			s.event("ability", {"hero": hero_id, "card": card_id, "index": index})
+			# An Assist's "your Hero" with two of the player's heroes acting (both in the battle): the player picks.
+			if hero_id.is_empty() and engine.card_context_heroes(s, slot).size() > 1 and e.to_fx().contains(" SELF"):
+				var asked := FxEffect.new()
+				asked.when = e.when
+				asked.range = e.range
+				asked.actions = [{"verb": "PICK_SELF", "target": "", "args": PackedStringArray()}]
+				asked.actions.append_array(e.actions)
+				asked.line = asked.to_fx()
+				return run(s, ctx, asked)
 			return run(s, ctx, e)
 	return "that ability cannot be used now"
 
@@ -1089,9 +1100,39 @@ func run(s: GameState, ctx: Dictionary, e: FxEffect, start: int = 0, chosen: Dic
 		var err: String = _do(s, ctx, e, a, answer)
 		if not err.is_empty():
 			return err
+		if _handed_on:
+			_handed_on = false
+			return ""
 		if s.is_over():
 			return ""
 	return ""
+
+
+## An action that needs several answers runs as an effect of its own: `steps` first (one answer each), then
+## whatever the effect still had after the action. The effect it came from stops (the steps may wait for a player).
+func _hand_on(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, steps: Array[Dictionary]) -> String:
+	var sub := FxEffect.new()
+	sub.when = e.when
+	sub.range = e.range
+	sub.actions = steps
+	var at: int = e.actions.find(a)
+	if at >= 0:
+		sub.actions.append_array(e.actions.slice(at + 1))
+	sub.line = sub.to_fx()
+	var err: String = run(s, ctx, sub)
+	_handed_on = true
+	return err
+
+
+## Cards of the player's graveyard with the tag (every copy), newest first.
+func _grave_with(s: GameState, slot: int, tag: String) -> Array:
+	var out: Array = []
+	var grave: PackedStringArray = s.player(slot).graveyard
+	for i: int in range(grave.size() - 1, -1, -1):
+		var c: CardDef = engine.catalog.get_card(grave[i])
+		if c != null and c.has_trait(tag.trim_prefix("{").trim_suffix("}")):
+			out.append(grave[i])
+	return out
 
 
 ## Continues an effect after a `choose` answer.
@@ -1179,6 +1220,21 @@ func _needed_choice(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, a
 			prompt += " · %s" % card.name
 		return {"player": who, "kind": "hero", "options": ids, "prompt": prompt}
 	match verb:
+		"PAY_HP_ASK":
+			var asked: HeroState = s.hero(args[0])
+			if asked != null:
+				return {"player": asked.owner, "kind": "option", "options": ["Keep the HP", "Pay %s HP" % args[1]],
+					"prompt": "%s: pay %s HP?" % [engine.hero_name(asked), args[1]]}
+		"PICK_SELF":
+			var acting: Array[HeroState] = engine.card_context_heroes(s, player)
+			if acting.size() > 1:
+				return {"player": player, "kind": "hero", "options": acting.map(func(h: HeroState) -> Variant: return h.id), "prompt": "Which hero"}
+		"RECYCLE_PICK":
+			var pick_from: int = player if target == "ME" else engine.other_slot(s, player)
+			var with_tag: Array = _grave_with(s, pick_from, args[1] if args.size() > 1 else "")
+			if with_tag.size() > 1:
+				return {"player": pick_from, "kind": "card", "options": with_tag,
+					"prompt": "Which card goes %s" % ("on the bottom of your deck" if args[0] == "BOTTOM" else "back into your deck")}
 		"TELEPORT":
 			if target == "SELF":
 				var to: Array = _teleport_options(s, me, me, args[0])
@@ -1559,14 +1615,39 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 			payer.energy -= args[0].to_int()
 			s.event("paid", {"player": player, "energy": args[0].to_int(), "card": ctx.get("card", "")})
 		"PAY_HP":
-			# Each of those heroes that can spare it pays; the ones that did are PAID for the actions after.
-			var paid: Array = []
+			# Each of those heroes that can spare it may pay, hero by hero (Marko 2026-11-22); the ones that did are
+			# PAID for the actions after.
+			var asks: Array[Dictionary] = []
 			for h: HeroState in _targets(s, ctx, e, target, answer):
 				if h.hp > args[0].to_int():
-					h.hp -= args[0].to_int()
-					paid.append(h.id)
-					s.event("damage", {"hero": h.id, "amount": args[0].to_int(), "hp": h.hp, "by": "cost", "card": ctx.get("card", "")})
-			ctx["paid"] = paid
+					asks.append({"verb": "PAY_HP_ASK", "target": "", "args": PackedStringArray([h.id, args[0]])})
+			ctx["paid"] = []
+			return _hand_on(s, ctx, e, a, asks)
+		"PAY_HP_ASK":
+			var payer_hero: HeroState = s.hero(args[0])
+			if payer_hero != null and JsonUtil.as_int(answer, 0) == 1 and payer_hero.hp > args[1].to_int():
+				payer_hero.hp -= args[1].to_int()
+				var paid: Array = JsonUtil.as_array(ctx.get("paid", []))
+				paid.append(payer_hero.id)
+				ctx["paid"] = paid
+				s.event("damage", {"hero": payer_hero.id, "amount": args[1].to_int(), "hp": payer_hero.hp, "by": "cost", "card": ctx.get("card", "")})
+		"PICK_SELF":
+			var acting: Array[HeroState] = engine.card_context_heroes(s, player)
+			ctx["hero"] = str(answer) if answer != null else (acting[0].id if not acting.is_empty() else "")
+		"RECYCLE_PICK":
+			var rp: PlayerState = s.player(player if target == "ME" else engine.other_slot(s, player))
+			var with_tag: Array = _grave_with(s, rp.slot, args[1] if args.size() > 1 else "")
+			if with_tag.is_empty():
+				return ""
+			var picked: String = str(answer) if answer != null and with_tag.has(str(answer)) else str(with_tag[0])
+			rp.graveyard.remove_at(rp.graveyard.rfind(picked))
+			if args[0] == "TOP":
+				rp.deck.insert(0, picked)
+			else:
+				rp.deck.append(picked)
+			s.event("recycled", {"player": rp.slot, "card": picked, "to": args[0].to_lower()})
+			if args[0] == "SHUFFLE":
+				engine.shuffle(s, rp.deck)
 		"KO":
 			for h: HeroState in _targets(s, ctx, e, target, answer):
 				engine.ko_hero(s, h, me.id if me != null else "", str(ctx.get("card", "")))
@@ -1655,11 +1736,17 @@ func _do(s: GameState, ctx: Dictionary, e: FxEffect, a: Dictionary, answer: Vari
 		"RECYCLE":
 			var p: PlayerState = s.player(player if target == "ME" else engine.other_slot(s, player))
 			var mode: String = args[1] if args.size() > 1 and not args[1].begins_with("{") else "TOP"
-			# A {Tag} picks the cards: the newest ones with it, wherever they lie in the graveyard.
+			# A {Tag} picks the cards, wherever they lie in the graveyard. With more of them than asked for the
+			# player says which (Marko 2026-11-22), card by card.
 			var only: String = ""
 			for x: String in args:
 				if x.begins_with("{"):
 					only = x.trim_prefix("{").trim_suffix("}")
+			if not only.is_empty() and _grave_with(s, p.slot, only).size() > args[0].to_int():
+				var picks: Array[Dictionary] = []
+				for _i: int in args[0].to_int():
+					picks.append({"verb": "RECYCLE_PICK", "target": target, "args": PackedStringArray([mode, "{%s}" % only])})
+				return _hand_on(s, ctx, e, a, picks)
 			for _i: int in args[0].to_int():
 				var at: int = p.graveyard.size() - 1
 				while at >= 0 and not only.is_empty():

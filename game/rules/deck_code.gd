@@ -155,7 +155,13 @@ static func hero_evolutions(catalog: CardCatalog, heroes: Array[CardDef]) -> Arr
 	var names := PackedStringArray()
 	for h: CardDef in heroes:
 		names.append(h.name)
-	return catalog.of_type("Evolution").filter(func(e: CardDef) -> bool: return names.has(e.hero))
+	var out: Array[CardDef] = catalog.of_type("Evolution").filter(func(e: CardDef) -> bool: return names.has(e.hero))
+	# And every card that gives heroes a tag in the match: with it in the deck, cards of that tag may come too.
+	for type: String in ["Action", "Equipment", "Assist"]:
+		for c: CardDef in catalog.of_type(type):
+			if not c.token and not FirstTag.tags_given(c).is_empty():
+				out.append(c)
+	return out
 
 
 

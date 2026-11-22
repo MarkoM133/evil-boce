@@ -23,6 +23,7 @@ export const VERBS = {
   TERRAIN: [false, 1], REQUIRE: [false, 1],
   HEAL_MOD: [true, 1], NEXT_CARD: [false, 3], WEAKEN_CARD: [false, 1], BOTTOM: [true, 1],
   GAIN_TAG: [true, 1], PAY: [false, 1], PAY_HP: [true, 1], KO: [true, 0],
+  PAY_HP_ASK: [false, 2], PICK_SELF: [false, 0], RECYCLE_PICK: [true, 1],
   SACRIFICE: [false, 0], SAVE_KO: [true, 0], SHIELD: [true, 1], PREVENT: [false, 2], HEAL_LATER: [true, 1], RING_OUT_DRAW: [false, 1],
   TELEPORT: [true, 1], TELEPORT_ID: [false, 2], APPROACH: [false, 1], RETURN_LATER: [true, 0], DRAIN_STAGE: [false, 1],
   REVEAL_STAGE: [false, 0], CURSE_STAGE: [false, 0], NEGATE_LAST: [false, 0], REMOVE_ASSIST: [true, 0], GAIN_ASSIST: [false, 0],

@@ -154,6 +154,7 @@ const CARDS: Array = [
 		"text": "Postroll Phase: As an additional cost, your Hero takes 2 DMG.\nAn Opponent's Hero in Range takes 2 DMG."},
 	{"id": "TD-108", "name": "Emblem", "type": "Equipment", "color": "Red", "cost": 1, "traits": ["General"], "bonus": {"pwr": 3000},
 		"text": "As an additional cost, your Hero takes 3 DMG."},
+	{"id": "TD-110", "name": "Big Combo", "type": "Combo", "ingredients": ["TA-040", "TA-042"], "extraCost": 3, "introducedIn": "TA", "bonus": {"dmg": 1}, "text": ""},
 ]
 
 
@@ -687,11 +688,11 @@ func test_cards_cheaper_by_type_and_by_printed_cost() -> void:
 
 func test_combos_cost_less() -> void:
 	var s: GameState = _state()
-	var combo: CardDef = catalog.get_card("TC-001")
-	assert_eq(engine.combo_cost(s, 0, combo), 1)
+	var combo: CardDef = catalog.get_card("TD-110")
+	assert_eq(engine.combo_cost(s, 0, combo), 3)
 	s.player(0).assists.append("TD-050")
-	assert_eq(engine.combo_cost(s, 0, combo), 0, "never under nothing")
-	assert_eq(engine.combo_cost(s, 1, combo), 1)
+	assert_eq(engine.combo_cost(s, 0, combo), 1)
+	assert_eq(engine.combo_cost(s, 1, combo), 3, "the other player pays in full")
 
 
 func test_a_hero_low_on_hp_evolves_cheaper_and_heals() -> void:
@@ -813,9 +814,11 @@ func test_heroes_pay_hp_for_power() -> void:
 	s.player(0).assists.append("TD-066")
 	var alpha: int = engine.stat(s, s.hero(ALPHA), "pwr")
 	assert_eq(engine.fx.use_ability(s, 0, "", "TD-066", 0), "")
+	assert_eq(s.pending.size(), 1, "the hero with the tag is asked")
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": 1})), "")
 	assert_eq(s.hero(ALPHA).hp, 9)
 	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), alpha + 2000)
-	assert_eq(s.hero(BRAVO).hp, 12, "no tag: it does not pay")
+	assert_eq(s.hero(BRAVO).hp, 12, "no tag: it is not asked")
 	assert_eq(engine.fx.use_ability(s, 0, "", "TD-066", 0), "that ability cannot be used now", "once per turn")
 	# A hero at 1 HP cannot spare it.
 	s = _state()
@@ -1286,3 +1289,87 @@ func test_an_equipment_paid_with_damage() -> void:
 	assert_eq(_play(s, 0, "TD-108"), "")
 	assert_eq(s.hero(ALPHA).hp, 7)
 	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), pwr + 3000)
+
+
+# --- decided with Marko after the first pass (2026-11-22) -----------------------------------------
+
+func test_the_player_picks_which_cards_go_back() -> void:
+	var s: GameState = _state()
+	_battle(s)
+	_grave(s, 0, ["TA-012", "TA-049", "TX-010", "TA-049", "TA-049"])
+	assert_eq(_play(s, 0, "TD-026"), "")
+	assert_eq(s.pending.size(), 1, "four {Haki} cards for three places: the player says which")
+	assert_eq(str(s.pending[0]["kind"]), "card")
+	assert_eq(JsonUtil.as_array(s.pending[0]["options"]).size(), 4)
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": "TA-012"})), "")
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": "TA-049"})), "")
+	assert_eq(s.pending.size(), 1)
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": "TA-049"})), "")
+	assert_eq(s.pending.size(), 0)
+	assert_eq(engine.fx.grave_count(s, 0, "Haki"), 1, "one stays")
+	var deck: PackedStringArray = s.player(0).deck
+	assert_eq(Array(deck.slice(deck.size() - 3)), ["TA-012", "TA-049", "TA-049"], "in the order picked, on the bottom")
+
+
+func test_each_hero_says_whether_it_pays_hp() -> void:
+	var s: GameState = _state()
+	_battle(s, PackedStringArray([BRAVO]))
+	s.hero(BRAVO).equipment.append("TD-060")
+	s.player(0).assists.append("TD-066")
+	s.hero(BRAVO).statuses.clear()
+	# Only Alpha carries {Haki}: one question.
+	var alpha: int = engine.stat(s, s.hero(ALPHA), "pwr")
+	assert_eq(engine.fx.use_ability(s, 0, "", "TD-066", 0), "")
+	assert_eq(s.pending.size(), 1)
+	assert_eq(str(s.pending[0]["kind"]), "option")
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": 0})), "")
+	assert_eq(s.hero(ALPHA).hp, 10, "it kept its HP")
+	assert_eq(engine.stat(s, s.hero(ALPHA), "pwr"), alpha, "and gets nothing")
+
+
+func test_the_player_picks_the_hero_of_an_assists_ability() -> void:
+	var s: GameState = _state()
+	_battle(s, PackedStringArray([BRAVO]))
+	s.player(0).assists.append("TD-083")
+	assert_eq(engine.fx.use_ability(s, 0, "", "TD-083", 0), "")
+	assert_eq(s.pending.size(), 1, "two of the player's heroes in the battle")
+	assert_eq(str(s.pending[0]["kind"]), "hero")
+	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 0, {"value": BRAVO})), "")
+	assert_true(s.hero(BRAVO).has_status("immune_kb"))
+	assert_false(s.hero(ALPHA).has_status("immune_kb"))
+	assert_false(s.player(0).assists.has("TD-083"))
+
+
+func test_a_hero_gives_up_and_its_friend_stays_locked() -> void:
+	var s: GameState = _state()
+	_battle(s, PackedStringArray([BRAVO]))
+	assert_eq(_play(s, 0, "TD-084", ALPHA), "")
+	s.player(0).hand.clear()
+	engine._resolve_battle(s, 0)
+	assert_true(JsonUtil.as_bool(s.battles[0].get("tie", false)), "nobody wins this turn")
+	assert_eq(s.pending.size(), 0, "and nobody is hit")
+	assert_eq(s.hero(BRAVO).tie_turns, 1)
+	assert_eq(Array(s.hero(BRAVO).locked_with), [ECHO])
+	assert_eq(Array(s.hero(ECHO).locked_with), [BRAVO], "the hero that left is not part of the lock")
+	engine._finish_battle(s, 0)
+	assert_eq(s.hero(ALPHA).zone, HeroState.ZONE_STRIP)
+	assert_eq(s.hero(ALPHA).tie_turns, 0)
+	assert_true(s.hero(BRAVO).is_on_map())
+	assert_eq(s.hero(BRAVO).hp, 12)
+
+
+func test_a_combo_never_costs_under_one() -> void:
+	var s: GameState = _state()
+	s.player(0).assists.append("TD-050")
+	assert_eq(engine.combo_cost(s, 0, catalog.get_card("TD-110")), 1, "3 less 2")
+	assert_eq(engine.combo_cost(s, 0, catalog.get_card("TC-001")), 1, "1 less 2 stays 1, like a card")
+
+
+func test_a_card_that_gives_a_tag_lets_cards_of_that_tag_into_the_deck() -> void:
+	var gear: CardDef = catalog.get_card("TD-061")
+	var heroes: Array[CardDef] = [catalog.get_card("TB-001")]
+	var alone: Dictionary = FirstTag.deck_verdict(catalog, gear, heroes, FirstTag.evolutions_in(catalog, ["TX-010"]))
+	assert_false(JsonUtil.as_bool(alone["ok"]), "Echo carries no {Gear Second}")
+	assert_true(JsonUtil.as_strings(alone["needs"]).has("TD-060"), "the cards that would let it in are named")
+	var with_axe: Dictionary = FirstTag.deck_verdict(catalog, gear, heroes, FirstTag.evolutions_in(catalog, ["TX-010", "TD-060"]))
+	assert_true(JsonUtil.as_bool(with_axe["ok"]), "an Equipment in the deck gives the tag")

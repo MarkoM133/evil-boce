@@ -162,7 +162,10 @@ static func deck_verdict(catalog: CardCatalog, card: CardDef, heroes: Array[Card
 				if has_any_trait(h, traits):
 					return _ok()
 			for e: CardDef in evolutions:
-				if same_names.has(e.hero) and has_any_trait(e, traits):
+				if e.type == "Evolution" and same_names.has(e.hero) and has_any_trait(e, traits):
+					return _ok()
+				# A card in the deck that gives the tag in the match lets the card in (Marko 2026-11-22).
+				if e.type != "Evolution" and e.id != card.id and _gives_any(e, traits):
 					return _ok()
 			var needs := PackedStringArray()
 			var needs_names := PackedStringArray()
@@ -170,6 +173,11 @@ static func deck_verdict(catalog: CardCatalog, card: CardDef, heroes: Array[Card
 				if same_names.has(e.hero) and has_any_trait(e, traits):
 					needs.append(e.id)
 					needs_names.append(e.name)
+			for type: String in ["Action", "Equipment", "Assist"]:
+				for g: CardDef in catalog.of_type(type):
+					if g.id != card.id and not g.token and _gives_any(g, traits):
+						needs.append(g.id)
+						needs_names.append(g.name)
 			if not needs.is_empty():
 				return {"ok": false, "why": "Requires %s" % " or ".join(needs_names), "needs": needs}
 			return _no(_who(card, k))
@@ -190,9 +198,31 @@ static func evolutions_in(catalog: CardCatalog, ids: Array) -> Array[CardDef]:
 	var out: Array[CardDef] = []
 	for id: Variant in ids:
 		var c: CardDef = catalog.get_card(str(id))
-		if c != null and c.type == "Evolution":
+		# Evolution cards, and cards that give heroes a tag in the match (Marko 2026-11-22): both change what the
+		# deck's heroes may play.
+		if c != null and (c.type == "Evolution" or not tags_given(c).is_empty()):
 			out.append(c)
 	return out
+
+
+## Tags the card gives heroes in the match ("The equipped Hero gains {Mage}", "Your Heroes gain {Brave Hero}").
+static func tags_given(card: CardDef) -> PackedStringArray:
+	var out := PackedStringArray()
+	for e: FxEffect in card.effects:
+		for a: Dictionary in e.actions:
+			if str(a.get("verb", "")) == "GAIN_TAG":
+				var args: PackedStringArray = JsonUtil.as_strings(a.get("args", []))
+				if not args.is_empty():
+					out.append(args[0].trim_prefix("{").trim_suffix("}"))
+	return out
+
+
+static func _gives_any(card: CardDef, traits: PackedStringArray) -> bool:
+	for g: String in tags_given(card):
+		for t: String in traits:
+			if norm(g) == norm(t):
+				return true
+	return false
 
 
 ## May `card` be played for the hero whose base card is `base` and whose current card (the

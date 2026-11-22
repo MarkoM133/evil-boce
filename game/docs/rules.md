@@ -240,8 +240,12 @@ the engine:
 - **Tags**: `gained_tags`, `hero_has_tag`, `hero_is`; `CardDef.has_trait` reads each part of a tag joined by "&".
 - **Rolling**: a hero with NO_ROLL is left out of `_rollers`; a thrown hero with the passive status BRITTLE loses its
   Evolution in `apply_roll`.
-- **Not built**: the deck check for cards whose first tag a hero only gains in the match; a pick of the hero when an
-  Assist's "your Hero" could be two heroes in one battle; the HUD's own words for the new events (`burn`, `terrain`,
+- **Deck check**: a card whose first tag no hero of the deck carries may still go in when the deck holds a card that
+  gives that tag in the match (`FirstTag.tags_given`, read by `deck_verdict` from the cards `evolutions_in` returns; the
+  refusal names the cards that would let it in).
+- **An action that needs several answers** hands the rest of its effect on to an effect of its own
+  (`FxRuntime._hand_on`): which cards go back (RECYCLE with a tag), which heroes pay (PAY_HP).
+- **Not built**: the HUD's own words for the new events (`burn`, `terrain`,
   `stunned`, `saved`, `card_undone`, `stage_cursed`, `stage_drained`, `assist_gone`, `card_shown` …) and a way to
   name the `wearer` when several heroes fit.
 - `tools/bot_games.gd --drafts[=<id prefix>]` plays the Card Studio drafts too, so a set can be run through whole

@@ -1480,6 +1480,17 @@ func _resolve_battle(s: GameState, index: int) -> void:
 	for h: HeroState in members:
 		fighters.append(h.id)
 	s.event("battle", {"index": index, "power": power.duplicate(), "heroes": fighters})
+	# A hero gave the battle up while another of its side fights on (Marko 2026-11-22, for now): it leaves, and those
+	# who stay are locked as after a tie, with no winner and no hit this turn.
+	var stay: Array[HeroState] = members.filter(func(h: HeroState) -> bool: return not h.has_status("flee"))
+	var left_behind: bool = false
+	for h: HeroState in stay:
+		if fled.has(s.team_of(h.owner)):
+			left_behind = true
+	if left_behind:
+		b["tie"] = true
+		_battle_tie(s, stay)
+		return
 	if best < 0:
 		# Every side gave up: nobody wins, nobody is hit.
 		b["winner_team"] = -2
@@ -1531,6 +1542,7 @@ func _finish_battle(s: GameState, index: int) -> void:
 		return
 	b["resolved"] = true
 	if JsonUtil.as_bool(b.get("tie", false)):
+		_ring_out_fled(s, _battle_heroes(s, b))
 		_check_win(s)
 		return
 	var best: int = JsonUtil.as_int(b.get("winner_team", -1), -1)
@@ -1544,12 +1556,7 @@ func _finish_battle(s: GameState, index: int) -> void:
 			losers.append(h)
 	fx.on_battle_done(s, winners, members)
 	# "After the Battle, they are ringed out": a full ring-out, before any knockback.
-	for h: HeroState in members:
-		if h.has_status("flee") and h.is_on_map():
-			h.statuses.erase("flee")
-			var fled_from: StageState = begin_move(s, h)
-			ring_out(s, h, "fled")
-			end_move(s, h, fled_from, -1)
+	_ring_out_fled(s, members)
 	var kb: int = 0
 	for w: HeroState in winners:
 		kb = maxi(kb, stat(s, w, "kb") * (2 if w.has_status("hold_hit") else 1))
@@ -1567,6 +1574,17 @@ func _finish_battle(s: GameState, index: int) -> void:
 		h.tie_turns = 0
 		h.locked_with = PackedStringArray()
 	_check_win(s)
+
+
+func _ring_out_fled(s: GameState, members: Array[HeroState]) -> void:
+	for h: HeroState in members:
+		if h.has_status("flee") and h.is_on_map():
+			h.statuses.erase("flee")
+			h.tie_turns = 0
+			h.locked_with = PackedStringArray()
+			var fled_from: StageState = begin_move(s, h)
+			ring_out(s, h, "fled")
+			end_move(s, h, fled_from, -1)
 
 
 func _battle_tie(s: GameState, members: Array[HeroState]) -> void:
@@ -2828,9 +2846,11 @@ func _accept_combo(s: GameState, slot: int, d: Dictionary, option: Dictionary) -
 	return ""
 
 
-## The extra energy a combo costs this player now ("Your combos cost 2 Energy less"); never under 0.
+## The extra energy a combo costs this player now ("Your combos cost 2 Energy less").
 func combo_cost(s: GameState, slot: int, combo: CardDef) -> int:
-	return maxi(combo.extra_cost + fx.cost_mod(s, s.player(slot), combo, null), 0)
+	var mod: int = fx.cost_mod(s, s.player(slot), combo, null)
+	# Like a card (Marko 2026-11-22): a discount never brings a combo that costs something under 1.
+	return maxi(combo.extra_cost + mod, 0 if combo.extra_cost <= 0 else 1)
 
 
 ## Does a combo's effect speak of "your Hero" (then it runs for each hero of the combo), or of targets of its own?

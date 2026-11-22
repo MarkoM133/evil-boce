@@ -193,7 +193,7 @@ each 3 {Strash Mastery} cards in your graveyard").
 | verb | effect |
 |---|---|
 | `REQUIRE <COND> [args]` | the card is played only while the condition holds; otherwise it stays in the hand and nothing is paid (`RulesEngine._requirement`). "Play this card only if you have at least 3 {Avan Style} cards in your graveyard." is `REQUIRE GRAVE {Avan Style} 3`; "… only while your Hero is on a Stage." `REQUIRE ON_STAGE`; "… only if you claimed a Stage last turn." `REQUIRE CLAIMED_LAST_TURN` |
-| `RECYCLE <p> <n> <TOP|BOTTOM|SHUFFLE> {Tag}` | with a tag: the newest n cards with it, wherever they lie in the graveyard. "Put 3 of them on the bottom of your deck." after a REQUIRE GRAVE sentence takes that tag. Which three is not the player's choice yet |
+| `RECYCLE <p> <n> <TOP|BOTTOM|SHUFFLE> {Tag}` | with a tag: the newest n cards with it, wherever they lie in the graveyard. "Put 3 of them on the bottom of your deck." after a REQUIRE GRAVE sentence takes that tag. With more such cards than asked for, the player says which, card by card (`RECYCLE_PICK`, Marko 2026-11-22); with exactly that many they all go |
 | `OWN_COST` on a plain line | "This card costs 1 Energy less if your Opponent played a {Fire} card this turn." is `BATTLE IF OPP_PLAYED TURN {Fire}: OWN_COST -1` |
 
 **INSTEAD after a bare phase line** replaces the card's stat box for the hero it holds for
@@ -234,7 +234,7 @@ whatever takes that card back takes the bonus too.
 | `BOTTOM <p> <n>` | that player puts a card from the hand on the bottom of the deck (their pick) |
 | `HEAL_MOD <t> <n> [BY]` | passive: those heroes heal n more ("Whenever a Hero on this Stage is healed, they heal an additional 1 HP." is `HEAL_MOD EACH_HERO 1`); with `BY` it is about the healer: heals from cards played for the hero whose passive it is ("Cards played for X heal an additional 1 HP." is `HEAL_MOD SELF 1 BY`) |
 | `HEAL <t> FULL` | to full HP ("When you play this Evolution, X heals to full HP." is `PLAY: HEAL SELF FULL`) |
-| `COST <p> <n> …` filters | the words after the amount say which cards: {Tag}s (one of them is enough), a card type (`EQUIPMENT`, `EVOLUTION`, `ACTION`, `ASSIST`, `COMBO`: a combo's extra energy, never under 0), `COSTS <n>` (printed cost n), `FOR_SELF` (cards played for the hero whose card it is). "Your Equipment cards cost 1 Energy less.", "Your combos cost 2 Energy less.", "{Mage} cards played for X cost 1 Energy less.", "Your {Fire} and {Explosion} cards that cost 3 cost 1 Energy less." On a card that stays in play a cost line is `PASSIVE` whatever phase the sentence opens with |
+| `COST <p> <n> …` filters | the words after the amount say which cards: {Tag}s (one of them is enough), a card type (`EQUIPMENT`, `EVOLUTION`, `ACTION`, `ASSIST`, `COMBO`: a combo's extra energy, which like a card never goes under 1 by a discount), `COSTS <n>` (printed cost n), `FOR_SELF` (cards played for the hero whose card it is). "Your Equipment cards cost 1 Energy less.", "Your combos cost 2 Energy less.", "{Mage} cards played for X cost 1 Energy less.", "Your {Fire} and {Explosion} cards that cost 3 cost 1 Energy less." On a card that stays in play a cost line is `PASSIVE` whatever phase the sentence opens with |
 
 "If X has 5 or less HP, his Evolution cards cost 2 Energy less and heal him 3 HP." is two lines:
 `PASSIVE IF LOW_HP 5: COST ME -2 EVOLUTION FOR_SELF` and `PLAYED IF TAG ANY EVOLUTION FOR_SELF HP_BEFORE 5: HEAL SELF 3`.
@@ -248,19 +248,19 @@ card is in play ("The equipped Hero gains {Mage}.", "Your Heroes gain {Brave Her
 the tag (`hero_is`); `HP <n>` those with n HP or less. A group narrowed to nobody as an effect's first step means
 the card is not played. A hero a card that is not a hero's own speaks of by name (its first tag: "Hyunckel gets +2
 Knockback" on an Assist tagged Hyunckel) is written `ALL_FRIENDLY … WITH {Hyunckel}`. In an Assist's ability
-"your Hero" is the player's hero acting now (the first one in the battle being fought, else the activated one).
+"your Hero" is the player's hero acting now: the activated one, or its hero in the battle being fought; with two of its heroes in that battle the player picks (`PICK_SELF`, Marko 2026-11-22).
 
 | verb | effect, and the card text the parser reads |
 |---|---|
 | `BUFF <group> … PICK WITH {Tag}` | "A friendly Hero with {Brave Hero} in this Battle gets +5000 Power." (`ALL_FRIENDLY_IN_BATTLE`, the player picks among those with the tag); without PICK all of them: "Your {Dark Army} Heroes in this Battle get +3000 Power." |
 | `PAY <n>` | the player pays n Energy; an ability that starts with it is not offered without the Energy. "You may pay 2 Energy. If you do, …" |
-| `PAY_HP <t> <n>` then `… PAID …` | each of those heroes with more than n HP loses n; `PAID` is the target for the ones that did. "Each of your {Dark Army} Heroes may pay 1 HP to get +2000 Power." (the heroes in the battle; all that can pay do) |
+| `PAY_HP <t> <n>` then `… PAID …` | each of those heroes with more than n HP is asked, one by one, whether it pays n (`PAY_HP_ASK`, an option for its player; Marko 2026-11-22); `PAID` is the target for the ones that did. "Each of your {Dark Army} Heroes may pay 1 HP to get +2000 Power." (the heroes in the battle) |
 | `KO <t> [HP <n>]` | the hero goes down (a hit for all its HP, so what saves from a KO still can). "KO an Opponent's Hero in Range with 1 HP." |
 | `STATUS <t> STONE TURN` | no Power and no damage this turn. "Another friendly Hero in Range has 0 Power and cannot take DMG this turn." |
 | `STATUS <t> DOOMED TURN` | the hero is KO'd as the End phase starts. "Your Hero is KO'd during the End Phase." |
 | `STATUS <t> STUN <n> [LINKED]` | cannot be activated; n counts this turn, so "next turn" is 2 and "for 2 turns" 3. `LINKED`: it ends when the hero whose card it is is KO'd or ringed out ("… or until X is KO'd or ringed out") |
 | `STATUS SELF NO_ROLL TURN` | the hero does not roll this turn ("They cannot roll this turn.") |
-| `STATUS SELF FLEE TURN` | "Your Hero loses this Battle without taking DMG. After the Battle, they are ringed out.": its side cannot win the battle, no hit goes to it, and it is ringed out (a full ring-out) when the battle is done |
+| `STATUS SELF FLEE TURN` | "Your Hero loses this Battle without taking DMG. After the Battle, they are ringed out.": its side cannot win the battle, no hit goes to it, and it is ringed out (a full ring-out) when the battle is done. With another hero of its side in the battle (for now, Marko 2026-11-22): the ones that stay are locked as after a tie, no winner and no hit that turn |
 | passive statuses | `BRITTLE` ("If X rolls, this Evolution goes to the graveyard."), `NO_CARDS` ("No cards can be played for X."), `KO_IF_REMOVED` ("If this Evolution is removed, X is KO'd.": a card took it off, not a roll) |
 | `SACRIFICE` | the Assist whose line it is goes to the graveyard. "You may put this Assist into the graveyard. If you do, …" |
 | `SAVE_KO <t>` | passive on an Assist: the first of those heroes that would be KO'd stays at 1 HP and the Assist goes to the graveyard. "The first time one of your Heroes would be KO'd, they stay at 1 HP instead. Then put this Assist into the graveyard." |
