@@ -47,7 +47,7 @@ const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'PWR'], ['rng', 'RNG'],
 const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB', 'EN'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
 const FIELDS = ['name', 'type', 'token', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain', 'subtype',
-  'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'ingredients', 'extraCost', 'introducedIn', 'tempTurns'];
+  'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'ingredients', 'extraCost', 'introducedIn', 'tempTurns', 'comboKind'];
 const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equipment: 'action', Assist: 'action', Stage: 'stage', Core: 'core', Combo: 'combo' };
 
 // Prazan objekt ili popis je isto što i polje kojeg nema (Stage bez bonusa, karta bez tagova).
@@ -1939,6 +1939,9 @@ export function createEditor(env) {
         field('NAME', h('input', { value: w.name ?? '', oninput: e => set('name', e.target.value) })),
         h('div', { class: 'ce-row' }, code,
           field('EXTRA ENERGY (X)', num(w.extraCost, e => set('extraCost', e.target.value === '' ? null : Number(e.target.value)), { min: 0, max: 10 })),
+          // Solo or Team (Marko 2026-11-22): Solo is one hero playing both cards and has no mark; Team is two heroes, one card
+          // each, and the card shows two figures in the colours of its cards beside COMBO.
+          field('HEROES', seg([['solo', 'Solo'], ['team', 'Team']], w.comboKind === 'team' ? 'team' : 'solo', v => { set('comboKind', v === 'team' ? 'team' : null); env.render(); })),
           field('INTRODUCED IN', h('select', { onchange: e => set('introducedIn', e.target.value) }, h('option', { value: '' }, '–'),
             setCodes.map(c => h('option', { value: c, selected: c === w.introducedIn }, c))))),
         // Dvije karte comboa (Marko 2026-11-07): dva utora, zamjena u sredini; klik na sliku je poveća (s Open card),
@@ -1949,7 +1952,7 @@ export function createEditor(env) {
             onclick: () => { set('ingredients', [ing[1] ?? '', ing[0] ?? '']); env.render(); } }, '⇄'),
           comboSlot(1, pool.find(x => x.id === ing[1]), colourName)),
         ed.comboPick == null ? null : comboPicker(pool, ing, colourName, choose),
-        h('p', { class: 'small muted' }, 'Both cards played for two of your heroes in the same battle: the player may pay X more energy and this card comes on top of them, for both heroes. The same card twice is a pair too, and one hero may play both. The rim takes the colours of the two cards. Combo cards never go in a deck or a pack.'),
+        h('p', { class: 'small muted' }, w.comboKind === 'team' ? 'Team: two of your heroes in the same battle play one card each; the player may pay X more energy and this card comes on top of them, for both heroes. The card shows two figures beside COMBO. The same card twice is a pair too. The rim takes the colours of the two cards. Combo cards never go in a deck or a pack.' : 'Solo: one hero plays both cards in the same battle; the player may pay X more energy and this card comes on top of them, for that hero. The same card twice is a pair too. The rim takes the colours of the two cards. Combo cards never go in a deck or a pack.'),
         h('h2', {}, 'Effect text'),
         ...text,
       ];

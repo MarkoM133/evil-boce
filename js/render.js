@@ -963,6 +963,30 @@ function comboGradient(ctx, colors, x0, y0, x1, y1) {
   return g;
 }
 
+// Oznaka Team comba: tamna pločica s bijelim rubom i dvije figure (glava i ramena) u bojama dviju karata.
+function drawTeamMark(ctx, x, y, h, cols) {
+  const w = Math.round(h * 1.75);
+  roundRect(ctx, x, y, w, h, Math.round(h * 0.18));
+  ctx.fillStyle = 'rgba(8,8,10,.86)';
+  ctx.fill();
+  ctx.lineWidth = Math.max(3, Math.round(h * 0.05));
+  ctx.strokeStyle = 'rgba(255,255,255,.9)';
+  ctx.stroke();
+  const light = c => (!c || c === COMBO_RIM.None ? '#ffffff' : c);
+  for (let i = 0; i < 2; i++) {
+    const cx = x + w / 2 + (i - 0.5) * h * 0.72;
+    const cy = y + h / 2;
+    ctx.fillStyle = light(cols[i] ?? cols[0]);
+    ctx.beginPath();
+    ctx.arc(cx, cy - h * 0.16, h * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy + h * 0.34, h * 0.27, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 // Combo karta (varijanta D): art preko cijele karte, tamni prijelaz gore (ime) i dolje (tekst), rub u bojama
 // heroja sastojaka, +X za dodatnu energiju, oznaka COMBO iznad teksta, sastojci dolje desno, kod dolje lijevo.
 function renderCombo(canvas, card, tpl, art) {
@@ -1039,6 +1063,9 @@ function renderCombo(canvas, card, tpl, art) {
     ctx.letterSpacing = `${Math.round(th * 0.04)}px`;
     fitLine(ctx, 'COMBO', { box: [tx, ty, tw, th], size: L.tag.size ?? 48, min: 24 }, { font: TEXT_FONT, color: '#ffffff', bold: true });
     ctx.restore();
+    // Team (Marko 2026-11-22, mockup B4): beside COMBO a dark pill with two figures in the colours of the two cards (a
+    // colourless card gives a white one). A solo combo, one hero playing both cards, has no mark.
+    if (card.comboKind === 'team') drawTeamMark(ctx, tx + tw + Math.round(th * 0.18), ty, th, [ca, cb]);
   }
   const t = drawEffect(ctx, card.text ?? '', colors[0] === 'None' ? 'Purple' : colors[0], L.effect, tpl.icons, '', false);
   if (t.atMin) warnings.push('The text only fits at the smallest size; shorten it.');
