@@ -1173,7 +1173,11 @@ export function createEditor(env) {
     // never meets the files of the one moving out), and the drafts point at the new names.
     const codes = new Map();
     for (const id of moved) codes.set(artCode(fresh.cards[id]?.art) ?? id, plan.get(id));
-    const renames = artMoves(await artFiles(true), codes);
+    // Only art no other card uses: a published card, a card that stays, or the last Publish (its Undo) keep theirs.
+    const staying = {};
+    for (const [id, d] of Object.entries(fresh.cards ?? {})) if (!plan.has(id)) staying[id] = d;
+    const keep = artRefs(db().cards, staying, await readLast());
+    const renames = artMoves((await artFiles(true)).filter(f => !keep.has(f)), codes);
     // (Art paths are under data/: "art/DQ1-005.ab12.png" is data/art/DQ1-005.ab12.png in the folder.)
     for (const [a, b] of renames) await fs.moveFile(store().root, `data/${a}`, `data/${b}.moving`);
     for (const [, b] of renames) await fs.moveFile(store().root, `data/${b}.moving`, `data/${b}`);
