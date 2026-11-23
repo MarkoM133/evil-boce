@@ -18,6 +18,7 @@ import { deckPool, heroEvolutions, setTraits } from './deck.js';
 import { decorate, comboProblems, touchedIngredients, INGREDIENT_TYPES } from './combo.js';
 import { planMove, targetCode, renameKeys, moveDrafts } from './card-move.js';
 import { artRefs, unusedArt, previousArtOf, artToDrop, artCode, artMoves } from './art-files.js';
+import { BALL_COLORS, DEFAULT_ACCENT, heroDefaultColor, ballColors } from './look.js';
 import * as fs from './fsdir.js';
 
 export const DRAFTS_PATH = 'data/editor/drafts.json';
@@ -48,7 +49,7 @@ const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB', 'EN'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
 const FIELDS = ['name', 'type', 'token', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain', 'subtype',
   'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'ingredients', 'extraCost', 'introducedIn', 'tempTurns', 'comboKind',
-  'sprite', 'spriteHash'];
+  'sprite', 'spriteHash', 'wt', 'ballColor', 'ballColor2'];
 const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equipment: 'action', Assist: 'action', Stage: 'stage', Core: 'core', Combo: 'combo' };
 
 // Prazan objekt ili popis je isto što i polje kojeg nema (Stage bez bonusa, karta bez tagova).
@@ -1528,6 +1529,45 @@ export function createEditor(env) {
     g.closePath();
   }
 
+  // Boća (Marko 2026-11-23): tijelo, akcent i težina novog heroja u editoru, kao u kartici Look objavljenog heroja.
+  // Tijelo je gornja polovica u boji, akcent donja; WT 1–3 stane u heks, 4 i više pokriva sedam.
+  function ballSection(w, field, num) {
+    const preview = h('div', { class: 'ball-preview', 'aria-hidden': 'true' });
+    const rows = [];
+    const paint = () => {
+      const { body, accent } = ballColors(w);
+      preview.style.setProperty('--top', body);
+      preview.style.setProperty('--bottom', accent ?? DEFAULT_ACCENT);
+      for (const sync of rows) sync();
+    };
+    const pick = (key, v) => { snap(true); if (v == null) delete w[key]; else w[key] = v; changed(); paint(); if (ed.view === 'board') paintStage(cardOf(w)); };
+    const colorRow = (label, key, special) => {
+      const custom = h('input', { type: 'color', 'aria-label': `${label}: any color`, disabled: !canWrite(), oninput: e => pick(key, e.target.value.toLowerCase()) });
+      const extra = h('button', { type: 'button', class: 'ghost small-btn', disabled: !canWrite(), onclick: () => pick(key, null) }, special);
+      const el = h('div', { class: 'bk-row' }, h('span', { class: 'bk-label' }, label), h('div', { class: 'bk-colors' },
+        Object.entries(BALL_COLORS).map(([name, hex]) => h('button', { type: 'button', class: 'bk-swatch', style: `--sw:${hex}`, 'data-color': hex, title: name,
+          'aria-label': `${label}: ${name}`, disabled: !canWrite(), onclick: () => pick(key, hex) })),
+        extra, h('label', { class: 'bk-custom', title: 'Any color' }, custom)));
+      rows.push(() => {
+        const v = w[key] ?? null;
+        el.querySelectorAll('.bk-swatch').forEach(s => s.classList.toggle('active', s.dataset.color === v));
+        extra.classList.toggle('active', v == null);
+        custom.value = v ?? (key === 'ballColor' ? heroDefaultColor(w) : DEFAULT_ACCENT);
+      });
+      return el;
+    };
+    const section = [
+      h('h2', {}, 'Ball'),
+      h('div', { class: 'look-ball' }, preview, h('div', { class: 'bk-side' },
+        colorRow('Body', 'ballColor', 'Hero color'),
+        colorRow('Accent', 'ballColor2', 'Default'),
+        field('WEIGHT (WT)', num(w.wt ?? 2, e => { const n = Number(e.target.value); pick('wt', e.target.value === '' || n === 2 ? null : n); }, { min: 1, max: 6, disabled: !canWrite() })),
+        h('p', { class: 'muted small' }, 'WT 1–3 fit one hex, WT 4 and up cover seven; heavier balls go less far and push harder. 2 is the usual. The ball and the sprite show On the board.'))),
+    ];
+    paint();
+    return section;
+  }
+
   // On the board: figurica heroja (sprite iz igre) na heksu s prstenom tima, i ploča heroja kao u igri.
   async function boardView(card) {
     const W = 960;
@@ -1549,6 +1589,28 @@ export function createEditor(env) {
     g.ellipse(x, y, R * 0.62, R * 0.3, 0, 0, Math.PI * 2);
     g.stroke();
     const base = db().cards.find(b => b.id === card.id);
+    // The ball under the figure: the hero's body colour on top, its accent below (an Evolution keeps its hero's ball).
+    const heroCard = card.type === 'Evolution' ? (Object.entries(ed.drafts?.cards ?? {}).map(([id, d]) => ({ ...db().cards.find(b => b.id === id), ...d }))
+      .find(c => c.type === 'Hero' && c.name === card.hero) ?? db().cards.find(b => b.type === 'Hero' && b.name === card.hero) ?? card) : card;
+    const { body, accent } = ballColors(heroCard);
+    const br = R * 0.55 * (heroCard.wt >= 4 ? 1.6 : 1);
+    const by = y - br * 0.55;
+    g.save();
+    g.beginPath();
+    g.arc(x, by, br, 0, Math.PI * 2);
+    g.clip();
+    g.fillStyle = body;
+    g.fillRect(x - br, by - br, br * 2, br);
+    g.fillStyle = accent ?? DEFAULT_ACCENT;
+    g.fillRect(x - br, by, br * 2, br);
+    g.fillStyle = '#111';
+    g.fillRect(x - br, by - br * 0.04, br * 2, br * 0.08);
+    const shade = g.createRadialGradient(x - br * 0.35, by - br * 0.4, br * 0.1, x, by, br);
+    shade.addColorStop(0, 'rgba(255,255,255,0.25)');
+    shade.addColorStop(1, 'rgba(0,0,0,0.35)');
+    g.fillStyle = shade;
+    g.fillRect(x - br, by - br, br * 2, br * 2);
+    g.restore();
     const spritePath = card.sprite ?? base?.sprite ?? (card.type === 'Evolution' ? db().cards.find(b => b.type === 'Hero' && b.name === card.hero)?.sprite : null);
     const url = spritePath ? await store().dataUrl(spritePath) : null;
     const sprite = url ? await loadImage(url).catch(() => null) : null;
@@ -1900,6 +1962,7 @@ export function createEditor(env) {
         h('div', { class: 'ce-row ce-stats' }, STAT_KEYS.map(([k, label]) => field(h('span', { class: `stat-${k}` }, label), num(w.stats[k], e => set('stats', { ...w.stats, [k]: e.target.value === '' ? undefined : Number(e.target.value) }), { step: k === 'pwr' ? 1000 : 1 })))),
         w.type === 'Hero' ? field('ALIASES', h('input', { value: (w.aliases ?? []).join(', '), placeholder: 'Trish', oninput: e => set('aliases', e.target.value.split(',').map(x => x.trim()).filter(Boolean)) }), h('small', { class: 'muted' }, 'Other names a card\'s first tag may use for this hero.')) : null,
         w.type === 'Hero' ? heroEvos(w) : null,
+        w.type === 'Hero' ? ballSection(w, field, num) : null,
         h('h2', {}, 'Ability'),
         field('ABILITY NAME', h('input', { value: w.abilityNames?.[0] ?? '', oninput: e => set('abilityNames', [e.target.value, ...(w.abilityNames ?? []).slice(1)]) })),
         ...text,

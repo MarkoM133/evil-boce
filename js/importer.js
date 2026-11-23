@@ -433,9 +433,9 @@ export function applyAppEdits(db, edits, now = new Date()) {
 // images: { id: imageHash } za karte kojima je Objava nacrtala novi PNG (data/images/ID.hash.png).
 // Nacrt s new: true i kodom kojeg nema u bazi je nova karta (dodaje se na kraj, rev 1).
 // token (GDD 10, 2026-11-14): an Action another card makes; the game reads it (CardDef.token).
-export const DRAFT_GAME_FIELDS = ['name', 'type', 'token', 'color', 'bonusColors', 'cost', 'evo', 'tempTurns', 'hero', 'stats', 'bonus', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'ingredients', 'extraCost', 'comboKind', 'introducedIn'];
+export const DRAFT_GAME_FIELDS = ['name', 'type', 'token', 'color', 'bonusColors', 'cost', 'evo', 'tempTurns', 'hero', 'stats', 'bonus', 'traits', 'aliases', 'text', 'abilityNames', 'terrain', 'fx', 'ingredients', 'extraCost', 'comboKind', 'introducedIn', 'wt'];
 // sprite (2026-11-23): stavljen na kartu u editoru, ne samo kroz Import.
-export const DRAFT_LOOK_FIELDS = ['fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes', 'subtype', 'sprite', 'spriteHash'];
+export const DRAFT_LOOK_FIELDS = ['fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'notes', 'subtype', 'sprite', 'spriteHash', 'ballColor', 'ballColor2'];
 
 export function applyDrafts(db, drafts, images = {}, now = new Date()) {
   let changed = 0;
