@@ -1049,7 +1049,9 @@ export function createEditor(env) {
   // fx za igru (Marko 2026-11-05): svaka karta ima zapisan fx i igra radi po njemu. Parser igre (data/fx-proposals.json,
   // nakon Objave) i Claude samo predlažu; čovjek potvrdi. Promjena teksta fx vrati na nepotvrđen.
   function gameProposal(w, p, textChanged) {
-    if (textChanged || !p || p.unparsed?.length || !(w.text ?? '').trim()) return null;
+    // Pročitano iz nacrta (p.draft, 2026-11-23): vrijedi dok je tekst isti kao kad je pročitan.
+    const readNow = !!p?.draft && p.text === toWords(w.text ?? '');
+    if ((textChanged && !readNow) || (p?.draft && !readNow) || !p || p.unparsed?.length || !(w.text ?? '').trim()) return null;
     const read = p.read ?? '';
     if (w.fx && normFx(w.fx) === normFx(read)) return null;
     return h('div', { class: 'ce-claude ce-prop-game' },
@@ -1095,26 +1097,31 @@ export function createEditor(env) {
     const props = env.state.fxProposals?.cards ?? {};
     let n = 0;
     let confirmed = 0;
-    for (const base of db().cards) {
-      if (base.deleted || base.type === 'Core' || !(base.text ?? '').trim()) continue;
-      const d = fresh.cards[base.id] ?? {};
-      if ('text' in d && toWords(d.text ?? '') !== (base.text ?? '')) continue;
-      if (d.fx ?? base.fx) continue;
-      const p = props[base.id];
+    // Objavljene karte i nacrti (2026-11-23: prijedlozi se čitaju i iz nacrta, pa se fx novog seta potvrdi prije Objave).
+    const published = new Map(db().cards.map(c => [c.id, c]));
+    for (const id of new Set([...published.keys(), ...Object.keys(fresh.cards)])) {
+      const base = published.get(id) ?? {};
+      const d = fresh.cards[id] ?? {};
+      const card = { ...base, ...d };
+      if (card.deleted || card.type === 'Core' || !(card.text ?? '').trim()) continue;
+      const p = props[id];
       if (!p || p.unparsed?.length || !p.read) continue;
-      if (ed.locks[base.id] && lockState(ed.locks[base.id], who()) === 'other') continue;
+      // Pročitano iz nacrta: samo dok je tekst još isti; iz objavljene karte: dok nacrt nije promijenio tekst.
+      if (p.draft ? p.text !== toWords(card.text ?? '') : ('text' in d && toWords(d.text ?? '') !== (base.text ?? ''))) continue;
+      if (d.fx ?? base.fx) continue;
+      if (ed.locks[id] && lockState(ed.locks[id], who()) === 'other') continue;
       const was = d.fxRead ?? base.fxRead;
       const ok = was != null && was === p.read;
       const nd = { ...d, fx: p.read, fxStatus: ok ? 'ok' : 'check', updated: new Date().toISOString(), who: who() || undefined };
       delete nd.fxRead;
-      fresh.cards[base.id] = nd;
+      fresh.cards[id] = nd;
       n++;
       if (ok) confirmed++;
     }
     if (!n) { env.toast('Every card with a game reading already has an fx.'); return; }
     await writeJson(DRAFTS_PATH, fresh);
     ed.drafts = fresh;
-    env.toast(`fx written on ${n} ${n === 1 ? 'card' : 'cards'} (${n - confirmed} to confirm). They go into the game with the next Publish.`);
+    env.toast(`fx written on ${n} ${n === 1 ? 'card' : 'cards'} (${n - confirmed} to confirm). They go into the game with the Publish.`);
     env.render();
   }
 

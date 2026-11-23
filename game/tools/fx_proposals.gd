@@ -2,7 +2,8 @@ extends SceneTree
 ## Writes data/fx-proposals.json into the shared folder for the web app's Effect tab: for every
 ## card with text, what the game reads from it (fx lines), the sentences it does not understand,
 ## a proposed fx (the hand-written placeholder when there is one), and errors in an existing
-## `fx` field. Run it after a Publish (GDD 14: Claude Code proposes fx, Marko confirms).
+## `fx` field. Run it after a Publish (GDD 14: Claude Code proposes fx, Marko confirms). Card Studio drafts are read
+## too (2026-11-23), over a published card with the same id, so a set's fx can be confirmed before it is published.
 ## godot_console --headless --path game -s res://tools/fx_proposals.gd [-- --data=<shared folder>]
 
 const OUT: String = "data/fx-proposals.json"
@@ -20,7 +21,34 @@ func _run() -> void:
 		return
 	# cards.json as it is: the placeholder fx only show up as proposals, so the app still asks
 	# for them to be confirmed into the card data.
-	var raw: CardCatalog = CardCatalog.from_json_text(FileAccess.get_file_as_string(db.data_dir().path_join("cards.json")), false)
+	var doc_in: Dictionary = JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(db.data_dir().path_join("cards.json"))))
+	var list: Array = JsonUtil.as_array(doc_in.get("cards", []))
+	var drafted: Dictionary = {}
+	var drafts_path: String = db.data_dir().path_join("editor/drafts.json")
+	if FileAccess.file_exists(drafts_path):
+		var drafts: Dictionary = JsonUtil.as_dict(JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(drafts_path))).get("cards", {}))
+		var by_id: Dictionary = {}
+		for i: int in list.size():
+			by_id[str(JsonUtil.as_dict(list[i]).get("id", ""))] = i
+		for key: Variant in drafts:
+			var rec: Dictionary = JsonUtil.as_dict(drafts[key])
+			var id: String = str(rec.get("id", key))
+			# A draft holds only what changed: over the published card when there is one.
+			var merged: Dictionary = JsonUtil.as_dict(list[by_id[id]]).duplicate() if by_id.has(id) else {}
+			for k: Variant in rec:
+				merged[k] = rec[k]
+			merged["id"] = id
+			if merged.has("text"):
+				merged["text"] = _words(str(merged["text"]))
+			if str(merged.get("type", "")).is_empty() or JsonUtil.as_bool(merged.get("deleted", false)):
+				continue
+			drafted[id] = true
+			if by_id.has(id):
+				list[by_id[id]] = merged
+			else:
+				list.append(merged)
+	doc_in["cards"] = list
+	var raw: CardCatalog = CardCatalog.from_doc(doc_in, false)
 	var placeholders: Dictionary = {}
 	if FileAccess.file_exists(CardDb.PLACEHOLDER_FX):
 		placeholders = JsonUtil.as_dict(JSON.parse_string(FileAccess.get_file_as_string(CardDb.PLACEHOLDER_FX)))
@@ -45,6 +73,11 @@ func _run() -> void:
 		for u: String in unparsed:
 			sentences.append(u.replace("SELF", who))
 		var entry: Dictionary = {"read": read, "unparsed": sentences}
+		if drafted.has(str(id)):
+			# Read from the draft: the text the Card Studio shows now, not the published one. The text goes along, so
+			# the app sees when the draft changed after this was read.
+			entry["draft"] = true
+			entry["text"] = c.text
 		var proposal: String = str(placeholders.get(str(id), "")) if placeholders.has(str(id)) else (read if unparsed.is_empty() else "")
 		entry["proposal"] = proposal
 		if c.fx_hand_written:
@@ -72,5 +105,21 @@ func _run() -> void:
 		return
 	f.store_string(JSON.stringify(doc, "  ", false) + "\n")
 	f.close()
-	print("%s: %d cards with text, %d ready from text or fx, %d need an fx" % [path, total, ready, total - ready])
+	print("%s: %d cards with text (%d from drafts), %d ready from text or fx, %d need an fx" % [path, total, drafted.size(), ready, total - ready])
 	quit()
+
+
+## A draft's text as Publish writes it (js/card-text.js toWords): [EN] is "Energy", bold marks go.
+static func _words(text: String) -> String:
+	var words: Dictionary = {"HP": "HP", "DMG": "DMG", "PWR": "Power", "RNG": "Range", "KB": "Knockback", "EN": "Energy"}
+	var out: String = text
+	var start: RegEx = RegEx.create_from_string("(?im)^\\[RNG\\]\\s*")
+	out = start.sub(out, "[Range] ", true)
+	var tok: RegEx = RegEx.create_from_string("\\[(HP|DMG|PWR|RNG|KB|EN)\\]")
+	var m: RegExMatch = tok.search(out)
+	while m != null:
+		var before: String = out.substr(m.get_start() - 1, 1) if m.get_start() > 0 else ""
+		var word: String = (" " if not before.is_empty() and before.strip_edges() != "" else "") + str(words[m.get_string(1)])
+		out = out.substr(0, m.get_start()) + word + out.substr(m.get_end())
+		m = tok.search(out, m.get_start() + word.length())
+	return out.replace("**", "")
