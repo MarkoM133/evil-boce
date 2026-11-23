@@ -85,3 +85,13 @@ test('a tag may not be a word of the rules (Marko 2026-11-15)', () => {
   assert.equal(ruleWord('General'), null);
   assert.equal(ruleWord(''), null);
 });
+
+test('a card that gives a tag in the match lets cards of that tag into the deck (Marko 2026-11-22)', async () => {
+  const { tagsGiven } = await import('../js/tags.js');
+  const { heroEvolutions, deckEvolutions } = await import('../js/deck.js');
+  assert.deepEqual(tagsGiven({ text: 'Preroll Phase: Your Heroes gain {Brave Hero} until the end of the turn.' }), ['Brave Hero']);
+  assert.deepEqual(tagsGiven({ fx: 'PASSIVE: GAIN_TAG EQUIPPED {Mage}', text: 'whatever' }), ['Mage']);
+  assert.deepEqual(tagsGiven({ text: 'Your Hero gets +2 Range.' }), []);
+  assert.ok(heroEvolutions(db, ['H-ALF']).includes('G-STAND'), 'what a deck could unlock: the cards that give a tag too');
+  assert.deepEqual(deckEvolutions(db, { 'G-STAND': 1, 'C-GEN': 2 }), ['G-STAND'], 'in the deck: the card that gives a tag counts');
+});

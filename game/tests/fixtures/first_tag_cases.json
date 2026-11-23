@@ -244,6 +244,16 @@
       "traits": [
         "Alfa & Gear Second"
       ]
+    },
+    {
+      "id": "G-STAND",
+      "name": "Stand Charm",
+      "type": "Equipment",
+      "color": "Red",
+      "traits": [
+        "Alfa"
+      ],
+      "text": "The equipped Hero gains {Stand}."
     }
   ],
   "kinds": [
@@ -708,6 +718,30 @@
       "ok": false,
       "why": "Alfa & Gear Second: Alfa is Red, Charlie has no Gear Second and no evolution",
       "says": "only for Alfa Prime, or a Blue hero with Gear Second"
+    },
+    {
+      "heroes": [
+        "H-ALF",
+        "H-DEL"
+      ],
+      "evolutions": [],
+      "card": "C-STAND",
+      "ok": false,
+      "needs": "G-STAND",
+      "why": "a Blue Stand card: Delta has no Stand, but Alfa's own card gives it",
+      "says": "Requires Stand Charm"
+    },
+    {
+      "heroes": [
+        "H-ALF",
+        "H-DEL"
+      ],
+      "evolutions": [
+        "G-STAND"
+      ],
+      "card": "C-STAND",
+      "ok": true,
+      "why": "the card that gives Stand is in the deck (Marko 2026-11-22)"
     }
   ]
 }

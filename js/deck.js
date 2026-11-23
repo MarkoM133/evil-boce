@@ -1,6 +1,6 @@
 // Deck: pravila (§8 plana), random deck (§10) i deck kod. Bez I/O, isto za app i testove.
 import { DECK_TYPES } from './parse.js';
-import { deckVerdict, firstTag, hasTrait, heroAliases, norm, isColorless, HEROES, TRAIT, INVALID, MIXED } from './tags.js';
+import { deckVerdict, firstTag, hasTrait, heroAliases, norm, isColorless, tagsGiven, HEROES, TRAIT, INVALID, MIXED } from './tags.js';
 
 export const DECK_SIZE = 40;
 export const LIMITS = { Action: 4, Equipment: 4, Assist: 2, Evolution: 2 };
@@ -34,7 +34,9 @@ export function setTraits(db, traits) {
 export function heroEvolutions(db, heroIds) {
   const ids = byId(db);
   const names = new Set(heroIds.map(id => ids.get(id)?.name).filter(Boolean));
-  return db.cards.filter(c => !c.deleted && c.type === 'Evolution' && names.has(c.hero)).map(c => c.id);
+  // I sve karte koje daju tag u partiji: s njima u decku smiju i karte s tim prvim tagom (isto kao DeckCode.hero_evolutions).
+  return db.cards.filter(c => !c.deleted && ((c.type === 'Evolution' && names.has(c.hero)) ||
+    (['Action', 'Equipment', 'Assist'].includes(c.type) && !c.token && tagsGiven(c).length))).map(c => c.id);
 }
 
 // Karte koje smiju u deck uz ove heroje i ove Evolution karte u decku (pravilo prvog taga, bez maknutih).
@@ -51,7 +53,8 @@ export function cardVerdict(db, card, heroIds, evolutionIds = []) {
 // Evolution karte u decku (id-evi).
 export function deckEvolutions(db, cards) {
   const ids = byId(db);
-  return Object.entries(cards).filter(([id, n]) => n > 0 && ids.get(id)?.type === 'Evolution').map(([id]) => id);
+  // Evolution karte i karte koje daju tag u partiji: obje mijenjaju što heroji decka smiju igrati.
+  return Object.entries(cards).filter(([id, n]) => n > 0 && (ids.get(id)?.type === 'Evolution' || tagsGiven(ids.get(id)).length)).map(([id]) => id);
 }
 
 export function poolCapacity(pool) {

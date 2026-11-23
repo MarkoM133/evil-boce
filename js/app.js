@@ -3,7 +3,7 @@ import { analyzeExport, buildPublish, applyAppEdits, obsoleteImages, thumbPlan, 
 import { TYPES, COLOR_NAMES, DECK_TYPES, HERO_TYPES, TERRAINS } from './parse.js';
 import { checkDeck, deckPool, randomFill, encodeDeck, decodeDeck, slugify, emptyDeck, heroCards, deckChanges, setTraits, cardVerdict, deckEvolutions, heroEvolutions, poolCapacity, tagWarnings, coverage, LIMITS, DECK_SIZE } from './deck.js';
 import { probeServer, serverStore, folderStore, ConflictError, TRAITS_PATH, emptyTraits } from './store.js';
-import { firstTag, tagLabel, hasTrait, norm, heroAliases, ruleWord, GENERAL, HEROES, TRAIT } from './tags.js';
+import { firstTag, tagLabel, hasTrait, norm, heroAliases, ruleWord, tagsGiven, GENERAL, HEROES, TRAIT } from './tags.js';
 import { BALL_COLORS, DEFAULT_ACCENT, heroDefaultColor, ballColors } from './look.js';
 import { renderTools } from './tools.js';
 import { aggregate, filterMatches, ranked, cardsVersions, RESULTS } from './stats.js';
@@ -1782,7 +1782,8 @@ function addCard(id, delta) {
     if (n) d.cards[id] = n;
     else delete d.cards[id];
   });
-  if (c.type === 'Evolution' && !state.deck.cards[id]) warnOrphans(c);
+  // Zadnja kopija karte koja nešto otključava (Evolution, ili karta koja daje tag u partiji).
+  if ((c.type === 'Evolution' || tagsGiven(c).length) && !state.deck.cards[id]) warnOrphans(c);
 }
 
 // Tko smije kartu (prvi tag): "General", "Signature: Giorno", "Trait: Stand"; Evolution po heroju.
@@ -1805,11 +1806,12 @@ function offerEvolution(c, needs) {
   toast([`${c.name} requires ${evo.name} in the deck. `, go], 'warn', 9000);
 }
 
-// Zadnja kopija Evolution karte je otišla: karte koje je ona otključavala više nisu legalne.
+// Zadnja kopija karte koja otključava (Evolution, ili karta koja daje tag) je otišla: karte koje je ona otključavala više
+// nisu legalne.
 function warnOrphans(evo) {
   const d = state.deck;
   const evos = deckEvolutions(state.db, d.cards);
-  const orphans = Object.keys(d.cards).map(cardById).filter(x => x && x.type !== 'Evolution' &&
+  const orphans = Object.keys(d.cards).map(cardById).filter(x => x && x.type !== 'Evolution' && x.id !== evo.id &&
     !cardVerdict(state.db, x, d.heroes, evos).ok && cardVerdict(state.db, x, d.heroes, [...evos, evo.id]).ok);
   if (!orphans.length) return;
   const go = h('button', { class: 'toast-action', onclick: () => {
@@ -2119,7 +2121,7 @@ function poolCard(c, list) {
   return h('div', { class: `pool-card${c.landscape ? ' wide' : ''}${n ? ' in-deck' : ''}${n >= max ? ' maxed' : ''}${needs ? ' needs' : ''}` },
     h('div', { class: 'pool-art-wrap' },
       // lijevi klik doda kopiju, desni makne jednu
-      h('button', { class: 'pool-art', title: needs ? `${c.name}: ${v.why}. Click to add it with the Evolution.` : `${c.name}: click adds one, right-click removes one`, onclick: add,
+      h('button', { class: 'pool-art', title: needs ? `${c.name}: ${v.why}. Click to add it with the card that unlocks it.` : `${c.name}: click adds one, right-click removes one`, onclick: add,
         oncontextmenu: e => { e.preventDefault(); if (n) addCard(c.id, -1); } }, cardImg(c, { alt: c.name }),
         n ? h('span', { class: 'pool-count' }, `${n}/${max}`) : null),
       zoomButton(c, list),

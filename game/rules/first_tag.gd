@@ -175,7 +175,7 @@ static func deck_verdict(catalog: CardCatalog, card: CardDef, heroes: Array[Card
 					needs_names.append(e.name)
 			for type: String in ["Action", "Equipment", "Assist"]:
 				for g: CardDef in catalog.of_type(type):
-					if g.id != card.id and not g.token and _gives_any(g, traits):
+					if g.id != card.id and not g.token and _gives_any(g, traits) and JsonUtil.as_bool(deck_verdict(catalog, g, heroes)["ok"]):
 						needs.append(g.id)
 						needs_names.append(g.name)
 			if not needs.is_empty():

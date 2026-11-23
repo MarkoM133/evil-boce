@@ -125,8 +125,20 @@ export function tagLabel(kind) {
 export const COLORLESS = 'None';
 export const isColorless = card => card?.color === COLORLESS;
 
-// Smije li karta u deck s ovim herojima (id-evi) i ovim Evolution kartama u decku (id-evi).
-// { ok, why, needs: [id Evolution karata koje bi je otključale] }.
+// Tagovi koje karta daje herojima u partiji ("The equipped Hero gains {Mage}", "Your Heroes gain {Brave Hero}"), isto kao
+// FirstTag.tags_given u igri: iz fx-a (GAIN_TAG), a bez njega iz teksta.
+export function tagsGiven(card) {
+  const out = [];
+  for (const m of String(card?.fx ?? '').matchAll(/\bGAIN_TAG\s+\S+\s+\{([^}]+)\}/g)) out.push(m[1].trim());
+  if (!out.length) for (const m of String(card?.text ?? '').matchAll(/\bgains?\s+\{([^}]+)\}/gi)) out.push(m[1].trim());
+  return [...new Set(out)];
+}
+
+const givesAny = (card, traits) => tagsGiven(card).some(g => traits.some(t => norm(t) === norm(g)));
+
+// Smije li karta u deck s ovim herojima (id-evi) i ovim Evolution kartama u decku (id-evi). Uz Evolution karte popis smije
+// imati i karte koje daju tag u partiji (Marko 2026-11-22): s takvom kartom u decku smiju i karte s tim prvim tagom.
+// { ok, why, needs: [id karata koje bi je otključale: Evolution, pa karte koje daju tag] }.
 export function deckVerdict(db, card, heroIds, evolutionIds = []) {
   // A token is made by another card in play (GDD 10, 2026-11-14): never in a deck. Same rule as FirstTag.deck_verdict.
   if (card.token) return { ok: false, why: 'a token is never in a deck', needs: [] };
@@ -149,8 +161,12 @@ export function deckVerdict(db, card, heroIds, evolutionIds = []) {
     if (same.some(h => kind.heroes.includes(h.name))) return { ok: true, why: '', needs: [] };
     if (same.some(h => hasAnyTrait(h, kind.traits))) return { ok: true, why: '', needs: [] };
     const names = new Set(same.map(h => h.name));
-    if (evos.some(e => names.has(e.hero) && hasAnyTrait(e, kind.traits))) return { ok: true, why: '', needs: [] };
+    if (evos.some(e => e.type === 'Evolution' && names.has(e.hero) && hasAnyTrait(e, kind.traits))) return { ok: true, why: '', needs: [] };
+    if (evos.some(e => e.type !== 'Evolution' && e.id !== card.id && givesAny(e, kind.traits))) return { ok: true, why: '', needs: [] };
     const needs = db.cards.filter(e => !e.deleted && e.type === 'Evolution' && names.has(e.hero) && hasAnyTrait(e, kind.traits));
+    // Karte koje daju tag, samo one koje i same smiju u ovaj deck.
+    needs.push(...db.cards.filter(g => !g.deleted && !g.token && g.id !== card.id && ['Action', 'Equipment', 'Assist'].includes(g.type) &&
+      givesAny(g, kind.traits) && deckVerdict(db, g, heroIds).ok));
     if (needs.length) return { ok: false, why: `Requires ${needs.map(e => e.name).join(' or ')}`, needs: needs.map(e => e.id) };
     return { ok: false, why: whoFor(card, kind), needs: [] };
   }
