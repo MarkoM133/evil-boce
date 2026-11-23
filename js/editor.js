@@ -2781,7 +2781,11 @@ export function createEditor(env) {
     return out;
   }
 
-  const liveDb = card => setTraits({ ...db(), cards: [...db().cards.filter(c => c.id !== card.id).map(merged), card] }, db().traitList ?? env.state.traits?.traits);
+  // The database as it would be with the drafts published: new cards of a set count too (Marko 2026-11-24: a new hero
+  // said "0 cards to play" while its set's cards were still drafts).
+  const liveDb = card => setTraits({ ...db(), cards: [...db().cards.filter(c => c.id !== card.id).map(merged),
+    ...Object.entries(ed.drafts?.cards ?? {}).filter(([id, d]) => d.new && id !== card.id && !db().cards.some(c => c.id === id)).map(([id, d]) => ({ id, ...d })), card] },
+    db().traitList ?? env.state.traits?.traits);
 
   // Balans dok uređuješ (Marko 2026-11-15, mockup docs/private/mockups/balance, varijanta B): krivulja costa boje,
   // slične karte (ista boja i cost, tri pa "+N more"), i svi heroji boje karte kao male pločice po setu s brojem
