@@ -856,3 +856,22 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-maketoken-foot { display: grid; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line, #333); }
 .ce-maketoken-foot p { margin: 0; }
 .ce-maketoken-btns { display: flex; gap: 8px; }
+
+/* Folded blocks show one summary line (Marko 2026-11-23, mockup editor-layout A). */
+.ce-fold-sum { flex: 1; min-width: 0; color: var(--muted); font: 500 12.5px var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.ce-foldable:not(.folded) .ce-fold-sum { display: none; }
+.ce-panel-head .ce-fold-sum + * { flex: none; }
+/* The form's blocks fold by their headings. */
+.ce-form-block { display: grid; gap: 14px; align-content: start; }
+.ce-form-block > .ce-panel-head h2 { margin: 0; }
+.ce-form-block + .ce-form-block, .ce-form > * + .ce-form-block { border-top: 1px solid var(--line); padding-top: 12px; }
+/* In the game, under the card: a small board with the ball and the standee, the controls beside it. */
+.ce-ingame { width: 100%; max-width: 680px; justify-self: center; }
+.ce-ingame-body { display: grid; grid-template-columns: 200px 1fr; gap: 18px; align-items: start; }
+.ce-ingame-board { width: 200px; height: 240px; border-radius: 6px; display: block; }
+.ce-ingame-controls { display: grid; gap: 12px; min-width: 0; }
+.ce-ingame-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ce-step { display: inline-flex; align-items: center; }
+.ce-step button { padding: 4px 12px; font-size: 18px; }
+.ce-step-value { min-width: 44px; text-align: center; font: 600 16px var(--text); background: #0f0f0f; border: 1px solid var(--line); padding: 5px 10px; }
+@media (max-width: 700px) { .ce-ingame-body { grid-template-columns: 1fr; justify-items: center; } }

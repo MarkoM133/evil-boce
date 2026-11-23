@@ -423,23 +423,32 @@ export function createEditor(env) {
     // Every block folds (Marko 2026-11-15): an arrow at the start of its head, remembered per block; Balance folds
     // by its own title (a details element).
     foldable(parts[0], 'checks');
-    if (w.type === 'Hero') foldable(parts[1], 'cardsfor');
+    if (w.type === 'Hero') foldable(parts[1], 'cardsfor', () => [...parts[1].querySelectorAll('.ce-cards-for > span')].map(x => x.textContent.replace(/\s+/g, ' ').trim()).join(' · '));
     if (w.type !== 'Core') foldable(parts[w.type === 'Hero' ? 2 : 1], 'fx');
-    foldable(parts[parts.length - 1], 'notes');
+    foldable(parts[parts.length - 1], 'notes', () => {
+      const hist = ed.history?.cards?.[w.id] ?? [];
+      const notes = ed.notes?.cards?.[w.id] ?? [];
+      const last = hist[hist.length - 1];
+      return [notes.length ? `${notes.length} note${notes.length === 1 ? '' : 's'}` : null, hist.length ? `${hist.length} changes` : null, last ? `last ${last.who}` : null].filter(Boolean).join(' · ');
+    });
     return h('aside', { class: 'ce-side' }, ...parts);
   }
 
   const FOLD_KEY = 'evil-boce-fold-';
-  function foldable(section, key) {
+  // `summary` (2026-11-23): a function giving one line that the head shows while the block is folded.
+  function foldable(section, key, summary) {
     const head = section?.firstElementChild;
     if (!head) return section;
     let folded = false;
     try { folded = localStorage.getItem(FOLD_KEY + key) === '1'; } catch {}
     section.classList.add('ce-foldable');
     section.classList.toggle('folded', folded);
+    const sum = summary ? h('span', { class: 'ce-fold-sum' }) : null;
+    const fillSum = () => { if (sum) sum.textContent = section.classList.contains('folded') ? (summary() ?? '') : ''; };
     const flip = () => {
       const now = !section.classList.contains('folded');
       section.classList.toggle('folded', now);
+      fillSum();
       chev.setAttribute('aria-expanded', String(!now));
       try { localStorage.setItem(FOLD_KEY + key, now ? '1' : '0'); } catch {}
     };
@@ -452,6 +461,12 @@ export function createEditor(env) {
     // The whole head folds (Marko 2026-11-15), not only the arrow; what else is in it (a pill, a button) keeps its own click.
     row.classList.add('ce-fold-head');
     row.addEventListener('click', e => { if (e.target.closest('button, a, input, textarea, select, [role="button"]')) return; flip(); });
+    if (sum) {
+      // Before a pill or a button the head already has, so those stay at the end.
+      const tail = [...row.children].find(c => c !== chev && !/^H[23]$/.test(c.tagName));
+      row.insertBefore(sum, tail ?? null);
+      fillSum();
+    }
     return section;
   }
 
@@ -1344,14 +1359,8 @@ export function createEditor(env) {
     ];
     // Rijetki gumbi u izborniku ⋯ (Marko 2026-11-06): Remove background, Duplicate, Download PNG. Radnje nad kartom
     // (Marko 2026-11-15): Move to another code i Throw away / Discard su tu, ne u Notes & history; i Core ga dobije.
-    // Standee sprite (Marko 2026-11-23): on the card like its art, so a set's heroes get theirs before Publish, without
-    // renaming files for Import.
-    const spriteIn = h('input', { type: 'file', accept: 'image/png,image/webp', hidden: true, onchange: e => env.guard(() => uploadSprite(e.target.files[0])) });
     if (!ed.artMode) {
       const rare = buttons.splice(2).filter(Boolean);
-      if (HEROISH.includes(w.type)) buttons.push(h('button', { class: 'ghost', type: 'button', disabled: !canWrite(),
-        title: 'The standee in the game: a PNG with a see-through background. Or open On the board and drop it there',
-        onclick: () => spriteIn.click() }, (w.sprite ?? ed.base?.sprite) ? 'Replace sprite' : 'Add sprite'), spriteIn);
       rare.push(h('button', { class: 'ghost', type: 'button', title: 'A new card with the next code in this set', onclick: duplicate }, 'Duplicate'),
         h('button', { class: 'ghost', type: 'button', onclick: downloadPng }, 'Download PNG'),
         // Ponovno crtanje objavljene karte (Marko 2026-11-07): Objava crta samo nacrte, a slika u bazi
@@ -1388,6 +1397,7 @@ export function createEditor(env) {
       w.type === 'Core' ? h('p', { class: 'muted small ce-hint' }, 'Image only, no frame') : null,
       buttons.length ? h('div', { class: 'ce-art-buttons' }, buttons, fileIn) : null,
       buttons.length ? previousArtRow(w) : null,
+      HEROISH.includes(w.type) && !ed.artMode ? inGameSection(w) : null,
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.')));
   }
 
@@ -1529,18 +1539,87 @@ export function createEditor(env) {
     g.closePath();
   }
 
-  // Boća (Marko 2026-11-23): tijelo, akcent i težina novog heroja u editoru, kao u kartici Look objavljenog heroja.
-  // Tijelo je gornja polovica u boji, akcent donja; WT 1–3 stane u heks, 4 i više pokriva sedam.
-  function ballSection(w, field, num) {
-    const preview = h('div', { class: 'ball-preview', 'aria-hidden': 'true' });
+  // In the game (Marko 2026-11-23, mockup docs/private/mockups/editor-layout, A): under the card, a small board with
+  // the hero's ball and standee as they stand on the table, and beside it the ball's colours, its weight and the sprite.
+  // An Evolution keeps its hero's ball: only its sprite is its own.
+  function heroOfEvo(card) {
+    const drafted = Object.entries(ed.drafts?.cards ?? {}).map(([id, d]) => ({ ...(db().cards.find(b => b.id === id) ?? {}), ...d, id }));
+    return drafted.find(c => c.type === 'Hero' && c.name === card.hero) ?? db().cards.find(b => b.type === 'Hero' && b.name === card.hero) ?? null;
+  }
+
+  function drawBall(g, x, by, br, heroCard) {
+    const { body, accent } = ballColors(heroCard);
+    g.save();
+    g.beginPath();
+    g.arc(x, by, br, 0, Math.PI * 2);
+    g.clip();
+    g.fillStyle = body;
+    g.fillRect(x - br, by - br, br * 2, br);
+    g.fillStyle = accent ?? DEFAULT_ACCENT;
+    g.fillRect(x - br, by, br * 2, br);
+    g.fillStyle = '#111';
+    g.fillRect(x - br, by - br * 0.04, br * 2, br * 0.08);
+    const shade = g.createRadialGradient(x - br * 0.35, by - br * 0.4, br * 0.1, x, by, br);
+    shade.addColorStop(0, 'rgba(255,255,255,0.25)');
+    shade.addColorStop(1, 'rgba(0,0,0,0.35)');
+    g.fillStyle = shade;
+    g.fillRect(x - br, by - br, br * 2, br * 2);
+    g.restore();
+  }
+
+  function spritePathOf(card) {
+    const base = db().cards.find(b => b.id === card.id);
+    return card.sprite ?? base?.sprite ?? (card.type === 'Evolution' ? heroOfEvo(card)?.sprite : null);
+  }
+
+  async function paintMiniBoard(canvas, card) {
+    const g = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    const R = 26;
+    hexBoard(g, W, H, R);
+    const x = W / 2;
+    const y = H - 44;
+    const heroCard = card.type === 'Evolution' ? (heroOfEvo(card) ?? card) : card;
+    g.strokeStyle = '#2f6bff';
+    g.lineWidth = 4;
+    g.beginPath();
+    g.ellipse(x, y, R * 0.9, R * 0.42, 0, 0, Math.PI * 2);
+    g.stroke();
+    const br = R * 0.85 * (heroCard.wt >= 4 ? 1.6 : 1);
+    drawBall(g, x, y - br * 0.55, br, heroCard);
+    const path = spritePathOf(card);
+    const url = path ? await store().dataUrl(path).catch(() => null) : null;
+    const sprite = url ? await loadImage(url).catch(() => null) : null;
+    if (sprite) {
+      const sh = H - 70;
+      const sw = (sprite.width / sprite.height) * sh;
+      g.imageSmoothingEnabled = false;
+      g.drawImage(sprite, x - sw / 2, y - br * 1.2 - sh + 10, sw, sh);
+      g.imageSmoothingEnabled = true;
+    } else {
+      g.fillStyle = '#8d8a85';
+      g.font = '600 13px "Barlow Semi Condensed", sans-serif';
+      g.textAlign = 'center';
+      g.fillText('No sprite yet', x, 26);
+    }
+  }
+
+  function inGameSection(w) {
+    const evo = w.type === 'Evolution';
+    const mini = h('canvas', { class: 'ce-ingame-board', width: 200, height: 240, title: 'Drop the standee PNG here' });
+    const repaint = () => paintMiniBoard(mini, cardOf(w)).catch(() => {});
+    // A picture dropped on the small board is the sprite.
+    mini.addEventListener('dragover', e => { if (draggingFile(e)) { e.preventDefault(); e.stopPropagation(); } });
+    mini.addEventListener('drop', e => {
+      if (!draggingFile(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      env.guard(() => uploadSprite([...e.dataTransfer.files].find(f => /^image\/(png|webp)$/.test(f.type))));
+    });
     const rows = [];
-    const paint = () => {
-      const { body, accent } = ballColors(w);
-      preview.style.setProperty('--top', body);
-      preview.style.setProperty('--bottom', accent ?? DEFAULT_ACCENT);
-      for (const sync of rows) sync();
-    };
-    const pick = (key, v) => { snap(true); if (v == null) delete w[key]; else w[key] = v; changed(); paint(); if (ed.view === 'board') paintStage(cardOf(w)); };
+    const sync = () => { for (const r of rows) r(); repaint(); if (ed.view === 'board') paintStage(cardOf(w)); };
+    const pick = (key, v) => { snap(true); if (v == null) delete w[key]; else w[key] = v; changed(); sync(); };
     const colorRow = (label, key, special) => {
       const custom = h('input', { type: 'color', 'aria-label': `${label}: any color`, disabled: !canWrite(), oninput: e => pick(key, e.target.value.toLowerCase()) });
       const extra = h('button', { type: 'button', class: 'ghost small-btn', disabled: !canWrite(), onclick: () => pick(key, null) }, special);
@@ -1550,21 +1629,38 @@ export function createEditor(env) {
         extra, h('label', { class: 'bk-custom', title: 'Any color' }, custom)));
       rows.push(() => {
         const v = w[key] ?? null;
-        el.querySelectorAll('.bk-swatch').forEach(s => s.classList.toggle('active', s.dataset.color === v));
+        el.querySelectorAll('.bk-swatch').forEach(b => b.classList.toggle('active', b.dataset.color === v));
         extra.classList.toggle('active', v == null);
         custom.value = v ?? (key === 'ballColor' ? heroDefaultColor(w) : DEFAULT_ACCENT);
       });
       return el;
     };
-    const section = [
-      h('h2', {}, 'Ball'),
-      h('div', { class: 'look-ball' }, preview, h('div', { class: 'bk-side' },
+    const wtValue = h('b', { class: 'ce-step-value' }, String(w.wt ?? 2));
+    const step = d => { const n = Math.max(1, Math.min(6, (w.wt ?? 2) + d)); pick('wt', n === 2 ? null : n); wtValue.textContent = String(w.wt ?? 2); };
+    const spriteIn = h('input', { type: 'file', accept: 'image/png,image/webp', hidden: true, onchange: e => env.guard(() => uploadSprite(e.target.files[0])) });
+    const hasSprite = !!(w.sprite ?? ed.base?.sprite);
+    const controls = h('div', { class: 'ce-ingame-controls' },
+      evo ? h('p', { class: 'small muted' }, `The ball is ${w.hero || 'the hero'}'s; an Evolution only brings its own sprite.`) : [
         colorRow('Body', 'ballColor', 'Hero color'),
         colorRow('Accent', 'ballColor2', 'Default'),
-        field('WEIGHT (WT)', num(w.wt ?? 2, e => { const n = Number(e.target.value); pick('wt', e.target.value === '' || n === 2 ? null : n); }, { min: 1, max: 6, disabled: !canWrite() })),
-        h('p', { class: 'muted small' }, 'WT 1–3 fit one hex, WT 4 and up cover seven; heavier balls go less far and push harder. 2 is the usual. The ball and the sprite show On the board.'))),
-    ];
-    paint();
+        h('div', { class: 'ce-ingame-row' },
+          h('div', { class: 'ce-field' }, h('span', {}, 'Weight (WT)'),
+            h('div', { class: 'ce-step' }, h('button', { type: 'button', class: 'ghost', disabled: !canWrite(), 'aria-label': 'Lighter', onclick: () => step(-1) }, '−'),
+              wtValue, h('button', { type: 'button', class: 'ghost', disabled: !canWrite(), 'aria-label': 'Heavier', onclick: () => step(1) }, '+'))),
+        ),
+      ],
+      h('div', { class: 'ce-field' }, h('span', {}, 'Sprite'),
+        h('div', { class: 'ce-ingame-row' }, h('button', { type: 'button', class: 'ghost', disabled: !canWrite(), title: 'The standee in the game: a PNG with a see-through background',
+          onclick: () => spriteIn.click() }, hasSprite ? 'Replace sprite' : 'Add sprite'), h('span', { class: 'small muted' }, 'or drop a PNG on the board'), spriteIn)),
+      evo ? null : h('p', { class: 'small muted' }, 'WT 1–3 fit one hex, WT 4 and up cover seven; heavier balls go less far and push harder. 2 is the usual.'));
+    const summary = () => {
+      const { body, accent } = ballColors(evo ? (heroOfEvo(w) ?? w) : w);
+      const name = hex => Object.entries(BALL_COLORS).find(([, v]) => v === hex)?.[0]?.toLowerCase() ?? hex;
+      return [evo ? 'hero\'s ball' : `${name(body)} / ${accent ? name(accent) : 'default'} · WT ${w.wt ?? 2}`, hasSprite ? 'sprite in' : 'no sprite'].join(' · ');
+    };
+    const section = h('section', { class: 'ce-panel ce-ingame' }, h('h3', {}, 'In the game'), h('div', { class: 'ce-ingame-body' }, mini, controls));
+    foldable(section, 'ingame', summary);
+    sync();
     return section;
   }
 
@@ -1590,27 +1686,9 @@ export function createEditor(env) {
     g.stroke();
     const base = db().cards.find(b => b.id === card.id);
     // The ball under the figure: the hero's body colour on top, its accent below (an Evolution keeps its hero's ball).
-    const heroCard = card.type === 'Evolution' ? (Object.entries(ed.drafts?.cards ?? {}).map(([id, d]) => ({ ...db().cards.find(b => b.id === id), ...d }))
-      .find(c => c.type === 'Hero' && c.name === card.hero) ?? db().cards.find(b => b.type === 'Hero' && b.name === card.hero) ?? card) : card;
-    const { body, accent } = ballColors(heroCard);
+    const heroCard = card.type === 'Evolution' ? (heroOfEvo(card) ?? card) : card;
     const br = R * 0.55 * (heroCard.wt >= 4 ? 1.6 : 1);
-    const by = y - br * 0.55;
-    g.save();
-    g.beginPath();
-    g.arc(x, by, br, 0, Math.PI * 2);
-    g.clip();
-    g.fillStyle = body;
-    g.fillRect(x - br, by - br, br * 2, br);
-    g.fillStyle = accent ?? DEFAULT_ACCENT;
-    g.fillRect(x - br, by, br * 2, br);
-    g.fillStyle = '#111';
-    g.fillRect(x - br, by - br * 0.04, br * 2, br * 0.08);
-    const shade = g.createRadialGradient(x - br * 0.35, by - br * 0.4, br * 0.1, x, by, br);
-    shade.addColorStop(0, 'rgba(255,255,255,0.25)');
-    shade.addColorStop(1, 'rgba(0,0,0,0.35)');
-    g.fillStyle = shade;
-    g.fillRect(x - br, by - br, br * 2, br * 2);
-    g.restore();
+    drawBall(g, x, y - br * 0.55, br, heroCard);
     const spritePath = card.sprite ?? base?.sprite ?? (card.type === 'Evolution' ? db().cards.find(b => b.type === 'Hero' && b.name === card.hero)?.sprite : null);
     const url = spritePath ? await store().dataUrl(spritePath) : null;
     const sprite = url ? await loadImage(url).catch(() => null) : null;
@@ -1962,7 +2040,6 @@ export function createEditor(env) {
         h('div', { class: 'ce-row ce-stats' }, STAT_KEYS.map(([k, label]) => field(h('span', { class: `stat-${k}` }, label), num(w.stats[k], e => set('stats', { ...w.stats, [k]: e.target.value === '' ? undefined : Number(e.target.value) }), { step: k === 'pwr' ? 1000 : 1 })))),
         w.type === 'Hero' ? field('ALIASES', h('input', { value: (w.aliases ?? []).join(', '), placeholder: 'Trish', oninput: e => set('aliases', e.target.value.split(',').map(x => x.trim()).filter(Boolean)) }), h('small', { class: 'muted' }, 'Other names a card\'s first tag may use for this hero.')) : null,
         w.type === 'Hero' ? heroEvos(w) : null,
-        w.type === 'Hero' ? ballSection(w, field, num) : null,
         h('h2', {}, 'Ability'),
         field('ABILITY NAME', h('input', { value: w.abilityNames?.[0] ?? '', oninput: e => set('abilityNames', [e.target.value, ...(w.abilityNames ?? []).slice(1)]) })),
         ...text,
@@ -2063,8 +2140,36 @@ export function createEditor(env) {
         fileIn,
       ];
     }
-    return h('section', { class: `ce-form c-tint-${w.color ?? 'none'}` }, ...body,
+    return h('section', { class: `ce-form c-tint-${w.color ?? 'none'}` }, ...foldForm(body.flat(), w),
       canWrite() ? null : h('p', { class: 'small muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer), or Card Studio opened through Marko\'s computer.'));
+  }
+
+  // The form folds by its headings (Marko 2026-11-23, mockup editor-layout A): each heading and what follows it is a
+  // block that folds like the panels on the left, remembered per card type and heading, with one line while folded.
+  function foldForm(nodes, w) {
+    const out = [];
+    let block = null;
+    const summaryOf = title => () => {
+      const text = toWords(w.text ?? '').replace(/\s+/g, ' ').trim();
+      switch (title) {
+        case 'Stats': return STAT_KEYS.map(([k, l]) => w.stats?.[k] != null ? `${l} ${w.stats[k]}` : null).filter(Boolean).join(' · ');
+        case 'Ability': return [w.abilityNames?.[0], text].filter(Boolean).join(' · ');
+        case 'Effect text': case 'Effect': return text || w.effect || '';
+        case 'Tags': case 'Tags on the cards': return (w.traits ?? []).filter(Boolean).join(' · ');
+        default: return [w.name, w.color, w.id].filter(Boolean).join(' · ');
+      }
+    };
+    for (const n of nodes) {
+      if (!n) continue;
+      if (n.tagName === 'H2') {
+        const title = n.textContent;
+        block = h('section', { class: 'ce-form-block' }, h('div', { class: 'ce-panel-head' }, n));
+        foldable(block, `form-${w.type}-${title}`, summaryOf(title));
+        out.push(block);
+      } else if (block) block.append(n);
+      else out.push(n);
+    }
+    return out;
   }
 
   // Main tag (Marko 2026-11-16, mockup docs/private/mockups/tag-map/jedno-polje.html): one field like Add tag, no
@@ -2718,9 +2823,8 @@ export function createEditor(env) {
     snap(true);
     ed.work.sprite = path;
     ed.work.spriteHash = hash;
-    ed.view = 'board';
     changed();
-    env.toast('Sprite in: see it On the board. Publish takes it to the game.');
+    env.toast('Sprite in. Publish takes it to the game.');
     env.render();
   }
 
