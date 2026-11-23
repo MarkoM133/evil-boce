@@ -169,6 +169,8 @@ export function createEditor(env) {
     const base = db().cards.find(c => c.id === id) ?? (draft?.new ? { id } : null);
     if (!base) { ed.id = null; ed.work = null; return; }
     ed.id = id;
+    // A new card starts unzoomed, its ball as the game shows it.
+    if (ed.zoomFor !== id) { ed.boardZoom = 1; ed.ballClosed = false; ed.zoomFor = id; }
     ed.base = base;
     ed.work = workOf({ ...base, ...(draft ?? {}) });
     ed.opened = cardOf(ed.work);
@@ -1581,7 +1583,8 @@ export function createEditor(env) {
   const BALL_RADIUS_BY_WT = [0.5, 0.62, 0.75, 1.3];
   const ballRadius = (wt, R) => R * BALL_RADIUS_BY_WT[Math.min(Math.max(Math.round(wt ?? 2), 1), BALL_RADIUS_BY_WT.length) - 1];
 
-  function drawPiece(g, x, y, R, heroCard, sprite) {
+  // `open` false: the closed ball even with a sprite (to see its body colour, Marko 2026-11-24).
+  function drawPiece(g, x, y, R, heroCard, sprite, open = true) {
     const rad = ballRadius(heroCard.wt, R);
     const cy = y - rad * 0.55;
     g.strokeStyle = '#2f6bff';
@@ -1589,7 +1592,7 @@ export function createEditor(env) {
     g.beginPath();
     g.ellipse(x, y, rad * 1.05, rad * 0.5, 0, 0, Math.PI * 2);
     g.stroke();
-    if (!sprite) { drawBall(g, x, cy, rad, heroCard); return; }
+    if (!sprite || !open) { drawBall(g, x, cy, rad, heroCard); return; }
     const { accent } = ballColors(heroCard);
     // The pedestal: the bottom half in the accent colour, its cut seen from above.
     g.save();
@@ -1618,6 +1621,36 @@ export function createEditor(env) {
     g.imageSmoothingEnabled = true;
   }
 
+  // The wheel over a board zooms on the piece, from 1× to 4× (Marko 2026-11-24); both boards share it while the card
+  // is open. ed.ballClosed shows the ball closed even with a sprite.
+  function zoomOnWheel(canvas, redraw) {
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const next = Math.min(4, Math.max(1, (ed.boardZoom ?? 1) * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+      if (Math.abs(next - (ed.boardZoom ?? 1)) < 0.001) return;
+      ed.boardZoom = next;
+      redraw();
+    }, { passive: false });
+    canvas.addEventListener('dblclick', () => { ed.boardZoom = 1; redraw(); });
+  }
+
+  // Draws the table zoomed on the point (fx, fy), the middle of the piece: as it zooms in, that point slides towards
+  // (cx, cy), the middle of the board, so the piece stays in view. What `paint` draws is in board coordinates.
+  function zoomed(g, fx, fy, paint, cx = fx, cy = fy) {
+    const z = ed.boardZoom ?? 1;
+    const k = 1 - 1 / z;
+    g.save();
+    g.translate(fx + (cx - fx) * k, fy + (cy - fy) * k);
+    g.scale(z, z);
+    g.translate(-fx, -fy);
+    paint();
+    g.restore();
+  }
+
+  // The middle of a piece standing at y: its ball, or the ball and the standee on it.
+  const pieceMiddle = (y, R, heroCard, sprite) => y - ballRadius(heroCard.wt, R) * (sprite && !ed.ballClosed ? 1.6 : 0.55);
+
   function spritePathOf(card) {
     const base = db().cards.find(b => b.id === card.id);
     return card.sprite ?? base?.sprite ?? (card.type === 'Evolution' ? heroOfEvo(card)?.sprite : null);
@@ -1628,14 +1661,18 @@ export function createEditor(env) {
     const W = canvas.width;
     const H = canvas.height;
     const R = 34;
-    hexBoard(g, W, H, R);
     const x = W / 2;
     const y = H - 40;
     const heroCard = card.type === 'Evolution' ? (heroOfEvo(card) ?? card) : card;
     const path = spritePathOf(card);
     const url = path ? await store().dataUrl(path).catch(() => null) : null;
     const sprite = url ? await loadImage(url).catch(() => null) : null;
-    drawPiece(g, x, y, R, heroCard, sprite);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, W, H);
+    zoomed(g, x, pieceMiddle(y, R, heroCard, sprite), () => {
+      hexBoard(g, W, H, R);
+      drawPiece(g, x, y, R, heroCard, sprite, !ed.ballClosed);
+    }, W / 2, H / 2);
     if (!sprite) {
       g.fillStyle = '#8d8a85';
       g.font = '600 13px "Barlow Semi Condensed", sans-serif';
@@ -1648,6 +1685,14 @@ export function createEditor(env) {
     const evo = w.type === 'Evolution';
     const mini = h('canvas', { class: 'ce-ingame-board', width: 200, height: 240, title: 'Drop the standee PNG here' });
     const repaint = () => paintMiniBoard(mini, cardOf(w)).catch(() => {});
+    zoomOnWheel(mini, () => { repaint(); if (ed.view === 'board') paintStage(cardOf(w)); });
+    // Closed / Open (Marko 2026-11-24): with a sprite the ball is drawn open (its top half gone), so its body colour
+    // does not show; Closed shows the whole ball. Picking a body colour closes it by itself.
+    const ballView = h('div', { class: 'ce-ball-view', role: 'group', 'aria-label': 'Ball' },
+      [['closed', 'Closed'], ['open', 'Open']].map(([k, label]) => h('button', { type: 'button', 'data-k': k, onclick: () => setClosed(k === 'closed') }, label)));
+    const markView = () => ballView.querySelectorAll('button').forEach(b => b.classList.toggle('active', (b.dataset.k === 'closed') === !!ed.ballClosed));
+    const setClosed = v => { ed.ballClosed = v; markView(); repaint(); if (ed.view === 'board') paintStage(cardOf(w)); };
+    markView();
     // A picture dropped anywhere on this block is the sprite (Marko 2026-11-24: on the small board alone it was easy
     // to miss, and the drop became the card's art).
     const spriteDrop = section => {
@@ -1666,7 +1711,7 @@ export function createEditor(env) {
     };
     const rows = [];
     const sync = () => { for (const r of rows) r(); repaint(); if (ed.view === 'board') paintStage(cardOf(w)); };
-    const pick = (key, v) => { snap(true); if (v == null) delete w[key]; else w[key] = v; changed(); sync(); };
+    const pick = (key, v) => { snap(true); if (v == null) delete w[key]; else w[key] = v; if (key === 'ballColor' && !ed.ballClosed) { ed.ballClosed = true; markView(); } changed(); sync(); };
     const colorRow = (label, key, special) => {
       const custom = h('input', { type: 'color', 'aria-label': `${label}: any color`, disabled: !canWrite(), oninput: e => pick(key, e.target.value.toLowerCase()) });
       const extra = h('button', { type: 'button', class: 'ghost small-btn', disabled: !canWrite(), onclick: () => pick(key, null) }, special);
@@ -1705,7 +1750,8 @@ export function createEditor(env) {
       const name = hex => Object.entries(BALL_COLORS).find(([, v]) => v === hex)?.[0]?.toLowerCase() ?? hex;
       return [evo ? 'hero\'s ball' : `WT ${w.wt ?? 2}`, (w.sprite ?? ed.base?.sprite) ? 'sprite in' : 'no sprite'].join(' · ');
     };
-    const section = h('section', { class: 'ce-panel ce-ingame' }, h('h3', {}, 'In the game'), h('div', { class: 'ce-ingame-body' }, mini, controls));
+    const section = h('section', { class: 'ce-panel ce-ingame' }, h('h3', {}, 'In the game'),
+      h('div', { class: 'ce-ingame-body' }, h('div', { class: 'ce-ingame-left' }, mini, ballView, h('small', { class: 'muted' }, 'Scroll on the board to zoom')), controls));
     spriteDrop(section);
     let open = false;
     try { open = localStorage.getItem(FOLD_KEY + 'ingame-open') === '1'; } catch {}
@@ -1756,26 +1802,42 @@ export function createEditor(env) {
     const c = h('canvas', { class: 'ce-canvas', width: W, height: H });
     const g = c.getContext('2d');
     const R = 46;
-    const { dx, dy } = hexBoard(g, W, H, R);
-    const row = Math.round(380 / dy);
-    const col = Math.round((W / 2 - (row % 2 ? dx / 2 : 0)) / dx);
-    const x = col * dx + (row % 2 ? dx / 2 : 0);
-    const y = row * dy;
-    hexPath(g, x, y, R - 1.5);
-    g.fillStyle = '#4a4036';
-    g.fill();
     // The piece to the game's scale (drawPiece): an Evolution keeps its hero's ball.
     const heroCard = card.type === 'Evolution' ? (heroOfEvo(card) ?? card) : card;
     const path = spritePathOf(card);
     const url = path ? await store().dataUrl(path).catch(() => null) : null;
     const sprite = url ? await loadImage(url).catch(() => null) : null;
-    drawPiece(g, x, y, R, heroCard, sprite);
-    if (!sprite) {
-      g.fillStyle = '#8d8a85';
-      g.font = '600 20px "Barlow Semi Condensed", sans-serif';
-      g.textAlign = 'center';
-      g.fillText('No standee sprite yet', x, y - R * 1.4);
-    }
+    const draw = () => {
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, W, H);
+      let x = 0;
+      let y = 0;
+      const dx = Math.sqrt(3) * R;
+      const dy = 1.5 * R;
+      const row = Math.round(380 / dy);
+      const col = Math.round((W / 2 - (row % 2 ? dx / 2 : 0)) / dx);
+      x = col * dx + (row % 2 ? dx / 2 : 0);
+      y = row * dy;
+      zoomed(g, x, pieceMiddle(y, R, heroCard, sprite), () => {
+        hexBoard(g, W, H, R);
+        hexPath(g, x, y, R - 1.5);
+        g.fillStyle = '#4a4036';
+        g.fill();
+        drawPiece(g, x, y, R, heroCard, sprite, !ed.ballClosed);
+      }, W / 2, H * 0.55);
+      if (!sprite) {
+        g.fillStyle = '#8d8a85';
+        g.font = '600 20px "Barlow Semi Condensed", sans-serif';
+        g.textAlign = 'center';
+        g.fillText('No standee sprite yet', W / 2, 200);
+      }
+      plate();
+      g.fillStyle = 'rgba(243, 239, 231, 0.55)';
+      g.font = '600 15px "Barlow Semi Condensed", sans-serif';
+      g.textAlign = 'right';
+      g.fillText((ed.boardZoom ?? 1) > 1.01 ? `${(ed.boardZoom).toFixed(1)}× · double-click: back` : 'Scroll to zoom', W - 18, H - 16);
+    };
+    const plate = () => {
     // Ploča heroja (lijevo gore), kao u igri: lice s arta, ime, HP kao crtice, statsi.
     const px = 24;
     const py = 24;
@@ -1805,6 +1867,9 @@ export function createEditor(env) {
       g.fillText(`${label} ${v ?? '–'}`, tx, py + 92);
       tx += g.measureText(`${label} ${v ?? '–'}`).width + 16;
     }
+    };
+    zoomOnWheel(c, draw);
+    draw();
     return c;
   }
 

@@ -895,3 +895,10 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-ingame.ce-sprite-over > * { opacity: .35; }
 .ce-ingame.ce-sprite-over::after { content: "Drop to set the sprite"; position: absolute; inset: 0; display: grid; place-items: center;
   font: 700 italic 26px var(--display); color: var(--straw); pointer-events: none; }
+
+/* Under the small board: the ball closed or open, and the zoom hint (Marko 2026-11-24). */
+.ce-ingame-left { display: grid; gap: 8px; justify-items: center; }
+.ce-ball-view { display: flex; gap: 2px; background: var(--surface-2); padding: 3px; }
+.ce-ball-view button { clip-path: none; background: none; border: 0; padding: 4px 12px; font: italic 700 14px var(--display); color: var(--muted); }
+.ce-ball-view button.active { background: #2a2a2a; color: var(--bone); }
+.ce-ingame-board { cursor: zoom-in; }
