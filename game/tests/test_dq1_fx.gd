@@ -229,6 +229,11 @@ func test_fire_terrain_reads() -> void:
 	assert_eq(_fx_of("TD-001"), "PASSIVE: STATUS SELF IGNORE_TERRAIN")
 	assert_eq(_fx_of("TD-010"), "POSTROLL: TERRAIN FIRE")
 	assert_eq(Terrain.parse("Fire"), Terrain.Type.FIRE)
+	# The rule term "Fire Terrain" (Marko 2026-11-23) reads the same.
+	var termed: CardDef = CardDef.from_card({"id": "T-FT", "name": "Wake", "type": "Action", "color": "Red", "cost": 1, "traits": ["General"],
+		"text": "Postroll Phase: The Terrain of a Stage your Hero stands on becomes Fire Terrain."})
+	assert_eq(termed.fx, "POSTROLL: TERRAIN FIRE")
+	assert_eq(termed.unparsed.size(), 0)
 
 
 func test_a_card_turns_the_stage_under_the_hero_to_fire() -> void:

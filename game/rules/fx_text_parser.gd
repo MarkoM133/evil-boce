@@ -805,7 +805,7 @@ static func _match(low: String) -> Array[Dictionary]:
 		var target: String = _subject(m.get_string(1))
 		if not target.is_empty():
 			return [_act("STATUS", target, ["IGNORE_TERRAIN"])]
-	m = _rx("^the terrain of (?:a|the) stage (?:your hero|self) stands on becomes (ice|mud|ramp|wind|fire)$").search(low)
+	m = _rx("^the terrain of (?:a|the) stage (?:your hero|self) stands on becomes (ice|mud|ramp|wind|fire)(?: terrain)?$").search(low)
 	if m != null:
 		return [_act("TERRAIN", "", [m.get_string(1).to_upper()])]
 
