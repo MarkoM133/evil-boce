@@ -1340,22 +1340,29 @@ func test_the_player_picks_the_hero_of_an_assists_ability() -> void:
 	assert_false(s.player(0).assists.has("TD-083"))
 
 
-func test_a_hero_gives_up_and_its_friend_stays_locked() -> void:
+func test_a_hero_gives_up_and_its_friend_takes_the_loss() -> void:
+	# Marko and the other author (2026-11-23): Chimaera Wing is for getting away alone; a friend in the battle loses it
+	# and takes the hit.
 	var s: GameState = _state()
 	_battle(s, PackedStringArray([BRAVO]))
 	assert_eq(_play(s, 0, "TD-084", ALPHA), "")
+	s.hero(BRAVO).add_bonus(s.hero(BRAVO).phase_bonus, "pwr", 9000)
 	s.player(0).hand.clear()
 	engine._resolve_battle(s, 0)
-	assert_true(JsonUtil.as_bool(s.battles[0].get("tie", false)), "nobody wins this turn")
-	assert_eq(s.pending.size(), 0, "and nobody is hit")
-	assert_eq(s.hero(BRAVO).tie_turns, 1)
-	assert_eq(Array(s.hero(BRAVO).locked_with), [ECHO])
-	assert_eq(Array(s.hero(ECHO).locked_with), [BRAVO], "the hero that left is not part of the lock")
+	assert_eq(JsonUtil.as_int(s.battles[0]["winner_team"]), 1, "the side that gave up loses, however strong")
+	assert_eq(s.pending.size(), 1, "the friend is hit")
+	assert_eq(JsonUtil.as_strings(s.pending[0]["targets"]), PackedStringArray([BRAVO]), "only the friend: the one that left is not")
 	engine._finish_battle(s, 0)
 	assert_eq(s.hero(ALPHA).zone, HeroState.ZONE_STRIP)
-	assert_eq(s.hero(ALPHA).tie_turns, 0)
-	assert_true(s.hero(BRAVO).is_on_map())
-	assert_eq(s.hero(BRAVO).hp, 12)
+
+
+func test_no_evolution_for_a_hero_no_card_can_be_played_for() -> void:
+	# Shadow Legion Armor (2026-11-23): Evolutions are cards too, temporary ones included.
+	var s: GameState = _state()
+	assert_eq(_play(s, 0, "TD-102"), "")
+	assert_eq(_play(s, 0, "TA-012"), "no cards can be played for Alpha, Armored")
+	s.player(0).hand.clear()
+	assert_eq(_play(s, 0, "TD-101"), "no cards can be played for Alpha, Armored")
 
 
 func test_a_combo_never_costs_under_one() -> void:

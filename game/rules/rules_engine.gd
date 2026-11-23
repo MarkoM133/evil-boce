@@ -1480,17 +1480,8 @@ func _resolve_battle(s: GameState, index: int) -> void:
 	for h: HeroState in members:
 		fighters.append(h.id)
 	s.event("battle", {"index": index, "power": power.duplicate(), "heroes": fighters})
-	# A hero gave the battle up while another of its side fights on (Marko 2026-11-22, for now): it leaves, and those
-	# who stay are locked as after a tie, with no winner and no hit this turn.
-	var stay: Array[HeroState] = members.filter(func(h: HeroState) -> bool: return not h.has_status("flee"))
-	var left_behind: bool = false
-	for h: HeroState in stay:
-		if fled.has(s.team_of(h.owner)):
-			left_behind = true
-	if left_behind:
-		b["tie"] = true
-		_battle_tie(s, stay)
-		return
+	# A hero that gave the battle up leaves its friends in it to lose it (Marko and the other author, 2026-11-23): its
+	# side cannot win, they take the hit as losers, it goes unhit and is ringed out after the battle.
 	if best < 0:
 		# Every side gave up: nobody wins, nobody is hit.
 		b["winner_team"] = -2
