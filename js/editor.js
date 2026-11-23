@@ -1400,7 +1400,6 @@ export function createEditor(env) {
       ed.artMode ? h('p', { class: 'muted small ce-hint' }, HEROISH.includes(w.type) ? 'Drag the art to move it, scroll to zoom. The frame covers the right edge of the art. Esc cancels.' : 'Drag the art to move it, scroll to zoom. The dashed line is the art window. Esc cancels.') : null,
       w.type === 'Core' ? h('p', { class: 'muted small ce-hint' }, 'Image only, no frame') : null,
       buttons.length ? h('div', { class: 'ce-art-buttons' }, buttons, fileIn) : null,
-      buttons.length ? previousArtRow(w) : null,
       inGame?.section ?? null,
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.')));
   }
@@ -1411,11 +1410,13 @@ export function createEditor(env) {
     if (!canWrite() || ed.artMode) return el;
     let depth = 0;
     const off = () => { depth = 0; el.classList.remove('ce-drop-over'); };
-    el.addEventListener('dragenter', e => { if (!draggingFile(e)) return; e.preventDefault(); depth++; el.classList.add('ce-drop-over'); });
-    el.addEventListener('dragover', e => { if (!draggingFile(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    // A file over the In the game block is a sprite (Marko 2026-11-24): the art drop does not take it, nor light up.
+    const inGameTarget = e => !!e.target?.closest?.('.ce-ingame');
+    el.addEventListener('dragenter', e => { if (!draggingFile(e) || inGameTarget(e)) return; e.preventDefault(); depth++; el.classList.add('ce-drop-over'); });
+    el.addEventListener('dragover', e => { if (!draggingFile(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (inGameTarget(e)) off(); });
     el.addEventListener('dragleave', () => { if (--depth <= 0) off(); });
     el.addEventListener('drop', e => {
-      if (!draggingFile(e)) return;
+      if (!draggingFile(e) || inGameTarget(e)) return;
       e.preventDefault();
       e.stopPropagation();
       off();
@@ -1510,7 +1511,9 @@ export function createEditor(env) {
       if (ed.base.image) store().imageUrl(ed.base).then(u => { if (u) old.src = u; });
       st.replaceChildren(h('div', { class: 'ce-oldnew' },
         h('figure', {}, ed.base.image ? old : h('div', { class: 'ce-old empty' }, 'Not published yet'), h('figcaption', { class: 'muted small' }, 'Published')),
-        h('figure', {}, scaled(wide ? 360 : 260), h('figcaption', { class: 'muted small' }, 'New'))));
+        h('figure', {}, scaled(wide ? 360 : 260), h('figcaption', { class: 'muted small' }, 'New'))),
+        // Replaced art waiting to go, to put back (Marko 2026-11-24: it belongs with Old vs new, not under the card).
+        ed.work?.type === 'Core' ? null : previousArtRow(ed.work));
     }
   }
 
@@ -1571,6 +1574,50 @@ export function createEditor(env) {
     g.restore();
   }
 
+  // A hero's piece as the game draws it (Marko 2026-11-24: the board view was not to scale): the ball's radius by WT
+  // from game/sim/physics_tuning.tres in hexes (R is the hex radius, centre to corner); an open ball has lost its top
+  // half and the standee stands on the pedestal's cut, 3 ball radii tall and at most 3.6 wide (BallView FIGURE_HEIGHT
+  // and FIGURE_MAX_WIDTH). With no sprite the ball stays closed. y is where the piece touches the table.
+  const BALL_RADIUS_BY_WT = [0.5, 0.62, 0.75, 1.3];
+  const ballRadius = (wt, R) => R * BALL_RADIUS_BY_WT[Math.min(Math.max(Math.round(wt ?? 2), 1), BALL_RADIUS_BY_WT.length) - 1];
+
+  function drawPiece(g, x, y, R, heroCard, sprite) {
+    const rad = ballRadius(heroCard.wt, R);
+    const cy = y - rad * 0.55;
+    g.strokeStyle = '#2f6bff';
+    g.lineWidth = Math.max(2, R * 0.09);
+    g.beginPath();
+    g.ellipse(x, y, rad * 1.05, rad * 0.5, 0, 0, Math.PI * 2);
+    g.stroke();
+    if (!sprite) { drawBall(g, x, cy, rad, heroCard); return; }
+    const { accent } = ballColors(heroCard);
+    // The pedestal: the bottom half in the accent colour, its cut seen from above.
+    g.save();
+    g.beginPath();
+    g.arc(x, cy, rad, 0, Math.PI);
+    g.ellipse(x, cy, rad, rad * 0.32, 0, Math.PI, 0);
+    g.closePath();
+    g.clip();
+    g.fillStyle = accent ?? DEFAULT_ACCENT;
+    g.fillRect(x - rad, cy - rad, rad * 2, rad * 2);
+    const shade = g.createRadialGradient(x - rad * 0.35, cy, rad * 0.1, x, cy, rad);
+    shade.addColorStop(0, 'rgba(255,255,255,0.18)');
+    shade.addColorStop(1, 'rgba(0,0,0,0.4)');
+    g.fillStyle = shade;
+    g.fillRect(x - rad, cy - rad, rad * 2, rad * 2);
+    g.restore();
+    g.fillStyle = '#111';
+    g.beginPath();
+    g.ellipse(x, cy, rad * 0.98, rad * 0.3, 0, 0, Math.PI * 2);
+    g.fill();
+    let sh = rad * 3;
+    let sw = (sprite.width / sprite.height) * sh;
+    if (sw > rad * 3.6) { sw = rad * 3.6; sh = (sprite.height / sprite.width) * sw; }
+    g.imageSmoothingEnabled = false;
+    g.drawImage(sprite, x - sw / 2, cy - sh, sw, sh);
+    g.imageSmoothingEnabled = true;
+  }
+
   function spritePathOf(card) {
     const base = db().cards.find(b => b.id === card.id);
     return card.sprite ?? base?.sprite ?? (card.type === 'Evolution' ? heroOfEvo(card)?.sprite : null);
@@ -1580,28 +1627,16 @@ export function createEditor(env) {
     const g = canvas.getContext('2d');
     const W = canvas.width;
     const H = canvas.height;
-    const R = 26;
+    const R = 34;
     hexBoard(g, W, H, R);
     const x = W / 2;
-    const y = H - 44;
+    const y = H - 40;
     const heroCard = card.type === 'Evolution' ? (heroOfEvo(card) ?? card) : card;
-    g.strokeStyle = '#2f6bff';
-    g.lineWidth = 4;
-    g.beginPath();
-    g.ellipse(x, y, R * 0.9, R * 0.42, 0, 0, Math.PI * 2);
-    g.stroke();
-    const br = R * 0.85 * (heroCard.wt >= 4 ? 1.6 : 1);
-    drawBall(g, x, y - br * 0.55, br, heroCard);
     const path = spritePathOf(card);
     const url = path ? await store().dataUrl(path).catch(() => null) : null;
     const sprite = url ? await loadImage(url).catch(() => null) : null;
-    if (sprite) {
-      const sh = H - 70;
-      const sw = (sprite.width / sprite.height) * sh;
-      g.imageSmoothingEnabled = false;
-      g.drawImage(sprite, x - sw / 2, y - br * 1.2 - sh + 10, sw, sh);
-      g.imageSmoothingEnabled = true;
-    } else {
+    drawPiece(g, x, y, R, heroCard, sprite);
+    if (!sprite) {
       g.fillStyle = '#8d8a85';
       g.font = '600 13px "Barlow Semi Condensed", sans-serif';
       g.textAlign = 'center';
@@ -1613,14 +1648,22 @@ export function createEditor(env) {
     const evo = w.type === 'Evolution';
     const mini = h('canvas', { class: 'ce-ingame-board', width: 200, height: 240, title: 'Drop the standee PNG here' });
     const repaint = () => paintMiniBoard(mini, cardOf(w)).catch(() => {});
-    // A picture dropped on the small board is the sprite.
-    mini.addEventListener('dragover', e => { if (draggingFile(e)) { e.preventDefault(); e.stopPropagation(); } });
-    mini.addEventListener('drop', e => {
-      if (!draggingFile(e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      env.guard(() => uploadSprite([...e.dataTransfer.files].find(f => /^image\/(png|webp)$/.test(f.type))));
-    });
+    // A picture dropped anywhere on this block is the sprite (Marko 2026-11-24: on the small board alone it was easy
+    // to miss, and the drop became the card's art).
+    const spriteDrop = section => {
+      let depth = 0;
+      const off = () => { depth = 0; section.classList.remove('ce-sprite-over'); };
+      section.addEventListener('dragenter', e => { if (!draggingFile(e) || !canWrite()) return; e.preventDefault(); e.stopPropagation(); depth++; section.classList.add('ce-sprite-over'); });
+      section.addEventListener('dragover', e => { if (!draggingFile(e)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = canWrite() ? 'copy' : 'none'; });
+      section.addEventListener('dragleave', e => { e.stopPropagation(); if (--depth <= 0) off(); });
+      section.addEventListener('drop', e => {
+        if (!draggingFile(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        off();
+        if (canWrite()) env.guard(() => uploadSprite([...e.dataTransfer.files].find(f => /^image\/(png|webp)$/.test(f.type))));
+      });
+    };
     const rows = [];
     const sync = () => { for (const r of rows) r(); repaint(); if (ed.view === 'board') paintStage(cardOf(w)); };
     const pick = (key, v) => { snap(true); if (v == null) delete w[key]; else w[key] = v; changed(); sync(); };
@@ -1655,7 +1698,7 @@ export function createEditor(env) {
       ],
       h('div', { class: 'ce-field' }, h('span', {}, 'Sprite'),
         h('div', { class: 'ce-ingame-row' }, h('button', { type: 'button', class: 'ghost', disabled: !canWrite(), title: 'The standee in the game: a PNG with a see-through background',
-          onclick: () => spriteIn.click() }, hasSprite ? 'Replace sprite' : 'Add sprite'), h('span', { class: 'small muted' }, 'or drop a PNG on the board'), spriteIn)),
+          onclick: () => spriteIn.click() }, hasSprite ? 'Replace sprite' : 'Add sprite'), h('span', { class: 'small muted' }, 'or drop a PNG anywhere here'), spriteIn)),
       evo ? null : h('p', { class: 'small muted' }, 'WT 1–3 fit one hex, WT 4 and up cover seven; heavier balls go less far and push harder. 2 is the usual.'));
     const summary = () => {
       const { body, accent } = ballColors(evo ? (heroOfEvo(w) ?? w) : w);
@@ -1663,6 +1706,7 @@ export function createEditor(env) {
       return [evo ? 'hero\'s ball' : `WT ${w.wt ?? 2}`, (w.sprite ?? ed.base?.sprite) ? 'sprite in' : 'no sprite'].join(' · ');
     };
     const section = h('section', { class: 'ce-panel ce-ingame' }, h('h3', {}, 'In the game'), h('div', { class: 'ce-ingame-body' }, mini, controls));
+    spriteDrop(section);
     let open = false;
     try { open = localStorage.getItem(FOLD_KEY + 'ingame-open') === '1'; } catch {}
     section.hidden = !open;
@@ -1720,26 +1764,13 @@ export function createEditor(env) {
     hexPath(g, x, y, R - 1.5);
     g.fillStyle = '#4a4036';
     g.fill();
-    g.strokeStyle = '#2f6bff';
-    g.lineWidth = 6;
-    g.beginPath();
-    g.ellipse(x, y, R * 0.62, R * 0.3, 0, 0, Math.PI * 2);
-    g.stroke();
-    const base = db().cards.find(b => b.id === card.id);
-    // The ball under the figure: the hero's body colour on top, its accent below (an Evolution keeps its hero's ball).
+    // The piece to the game's scale (drawPiece): an Evolution keeps its hero's ball.
     const heroCard = card.type === 'Evolution' ? (heroOfEvo(card) ?? card) : card;
-    const br = R * 0.55 * (heroCard.wt >= 4 ? 1.6 : 1);
-    drawBall(g, x, y - br * 0.55, br, heroCard);
-    const spritePath = card.sprite ?? base?.sprite ?? (card.type === 'Evolution' ? db().cards.find(b => b.type === 'Hero' && b.name === card.hero)?.sprite : null);
-    const url = spritePath ? await store().dataUrl(spritePath) : null;
+    const path = spritePathOf(card);
+    const url = path ? await store().dataUrl(path).catch(() => null) : null;
     const sprite = url ? await loadImage(url).catch(() => null) : null;
-    if (sprite) {
-      const sh = 230;
-      const sw = (sprite.width / sprite.height) * sh;
-      g.imageSmoothingEnabled = false;
-      g.drawImage(sprite, x - sw / 2, y - sh + R * 0.2, sw, sh);
-      g.imageSmoothingEnabled = true;
-    } else {
+    drawPiece(g, x, y, R, heroCard, sprite);
+    if (!sprite) {
       g.fillStyle = '#8d8a85';
       g.font = '600 20px "Barlow Semi Condensed", sans-serif';
       g.textAlign = 'center';

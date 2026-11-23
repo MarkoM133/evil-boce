@@ -888,3 +888,10 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-ig-label small { font: 500 11.5px var(--text); color: var(--muted); font-style: normal; }
 .ce-ig-btn[aria-expanded="true"] .ce-ig-label { color: var(--straw); }
 .ce-ig-btn:focus-visible { outline: 2px solid var(--straw); outline-offset: 2px; }
+
+/* A file over In the game: it becomes the sprite (Marko 2026-11-24). */
+.ce-ingame { position: relative; }
+.ce-ingame.ce-sprite-over { outline: 2px dashed var(--straw); outline-offset: -2px; }
+.ce-ingame.ce-sprite-over > * { opacity: .35; }
+.ce-ingame.ce-sprite-over::after { content: "Drop to set the sprite"; position: absolute; inset: 0; display: grid; place-items: center;
+  font: 700 italic 26px var(--display); color: var(--straw); pointer-events: none; }
