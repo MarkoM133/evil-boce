@@ -47,7 +47,8 @@ const STAT_KEYS = [['hp', 'HP'], ['dmg', 'DMG'], ['pwr', 'PWR'], ['rng', 'RNG'],
 const TOKENS = ['HP', 'DMG', 'PWR', 'RNG', 'KB', 'EN'];
 // Polja koja editor mijenja; nacrt čuva samo ona koja se razlikuju od karte u cards.json.
 const FIELDS = ['name', 'type', 'token', 'color', 'bonusColors', 'cost', 'bonus', 'stats', 'evo', 'hero', 'abilityNames', 'traits', 'aliases', 'text', 'terrain', 'subtype',
-  'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'ingredients', 'extraCost', 'introducedIn', 'tempTurns', 'comboKind'];
+  'fx', 'fxStatus', 'fxRead', 'art', 'artCrop', 'emblem', 'bg', 'template', 'coreImage', 'status', 'ingredients', 'extraCost', 'introducedIn', 'tempTurns', 'comboKind',
+  'sprite', 'spriteHash'];
 const TYPE_BADGE = { Hero: 'hero', Evolution: 'evolution', Action: 'action', Equipment: 'action', Assist: 'action', Stage: 'stage', Core: 'core', Combo: 'combo' };
 
 // Prazan objekt ili popis je isto što i polje kojeg nema (Stage bez bonusa, karta bez tagova).
@@ -1342,8 +1343,14 @@ export function createEditor(env) {
     ];
     // Rijetki gumbi u izborniku ⋯ (Marko 2026-11-06): Remove background, Duplicate, Download PNG. Radnje nad kartom
     // (Marko 2026-11-15): Move to another code i Throw away / Discard su tu, ne u Notes & history; i Core ga dobije.
+    // Standee sprite (Marko 2026-11-23): on the card like its art, so a set's heroes get theirs before Publish, without
+    // renaming files for Import.
+    const spriteIn = h('input', { type: 'file', accept: 'image/png,image/webp', hidden: true, onchange: e => env.guard(() => uploadSprite(e.target.files[0])) });
     if (!ed.artMode) {
       const rare = buttons.splice(2).filter(Boolean);
+      if (HEROISH.includes(w.type)) buttons.push(h('button', { class: 'ghost', type: 'button', disabled: !canWrite(),
+        title: 'The standee in the game: a PNG with a see-through background. Or open On the board and drop it there',
+        onclick: () => spriteIn.click() }, (w.sprite ?? ed.base?.sprite) ? 'Replace sprite' : 'Add sprite'), spriteIn);
       rare.push(h('button', { class: 'ghost', type: 'button', title: 'A new card with the next code in this set', onclick: duplicate }, 'Duplicate'),
         h('button', { class: 'ghost', type: 'button', onclick: downloadPng }, 'Download PNG'),
         // Ponovno crtanje objavljene karte (Marko 2026-11-07): Objava crta samo nacrte, a slika u bazi
@@ -1398,6 +1405,8 @@ export function createEditor(env) {
       e.stopPropagation();
       off();
       const file = [...e.dataTransfer.files].find(f => /^image\/(png|jpeg|webp)$/.test(f.type));
+      // On the board a dropped picture is the hero's standee sprite, elsewhere the card's art.
+      if (ed.view === 'board' && HEROISH.includes(ed.work?.type)) { env.guard(() => uploadSprite(file)); return; }
       env.guard(() => { if (!file) throw new Error('Drop a PNG, JPEG or WebP picture.'); return uploadArt(file); });
     });
     return el;
@@ -2632,6 +2641,26 @@ export function createEditor(env) {
     env.render();
   }
 
+  // Standee sprite (Marko 2026-11-23): data/sprites/<kod>.<hash>.png, kao što ga piše Import; Objava ga nosi u igru.
+  async function uploadSprite(file) {
+    if (!file) throw new Error('Drop a PNG picture of the standee.');
+    const ext = { 'image/png': 'png', 'image/webp': 'webp' }[file.type];
+    if (!ext) throw new Error('A sprite must be PNG or WebP (a see-through background).');
+    if (!HEROISH.includes(ed.work.type)) throw new Error('Only heroes and Evolution cards have a standee sprite.');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const hash = await imageHashOf(bytes);
+    const path = `sprites/${ed.work.id}.${hash}.${ext}`;
+    await fs.writeFile(store().root, `data/${path}`, bytes);
+    store().dropImageUrls?.();
+    snap(true);
+    ed.work.sprite = path;
+    ed.work.spriteHash = hash;
+    ed.view = 'board';
+    changed();
+    env.toast('Sprite in: see it On the board. Publish takes it to the game.');
+    env.render();
+  }
+
   // ---------- art koji ništa ne koristi (Marko 2026-11-16) ----------
 
   // Svi fileovi arta kao "art/…" i "art/emblems/…"; kratko u memoriji, jer se stranica karte često crta.
@@ -3154,6 +3183,7 @@ export function createEditor(env) {
     if ('fx' in d || 'fxStatus' in d) out.push(chip('FX', d.fx ? `confirmed${d.who ? ` by ${d.who}` : ''}` : 'removed'));
     if (('art' in d || 'template' in d) && !base?.art) out.push(chip('FRAME', 'new frame (editor), art from Card Engine'));
     else if ('art' in d) out.push(chip('ART', 'new art'));
+    if ('sprite' in d) out.push(chip('SPRITE', d.sprite ? 'new standee sprite' : 'sprite removed'));
     else if ('artCrop' in d) out.push(chip('ART', 'art crop'));
     if ('emblem' in d || 'bg' in d) out.push(chip('PLATE', [d.emblem ? 'emblem' : null, d.bg ? `background ${d.bg}` : null].filter(Boolean).join(', ')));
     if ('coreImage' in d) out.push(chip('IMAGE', d.coreImage === 'effect' ? 'drawn from the effect' : 'uploaded'));

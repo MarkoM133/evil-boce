@@ -18,6 +18,8 @@ const WRITE = [
   // Pojmovi pravila (Card editor › Words › Terms, 2026-11-21).
   /^data\/terms\.json$/,
   new RegExp(`^data/art/(?:emblems/)?${NAME}${IMG}$`),
+  // Standee sprite heroja i Evolution karte (Card editor, 2026-11-23).
+  new RegExp(`^data/sprites/${NAME}\\.(?:png|webp)$`),
   /^data\/sets\/sets\.json$/,
   /^data\/card-frames\/[a-z0-9-]{1,30}\/layout\.json$/,
   new RegExp(`^data/sets/[A-Za-z0-9-]{1,20}/${NAME}${IMG}$`),
