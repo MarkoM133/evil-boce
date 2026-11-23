@@ -1359,6 +1359,9 @@ export function createEditor(env) {
     ];
     // Rijetki gumbi u izborniku ⋯ (Marko 2026-11-06): Remove background, Duplicate, Download PNG. Radnje nad kartom
     // (Marko 2026-11-15): Move to another code i Throw away / Discard su tu, ne u Notes & history; i Core ga dobije.
+    // In the game opens from a button in this row (Marko 2026-11-23, mockup ingame-button B): a small hex with the
+    // standee on its ball and a status line, set apart from the art buttons.
+    const inGame = HEROISH.includes(w.type) && !ed.artMode ? inGameSection(w) : null;
     if (!ed.artMode) {
       const rare = buttons.splice(2).filter(Boolean);
       rare.push(h('button', { class: 'ghost', type: 'button', title: 'A new card with the next code in this set', onclick: duplicate }, 'Duplicate'),
@@ -1381,6 +1384,7 @@ export function createEditor(env) {
       for (const b of rare) b.addEventListener('click', close);
       buttons.push(h('div', { class: 'ce-more' }, h('button', { class: 'ghost', type: 'button', title: 'More: Remove background, Duplicate, Download PNG, Redraw picture', 'aria-haspopup': 'menu',
         onclick: e => { e.stopPropagation(); menu.hidden = !menu.hidden; if (!menu.hidden) setTimeout(() => document.addEventListener('click', close, { once: true })); } }, 'More ▾'), menu));
+      if (inGame) buttons.push(inGame.button);
     }
     return artDrop(h('section', { class: 'ce-centre' },
       views.length > 1 && !ed.artMode ? h('div', { class: 'ce-views' }, views.map(([k, label]) => h('button', { type: 'button', class: ed.view === k ? 'active' : '', onclick: e => {
@@ -1397,7 +1401,7 @@ export function createEditor(env) {
       w.type === 'Core' ? h('p', { class: 'muted small ce-hint' }, 'Image only, no frame') : null,
       buttons.length ? h('div', { class: 'ce-art-buttons' }, buttons, fileIn) : null,
       buttons.length ? previousArtRow(w) : null,
-      HEROISH.includes(w.type) && !ed.artMode ? inGameSection(w) : null,
+      inGame?.section ?? null,
       ed.agency ? null : h('p', { class: 'warn small' }, 'Agency FB is not on this computer: a stand-in font is shown. PNGs are made on a computer that has it.')));
   }
 
@@ -1656,12 +1660,49 @@ export function createEditor(env) {
     const summary = () => {
       const { body, accent } = ballColors(evo ? (heroOfEvo(w) ?? w) : w);
       const name = hex => Object.entries(BALL_COLORS).find(([, v]) => v === hex)?.[0]?.toLowerCase() ?? hex;
-      return [evo ? 'hero\'s ball' : `${name(body)} / ${accent ? name(accent) : 'default'} · WT ${w.wt ?? 2}`, hasSprite ? 'sprite in' : 'no sprite'].join(' · ');
+      return [evo ? 'hero\'s ball' : `WT ${w.wt ?? 2}`, (w.sprite ?? ed.base?.sprite) ? 'sprite in' : 'no sprite'].join(' · ');
     };
     const section = h('section', { class: 'ce-panel ce-ingame' }, h('h3', {}, 'In the game'), h('div', { class: 'ce-ingame-body' }, mini, controls));
-    foldable(section, 'ingame', summary);
+    let open = false;
+    try { open = localStorage.getItem(FOLD_KEY + 'ingame-open') === '1'; } catch {}
+    section.hidden = !open;
+    const chip = h('canvas', { class: 'ce-ig-hex', width: 46, height: 40, 'aria-hidden': 'true' });
+    const status = h('small', {}, summary());
+    const button = h('button', { type: 'button', class: 'ce-ig-btn', 'aria-expanded': String(open), title: 'The ball and the sprite as they stand on the table',
+      onclick: () => {
+        open = !open;
+        section.hidden = !open;
+        button.setAttribute('aria-expanded', String(open));
+        try { localStorage.setItem(FOLD_KEY + 'ingame-open', open ? '1' : '0'); } catch {}
+        if (open) section.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      } }, chip, h('span', { class: 'ce-ig-label' }, 'In the game', status));
+    const repaintChip = () => { status.textContent = summary(); paintChip(chip, cardOf(w)).catch(() => {}); };
+    rows.push(repaintChip);
     sync();
-    return section;
+    return { section, button };
+  }
+
+  // The small hex on the In the game button: the standee on its ball, like a piece on the table.
+  async function paintChip(canvas, card) {
+    const g = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    g.clearRect(0, 0, W, H);
+    const heroCard = card.type === 'Evolution' ? (heroOfEvo(card) ?? card) : card;
+    const br = 8 * (heroCard.wt >= 4 ? 1.3 : 1);
+    const x = W / 2;
+    const by = H - br - 3;
+    const path = spritePathOf(card);
+    const url = path ? await store().dataUrl(path).catch(() => null) : null;
+    const sprite = url ? await loadImage(url).catch(() => null) : null;
+    if (sprite) {
+      const sh = H - br - 6;
+      const sw = (sprite.width / sprite.height) * sh;
+      g.imageSmoothingEnabled = false;
+      g.drawImage(sprite, x - sw / 2, by - br * 0.6 - sh, sw, sh);
+      g.imageSmoothingEnabled = true;
+    }
+    drawBall(g, x, by, br, heroCard);
   }
 
   // On the board: figurica heroja (sprite iz igre) na heksu s prstenom tima, i ploča heroja kao u igri.

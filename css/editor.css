@@ -875,3 +875,16 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-step button { padding: 4px 12px; font-size: 18px; }
 .ce-step-value { min-width: 44px; text-align: center; font: 600 16px var(--text); background: #0f0f0f; border: 1px solid var(--line); padding: 5px 10px; }
 @media (max-width: 700px) { .ce-ingame-body { grid-template-columns: 1fr; justify-items: center; } }
+
+/* The In the game button (Marko 2026-11-23, mockup ingame-button B): set apart from the art buttons by a line, a small
+   hex of the table with the standee on its ball, and the name over a status line. */
+.ce-ig-btn { display: inline-flex; align-items: center; gap: 8px; background: none; clip-path: none; border: 0; border-left: 1px solid var(--line);
+  margin-left: 6px; padding: 0 4px 0 12px; color: var(--bone); cursor: pointer; font: italic 800 16px var(--display); }
+.ce-ig-btn:hover { background: none; }
+.ce-ig-hex { width: 46px; height: 40px; flex: none; background: #3b342d; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); transition: background .12s; }
+.ce-ig-btn:hover .ce-ig-hex { background: #4a4036; }
+.ce-ig-btn[aria-expanded="true"] .ce-ig-hex { background: #5a4c3c; }
+.ce-ig-label { display: grid; text-align: left; line-height: 1.05; }
+.ce-ig-label small { font: 500 11.5px var(--text); color: var(--muted); font-style: normal; }
+.ce-ig-btn[aria-expanded="true"] .ce-ig-label { color: var(--straw); }
+.ce-ig-btn:focus-visible { outline: 2px solid var(--straw); outline-offset: 2px; }
