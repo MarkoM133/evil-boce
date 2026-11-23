@@ -1556,8 +1556,14 @@ export function createEditor(env) {
     return drafted.find(c => c.type === 'Hero' && c.name === card.hero) ?? db().cards.find(b => b.type === 'Hero' && b.name === card.hero) ?? null;
   }
 
+  // The game paints the lower half in the hero's card colour whatever the accent says (BallView.configure, Marko
+  // 2026-10-26: a ball tells its colour at a glance), in game/ui/palette.gd's colours.
+  const GAME_HERO_COLORS = { Red: '#e3120b', Cyan: '#22c7dd', Blue: '#2f6bff', Green: '#23b14d', Purple: '#c43bd6', Yellow: '#e8c21a' };
+  const lowerHalf = heroCard => GAME_HERO_COLORS[heroCard.color] ?? ballColors(heroCard).accent ?? DEFAULT_ACCENT;
+
   function drawBall(g, x, by, br, heroCard) {
-    const { body, accent } = ballColors(heroCard);
+    const { body } = ballColors(heroCard);
+    const accent = lowerHalf(heroCard);
     g.save();
     g.beginPath();
     g.arc(x, by, br, 0, Math.PI * 2);
@@ -1593,7 +1599,7 @@ export function createEditor(env) {
     g.ellipse(x, y, rad * 1.05, rad * 0.5, 0, 0, Math.PI * 2);
     g.stroke();
     if (!sprite || !open) { drawBall(g, x, cy, rad, heroCard); return; }
-    const { accent } = ballColors(heroCard);
+    const accent = lowerHalf(heroCard);
     // The pedestal: the bottom half in the accent colour, its cut seen from above.
     g.save();
     g.beginPath();
