@@ -172,6 +172,9 @@ const HAND_LEAVE_MAX: int = 2
 ## Log events that get a banner (the rest only go to the log).
 const BANNER_EVENTS: Array[String] = ["battle", "battle_locked", "battle_tie_break", "ring_out", "ko", "stage_claimed", "triggered",
 	"damage", "deck_damage", "hand_damage", "stage_knocked_off", "combo"]
+## DQ1 moments said in a toast (2026-11-23): they leave nothing on the table to see.
+const DQ1_TOASTS: Array[String] = ["burn", "saved", "card_undone", "stage_cursed", "terrain", "stage_drained", "stunned", "released",
+	"doomed", "tag_gained", "card_shown", "assist_gone"]
 
 var engine: RulesEngine
 var state: GameState
@@ -1949,7 +1952,8 @@ func _ability_title(a: Dictionary) -> String:
 ## "can't claim" is the NO CLAIM stamp on the portrait.
 func _effect_chips(h: HeroState, right: bool) -> Control:
 	var items: Array[Array] = []
-	var names: Dictionary = {"immune_kb": "IMMUNE TO KB", "stun": "STUNNED", "hold_hit": "NO HIT, DOUBLE KB"}
+	var names: Dictionary = {"immune_kb": "IMMUNE TO KB", "stun": "STUNNED", "hold_hit": "NO HIT, DOUBLE KB",
+		"stone": "STONE · NO POWER, NO DMG", "doomed": "KO AT END OF TURN", "flee": "LEAVES THE BATTLE", "no_roll": "NO ROLL"}
 	for k: String in h.statuses:
 		if k == "no_claim":
 			continue
@@ -2468,7 +2472,8 @@ func _setup_tip(id: String) -> String:
 
 ## Status line for a hero: "Immune to KB (1 turn) · Hold hit".
 func _status_text(h: HeroState) -> String:
-	var names: Dictionary = {"immune_kb": "Immune to KB", "stun": "Stunned", "hold_hit": "No hit, double KB", "no_claim": "Can't claim"}
+	var names: Dictionary = {"immune_kb": "Immune to KB", "stun": "Stunned", "hold_hit": "No hit, double KB", "no_claim": "Can't claim",
+		"stone": "Stone: no Power, no DMG", "doomed": "KO at the end of the turn", "flee": "Leaves the battle", "no_roll": "No roll this turn"}
 	var parts := PackedStringArray()
 	for k: String in h.statuses:
 		var label: String = str(names.get(k, k.capitalize()))
@@ -2799,7 +2804,69 @@ func _refresh_hand() -> void:
 
 
 ## Messages from the engine that still mean "you can play it" (it asks for a choice after).
-const PLAY_ASKS: Array[String] = ["choose an assist to replace"]
+const PLAY_ASKS: Array[String] = ["choose an assist to replace", "say who takes it"]
+## The engine's question and the move field that answers it (play_question).
+const PLAY_QUESTIONS: Dictionary = {"say who takes it: ": "wearer", "choose an assist to replace: ": "replace"}
+
+
+## A play the engine takes only with one more answer (2026-11-23): which hero an Equipment goes on when it is handed
+## to another one (EQUIP_OTHER), which Assist goes for a new one when the row is full. {} when it needs none, else
+## {"key": the move field, "options": ids, "kind": "hero" or "card", "prompt"}.
+func play_question(slot: int, data: Dictionary) -> Dictionary:
+	var copy: GameState = GameState.from_dict(state.to_dict())
+	copy.to_act = slot
+	var err: String = engine.apply(copy, Move.make(Move.PLAY_CARD, slot, data))
+	for head: String in PLAY_QUESTIONS:
+		if err.begins_with(head):
+			var key: String = PLAY_QUESTIONS[head]
+			return {"key": key, "options": Array(err.trim_prefix(head).split(", ", false)), "kind": "hero" if key == "wearer" else "card",
+				"prompt": "Who takes it" if key == "wearer" else "Which Assist goes"}
+	return {}
+
+
+## The play question waiting for its answer: {"slot", "data", "q", "answered"}; {} when none. Kept so a redraw of
+## the window (the clock, the other side's move) draws it again instead of losing it.
+var _play_ask: Dictionary = {}
+
+
+## Asks the question play_question found, in the small window above the hand; `answered` gets the move's data
+## with the answer in it.
+func ask_play(slot: int, data: Dictionary, q: Dictionary, answered: Callable) -> void:
+	_play_ask = {"slot": slot, "data": data, "q": q, "answered": answered}
+	_draw_play_ask()
+
+
+func _draw_play_ask() -> void:
+	var slot: int = JsonUtil.as_int(_play_ask.get("slot", -1), -1)
+	var data: Dictionary = JsonUtil.as_dict(_play_ask.get("data", {}))
+	var q: Dictionary = JsonUtil.as_dict(_play_ask.get("q", {}))
+	var answered: Callable = _play_ask.get("answered", Callable())
+	_clear(_dialog_box)
+	_small_dialog(Palette.GOLD)
+	var cid: String = str(data.get("card", ""))
+	_dialog_box.add_child(UiTheme.label(_card_name(cid).to_upper() + ("  ·  %s" % player_name(slot).to_upper() if local_slots.size() > 1 else ""), 13, Palette.GOLD))
+	_dialog_box.add_child(UiTheme.label(str(q.get("prompt", "Choose")).to_upper(), 28))
+	for o: Variant in JsonUtil.as_array(q.get("options", [])):
+		var id: String = str(o)
+		var text: String = _card_name(id).to_upper()
+		if str(q.get("kind", "")) == "hero":
+			var h: HeroState = state.hero(id)
+			text = "%s   HP %d" % [hero_name(h).to_upper(), h.hp] if h != null else id
+		var b: Button = _option_button(text, func() -> void:
+			_play_ask = {}
+			_dialog.visible = false
+			_damage_dim.visible = false
+			var with: Dictionary = data.duplicate()
+			with[str(q.get("key", ""))] = id
+			answered.call(with))
+		b.add_theme_font_size_override("font_size", 18)
+		b.custom_minimum_size = Vector2(0, 60)
+	var back: Button = _option_button("CANCEL", func() -> void:
+		_play_ask = {}
+		_dialog.visible = false
+		_damage_dim.visible = false)
+	back.add_theme_font_size_override("font_size", 14)
+	back.custom_minimum_size = Vector2(0, 40)
 
 
 ## Whether `slot` may play `cid` now, asked of the engine itself: the move is tried on a copy of
@@ -3358,6 +3425,15 @@ func _refresh_dialog() -> void:
 	_set_dialog_pad(28, 22)
 	_dialog_center.offset_bottom = 0.0
 	# Not over a band: the choice comes once the bands are through (`_next_banner` asks again).
+	# A play question still open: drawn again while it still makes sense (the card in the hand, the player's move).
+	if not _play_ask.is_empty():
+		var ask_slot: int = JsonUtil.as_int(_play_ask.get("slot", -1), -1)
+		var ask_card: String = str(JsonUtil.as_dict(_play_ask.get("data", {})).get("card", ""))
+		if state.pending.is_empty() and state.to_act == ask_slot and state.player(ask_slot).hand.has(ask_card) and not _banner_busy:
+			_draw_play_ask()
+			return
+		if not state.pending.is_empty() or state.to_act != ask_slot or not state.player(ask_slot).hand.has(ask_card):
+			_play_ask = {}
 	if state.pending.is_empty() or _banner_busy:
 		return
 	var d: Dictionary = state.pending[0]
@@ -3969,6 +4045,16 @@ func toggle_damage_card(index: int) -> void:
 	refresh()
 
 
+## Whether every option is a card in that player's hand (a choice from the graveyard or the opponent's Assists is
+## asked in the window, as buttons).
+func _all_in_hand(slot: int, options: PackedStringArray) -> bool:
+	var hand: PackedStringArray = state.player(slot).hand
+	for o: String in options:
+		if not hand.has(o):
+			return false
+	return not options.is_empty()
+
+
 ## The hero choice waiting on a local player, if any; `targeting_changed` tells the table.
 func _refresh_choice() -> void:
 	var heroes := PackedStringArray()
@@ -3987,7 +4073,7 @@ func _refresh_choice() -> void:
 			elif kind == "core" and _all_on_field(options):
 				cores = options
 			# The hand is away while the balls are aimed; the dialog asks then.
-			elif kind == "card" and not (state.phase == GameState.PHASE_ROLL and not state.rolled):
+			elif kind == "card" and not (state.phase == GameState.PHASE_ROLL and not state.rolled) and _all_in_hand(who, options):
 				cards = options
 			slot = who
 		elif local_slots.has(who) and str(d.get("type", "")) == RulesEngine.DECISION_DAMAGE:
@@ -4313,6 +4399,11 @@ func _scan_log() -> void:
 		elif t == "stage_buff":
 			# A stage's bonus is easy to miss on the table: say it.
 			toast(_describe(e))
+		elif DQ1_TOASTS.has(t):
+			# DQ1 moments that leave nothing on the table to see (2026-11-23).
+			var said: String = _describe(e)
+			if not said.is_empty():
+				toast(said)
 	_log_seen = n
 	# The moment's sounds (Sound.LOG_SOUNDS): a few at most, so a replay jumping ahead stays quiet enough.
 	Sound.from_log(get_tree(), heard, local_slots[0] if not local_slots.is_empty() else 0)
@@ -5017,6 +5108,33 @@ func _describe(e: Dictionary) -> String:
 		"stage_contested":
 			var sct: StageState = state.stage(str(e.get("stage", "")))
 			return "%s is contested: no energy goes in" % _card_name(sct.card_id if sct != null else "")
+		"burn":
+			return "%s burns on Fire" % hero_l
+		"saved":
+			return "%s is saved: 1 HP" % hero_l
+		"card_undone":
+			return "%s is undone" % _card_name(str(e.get("card", "")))
+		"stage_cursed":
+			var cs: StageState = state.stage(str(e.get("stage", "")))
+			return "%s is cursed: no Battle cards for the other side" % _card_name(cs.card_id if cs != null else "")
+		"terrain":
+			var ts: StageState = state.stage(str(e.get("stage", "")))
+			return "%s is now %s" % [_card_name(ts.card_id if ts != null else ""), str(e.get("terrain", ""))]
+		"stage_drained":
+			var ds: StageState = state.stage(str(e.get("stage", "")))
+			return "%s loses %d energy" % [_card_name(ds.card_id if ds != null else ""), JsonUtil.as_int(e.get("amount", 0))]
+		"stunned":
+			return "%s cannot be activated" % hero_l
+		"released":
+			return "%s is free again" % hero_l
+		"doomed":
+			return "%s goes down" % hero_l
+		"tag_gained":
+			return "%s gains %s" % [hero_l, str(e.get("tag", ""))]
+		"card_shown":
+			return "%s shows %s (cost %d)" % [player_name(JsonUtil.as_int(e.get("player", 0))), _card_name(str(e.get("card", ""))), JsonUtil.as_int(e.get("cost", 0))]
+		"assist_gone":
+			return "%s goes to the graveyard" % _card_name(str(e.get("card", "")))
 		"core_activated":
 			return "%s activates a core" % hero_l
 		"equipped", "evolved", "action":
@@ -5308,6 +5426,11 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			var card_id: String = str(e.get("card", ""))
 			var red: String = Palette.ACCENT.lightened(0.25).to_html(false)
 			if amount <= 0:
+				match str(e.get("blocked", "")):
+					"stone":
+						return dot + "%s is stone: no damage." % _hero_b(hero)
+					"prevented":
+						return dot + "The hit on %s is kept off." % _hero_b(hero)
 				return dot + "%s takes no damage." % _hero_b(hero)
 			var dmg: String = "[color=#%s]%d DMG[/color]" % [red, amount]
 			if src == "wall":
@@ -5317,6 +5440,12 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 				return dot + "%s takes %s for the ring-out (HP %d)." % [_hero_b(hero), dmg, hp]
 			if src == "trap":
 				return dot + "The trap deals %s to %s (HP %d)." % [dmg, _hero_b(hero), hp]
+			if src == "fire":
+				return dot + "%s burns on Fire: %s (HP %d)." % [_hero_b(hero), dmg, hp]
+			if src == "doom":
+				return dot + "%s goes down as the turn ends." % _hero_b(hero)
+			if src == "cost":
+				return dot + "%s pays %s for %s (HP %d)." % [_hero_b(hero), dmg, _card_b(card_id) if not card_id.is_empty() else "a card", hp]
 			if not src.is_empty() and state.hero(src) != null:
 				return dot + "%s hits %s for %s%s (HP %d)." % [_hero_b(src), _hero_b(hero), dmg, (" with %s" % _card_b(card_id)) if not card_id.is_empty() else "", hp]
 			if not card_id.is_empty():
@@ -5349,6 +5478,46 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			return dot + "%s surrenders." % _who(slot)
 		"fx_skipped":
 			return dot + "%s does nothing: %s." % [_card_b(str(e.get("card", ""))), _esc(str(e.get("why", "")))]
+		# DQ1 (2026-11-22).
+		"burn":
+			return ""
+		"terrain":
+			var tst: StageState = state.stage(str(e.get("stage", "")))
+			return dot + "%s turns %s to [color=#ff9a5c]%s[/color]." % [_card_b(str(e.get("card", ""))), _card_b(tst.card_id if tst != null else ""), _esc(str(e.get("terrain", "")))]
+		"stunned":
+			var turns2: int = JsonUtil.as_int(e.get("turns", 1), 1)
+			return dot + "%s cannot be activated %s." % [_hero_b(hero), "next turn" if turns2 <= 1 else "for %d turns" % turns2]
+		"released":
+			return dot + "%s is free again: %s left the map." % [_hero_b(hero), _hero_b(str(e.get("by", "")))]
+		"saved":
+			return dot + "[color=#%s]SAVED[/color]: %s stays at 1 HP." % [Palette.GOLD.to_html(false), _hero_b(hero)]
+		"doomed":
+			return ""
+		"card_undone":
+			var uh: HeroState = state.hero(hero)
+			return dot + "%s is undone: %s loses what it gave." % [_card_b(str(e.get("card", ""))), _hero_b(hero) if uh != null else "the hero"]
+		"stage_cursed":
+			var cst: StageState = state.stage(str(e.get("stage", "")))
+			return dot + "%s curses %s: no Battle Phase cards there for the other side, for the rest of the match." % [_card_b(str(e.get("card", ""))), _card_b(cst.card_id if cst != null else "")]
+		"stage_drained":
+			var dst: StageState = state.stage(str(e.get("stage", "")))
+			return dot + "%s takes %d energy off %s." % [_card_b(str(e.get("card", ""))), JsonUtil.as_int(e.get("amount", 0)), _card_b(dst.card_id if dst != null else "")]
+		"assist_gone":
+			var why2: String = {"sacrificed": "given up", "removed": "removed", "saved a hero": "used up saving a hero"}.get(str(e.get("why", "")), str(e.get("why", "")))
+			return dot + "%s's %s goes to the graveyard (%s)." % [_who(slot), _card_b(str(e.get("card", ""))), _esc(why2)]
+		"card_shown":
+			return dot + "%s shows %s (cost %d)." % [_who(slot), _card_b(str(e.get("card", ""))), JsonUtil.as_int(e.get("cost", 0))]
+		"duel":
+			var dw: int = JsonUtil.as_int(e.get("winner", -1), -1)
+			return dot + ("The higher cost: %s." % _who(dw) if dw >= 0 else "Same cost: nobody gets the bonus.")
+		"duel_buff":
+			return dot + "%s gets +%d %s." % [_hero_b(hero), JsonUtil.as_int(e.get("amount", 0)), str(e.get("stat", "")).to_upper()]
+		"tag_gained":
+			return dot + "%s gains %s." % [_hero_b(hero), "[color=#e9d8a6]%s[/color]" % _esc(str(e.get("tag", "")))]
+		"paid":
+			return dot + "%s pays %d energy for %s." % [_who(slot), JsonUtil.as_int(e.get("energy", 0)), _card_b(str(e.get("card", "")))]
+		"bottomed":
+			return dot + "%s puts a card on the bottom of the deck." % _who(slot)
 		"turn_end":
 			return ""
 		"match_end":

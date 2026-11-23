@@ -601,6 +601,11 @@ func _build_hud() -> void:
 		if not hero_id.is_empty():
 			data["hero"] = hero_id
 			_flash_target(hero_id)
+		# A play that needs one more answer (who takes the Equipment, which Assist goes) asks it first.
+		var q: Dictionary = hud.play_question(slot, data)
+		if not q.is_empty():
+			hud.ask_play(slot, data, q, func(with: Dictionary) -> void: _apply(Move.make(Move.PLAY_CARD, slot, with)))
+			return
 		_apply(Move.make(Move.PLAY_CARD, slot, data)))
 	hud.targeting_changed.connect(_refresh_target_fx)
 	hud.pick_confirmed.connect(func(slot: int, hero_id: String, roll: bool) -> void:
@@ -3625,6 +3630,41 @@ func demo_choose_core() -> void:
 
 
 ## Screenshot helper: a Discard asking player 1 for a card from a hand of five (three may go).
+## DQ1 (2026-11-23): an Equipment handed to another hero asks who takes it (the window above the hand).
+func demo_dq1_wearer() -> void:
+	demo_choose_hero()
+	_demo = true
+	# The window waits for its answer; the auto-pass would have passed the turn under it (a demo card nobody can play).
+	GameSettings.in_memory = true
+	GameSettings._config().set_value("display", "auto_pass", false)
+	state.pending.clear()
+	state.to_act = 0
+	var mine: Array[HeroState] = state.heroes_of(0)
+	var cid: String = state.player(0).hand[0] if not state.player(0).hand.is_empty() else ""
+	for c: CardDef in engine.catalog.of_type("Equipment"):
+		cid = c.id
+		break
+	_sync()
+	hud.refresh()
+	state.player(0).hand.append(cid)
+	var q: Dictionary = {"key": "wearer", "options": [mine[1].id, mine[2].id], "kind": "hero", "prompt": "Who takes it"}
+	hud.ask_play(0, {"card": cid}, q, func(with: Dictionary) -> void: print("demo wearer: ", with))
+
+
+## DQ1 (2026-11-23): cards picked from the graveyard come as buttons, not from the hand.
+func demo_dq1_grave_pick() -> void:
+	demo_choose_hero()
+	state.pending.clear()
+	var p: PlayerState = state.player(0)
+	for i: int in 3:
+		if not p.deck.is_empty():
+			p.graveyard.append(p.deck[0])
+			p.deck.remove_at(0)
+	state.pending.append({"type": FxRuntime.DECISION_CHOOSE, "player": 0, "kind": "card", "options": Array(p.graveyard.slice(0, 3)),
+		"prompt": "Which card goes on the bottom of your deck", "resume": {"ctx": {}}})
+	_sync()
+
+
 func demo_choose_card() -> void:
 	demo_choose_hero()
 	state.pending.clear()

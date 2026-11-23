@@ -72,6 +72,7 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
   damage, deck, ringout, ko, combo (the combo card over the screen), equip, assist (the other side's card in, then to its place), stage, triggered, tie, tie_again, merged,
   merged_many (one band per run), `demo_combo_list` (the pause menu with the combo list), `demo_drop` (the drop screen and the ping), `demo_boards` (both stage boxes with energy, the assist boxes), `demo_boards_states` (claimed, energy just in, face down), `demo_panel_hover` (the mouse on a hero panel), `demo_defeat` (the end screen, lost), `demo_end_moment` (the table moment before it), `demo_ring_out_damage` (the ring-out's 1 DMG or a card),
   `demo_companion` (Coco Jumbo from the drafts played next to the activated hero; then `demo_companion_ring`, `demo_companion_hide`, `demo_companion_wander`, `demo_companion_push` (a ball thrown into it, the roll only printed), `demo_companion_eat` / `demo_companion_eat_side` (Evil Bochet takes it; needs turn 1, which demo_companion sets)),
+  `demo_dq1_wearer` (an Equipment handed to another hero asks who takes it), `demo_dq1_grave_pick` (cards picked from the graveyard come as buttons),
   `demo_autoplay` (bots play both sides; give it `--wait=3600` for about a minute),
   `debug_dump` (turn, phase, heroes, last log lines).
 

@@ -422,9 +422,16 @@ func _rate(row: Dictionary, key: String) -> float:
 ## Plays the forced card for whoever may, else uses one of its optional abilities; true when a move went in.
 func _play_forced(engine: RulesEngine, s: GameState) -> bool:
 	for slot: int in 2:
-		if s.player(slot).hand.has(_force) and engine.apply(s, Move.make(Move.PLAY_CARD, slot, {"card": _force})).is_empty():
-			_forced["played"] = _forced.get("played", 0) + 1
-			return true
+		if s.player(slot).hand.has(_force):
+			var err: String = engine.apply(s, Move.make(Move.PLAY_CARD, slot, {"card": _force}))
+			# A play that asks one more thing (who takes it, which Assist goes): the first answer.
+			for head: String in ["say who takes it: ", "choose an assist to replace: "]:
+				if err.begins_with(head):
+					var first: String = err.trim_prefix(head).split(", ")[0]
+					err = engine.apply(s, Move.make(Move.PLAY_CARD, slot, {"card": _force, "wearer" if head.begins_with("say") else "replace": first}))
+			if err.is_empty():
+				_forced["played"] = _forced.get("played", 0) + 1
+				return true
 		for a: Dictionary in engine.fx.usable_abilities(s, slot):
 			if str(a["card"]) == _force and engine.apply(s, Move.make(Move.USE_ABILITY, slot, {"hero": a["hero"], "card": a["card"], "index": a["index"]})).is_empty():
 				_forced["abilities"] = _forced.get("abilities", 0) + 1

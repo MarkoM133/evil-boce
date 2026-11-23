@@ -725,6 +725,22 @@ func _score_path(engine: RulesEngine, s: GameState, h: HeroState, path: PackedVe
 # Cards and abilities
 # =====================================================================================
 
+## The moves that play `cid`: one, or one per answer when the engine asks who takes an Equipment handed on
+## (EQUIP_OTHER) or which Assist goes for a new one.
+func _play_moves(engine: RulesEngine, s: GameState, slot: int, cid: String) -> Array[Move]:
+	var out: Array[Move] = []
+	var copy: GameState = GameState.from_dict(s.to_dict())
+	var err: String = engine.apply(copy, Move.make(Move.PLAY_CARD, slot, {"card": cid}))
+	for head: String in ["say who takes it: ", "choose an assist to replace: "]:
+		if err.begins_with(head):
+			var key: String = "wearer" if head.begins_with("say") else "replace"
+			for id: String in err.trim_prefix(head).split(", ", false):
+				out.append(Move.make(Move.PLAY_CARD, slot, {"card": cid, key: id}))
+			return out
+	out.append(Move.make(Move.PLAY_CARD, slot, {"card": cid}))
+	return out
+
+
 func _card_round(engine: RulesEngine, s: GameState, slot: int) -> Move:
 	if s.round_over or s.to_act != slot or s.awaiting_roll:
 		return null
@@ -736,7 +752,7 @@ func _card_round(engine: RulesEngine, s: GameState, slot: int) -> Move:
 		if seen.has(cid):
 			continue
 		seen[cid] = true
-		options.append(Move.make(Move.PLAY_CARD, slot, {"card": cid}))
+		options.append_array(_play_moves(engine, s, slot, cid))
 	for a: Dictionary in engine.fx.usable_abilities(s, slot):
 		options.append(Move.make(Move.USE_ABILITY, slot, {"hero": a["hero"], "card": a["card"], "index": a["index"]}))
 	var now: float = evaluate(engine, s, slot)
