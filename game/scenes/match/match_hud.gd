@@ -75,6 +75,8 @@ const PILES_X: float = 180.0
 const DECK_PILE_Y: float = -148.0
 const GRAVE_PILE_Y: float = -78.0
 const BANNER_TIME: float = 0.8
+## How long a tag out of a hero's panel stays (plate_tag).
+const PLATE_TAG_TIME: float = 1.8
 ## An ability tab's name: the room it has (the tab less its slanted sides) and the smallest letters.
 const ABILITY_NAME_W: float = 126.0
 const ABILITY_NAME_MIN: int = 12
@@ -391,6 +393,9 @@ var _letterbox: Array[ColorRect] = []
 var _hover_cid: String = ""
 ## The hero panel now drawn for each hero id (the panel hover looks them up).
 var _slice_of: Dictionary[String, Control] = {}
+## Tags out of the hero panels (plate_tag): their layer, and the one showing for each hero.
+var _tag_box: Control
+var _plate_tags: Dictionary[String, Control] = {}
 ## The hero panel under the mouse (found each frame in _process, not from enter / exit signals:
 ## a hovered panel opens, the panels are drawn anew and those signals got lost or came late).
 var _panel_hover: String = ""
@@ -641,6 +646,56 @@ func hide_drop() -> void:
 	if _drop != null:
 		_drop.queue_free()
 		_drop = null
+
+
+## A gold tab out of the hero's panel naming what fired by itself (Marko 2026-11-27, mockup ability-announce B: an
+## ability that answers a played card is said by its hero, small, with no band over the table). It slides out of
+## the panel's outer end, stays PLATE_TAG_TIME and fades; a new one for the same hero takes its place. The panels are
+## built again at every refresh, so the tag lives on a layer of its own. A hero whose panel is not on screen (the
+## battle camera) gets a toast.
+func plate_tag(hero_id: String, text: String) -> void:
+	# The panels of this refresh must be laid out first.
+	await get_tree().process_frame
+	var s: Control = _slice_of.get(hero_id)
+	if s == null or not is_instance_valid(s) or not s.is_visible_in_tree():
+		toast("%s: %s" % [_hero_label(hero_id), text])
+		return
+	var old: Control = _plate_tags.get(hero_id)
+	if old != null and is_instance_valid(old):
+		old.queue_free()
+	# The panel's row holds its ability tabs too: the tag comes out past them.
+	var row: Control = s.get_parent().get_parent() as Control if s.get_parent() != null else null
+	var inv: Transform2D = _tag_box.get_global_transform().affine_inverse()
+	var g: Rect2 = (row if row != null else s).get_global_rect()
+	var r := Rect2(inv * g.position, inv.basis_xform(g.size))
+	var right: bool = r.get_center().x > _tag_box.size.x * 0.5
+	var tab := PanelContainer.new()
+	tab.add_theme_stylebox_override("panel", UiTheme.slant(Palette.GOLD, 24, 6))
+	tab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tab.add_child(v)
+	for l: Label in [UiTheme.label("ABILITY", 11, Color.BLACK, false), UiTheme.label(text.to_upper(), 20, Color.BLACK)]:
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v.add_child(l)
+	_tag_box.add_child(tab)
+	_plate_tags[hero_id] = tab
+	var sz: Vector2 = tab.get_combined_minimum_size()
+	tab.size = sz
+	var home := Vector2(r.position.x - 6.0 - sz.x if right else r.end.x + 6.0, r.get_center().y - sz.y * 0.5)
+	tab.position = home + Vector2(30.0 if right else -30.0, 0.0)
+	tab.modulate.a = 0.0
+	var tw: Tween = tab.create_tween()
+	tw.tween_property(tab, "position", home, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(tab, "modulate:a", 1.0, 0.12)
+	tw.tween_interval(PLATE_TAG_TIME)
+	tw.tween_property(tab, "modulate:a", 0.0, 0.25)
+	tw.tween_callback(tab.queue_free)
+	# The panel lights up with it.
+	s.modulate = Color(1.7, 1.5, 1.0)
+	s.create_tween().tween_property(s, "modulate", Color.WHITE, 0.5)
 
 
 ## A short message under the ribbon on a slanted chip of `color`.
@@ -1225,6 +1280,11 @@ func _build() -> void:
 	_toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_toast_box.modulate.a = 0.0
 	add_child(_toast_box)
+
+	_tag_box = Control.new()
+	_tag_box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_tag_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_tag_box)
 
 
 # --- phase ribbon ----------------------------------------------------------------
@@ -2138,6 +2198,10 @@ func _refresh_prompt() -> void:
 		var who: int = JsonUtil.as_int(d.get("player", -1), -1)
 		if not local_slots.has(who):
 			_prompt.text = "%s is deciding…" % player_name(who)
+			# What they are deciding about, when a card asks.
+			var asks: String = _choice_from(d) if str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE else ""
+			if not asks.is_empty():
+				_kicker.text = asks.to_upper()
 		elif str(d.get("type", "")) == RulesEngine.DECISION_RETURN_CORE:
 			_prompt.text = "Put a core back"
 			_detail.text = "%s: click a highlighted hex." % player_name(who)
@@ -4505,12 +4569,21 @@ func _banner_for(e: Dictionary) -> void:
 					JsonUtil.as_int(e.get("progress", 0)), JsonUtil.as_int(e.get("goal", 0))], 1.6)
 		"triggered":
 			var name: String = _triggered_name(e)
-			# A card in play that answers a played card and names no ability (an Equipment, an Assist) is named itself.
+			# What answers a played card, or waited for the battle, is said small by its hero (plate_tag); an ability
+			# of the hero's own phase keeps the band. A card that names no ability (an Equipment, an Assist, an Action
+			# after its battle) is named itself.
+			var quiet: bool = e.has("cause") or e.has("after")
 			var answering: CardDef = engine.catalog.get_card(str(e.get("card", "")))
-			if name.is_empty() and e.has("cause") and answering != null and answering.type != "Hero" and answering.type != "Evolution":
+			if name.is_empty() and quiet and answering != null and answering.type != "Hero" and answering.type != "Evolution":
 				name = answering.name
-			if not name.is_empty():
+			if name.is_empty():
+				pass
+			elif not quiet:
 				banner(name.to_upper(), Palette.GOLD, _trigger_owner(e).to_upper(), "")
+			elif str(e.get("hero", "")).is_empty():
+				toast("%s: %s" % [_trigger_owner(e), name])
+			else:
+				plate_tag(str(e.get("hero", "")), name)
 		"battle_locked":
 			# A tie (GDD 10): nobody is hurt, the heroes stay locked and fight again next turn.
 			# The band says it all (Marko 2026-11-09: the straw line above said the same a second early).

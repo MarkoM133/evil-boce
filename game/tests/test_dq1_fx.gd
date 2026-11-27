@@ -534,6 +534,7 @@ func test_a_draw_for_a_win_beside_a_friend() -> void:
 	assert_eq(str(said[0]["hero"]), lead.id)
 	assert_eq(str(said[0]["card"]), "TD-033")
 	assert_eq(JsonUtil.as_int(said[0]["index"]), 0)
+	assert_eq(str(said[0]["after"]), "battle")
 	# Alone in the battle: no draw.
 	s = _state("TD-033")
 	lead = s.hero("p1:TD-033")

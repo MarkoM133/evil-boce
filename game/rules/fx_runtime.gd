@@ -639,7 +639,7 @@ func on_battle_done(s: GameState, winners: Array[HeroState], members: Array[Hero
 				for i: int in from.effects.size():
 					if from.effects[i].line == str(d.get("fx", "")):
 						at = i
-				s.event("triggered", {"hero": h.id, "player": h.owner, "card": from.id, "index": at})
+				s.event("triggered", {"hero": h.id, "player": h.owner, "card": from.id, "index": at, "after": "battle"})
 			e.set_cond("")
 			run(s, ctx, e)
 

@@ -3692,13 +3692,22 @@ func demo_ability_asks() -> void:
 
 
 ## Screenshot helper: a hero's ability answers a played card, with the real cards when the catalog has them (Avan and
-## an Avan Style card): the band names the ability, then the question it asks names it too, and the log has its line.
+## an Avan Style card): the tag out of his panel names the ability, the question it asks names it too, and the log
+## has its line. `demo_ability_fires_theirs` is the same on the other side (the tag goes left).
 func demo_ability_fires() -> void:
+	_demo_ability(0)
+
+
+func demo_ability_fires_theirs() -> void:
+	_demo_ability(1)
+
+
+func _demo_ability(slot: int) -> void:
 	demo_choose_hero()
 	state.pending.clear()
 	var hero_card: CardDef = engine.catalog.get_card("DQ1-002")
 	var played: CardDef = engine.catalog.get_card("DQ1-021")
-	var mine: Array[HeroState] = state.heroes_of(0)
+	var mine: Array[HeroState] = state.heroes_of(slot)
 	if hero_card == null or played == null or mine.is_empty():
 		return
 	# One Avan on the table: the one the random deck brought, else the first hero becomes him.
@@ -3707,12 +3716,12 @@ func demo_ability_fires() -> void:
 		if h.card_id == hero_card.id:
 			avan = h
 	avan.card_id = hero_card.id
-	var p: PlayerState = state.player(0)
+	var p: PlayerState = state.player(slot)
 	while p.hand.size() < 3 and not p.deck.is_empty():
 		p.hand.append(p.deck[0])
 		p.deck.remove_at(0)
-	state.event("action", {"player": 0, "hero": avan.id, "card": played.id})
-	engine.fx.on_card_played(state, 0, played, avan, {})
+	state.event("action", {"player": slot, "hero": avan.id, "card": played.id})
+	engine.fx.on_card_played(state, slot, played, avan, {})
 	_sync()
 
 
