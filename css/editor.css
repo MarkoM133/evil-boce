@@ -981,7 +981,7 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-allout:hover:not(:disabled) { background: #2a2a2a; color: var(--bone); }
 .ce-topins-ic { display: inline-grid; color: var(--straw); }
 .ce-topins-ic.off { color: var(--muted); }
-.ce-topins { color: var(--muted); }
+.ce-topins { color: var(--muted); clip-path: var(--slant); padding: 8px 16px; }
 .ce-topins:hover:not(:disabled) { color: var(--bone); }
 .ce-topins:hover:not(:disabled) .ce-topins-ic.off { color: var(--straw); }
 .ce-setbar-end .ce-settab-pref { clip-path: none; background: none; color: var(--muted); font-size: 14px; padding: 6px 10px; }
