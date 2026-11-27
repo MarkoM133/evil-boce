@@ -17,6 +17,9 @@ const STAGE_ROW_H: float = 70.0
 const STAGE_BESIDE: Vector2 = Vector2(330, 88)
 ## A tile that stretches: its picture runs its whole width.
 const ALL_PICTURE: float = 4096.0
+## A picker window: the height its title, BACK and edges take, and the room its scrollbar needs beside the cards.
+const POPUP_CHROME: float = 150.0
+const POPUP_SCROLLBAR: float = 14.0
 
 var db: CardDb
 var decks: Array[Dictionary] = []
@@ -867,7 +870,12 @@ func _open_popup(title: String, items: Array[Dictionary], on_pick: Callable, who
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
-	col.add_child(grid)
+	# The window never grows past the screen: more cards than fit scroll inside it (Marko 2026-11-27: with twelve
+	# stages the last row and BACK were under the screen's edge, and nothing scrolled).
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.add_child(grid)
+	col.add_child(scroll)
 	for it: Dictionary in items:
 		var id: String = str(it["id"])
 		var pick := func() -> void:
@@ -879,6 +887,10 @@ func _open_popup(title: String, items: Array[Dictionary], on_pick: Callable, who
 		else:
 			grid.add_child(card_tile(db, id, Vector2(210, 120) if not whole_cards else Vector2(170, 238), pick, used))
 	col.add_child(back)
+	# As tall as the cards need, up to what the screen has left beside the title, BACK and the window's edges.
+	var need: Vector2 = grid.get_combined_minimum_size()
+	var room: float = maxf(get_viewport_rect().size.y * 0.94 - POPUP_CHROME, 200.0)
+	scroll.custom_minimum_size = Vector2(need.x + (POPUP_SCROLLBAR if need.y > room else 0.0), minf(need.y, room))
 	_popup_fitted()
 
 
