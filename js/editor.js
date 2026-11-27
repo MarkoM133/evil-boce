@@ -1639,7 +1639,23 @@ export function createEditor(env) {
       redraw();
     }, { passive: false });
     canvas.addEventListener('dblclick', () => { ed.boardZoom = 1; redraw(); });
+    // Two fingers on the board zoom it (Marko 2026-11-27: the phone has no wheel); one finger still scrolls the page.
+    let pinch = null;
+    const spread = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    canvas.addEventListener('touchstart', e => { if (e.touches.length === 2) { pinch = { spread: spread(e), zoom: ed.boardZoom ?? 1 }; e.preventDefault(); } }, { passive: false });
+    canvas.addEventListener('touchmove', e => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const next = Math.min(4, Math.max(1, pinch.zoom * spread(e) / Math.max(pinch.spread, 1)));
+      if (Math.abs(next - (ed.boardZoom ?? 1)) < 0.02) return;
+      ed.boardZoom = next;
+      redraw();
+    }, { passive: false });
+    for (const t of ['touchend', 'touchcancel']) canvas.addEventListener(t, () => { pinch = null; });
   }
+
+  // A screen with no mouse over it: the hints speak of fingers.
+  const TOUCH = () => typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
 
   // Draws the table zoomed on the point (fx, fy), the middle of the piece: as it zooms in, that point slides towards
   // (cx, cy), the middle of the board, so the piece stays in view. What `paint` draws is in board coordinates.
@@ -1749,7 +1765,7 @@ export function createEditor(env) {
       ],
       h('div', { class: 'ce-field' }, h('span', {}, 'Sprite'),
         h('div', { class: 'ce-ingame-row' }, h('button', { type: 'button', class: 'ghost', disabled: !canWrite(), title: 'The standee in the game: a PNG with a see-through background',
-          onclick: () => spriteIn.click() }, hasSprite ? 'Replace sprite' : 'Add sprite'), h('span', { class: 'small muted' }, 'or drop a PNG anywhere here'), spriteIn)),
+          onclick: () => spriteIn.click() }, hasSprite ? 'Replace sprite' : 'Add sprite'), h('span', { class: 'small muted mouse-only' }, 'or drop a PNG anywhere here'), spriteIn)),
       evo ? null : h('p', { class: 'small muted' }, 'WT 1–3 fit one hex, WT 4 and up cover seven; heavier balls go less far and push harder. 2 is the usual.'));
     const summary = () => {
       const { body, accent } = ballColors(evo ? (heroOfEvo(w) ?? w) : w);
@@ -1757,7 +1773,7 @@ export function createEditor(env) {
       return [evo ? 'hero\'s ball' : `WT ${w.wt ?? 2}`, (w.sprite ?? ed.base?.sprite) ? 'sprite in' : 'no sprite'].join(' · ');
     };
     const section = h('section', { class: 'ce-panel ce-ingame' }, h('h3', {}, 'In the game'),
-      h('div', { class: 'ce-ingame-body' }, h('div', { class: 'ce-ingame-left' }, mini, ballView, h('small', { class: 'muted' }, 'Scroll on the board to zoom')), controls));
+      h('div', { class: 'ce-ingame-body' }, h('div', { class: 'ce-ingame-left' }, mini, ballView, h('small', { class: 'muted mouse-only' }, 'Scroll on the board to zoom'), h('small', { class: 'muted touch-only' }, 'Pinch the board to zoom')), controls));
     spriteDrop(section);
     let open = false;
     try { open = localStorage.getItem(FOLD_KEY + 'ingame-open') === '1'; } catch {}
@@ -1841,7 +1857,7 @@ export function createEditor(env) {
       g.fillStyle = 'rgba(243, 239, 231, 0.55)';
       g.font = '600 15px "Barlow Semi Condensed", sans-serif';
       g.textAlign = 'right';
-      g.fillText((ed.boardZoom ?? 1) > 1.01 ? `${(ed.boardZoom).toFixed(1)}× · double-click: back` : 'Scroll to zoom', W - 18, H - 16);
+      g.fillText((ed.boardZoom ?? 1) > 1.01 ? `${(ed.boardZoom).toFixed(1)}× · ${TOUCH() ? 'double-tap' : 'double-click'}: back` : TOUCH() ? 'Pinch to zoom' : 'Scroll to zoom', W - 18, H - 16);
     };
     const plate = () => {
     // Ploča heroja (lijevo gore), kao u igri: lice s arta, ime, HP kao crtice, statsi.

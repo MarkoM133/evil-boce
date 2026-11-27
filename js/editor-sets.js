@@ -129,14 +129,19 @@ export function createSetsView(ctx) {
     // Lijevo setovi | Stages, Cores; desno rijetke stvari: Draft packs (default paket) i + New set (Marko 2026-11-03).
     const tab = ([code, label]) => h('button', { type: 'button', class: code === v.code ? 'active' : '', onclick: () => { v.code = code; ctx.render(); } },
       NOT_SETS.includes(code) ? null : packImg(code, 'ce-settab-pack'), label, wipChip(code));
-    return h('div', { class: 'ce-page ce-sets' },
-      h('nav', { class: 'ce-settabs' },
+    const nav = h('nav', { class: 'ce-settabs' },
         list.map(s => tab([s.code, `${s.name} · ${s.code}`])),
         h('span', { class: 'ce-settab-sep', 'aria-hidden': 'true' }),
         tab(['Stage', 'Stages']), tab(['Core', 'Cores']), tab(['CB', 'Combos']),
         h('span', { class: 'ce-settab-rest' },
           h('button', { type: 'button', class: `ce-settab-pref${v.code === 'default' ? ' active' : ''}`, title: 'Name, number, pack size, pack image and Draft background of every set, and of packs that mix sets', onclick: () => { v.code = 'default'; v.focus = null; ctx.render(); } }, '⚙ Sets & packs'),
-          newSetButton(list))),
+          newSetButton(list)));
+    // On a phone the tabs are one row that slides sideways: the open one comes into view.
+    requestAnimationFrame(() => {
+      const open = nav.querySelector('button.active');
+      if (open && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = open.offsetLeft - (nav.clientWidth - open.offsetWidth) / 2;
+    });
+    return h('div', { class: 'ce-page ce-sets' }, nav,
       v.code === 'default' ? renderAllSettings(list) : renderSet(list.find(s => s.code === v.code) ?? { code: v.code, name: nameOf(v.code) }, list));
   }
 

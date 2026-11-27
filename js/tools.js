@@ -46,7 +46,7 @@ function picker(onFile) {
   const { h } = ui;
   const input = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: e => { const f = e.target.files[0]; if (f) onFile(f); e.target.value = ''; } });
   const drop = h('div', { class: 'tool-drop', onclick: () => input.click() },
-    h('strong', {}, 'Choose an image'), h('span', { class: 'muted small' }, 'or drop it here, or paste with Ctrl+V'), input);
+    h('strong', {}, 'Choose an image'), h('span', { class: 'muted small mouse-only' }, 'or drop it here, or paste with Ctrl+V'), input);
   drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));
   drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) onFile(f); });

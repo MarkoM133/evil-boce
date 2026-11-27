@@ -738,7 +738,7 @@ button.ce-combo-pic.empty { aspect-ratio: 1500 / 2100; display: grid; place-item
 
 /* The CLAUDE box under the text (2026-11-14, mockup docs/private/mockups/text-block): status and Check text in the
    head, the Intent as one line, the proposal as a diff on the card text. */
-.ce-claude-panel { border: 1px solid #6b3fc4; border-radius: 3px; background: linear-gradient(#1a1030, var(--surface) 70%); display: grid; }
+.ce-claude-panel { border: 1px solid #6b3fc4; border-radius: 3px; background: linear-gradient(#1a1030, var(--surface) 70%); display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .ce-claude-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; user-select: none; }
 .ce-claude-head:focus-visible { outline: 1px solid #c9b3ff; }
 .ce-claude-head .ce-text-ask { margin-left: auto; }
@@ -902,3 +902,48 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-ball-view button { clip-path: none; background: none; border: 0; padding: 4px 12px; font: italic 700 14px var(--display); color: var(--muted); }
 .ce-ball-view button.active { background: #2a2a2a; color: var(--bone); }
 .ce-ingame-board { cursor: zoom-in; }
+
+/* ---------- Phone pass (Marko 2026-11-27) ---------- */
+/* What a mouse does and a finger cannot is not offered on a touch screen, and the other way round. */
+.touch-only { display: none; }
+@media (hover: none) {
+  .mouse-only { display: none; }
+  .touch-only { display: revert; }
+}
+@media (max-width: 760px) {
+  /* The bar at the bottom: every main page in one row, however many there are (it was five columns, and the sixth
+     page, Rules, pushed Tools to a second row: a quarter of the screen). */
+  .side .tabs { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .side .tabs > button { font-size: 14px; padding-inline: 1px; }
+  #app { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+
+  /* Sets: the sets in one row that slides sideways, like the pages above it (they wrapped into three rows), and a
+     smaller head, so the cards start higher. */
+  .ce-settabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .ce-settabs::-webkit-scrollbar { display: none; }
+  .ce-settabs > *, .ce-settab-rest > * { flex: none; white-space: nowrap; }
+  .ce-settabs button { padding: 6px 10px; min-height: 44px; }
+  .ce-settab-rest { margin-left: 0; padding-bottom: 0; }
+  .ce-set { gap: 12px; }
+  .ce-set-head { gap: 12px; }
+  .ce-set-pack { width: 46px; height: 64px; flex: none; }
+  /* The title takes the rest of the pack's row; the set's buttons go under them. */
+  .ce-set-title { flex: 1 1 calc(100% - 58px); min-width: 0; }
+  .ce-set-title h1 { font-size: 30px; }
+
+  /* Cards two to a row; heroes, Evolutions and other lying cards keep the whole row. */
+  .ce-grid:not(.wide) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 10px; }
+
+  /* A finger needs about 40px: the small controls of the editor, the filters and the header. */
+  .ce-views button, .ce-phase-seg button, .ce-tokbar .tok, .ce-tokbar select, .ce-fx-actions button, .ce-top-actions button,
+  .ce-newtypes button, .ce-evo-btn, .qf, .ce-chip-add, .signed-in select, .ce-ball-view button { min-height: 40px; }
+  .qf-color { width: 36px; height: 36px; }
+  .ce-chip button { min-width: 34px; min-height: 34px; }
+  /* Links inside a line keep their size; the place a finger may land on grows around them. */
+  .ce-full .link, .ce-page .link, .linkish, .version-link, .ce-panel-fold { position: relative; }
+  .ce-full .link::after, .ce-page .link::after, .linkish::after, .version-link::after { content: ""; position: absolute; inset: -10px 0; }
+  /* The fold arrow stays where it is beside its heading; the finger gets 40px around it. */
+  .ce-panel-fold::after { content: ""; position: absolute; inset: -12px -10px; }
+  .ce-check-pill { min-height: 32px; display: inline-flex; align-items: center; }
+  .ce-check input, .check input { width: 22px; height: 22px; }
+}

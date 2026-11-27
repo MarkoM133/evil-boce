@@ -1026,7 +1026,13 @@ button.version-link:focus-visible { outline: 2px solid var(--straw); outline-off
   .rl-head h2 { font-size: 32px; }
   .rl-book { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .rl-toc { top: 0; z-index: 2; display: flex; overflow-x: auto; gap: 6px; padding: 8px 0; background: var(--black); scrollbar-width: none; }
-  .rl-toc a { white-space: nowrap; border-left: 0; border-bottom: 2px solid transparent; padding: 6px 10px; background: var(--surface); }
+  .rl-toc a { white-space: nowrap; border-left: 0; border-bottom: 2px solid transparent; padding: 10px 12px; background: var(--surface); }
   .rl-toc a.on { border-bottom-color: var(--red); }
   .rl-text h3 { font-size: 24px; }
+}
+
+/* Phone (Marko 2026-11-27): the Balance numbers two to a row, not three and one left over. */
+@media (max-width: 760px) {
+  .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat { margin-right: 0; padding-right: 12px; border-right: 0; }
 }
