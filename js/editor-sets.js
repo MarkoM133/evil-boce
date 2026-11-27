@@ -240,9 +240,7 @@ export function createSetsView(ctx) {
     const open = code => { closeAll(false); v.code = code; ctx.render(); };
     const plain = ([code, label]) => h('button', { type: 'button', class: code === v.code ? 'active' : '', onclick: () => open(code) }, label);
     const others = [h('span', { class: 'ce-settab-sep', 'aria-hidden': 'true' }), plain(['Stage', 'Stages']), plain(['Core', 'Cores']), plain(['CB', 'Combos'])];
-    const modes = h('span', { class: 'ce-rowmode', role: 'group', 'aria-label': 'Set row' },
-      [['pins', 'Pinned sets in the row, the rest under All sets', PIN_ICON(true)], ['all', 'Every set in the row, by series', ROWS_ICON]].map(([m, title, icon]) =>
-        h('button', { type: 'button', class: mode === m ? 'on' : '', 'aria-pressed': String(mode === m), title, innerHTML: icon, onclick: () => { closeAll(false); store(ROW_KEY, m); ctx.render(); } })));
+    const setMode = m => { closeAll(false); store(ROW_KEY, m); ctx.render(); };
     const cur = list.find(s => s.code === v.code);
     let nav;
     let end;
@@ -255,8 +253,11 @@ export function createSetsView(ctx) {
           packImg(s.code, 'ce-settab-pack'), `${s.name} · ${s.code}`, wipChip(s.code)),
         pinButton(s.code, list));
       nav = h('nav', { class: 'ce-settabs' }, list.filter(s => pinned.includes(s.code)).map(s => setTab(s, false)), cur && !pinned.includes(cur.code) ? setTab(cur, true) : null, others);
-      end = [h('button', { type: 'button', class: `ce-allsets${v.allOpen ? ' open' : ''}`, 'aria-expanded': String(!!v.allOpen), onclick: e => { e.stopPropagation(); if (v.allOpen) closeAll(); else openAll(); } },
-        'All sets', h('span', { class: 'ce-count' }, list.length), h('span', { class: 'ce-caret', 'aria-hidden': 'true' }, v.allOpen ? '▴' : '▾')), modes];
+      // One control of two parts: All sets opens the list, the rows beside it put every set out.
+      end = [h('span', { class: 'ce-allgroup' },
+        h('button', { type: 'button', class: `ce-allsets${v.allOpen ? ' open' : ''}`, 'aria-expanded': String(!!v.allOpen), onclick: e => { e.stopPropagation(); if (v.allOpen) closeAll(); else openAll(); } },
+          'All sets', h('span', { class: 'ce-count' }, list.length), h('span', { class: 'ce-caret', 'aria-hidden': 'true' }, v.allOpen ? '▴' : '▾')),
+        h('button', { type: 'button', class: 'ce-allout', title: 'Put every set in the row, by series', 'aria-label': 'Put every set in the row, by series', innerHTML: ROWS_ICON, onclick: () => setMode('all') }))];
     } else {
       const groups = bySeries(list);
       if (cur) v.series = seriesOf(cur);
@@ -265,7 +266,9 @@ export function createSetsView(ctx) {
         groups.map(([name, mine]) => h('button', { type: 'button', class: cur && seriesOf(cur) === name ? 'active' : name === v.series ? 'near' : '',
           onclick: () => { v.series = name; if (!cur || seriesOf(cur) !== name) v.code = mine[0].code; ctx.render(); } }, name, h('span', { class: 'ce-count' }, mine.length))),
         others, h('span', { class: 'ce-settab-rest' }, prefButton(), newSetButton(list)));
-      end = [modes];
+      // The same place, the way back: the pinned row with All sets.
+      end = [h('button', { type: 'button', class: 'ce-allsets ce-topins', title: 'Back to the pinned sets, with the rest under All sets', onclick: () => setMode('pins') },
+        h('span', { class: 'ce-topins-ic', innerHTML: PIN_ICON(true) }), 'Pinned sets')];
       under = h('div', { class: 'ce-setrow2' }, h('span', { class: 'ce-setrow2-label' }, v.series ?? ''),
         (groups.find(([n]) => n === v.series)?.[1] ?? []).map(s => h('button', { type: 'button', class: `ce-setchip${s.code === v.code ? ' active' : ''}`, onclick: () => open(s.code) },
           packImg(s.code, 'ce-settab-pack'), s.name, h('small', {}, `${s.code} · ${countOf(s.code)}`), wipChip(s.code))));
@@ -513,14 +516,47 @@ export function createSetsView(ctx) {
         h('div', { class: 'ce-settings-head' }, packImg(s.code, 'ce-settab-pack', true), h('h2', {}, `${s.name} · ${s.code}`, wipChip(s.code)),
           h('span', { class: 'ce-st review ce-unsaved' }, 'NOT SAVED')),
         renderSettings(s, list))),
-      // The series already named, offered in every set's SERIES field (so one series is spelled one way).
-      h('datalist', { id: 'ce-series' }, seriesNames(list).map(n => h('option', { value: n }))),
       h('div', { class: 'ce-settings-block', id: 'set-default' },
         h('div', { class: 'ce-settings-head' }, packImg('default', 'ce-settab-pack', true), h('h2', {}, 'Mixed packs')),
         renderDefaultPanel()));
     if (v.focus) { const at = v.focus; v.focus = null; setTimeout(() => document.getElementById(`set-${at}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
     requestAnimationFrame(() => markUnsaved(list));
     return page;
+  }
+
+  // SERIES: the series the sets already name come up under the field as pills, the tag field's own (Marko 2026-11-27:
+  // the browser's list did not look like the app), so one series is spelled one way. They show while the field has
+  // the focus and narrow as you type; a click, or the arrows and Enter, takes one. What other sets have typed and not
+  // saved yet is offered too.
+  function seriesField(work, list, edit) {
+    const box = h('div', { class: 'ce-tag-pills ce-series-pills', hidden: true });
+    let items = [];
+    let at = -1;
+    const take = name => { input.value = name; edit('series', name); box.hidden = true; };
+    const paint = () => {
+      box.replaceChildren(h('div', { class: 'ce-tag-group-pills' }, items.map((name, i) =>
+        h('button', { type: 'button', class: `ce-tag-pill${i === at ? ' on' : ''}`, onpointerdown: e => { e.preventDefault(); take(name); } }, name))));
+      box.hidden = !items.length;
+    };
+    const show = (typing = true) => {
+      const q = input.value.trim().toLowerCase();
+      items = seriesNames(list.map(withEdits)).filter(name => name.toLowerCase() !== q && (!typing || !q || name.toLowerCase().includes(q)));
+      at = -1;
+      paint();
+    };
+    const input = h('input', { value: work.series ?? '', placeholder: 'e.g. Dragon Quest', autocomplete: 'off',
+      onfocus: () => show(false), oninput: e => { edit('series', e.target.value); show(); },
+      onblur: () => setTimeout(() => { if (document.activeElement !== input) box.hidden = true; }, 150),
+      onkeydown: e => {
+        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && items.length) {
+          e.preventDefault();
+          at = (at + (e.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
+          paint();
+        } else if (e.key === 'Enter' && at >= 0 && !box.hidden) { e.preventDefault(); take(items[at]); }
+        else if (e.key === 'Escape') box.hidden = true;
+      } });
+    return h('label', { class: 'ce-field' }, h('span', {}, 'SERIES'), input, box,
+      h('small', { class: 'muted' }, 'Sets of one series stand together in the game. Empty: the set\'s own name.'));
   }
 
   function renderSettings(s, list) {
@@ -530,8 +566,7 @@ export function createSetsView(ctx) {
     return h('section', { class: 'ce-panel ce-set-settings' },
       h('div', { class: 'ce-row' },
         field('NAME', h('input', { value: work.name, oninput: e => edit('name', e.target.value) })),
-        field('SERIES', h('input', { value: work.series ?? '', list: 'ce-series', placeholder: 'e.g. Dragon Quest', oninput: e => edit('series', e.target.value) }),
-          'Sets of one series stand together in the game. Empty: the set\'s own name.'),
+        seriesField(work, list, edit),
         field('SET NUMBER', h('input', { type: 'number', min: 1, value: work.number, oninput: e => edit('number', Number(e.target.value) || s.number) })),
         field('CARDS PER PACK', h('input', { type: 'number', min: 1, max: 30, value: work.packSize ?? DEFAULT_PACK, oninput: e => edit('packSize', Number(e.target.value) || DEFAULT_PACK) }), 'Draft packs.')),
       h('label', { class: 'ce-check-row' },

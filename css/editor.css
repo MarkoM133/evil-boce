@@ -953,6 +953,9 @@ button.link.ce-bal-more:hover { color: var(--bone); }
    slide sideways on a phone, so All sets, the icons and the list stand outside them. */
 .ce-setbar { position: relative; display: flex; align-items: stretch; gap: 8px; border-bottom: 1px solid var(--line); min-width: 0; }
 .ce-setbar > .ce-settabs { flex: 1; min-width: 0; border-bottom: 0; }
+.ce-setbar > .ce-settabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.ce-setbar > .ce-settabs::-webkit-scrollbar { display: none; }
+.ce-setbar > .ce-settabs > *, .ce-setbar .ce-settab-rest > * { flex: none; white-space: nowrap; }
 .ce-setbar-end { display: flex; align-items: center; gap: 8px; flex: none; padding-bottom: 6px; }
 .ce-settab { display: inline-flex; align-items: stretch; border-bottom: 3px solid transparent; }
 .ce-settabs .ce-settab > button { border-bottom: 0; }
@@ -971,10 +974,12 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-allsets { clip-path: none; background: var(--surface-2); color: var(--bone); display: inline-flex; gap: 8px; align-items: center; padding: 8px 12px; font-size: 16px; white-space: nowrap; }
 .ce-allsets:hover:not(:disabled), .ce-allsets.open { background: #2a2a2a; }
 .ce-caret { color: var(--muted); font-size: 11px; font-style: normal; }
-.ce-rowmode { display: inline-flex; background: var(--surface); padding: 3px; gap: 2px; }
-.ce-rowmode button { clip-path: none; background: none; padding: 0; width: 32px; height: 30px; display: grid; place-items: center; color: #6a6660; }
-.ce-rowmode button:hover:not(:disabled) { background: none; color: var(--bone); }
-.ce-rowmode button.on { background: #2e2e2e; color: var(--straw); }
+/* One control at the row's end: All sets and, joined to it, the rows that put every set out; with every set out the
+   same place holds the way back. */
+.ce-allgroup { display: inline-flex; align-items: stretch; gap: 1px; }
+.ce-allout { clip-path: none; background: var(--surface-2); padding: 0 10px; display: grid; place-items: center; color: var(--muted); }
+.ce-allout:hover:not(:disabled) { background: #2a2a2a; color: var(--bone); }
+.ce-topins-ic { display: inline-grid; color: var(--straw); }
 .ce-setbar-end .ce-settab-pref { clip-path: none; background: none; color: var(--muted); font-size: 14px; padding: 6px 10px; }
 
 .ce-allpanel { position: absolute; right: 0; top: calc(100% + 6px); width: min(660px, 100%); z-index: 9; background: #0e0e0e; border: 1px solid #333; box-shadow: 0 24px 60px rgba(0, 0, 0, .85); display: grid; grid-template-columns: minmax(0, 1fr); }
@@ -1012,7 +1017,7 @@ button.link.ce-bal-more:hover { color: var(--bone); }
   .ce-setbar-end { padding-bottom: 0; }
   .ce-allsets, .ce-setchip { min-height: 40px; }
   .ce-allsets .ce-count { display: none; }
-  .ce-rowmode button { width: 38px; height: 38px; }
+  .ce-allout { min-width: 40px; }
   .ce-allpanel { left: 0; width: auto; }
   .ce-all-find { width: 120px; }
   .ce-all-foot button { min-height: 40px; }
@@ -1026,3 +1031,6 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-unsaved { display: none; margin-left: 10px; }
 .ce-settings-block.unsaved .ce-unsaved { display: inline-block; }
 .ce-settings-block.unsaved .ce-set-settings { box-shadow: inset 3px 0 0 var(--straw); }
+
+/* The series already named, as pills under a set's SERIES field (the tag field's pills). */
+.ce-series-pills { padding-top: 0; }
