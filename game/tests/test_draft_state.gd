@@ -124,3 +124,24 @@ func test_packs_take_the_set_pack_size_and_the_set_of_the_pool() -> void:
 	assert_true(d.current_pack().size() <= want)
 	var back: DraftState = DraftState.from_dict(d.to_dict(), catalog)
 	assert_eq([back.pack_set, back.pack_size], [d.pack_set, d.pack_size], "sent to the guests")
+
+
+## A set's series groups its heroes in the picker: sets of one series share it, a set that names none stands by its
+## own name, and a set the list does not know by its code.
+func test_a_sets_series_groups_its_cards() -> void:
+	var catalog := CardCatalog.new()
+	catalog.set_sets({"sets": [
+		{"code": "OP1", "name": "One Piece", "packSize": 10},
+		{"code": "DQ1", "name": "Disciples of Avan", "packSize": 10, "series": " Dragon Quest "},
+		{"code": "JO1", "name": "JoJo", "packSize": 10, "series": ""},
+		{"code": "DQ2", "name": "Dragon Knights", "packSize": 10, "series": "Dragon Quest"},
+	]})
+	assert_eq(catalog.series_of("DQ1-001"), "Dragon Quest")
+	assert_eq(catalog.series_of("DQ2-004"), "Dragon Quest")
+	assert_eq(catalog.series_of("OP1-001"), "One Piece")
+	assert_eq(catalog.series_of("JO1-003"), "JoJo")
+	assert_eq(catalog.series_of("NR1-001"), "NR1")
+	assert_eq(catalog.series_order(), PackedStringArray(["One Piece", "Dragon Quest", "JoJo"]))
+	# The list read again without the series: nothing of it stays.
+	catalog.set_sets({"sets": [{"code": "DQ1", "name": "Disciples of Avan", "packSize": 10}]})
+	assert_eq(catalog.series_of("DQ1-001"), "Disciples of Avan")

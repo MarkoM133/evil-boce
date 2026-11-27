@@ -787,21 +787,26 @@ func _picker_cards() -> Array[CardDef]:
 			continue
 		out.append(c)
 	if not _picker_is_stage():
-		var order: Array = db.catalog.set_names.keys()
+		# A series together (where its first set stands), its sets in their order, then the cards.
+		var series: PackedStringArray = db.catalog.series_order()
+		var sets: Array = db.catalog.set_names.keys()
+		var place := func(c: CardDef) -> int:
+			var at: int = series.find(db.catalog.series_of(c.id))
+			var set_at: int = sets.find(CardCatalog.set_of(c.id))
+			return (at if at >= 0 else 999) * 1000 + (set_at if set_at >= 0 else 999)
 		out.sort_custom(func(x: CardDef, y: CardDef) -> bool:
-			var ix: int = order.find(CardCatalog.set_of(x.id))
-			var iy: int = order.find(CardCatalog.set_of(y.id))
-			if ix != iy:
-				return (ix if ix >= 0 else 999) < (iy if iy >= 0 else 999)
-			return x.id < y.id)
+			var px: int = place.call(x)
+			var py: int = place.call(y)
+			return px < py if px != py else x.id < y.id)
 	return out
 
 
-## What a card is filtered by: a stage's terrain ("None" for none), a hero's set.
+## What a card is filtered by: a stage's terrain ("None" for none), a hero's series (its set's name when the set
+## names no series).
 func _picker_group(c: CardDef) -> String:
 	if c.type == "Stage":
 		return Terrain.name_of(c.terrain) if c.terrain != Terrain.Type.NONE else "None"
-	return CardCatalog.set_of(c.id)
+	return db.catalog.series_of(c.id)
 
 
 func _picker_slot(slot: int) -> void:
@@ -868,8 +873,8 @@ func _fill_picker_head() -> void:
 	_picker_hint.text = "Click a card to pick it for %s %d" % [word, open_slot + 1]
 
 
-## The filters over the grid: ALL and a chip per terrain the stages have, or per set the heroes come from, and for
-## heroes a diamond per colour.
+## The filters over the grid: ALL and a chip per terrain the stages have, or per series the heroes come from, and
+## for heroes a diamond per colour.
 func _fill_picker_filters() -> void:
 	_picker_empty(_picker_filters)
 	var groups: Array[String] = []
@@ -883,7 +888,7 @@ func _fill_picker_filters() -> void:
 		var terrains: Array[String] = ["None", "Ice", "Ramp", "Wind", "Mud", "Fire"]
 		groups.sort_custom(func(x: String, y: String) -> bool: return terrains.find(x) < terrains.find(y))
 	else:
-		var order: Array = db.catalog.set_names.keys()
+		var order: PackedStringArray = db.catalog.series_order()
 		groups.sort_custom(func(x: String, y: String) -> bool:
 			return (order.find(x) if order.has(x) else 999) < (order.find(y) if order.has(y) else 999))
 	var filter: String = str(_picker["filter"])
@@ -891,7 +896,7 @@ func _fill_picker_filters() -> void:
 	options.append_array(groups)
 	for g: String in options:
 		var value: String = g
-		var text: String = "ALL" if g.is_empty() else ("NO TERRAIN" if g == "None" else str(db.catalog.set_names.get(g, g)).to_upper())
+		var text: String = "ALL" if g.is_empty() else ("NO TERRAIN" if g == "None" else g.to_upper())
 		var on: bool = filter == g
 		var chip: UiShape = UiShape.chip(text, Palette.FG if on else Palette.SURFACE_2, Color.BLACK if on else Palette.MUTED, 16, 32.0, 14.0)
 		_picker_clicks(chip, func() -> void:

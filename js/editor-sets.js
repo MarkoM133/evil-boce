@@ -31,6 +31,18 @@ export function setList(saved, cards) {
   return list.sort((a, b) => a.number - b.number || a.code.localeCompare(b.code));
 }
 
+// A set as it is saved in sets.json. series (Marko 2026-11-27): the series the set belongs to ("Dragon Quest" for
+// DQ1 and DQ2, whatever the sets are named); the game's hero picker groups by it. Left out when empty.
+export function setRow(one) {
+  const series = (one.series ?? '').trim();
+  return { code: one.code, name: one.name, number: one.number, packSize: one.packSize, ...(series ? { series } : {}), ...(one.wip ? { wip: true } : {}) };
+}
+
+// The series the sets already name, each once, in the order of the sets: offered while typing a set's series.
+export function seriesNames(list) {
+  return [...new Set(list.map(s => (s.series ?? '').trim()).filter(Boolean))];
+}
+
 // ctx: { h, state, store, canWrite, who, render, guard, toast, cards(), drafts(), locks(), thumbInto(canvas, card, px), go(id), newCard(set, type), nextId(set) }
 export function createSetsView(ctx) {
   const { h } = ctx;
@@ -74,7 +86,7 @@ export function createSetsView(ctx) {
     fresh.sets ??= [];
     if (one) {
       // wip: Work in progress (Marko 2026-11-14), the set's cards stay out of Publish.
-      const row = { code: one.code, name: one.name, number: one.number, packSize: one.packSize, ...(one.wip ? { wip: true } : {}) };
+      const row = setRow(one);
       const i = fresh.sets.findIndex(x => x.code === one.code);
       if (i >= 0) fresh.sets[i] = row; else fresh.sets.push(row);
     }
@@ -333,11 +345,13 @@ export function createSetsView(ctx) {
     const page = h('section', { class: 'ce-set ce-all-settings' },
       h('header', { class: 'ce-set-head' },
         h('div', { class: 'ce-set-title' }, h('p', { class: 'muted small' }, 'Card editor / Sets'), h('h1', {}, 'Sets & packs'),
-          h('p', { class: 'muted' }, 'Name, number and Draft pack of every set; the mixed pack is for a Draft whose cards come from several sets.')),
+          h('p', { class: 'muted' }, 'Name, series, number and Draft pack of every set; the mixed pack is for a Draft whose cards come from several sets.')),
         h('div', { class: 'ce-page-actions' }, redrawButton('', 'Redraw all pictures'))),
       list.map(s => h('div', { class: 'ce-settings-block', id: `set-${s.code}` },
         h('div', { class: 'ce-settings-head' }, packImg(s.code, 'ce-settab-pack', true), h('h2', {}, `${s.name} · ${s.code}`, wipChip(s.code))),
         renderSettings(s, list))),
+      // The series already named, offered in every set's SERIES field (so one series is spelled one way).
+      h('datalist', { id: 'ce-series' }, seriesNames(list).map(n => h('option', { value: n }))),
       h('div', { class: 'ce-settings-block', id: 'set-default' },
         h('div', { class: 'ce-settings-head' }, packImg('default', 'ce-settab-pack', true), h('h2', {}, 'Mixed packs')),
         renderDefaultPanel()));
@@ -351,6 +365,8 @@ export function createSetsView(ctx) {
     return h('section', { class: 'ce-panel ce-set-settings' },
       h('div', { class: 'ce-row' },
         field('NAME', h('input', { value: s.name, oninput: e => { work.name = e.target.value; } })),
+        field('SERIES', h('input', { value: s.series ?? '', list: 'ce-series', placeholder: 'e.g. Dragon Quest', oninput: e => { work.series = e.target.value; } }),
+          'Sets of one series stand together in the game. Empty: the set\'s own name.'),
         field('SET NUMBER', h('input', { type: 'number', min: 1, value: s.number, oninput: e => { work.number = Number(e.target.value) || s.number; } })),
         field('CARDS PER PACK', h('input', { type: 'number', min: 1, max: 30, value: s.packSize ?? DEFAULT_PACK, oninput: e => { work.packSize = Number(e.target.value) || DEFAULT_PACK; } }), 'Draft packs.')),
       h('label', { class: 'ce-check-row' },
