@@ -256,7 +256,7 @@ export function createSetsView(ctx) {
       // One control of two parts: All sets opens the list, the rows beside it put every set out.
       end = [h('span', { class: 'ce-allgroup' },
         h('button', { type: 'button', class: `ce-allsets${v.allOpen ? ' open' : ''}`, 'aria-expanded': String(!!v.allOpen), onclick: e => { e.stopPropagation(); if (v.allOpen) closeAll(); else openAll(); } },
-          'All sets', h('span', { class: 'ce-count' }, list.length), h('span', { class: 'ce-caret', 'aria-hidden': 'true' }, v.allOpen ? '▴' : '▾')),
+          h('span', { class: 'ce-topins-ic', innerHTML: PIN_ICON(true) }), 'All sets', h('span', { class: 'ce-count' }, list.length), h('span', { class: 'ce-caret', 'aria-hidden': 'true' }, v.allOpen ? '▴' : '▾')),
         h('button', { type: 'button', class: 'ce-allout', title: 'Put every set in the row, by series', 'aria-label': 'Put every set in the row, by series', innerHTML: ROWS_ICON, onclick: () => setMode('all') }))];
     } else {
       const groups = bySeries(list);
