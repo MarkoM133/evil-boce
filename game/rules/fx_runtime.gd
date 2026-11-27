@@ -365,6 +365,9 @@ func on_card_played(s: GameState, slot: int, card: CardDef, target: HeroState, i
 			ctx["card_hero"] = target.id if target != null else ""
 			ctx["played"] = card.id
 			ctx["pwr_gain"] = JsonUtil.as_int(info.get("pwr_gain", 0))
+			# The card answers by itself, so it says so first (playtest 2026-11-26: Avan asked for a card to the
+			# bottom of the deck and nothing said why). "cause" is the card that was played.
+			s.event("triggered", {"hero": ctx["hero"], "player": ctx["player"], "card": src_card.id, "index": index, "cause": card.id})
 			run(s, ctx, e)
 
 
@@ -628,8 +631,17 @@ func on_battle_done(s: GameState, winners: Array[HeroState], members: Array[Hero
 				# "If you lose this Battle and your Hero falls below N HP": its HP once the hits have landed.
 				holds = not won and h.hp < e.cond_arg.to_int()
 		if holds:
+			# It waited for the battle, so by now nothing on the table says where it comes from: name the card.
+			var ctx: Dictionary = JsonUtil.as_dict(d.get("ctx", {}))
+			var from: CardDef = engine.catalog.get_card(str(ctx.get("card", "")))
+			if from != null:
+				var at: int = -1
+				for i: int in from.effects.size():
+					if from.effects[i].line == str(d.get("fx", "")):
+						at = i
+				s.event("triggered", {"hero": h.id, "player": h.owner, "card": from.id, "index": at})
 			e.set_cond("")
-			run(s, JsonUtil.as_dict(d.get("ctx", {})), e)
+			run(s, ctx, e)
 
 
 ## Does the effect count now? Its IF condition and BONUS, and, for an effect that an INSTEAD

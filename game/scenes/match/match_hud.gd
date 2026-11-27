@@ -2143,16 +2143,16 @@ func _refresh_prompt() -> void:
 			_detail.text = "%s: click a highlighted hex." % player_name(who)
 		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hex":
 			_prompt.text = str(d.get("prompt", "Pick a hex"))
-			_detail.text = "%s: click a highlighted hex." % player_name(who)
+			_detail.text = _choice_detail(d, who, "click a highlighted hex.")
 		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "hero":
 			_prompt.text = str(d.get("prompt", "Choose a hero"))
-			_detail.text = "%s: click a lit hero on the table, or its panel." % player_name(who)
+			_detail.text = _choice_detail(d, who, "click a lit hero on the table, or its panel.")
 		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "core" and not choice_cores.is_empty():
 			_prompt.text = str(d.get("prompt", "Choose a core"))
-			_detail.text = "%s: click a lit core on the table." % player_name(who)
+			_detail.text = _choice_detail(d, who, "click a lit core on the table.")
 		elif str(d.get("type", "")) == FxRuntime.DECISION_CHOOSE and str(d.get("kind", "")) == "card" and not choice_cards.is_empty():
 			_prompt.text = str(d.get("prompt", "Choose a card"))
-			_detail.text = "%s: click a lit card in your hand." % player_name(who)
+			_detail.text = _choice_detail(d, who, "click a lit card in your hand.")
 		elif str(d.get("type", "")) == RulesEngine.DECISION_ROLL_OFFER:
 			_roll_offer_prompt(d, who)
 		elif str(d.get("type", "")) == RulesEngine.DECISION_COMBO:
@@ -4505,8 +4505,12 @@ func _banner_for(e: Dictionary) -> void:
 					JsonUtil.as_int(e.get("progress", 0)), JsonUtil.as_int(e.get("goal", 0))], 1.6)
 		"triggered":
 			var name: String = _triggered_name(e)
+			# A card in play that answers a played card and names no ability (an Equipment, an Assist) is named itself.
+			var answering: CardDef = engine.catalog.get_card(str(e.get("card", "")))
+			if name.is_empty() and e.has("cause") and answering != null and answering.type != "Hero" and answering.type != "Evolution":
+				name = answering.name
 			if not name.is_empty():
-				banner(name.to_upper(), Palette.GOLD, _hero_label(str(e.get("hero", ""))).to_upper(), "")
+				banner(name.to_upper(), Palette.GOLD, _trigger_owner(e).to_upper(), "")
 		"battle_locked":
 			# A tie (GDD 10): nobody is hurt, the heroes stay locked and fight again next turn.
 			# The band says it all (Marko 2026-11-09: the straw line above said the same a second early).
@@ -5147,7 +5151,7 @@ func _describe(e: Dictionary) -> String:
 			return "%s uses %s" % [hero_l, _card_name(str(e.get("card", "")))]
 		"triggered":
 			var name: String = _triggered_name(e)
-			return "%s: %s" % [hero_l, name if not name.is_empty() else _card_name(str(e.get("card", "")))]
+			return "%s: %s" % [_trigger_owner(e), name if not name.is_empty() else _card_name(str(e.get("card", "")))]
 		"wall":
 			return "Wall placed"
 		"fx_skipped":
@@ -5351,7 +5355,8 @@ func _log_line(e: Dictionary, ctx: Dictionary) -> String:
 			return dot + "%s uses %s." % [_hero_b(hero), ("[color=#e9d8a6]%s[/color]" % _esc(an)) if not an.is_empty() else _card_b(str(e.get("card", "")))]
 		"triggered":
 			var tn: String = _triggered_name(e)
-			return dot + "%s: %s." % [_hero_b(hero), ("[color=#e9d8a6]%s[/color]" % _esc(tn)) if not tn.is_empty() else _card_b(str(e.get("card", "")))]
+			var whose: String = _hero_b(hero) if not hero.is_empty() else _who(JsonUtil.as_int(e.get("player", -1), -1))
+			return dot + "%s: %s." % [whose, ("[color=#e9d8a6]%s[/color]" % _esc(tn)) if not tn.is_empty() else _card_b(str(e.get("card", "")))]
 		"fx_buff":
 			return ""
 		"heal":
@@ -6464,6 +6469,36 @@ func shown_active(slot: int) -> String:
 	if state.phase == GameState.PHASE_START and not local_slots.has(slot):
 		return ""
 	return state.active.get(slot, "")
+
+
+## Whose card fired by itself: its hero, or its player when the card belongs to no hero (an Assist).
+func _trigger_owner(e: Dictionary) -> String:
+	var hero: String = str(e.get("hero", ""))
+	return _hero_label(hero) if not hero.is_empty() else player_name(JsonUtil.as_int(e.get("player", -1), -1))
+
+
+## The card a choice comes from, with the ability's name when the card gives one ("Avan · The Legendary Mentor"),
+## so a question on the table says why it is asked (playtest 2026-11-26). "" when the choice names no card.
+func _choice_from(d: Dictionary) -> String:
+	var resume: Dictionary = JsonUtil.as_dict(d.get("resume", {}))
+	var card: CardDef = engine.catalog.get_card(str(JsonUtil.as_dict(resume.get("ctx", {})).get("card", "")))
+	if card == null:
+		return ""
+	for i: int in card.effects.size():
+		if card.effects[i].line == str(resume.get("fx", "")):
+			var ability: String = _triggered_name({"card": card.id, "index": i})
+			if not ability.is_empty():
+				return "%s · %s" % [card.name, ability]
+	return card.name
+
+
+## The line under a choice picked on the table: who answers and how. The gold line above the question names the card
+## that asks instead of the phase, as the choice window does (Marko 2026-11-08: what the choice is about comes first).
+func _choice_detail(d: Dictionary, who: int, how: String) -> String:
+	var from: String = _choice_from(d)
+	if not from.is_empty():
+		_kicker.text = from.to_upper()
+	return "%s: %s" % [player_name(who), how]
 
 
 ## The name of an ability that fired by itself ("triggered"): the card names its abilities in

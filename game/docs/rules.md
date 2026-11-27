@@ -347,7 +347,11 @@ Things the GDD does not spell out; each is one line to confirm or veto.
    order; a roll again brings a new stop and new offers), Postroll, Battle, End. Declining an
    empty offer after a fixed wait is the client's job (auto-pass), not a rule. A hero's own
    non-optional effect that fires (a Hero or Evolution card) logs `triggered` {hero, card, index}
-   first, so the HUD can show the ability's name. An offer lists
+   first, so the HUD can show the ability's name. So does a card in play that answers a played
+   card (`PLAYED`: {hero, player, card, index, cause}, cause = the card played; hero is "" for an
+   Assist) and an effect that waited for the battle when it fires after it ({hero, player, card,
+   index}). A choice an effect asks carries its card in `resume.ctx.card`, and the HUD names it
+   above the question. An offer lists
    only cards the first tag lets the activated hero play, and carries `at` (the log size at the
    stop) so a clock keyed on it is not restarted by the other player's answer. The decisions
    an answer asks for (a choice) go to the front of `pending`, before the other offers of the

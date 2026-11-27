@@ -217,6 +217,11 @@ func _play(s: GameState, slot: int, card: String, hero: String = "") -> String:
 	return engine.apply(s, Move.make(Move.PLAY_CARD, slot, args))
 
 
+## The "triggered" events of the log: cards that fired by themselves.
+func _triggered(s: GameState) -> Array:
+	return s.log.filter(func(e: Dictionary) -> bool: return str(e.get("type", "")) == "triggered")
+
+
 func _fx_of(id: String) -> String:
 	var c: CardDef = catalog.get_card(id)
 	assert_eq(c.unparsed.size(), 0, "%s unparsed: %s" % [id, ", ".join(c.unparsed)])
@@ -520,8 +525,15 @@ func test_a_draw_for_a_win_beside_a_friend() -> void:
 	var hand: int = s.player(1).hand.size()
 	var members: Array[HeroState] = [s.hero(ALPHA), s.hero(ECHO), lead]
 	var winners: Array[HeroState] = [s.hero(ECHO), lead]
+	assert_eq(_triggered(s).size(), 0, "it waits for the battle: nothing to say yet")
 	engine.fx.on_battle_done(s, winners, members)
 	assert_eq(s.player(1).hand.size(), hand + 1)
+	# The battle is over when it fires: it names its hero and card.
+	var said: Array = _triggered(s)
+	assert_eq(said.size(), 1)
+	assert_eq(str(said[0]["hero"]), lead.id)
+	assert_eq(str(said[0]["card"]), "TD-033")
+	assert_eq(JsonUtil.as_int(said[0]["index"]), 0)
 	# Alone in the battle: no draw.
 	s = _state("TD-033")
 	lead = s.hero("p1:TD-033")
@@ -534,6 +546,7 @@ func test_a_draw_for_a_win_beside_a_friend() -> void:
 	winners = [lead]
 	engine.fx.on_battle_done(s, winners, members)
 	assert_eq(s.player(1).hand.size(), hand)
+	assert_eq(_triggered(s).size(), 0, "it did not fire: nothing said")
 
 
 # --- cards in play that watch cards being played; costs and heals by the hero a card is for -----------
@@ -565,6 +578,16 @@ func test_a_draw_and_a_card_to_the_bottom_for_each_tagged_card() -> void:
 	# The card drawn and the filler: the player picks which goes under the deck.
 	assert_eq(s.pending.size(), 1)
 	assert_eq(str(s.pending[0]["kind"]), "card")
+	# The hero's card says it answered, and to which card, before it asks (playtest 2026-11-26: the question came
+	# with nothing saying why).
+	var said: Array = _triggered(s)
+	assert_eq(said.size(), 1)
+	assert_eq(str(said[0]["hero"]), scholar.id)
+	assert_eq(str(said[0]["card"]), "TD-040")
+	assert_eq(str(said[0]["cause"]), "TA-049")
+	assert_eq(JsonUtil.as_int(said[0]["index"]), 0)
+	# The question carries the card it comes from, for the line under it.
+	assert_eq(str(s.pending[0]["resume"]["ctx"]["card"]), "TD-040")
 	assert_eq(engine.apply(s, Move.make(Move.CHOOSE, 1, {"value": "TX-010"})), "")
 	assert_eq(s.player(1).hand.size(), 1, "one drawn, one put back")
 	assert_eq(s.player(1).deck.size(), deck, "the deck is as large as it was")
@@ -573,6 +596,7 @@ func test_a_draw_and_a_card_to_the_bottom_for_each_tagged_card() -> void:
 	assert_eq(_play(s, 1, "TA-040"), "")
 	assert_eq(s.pending.size(), 0)
 	assert_eq(s.player(1).deck.size(), deck)
+	assert_eq(_triggered(s).size(), 1, "nothing answered, nothing said")
 
 
 func test_power_for_each_tagged_card_up_to_three_times() -> void:

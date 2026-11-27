@@ -3677,6 +3677,20 @@ func demo_choose_card() -> void:
 	_sync()
 
 
+## Screenshot helper: a hero's own ability asks for a card from the hand, so the line under the question names the
+## hero and the ability (the first hero of player 1 whose card names one).
+func demo_ability_asks() -> void:
+	demo_choose_card()
+	for h: HeroState in state.heroes_of(0):
+		var card: CardDef = engine.catalog.get_card(h.card_id)
+		for e: FxEffect in (card.effects if card != null else []):
+			if e.when != "PASSIVE" and not card.ability_name(0).is_empty():
+				state.pending[0]["prompt"] = "Put a card on the bottom of your deck"
+				state.pending[0]["resume"] = {"ctx": {"player": 0, "hero": h.id, "card": card.id, "stage": ""}, "fx": e.line}
+				_sync()
+				return
+
+
 ## Screenshot helper: every stage placed (first legal hex), player 1 about to place a core.
 func demo_setup_cores() -> void:
 	_demo = true
