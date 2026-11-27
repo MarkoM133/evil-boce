@@ -980,6 +980,10 @@ button.link.ce-bal-more:hover { color: var(--bone); }
 .ce-allout { clip-path: none; background: var(--surface-2); padding: 0 10px; display: grid; place-items: center; color: var(--muted); }
 .ce-allout:hover:not(:disabled) { background: #2a2a2a; color: var(--bone); }
 .ce-topins-ic { display: inline-grid; color: var(--straw); }
+.ce-topins-ic.off { color: var(--muted); }
+.ce-topins { color: var(--muted); }
+.ce-topins:hover:not(:disabled) { color: var(--bone); }
+.ce-topins:hover:not(:disabled) .ce-topins-ic.off { color: var(--straw); }
 .ce-setbar-end .ce-settab-pref { clip-path: none; background: none; color: var(--muted); font-size: 14px; padding: 6px 10px; }
 
 .ce-allpanel { position: absolute; right: 0; top: calc(100% + 6px); width: min(660px, 100%); z-index: 9; background: #0e0e0e; border: 1px solid #333; box-shadow: 0 24px 60px rgba(0, 0, 0, .85); display: grid; grid-template-columns: minmax(0, 1fr); }

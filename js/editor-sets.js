@@ -268,7 +268,7 @@ export function createSetsView(ctx) {
         others, h('span', { class: 'ce-settab-rest' }, prefButton(), newSetButton(list)));
       // The same place, the way back: the pinned row with All sets.
       end = [h('button', { type: 'button', class: 'ce-allsets ce-topins', title: 'Back to the pinned sets, with the rest under All sets', onclick: () => setMode('pins') },
-        h('span', { class: 'ce-topins-ic', innerHTML: PIN_ICON(true) }), 'Pinned sets')];
+        h('span', { class: 'ce-topins-ic off', innerHTML: PIN_ICON(false) }), 'Pinned sets')];
       under = h('div', { class: 'ce-setrow2' }, h('span', { class: 'ce-setrow2-label' }, v.series ?? ''),
         (groups.find(([n]) => n === v.series)?.[1] ?? []).map(s => h('button', { type: 'button', class: `ce-setchip${s.code === v.code ? ' active' : ''}`, onclick: () => open(s.code) },
           packImg(s.code, 'ce-settab-pack'), s.name, h('small', {}, `${s.code} · ${countOf(s.code)}`), wipChip(s.code))));
