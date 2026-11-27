@@ -69,6 +69,7 @@ godot_console --headless --path game -s res://tools/check_scripts.gd
   `demo_choose_hero` (a heal asking for a hero: beams on the heroes it may take, the rest see-through),
   `demo_choose_core`, `demo_choose_card` (a core on the field, a card from the hand),
   `demo_ability_asks` (a hero's ability asks for a card: the gold line above the question names the hero and the ability),
+  `demo_ability_fires` (Avan answers an Avan Style card with the real cards: the band, then the question and the log line; add `demo_pause` for the log),
   `demo_banner_shot` with `--banner=` start, preroll, roll, postroll, battle_phase, battle, win, win_team,
   damage, deck, ringout, ko, combo (the combo card over the screen), equip, assist (the other side's card in, then to its place), stage, triggered, tie, tie_again, merged,
   merged_many (one band per run), `demo_combo_list` (the pause menu with the combo list), `demo_drop` (the drop screen and the ping), `demo_boards` (both stage boxes with energy, the assist boxes), `demo_boards_states` (claimed, energy just in, face down), `demo_panel_hover` (the mouse on a hero panel), `demo_defeat` (the end screen, lost), `demo_end_moment` (the table moment before it), `demo_ring_out_damage` (the ring-out's 1 DMG or a card),

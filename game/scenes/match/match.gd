@@ -3691,6 +3691,31 @@ func demo_ability_asks() -> void:
 				return
 
 
+## Screenshot helper: a hero's ability answers a played card, with the real cards when the catalog has them (Avan and
+## an Avan Style card): the band names the ability, then the question it asks names it too, and the log has its line.
+func demo_ability_fires() -> void:
+	demo_choose_hero()
+	state.pending.clear()
+	var hero_card: CardDef = engine.catalog.get_card("DQ1-002")
+	var played: CardDef = engine.catalog.get_card("DQ1-021")
+	var mine: Array[HeroState] = state.heroes_of(0)
+	if hero_card == null or played == null or mine.is_empty():
+		return
+	# One Avan on the table: the one the random deck brought, else the first hero becomes him.
+	var avan: HeroState = mine[0]
+	for h: HeroState in mine:
+		if h.card_id == hero_card.id:
+			avan = h
+	avan.card_id = hero_card.id
+	var p: PlayerState = state.player(0)
+	while p.hand.size() < 3 and not p.deck.is_empty():
+		p.hand.append(p.deck[0])
+		p.deck.remove_at(0)
+	state.event("action", {"player": 0, "hero": avan.id, "card": played.id})
+	engine.fx.on_card_played(state, 0, played, avan, {})
+	_sync()
+
+
 ## Screenshot helper: every stage placed (first legal hex), player 1 about to place a core.
 func demo_setup_cores() -> void:
 	_demo = true
