@@ -947,3 +947,77 @@ button.link.ce-bal-more:hover { color: var(--bone); }
   .ce-check-pill { min-height: 32px; display: inline-flex; align-items: center; }
   .ce-check input, .check input { width: 22px; height: 22px; }
 }
+
+/* ---------- The set row (Marko 2026-11-27, mockup set-row 1) ---------- */
+/* Pinned sets as tabs with All sets at the right end, or every set out by series; two icons switch. The tabs may
+   slide sideways on a phone, so All sets, the icons and the list stand outside them. */
+.ce-setbar { position: relative; display: flex; align-items: stretch; gap: 8px; border-bottom: 1px solid var(--line); min-width: 0; }
+.ce-setbar > .ce-settabs { flex: 1; min-width: 0; border-bottom: 0; }
+.ce-setbar-end { display: flex; align-items: center; gap: 8px; flex: none; padding-bottom: 6px; }
+.ce-settab { display: inline-flex; align-items: stretch; border-bottom: 3px solid transparent; }
+.ce-settabs .ce-settab > button { border-bottom: 0; }
+.ce-settab.active { background: var(--surface); border-bottom-color: var(--red); }
+.ce-settabs .ce-settab > button.active { background: none; }
+/* The open set while it is not pinned: open, but not kept. */
+.ce-settab.temp { border-bottom-style: dashed; }
+.ce-settabs button.near { color: var(--bone); }
+.ce-pin, .ce-settabs .ce-pin { clip-path: none; background: none; border: 0; display: inline-grid; place-items: center; width: 26px; padding: 0; color: #6a6660; flex: none; }
+.ce-pin:hover:not(:disabled) { background: none; color: var(--bone); }
+.ce-pin.on { color: var(--straw); }
+.ce-settab .ce-pin { margin-left: -8px; visibility: hidden; }
+.ce-settab:hover .ce-pin, .ce-settab:focus-within .ce-pin, .ce-settab.temp .ce-pin { visibility: visible; }
+@media (hover: none) { .ce-settab .ce-pin { visibility: visible; } }
+.ce-count { font: 600 12px var(--text); color: var(--muted); font-style: normal; }
+.ce-allsets { clip-path: none; background: var(--surface-2); color: var(--bone); display: inline-flex; gap: 8px; align-items: center; padding: 8px 12px; font-size: 16px; white-space: nowrap; }
+.ce-allsets:hover:not(:disabled), .ce-allsets.open { background: #2a2a2a; }
+.ce-caret { color: var(--muted); font-size: 11px; font-style: normal; }
+.ce-rowmode { display: inline-flex; background: var(--surface); padding: 3px; gap: 2px; }
+.ce-rowmode button { clip-path: none; background: none; padding: 0; width: 32px; height: 30px; display: grid; place-items: center; color: #6a6660; }
+.ce-rowmode button:hover:not(:disabled) { background: none; color: var(--bone); }
+.ce-rowmode button.on { background: #2e2e2e; color: var(--straw); }
+.ce-setbar-end .ce-settab-pref { clip-path: none; background: none; color: var(--muted); font-size: 14px; padding: 6px 10px; }
+
+.ce-allpanel { position: absolute; right: 0; top: calc(100% + 6px); width: min(660px, 100%); z-index: 9; background: #0e0e0e; border: 1px solid #333; box-shadow: 0 24px 60px rgba(0, 0, 0, .85); display: grid; grid-template-columns: minmax(0, 1fr); }
+.ce-all-head { display: flex; align-items: flex-end; gap: 8px; padding: 4px 10px 0; border-bottom: 1px solid var(--line); }
+.ce-all-series { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
+.ce-all-series button { clip-path: none; background: none; color: var(--muted); font-size: 15px; padding: 10px 12px 9px; border-bottom: 3px solid transparent; white-space: nowrap; display: inline-flex; gap: 6px; align-items: baseline; flex: none; }
+.ce-all-series button:hover:not(:disabled) { background: none; color: var(--bone); }
+.ce-all-series button.active { color: var(--bone); border-bottom-color: var(--red); }
+.ce-all-find { width: 160px; flex: none; margin-bottom: 6px; padding: 6px 10px; font-size: 14px; }
+.ce-all-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; padding: 10px; max-height: 52vh; overflow-y: auto; }
+.ce-all-tiles > p { margin: 6px 4px; }
+.ce-all-tile { position: relative; display: flex; background: var(--surface); border-left: 3px solid transparent; }
+.ce-all-tile:hover { background: var(--surface-2); }
+.ce-all-tile.active { border-left-color: var(--red); background: var(--surface-2); }
+.ce-all-open { clip-path: none; background: none; flex: 1; min-width: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 2px 10px; align-items: center; padding: 8px 30px 8px 8px; text-align: left; color: var(--bone); }
+.ce-all-open:hover:not(:disabled) { background: none; }
+.ce-all-pack { width: 38px; height: 54px; object-fit: cover; border-radius: 2px; background: var(--surface-2); grid-row: 1 / span 2; display: block; }
+.ce-all-pack.empty, .ce-settab-pack.empty { border: 1px dashed #444; background: none; }
+.ce-all-name { font: italic 700 17px/1.1 var(--display); align-self: end; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ce-all-open small { color: var(--muted); font: 500 13px var(--text); align-self: start; }
+.ce-all-tile .ce-pin { position: absolute; right: 2px; top: 2px; width: 28px; height: 28px; }
+.ce-all-foot { display: flex; gap: 4px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.ce-all-foot button { clip-path: none; background: none; color: var(--muted); font-size: 14px; padding: 8px 10px; }
+.ce-all-foot button:hover:not(:disabled) { background: none; color: var(--bone); }
+.ce-all-foot small { margin-left: auto; }
+
+.ce-setrow2 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: -8px; min-width: 0; }
+.ce-setrow2-label { font: 600 12px var(--text); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
+.ce-setchip { clip-path: none; display: inline-flex; gap: 8px; align-items: center; padding: 5px 14px 5px 5px; background: var(--surface); color: var(--muted); font-size: 15px; border: 2px solid transparent; white-space: nowrap; }
+.ce-setchip:hover:not(:disabled) { background: var(--surface-2); color: var(--bone); }
+.ce-setchip.active { color: var(--bone); border-color: var(--red); }
+.ce-setchip small { font: 500 12.5px var(--text); color: var(--muted); font-style: normal; }
+
+@media (max-width: 760px) {
+  .ce-setbar-end { padding-bottom: 0; }
+  .ce-allsets, .ce-setchip { min-height: 40px; }
+  .ce-allsets .ce-count { display: none; }
+  .ce-rowmode button { width: 38px; height: 38px; }
+  .ce-allpanel { left: 0; width: auto; }
+  .ce-all-find { width: 120px; }
+  .ce-all-foot button { min-height: 40px; }
+  .ce-all-tile .ce-pin { width: 40px; height: 40px; }
+  .ce-all-open { padding-right: 42px; }
+  .ce-setrow2 { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .ce-setrow2 > * { flex: none; }
+}

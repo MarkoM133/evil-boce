@@ -38,6 +38,27 @@ export function setRow(one) {
   return { code: one.code, name: one.name, number: one.number, packSize: one.packSize, ...(series ? { series } : {}), ...(one.wip ? { wip: true } : {}) };
 }
 
+// The series a set stands under in the set row: the one it names, else its own name.
+export const seriesOf = s => (s.series ?? '').trim() || s.name || s.code || '';
+
+// The sets under their series, in the order of the sets: [[series, [set, …]], …].
+export function bySeries(list) {
+  const groups = new Map();
+  for (const s of list) {
+    const name = seriesOf(s);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(s);
+  }
+  return [...groups];
+}
+
+// The sets pinned to the set row: what this browser remembers, less sets that are gone; every set while it
+// remembers nothing (the row as it was before pins).
+export function pinnedCodes(stored, list) {
+  const codes = list.map(s => s.code);
+  return Array.isArray(stored) ? stored.filter(c => codes.includes(c)) : codes;
+}
+
 // The series the sets already name, each once, in the order of the sets: offered while typing a set's series.
 export function seriesNames(list) {
   return [...new Set(list.map(s => (s.series ?? '').trim()).filter(Boolean))];
@@ -131,6 +152,125 @@ export function createSetsView(ctx) {
     document.body.append(box);
   }
 
+  // ---------- the set row (Marko 2026-11-27, mockups set-nav → set-pins → set-row, variant 1) ----------
+  // Two states, kept in this browser like the pins: "pins", the sets you pinned as tabs and every set under All sets
+  // at the right end; "all", every set out, the series in the row and the open series' sets under it. The two icons
+  // at the right end switch between them.
+  const PINS_KEY = 'evil-boce-set-pins';
+  const ROW_KEY = 'evil-boce-set-row';
+  const stored = key => { try { return JSON.parse(localStorage.getItem(key) ?? 'null'); } catch { return null; } };
+  const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
+  const rowMode = () => (stored(ROW_KEY) === 'all' ? 'all' : 'pins');
+  const pins = list => pinnedCodes(stored(PINS_KEY), list);
+  const PIN_ICON = on => `<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M9.6 1.2 14.8 6.4l-1.9.6-2.7 2.7.5 3.4-1.1 1.1-3.3-3.3-4 4-.7-.7 4-4L2.3 6.9l1.1-1.1 3.4.5 2.7-2.7z" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+  const ROWS_ICON = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1 2.5h14V7H1zM1 9h4.2v4.5H1zM6.4 9h4.2v4.5H6.4z" fill="currentColor"/></svg>';
+  const countOf = code => ctx.cards().filter(c => c.id.startsWith(`${code}-`) && !c.token).length;
+
+  function togglePin(code, list) {
+    const now = pins(list);
+    store(PINS_KEY, now.includes(code) ? now.filter(c => c !== code) : list.map(s => s.code).filter(c => c === code || now.includes(c)));
+    ctx.render();
+  }
+
+  function pinButton(code, list) {
+    const on = pins(list).includes(code);
+    return h('button', { type: 'button', class: `ce-pin${on ? ' on' : ''}`, 'aria-pressed': String(on), title: on ? 'Unpin from the row' : 'Pin to the row',
+      innerHTML: PIN_ICON(on), onclick: e => { e.stopPropagation(); togglePin(code, list); } });
+  }
+
+  const prefButton = () => h('button', { type: 'button', class: `ce-settab-pref${v.code === 'default' ? ' active' : ''}`, title: 'Name, series, number, pack size, pack image and Draft background of every set, and of packs that mix sets',
+    onclick: () => { closeAll(false); v.code = 'default'; v.focus = null; ctx.render(); } }, '⚙ Sets & packs');
+
+  // All sets: the list is open while v.allOpen; a click outside it or Esc closes it.
+  let offAll = null;
+  function closeAll(draw = true) {
+    if (!v.allOpen) return;
+    v.allOpen = false;
+    offAll?.();
+    offAll = null;
+    if (draw) ctx.render();
+  }
+  function openAll() {
+    v.allOpen = true;
+    v.allSeries = null;
+    v.allQ = '';
+    const onDoc = e => { if (!e.target.closest?.('.ce-allpanel, .ce-allsets')) closeAll(); };
+    const onKey = e => { if (e.key === 'Escape') closeAll(); };
+    setTimeout(() => document.addEventListener('click', onDoc), 0);
+    document.addEventListener('keydown', onKey);
+    offAll = () => { document.removeEventListener('click', onDoc); document.removeEventListener('keydown', onKey); };
+    ctx.render();
+  }
+
+  // The list under All sets: the series on top, the open series' sets under them (a search looks through every
+  // series), each with its pin; Sets & packs and New set at the foot.
+  function allPanel(list) {
+    const groups = bySeries(list);
+    let series = v.allSeries ?? seriesOf(list.find(s => s.code === v.code) ?? list[0] ?? {});
+    const tabsBox = h('div', { class: 'ce-all-series', role: 'tablist' });
+    const tiles = h('div', { class: 'ce-all-tiles' });
+    const search = h('input', { type: 'search', class: 'ce-all-find', placeholder: 'Search a set…', 'aria-label': 'Search a set', value: v.allQ ?? '', oninput: e => { v.allQ = e.target.value; fill(); } });
+    const tile = s => h('div', { class: `ce-all-tile${s.code === v.code ? ' active' : ''}` },
+      h('button', { type: 'button', class: 'ce-all-open', onclick: () => { closeAll(false); v.code = s.code; ctx.render(); } },
+        packImg(s.code, 'ce-all-pack'), h('span', { class: 'ce-all-name' }, s.name, wipChip(s.code)), h('small', {}, `${s.code} · ${countOf(s.code)} cards`)),
+      pinButton(s.code, list));
+    const fill = () => {
+      const q = (v.allQ ?? '').trim().toLowerCase();
+      tabsBox.replaceChildren(...groups.map(([name, mine]) => h('button', { type: 'button', role: 'tab', class: !q && name === series ? 'active' : '', onclick: () => { series = v.allSeries = name; v.allQ = ''; search.value = ''; fill(); } },
+        name, h('span', { class: 'ce-count' }, mine.length))));
+      const shown = q ? list.filter(s => `${s.name} ${s.code} ${seriesOf(s)}`.toLowerCase().includes(q)) : groups.find(([n]) => n === series)?.[1] ?? [];
+      tiles.replaceChildren(...(shown.length ? shown.map(tile) : [h('p', { class: 'muted small' }, 'No set by that name.')]));
+    };
+    fill();
+    return h('div', { class: 'ce-allpanel', role: 'dialog', 'aria-label': 'All sets', onclick: e => e.stopPropagation() },
+      h('div', { class: 'ce-all-head' }, tabsBox, search), tiles,
+      h('div', { class: 'ce-all-foot' }, prefButton(), newSetButton(list), h('small', { class: 'muted' }, 'Pinned sets stay in the row')));
+  }
+
+  // Returns the row's nodes: the bar, and with every set out the row of the open series' sets under it.
+  function setRow(list) {
+    const mode = rowMode();
+    const open = code => { closeAll(false); v.code = code; ctx.render(); };
+    const plain = ([code, label]) => h('button', { type: 'button', class: code === v.code ? 'active' : '', onclick: () => open(code) }, label);
+    const others = [h('span', { class: 'ce-settab-sep', 'aria-hidden': 'true' }), plain(['Stage', 'Stages']), plain(['Core', 'Cores']), plain(['CB', 'Combos'])];
+    const modes = h('span', { class: 'ce-rowmode', role: 'group', 'aria-label': 'Set row' },
+      [['pins', 'Pinned sets in the row, the rest under All sets', PIN_ICON(true)], ['all', 'Every set in the row, by series', ROWS_ICON]].map(([m, title, icon]) =>
+        h('button', { type: 'button', class: mode === m ? 'on' : '', 'aria-pressed': String(mode === m), title, innerHTML: icon, onclick: () => { closeAll(false); store(ROW_KEY, m); ctx.render(); } })));
+    const cur = list.find(s => s.code === v.code);
+    let nav;
+    let end;
+    let under = null;
+    if (mode === 'pins') {
+      const pinned = pins(list);
+      // A set as a tab with its pin (it shows under the pointer); the open set has a tab while it is not pinned.
+      const setTab = (s, temp) => h('span', { class: `ce-settab${s.code === v.code ? ' active' : ''}${temp ? ' temp' : ''}` },
+        h('button', { type: 'button', class: s.code === v.code ? 'active' : '', title: temp ? 'Open, not pinned: the pin keeps it in the row' : null, onclick: () => open(s.code) },
+          packImg(s.code, 'ce-settab-pack'), `${s.name} · ${s.code}`, wipChip(s.code)),
+        pinButton(s.code, list));
+      nav = h('nav', { class: 'ce-settabs' }, list.filter(s => pinned.includes(s.code)).map(s => setTab(s, false)), cur && !pinned.includes(cur.code) ? setTab(cur, true) : null, others);
+      end = [h('button', { type: 'button', class: `ce-allsets${v.allOpen ? ' open' : ''}`, 'aria-expanded': String(!!v.allOpen), onclick: e => { e.stopPropagation(); if (v.allOpen) closeAll(); else openAll(); } },
+        'All sets', h('span', { class: 'ce-count' }, list.length), h('span', { class: 'ce-caret', 'aria-hidden': 'true' }, v.allOpen ? '▴' : '▾')), modes];
+    } else {
+      const groups = bySeries(list);
+      if (cur) v.series = seriesOf(cur);
+      v.series ??= groups[0]?.[0] ?? null;
+      nav = h('nav', { class: 'ce-settabs' },
+        groups.map(([name, mine]) => h('button', { type: 'button', class: cur && seriesOf(cur) === name ? 'active' : name === v.series ? 'near' : '',
+          onclick: () => { v.series = name; if (!cur || seriesOf(cur) !== name) v.code = mine[0].code; ctx.render(); } }, name, h('span', { class: 'ce-count' }, mine.length))),
+        others, h('span', { class: 'ce-settab-rest' }, prefButton(), newSetButton(list)));
+      end = [modes];
+      under = h('div', { class: 'ce-setrow2' }, h('span', { class: 'ce-setrow2-label' }, v.series ?? ''),
+        (groups.find(([n]) => n === v.series)?.[1] ?? []).map(s => h('button', { type: 'button', class: `ce-setchip${s.code === v.code ? ' active' : ''}`, onclick: () => open(s.code) },
+          packImg(s.code, 'ce-settab-pack'), s.name, h('small', {}, `${s.code} · ${countOf(s.code)}`), wipChip(s.code))));
+    }
+    // On a phone the tabs are one row that slides sideways: the open one comes into view.
+    requestAnimationFrame(() => {
+      const at = nav.querySelector('.ce-settab.active, button.active');
+      if (at && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = at.offsetLeft - (nav.clientWidth - at.offsetWidth) / 2;
+    });
+    return [h('div', { class: `ce-setbar ${mode}` }, nav, h('div', { class: 'ce-setbar-end' }, end), mode === 'pins' && v.allOpen ? allPanel(list) : null), under];
+  }
+
   function render() {
     if (!v.saved) {
       load();
@@ -138,22 +278,7 @@ export function createSetsView(ctx) {
     }
     const list = sets();
     v.code ??= list[0]?.code ?? 'Stage';
-    // Lijevo setovi | Stages, Cores; desno rijetke stvari: Draft packs (default paket) i + New set (Marko 2026-11-03).
-    const tab = ([code, label]) => h('button', { type: 'button', class: code === v.code ? 'active' : '', onclick: () => { v.code = code; ctx.render(); } },
-      NOT_SETS.includes(code) ? null : packImg(code, 'ce-settab-pack'), label, wipChip(code));
-    const nav = h('nav', { class: 'ce-settabs' },
-        list.map(s => tab([s.code, `${s.name} · ${s.code}`])),
-        h('span', { class: 'ce-settab-sep', 'aria-hidden': 'true' }),
-        tab(['Stage', 'Stages']), tab(['Core', 'Cores']), tab(['CB', 'Combos']),
-        h('span', { class: 'ce-settab-rest' },
-          h('button', { type: 'button', class: `ce-settab-pref${v.code === 'default' ? ' active' : ''}`, title: 'Name, number, pack size, pack image and Draft background of every set, and of packs that mix sets', onclick: () => { v.code = 'default'; v.focus = null; ctx.render(); } }, '⚙ Sets & packs'),
-          newSetButton(list)));
-    // On a phone the tabs are one row that slides sideways: the open one comes into view.
-    requestAnimationFrame(() => {
-      const open = nav.querySelector('button.active');
-      if (open && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = open.offsetLeft - (nav.clientWidth - open.offsetWidth) / 2;
-    });
-    return h('div', { class: 'ce-page ce-sets' }, nav,
+    return h('div', { class: 'ce-page ce-sets' }, setRow(list),
       v.code === 'default' ? renderAllSettings(list) : renderSet(list.find(s => s.code === v.code) ?? { code: v.code, name: nameOf(v.code) }, list));
   }
 
@@ -164,6 +289,9 @@ export function createSetsView(ctx) {
       if (!CODE_RE.test(code)) throw new Error('A set code is 2–4 capital letters and a number, e.g. OP2 or NR1.');
       if (list.some(s => s.code === code)) throw new Error(`Set ${code} already exists.`);
       await save({ code, name: code, number: Math.max(0, ...list.map(s => s.number)) + 1, packSize: DEFAULT_PACK });
+      // The set you made is pinned to your row (only when the row remembers pins: without them every set is in it).
+      if (Array.isArray(stored(PINS_KEY))) store(PINS_KEY, [...stored(PINS_KEY), code]);
+      closeAll(false);
       v.code = 'default';
       v.focus = code;
       ctx.render();
