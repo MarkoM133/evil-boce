@@ -416,6 +416,12 @@ func demo_loadout() -> void:
 	_cards[0]._pick_stage(0)
 
 
+## Screenshot helper: the stage picker with the first place picked (the window stays, the second place is open).
+func demo_loadout_picked() -> void:
+	_cards[0]._pick_stage(0)
+	_cards[0]._picker_set(db.catalog.of_type("Stage")[0].id)
+
+
 ## Screenshot helper: player 1's core picker.
 func demo_cores() -> void:
 	_cards[0]._open_core_picker()

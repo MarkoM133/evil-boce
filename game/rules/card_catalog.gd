@@ -11,6 +11,8 @@ var trait_names: PackedStringArray = PackedStringArray()
 ## Cards per Draft pack by set code (data/sets/sets.json, edited in the web app's Card editor
 ## › Sets); "default" is the pack of a Draft that mixes sets.
 var pack_sizes: Dictionary[String, int] = {}
+## The sets' names by code, in the order of the set list ("OP1" → "One Piece"): what a picker groups heroes by.
+var set_names: Dictionary[String, String] = {}
 
 
 static func from_doc(doc: Dictionary, with_placeholders: bool = true) -> CardCatalog:
@@ -43,9 +45,12 @@ func set_traits(list: Array) -> void:
 ## The set list: {"sets": [{code, name, number, packSize}], "default": {packSize}} (data/sets/sets.json).
 func set_sets(doc: Dictionary) -> void:
 	pack_sizes = {}
+	set_names = {}
 	for s: Variant in JsonUtil.as_array(doc.get("sets", [])):
 		var sd: Dictionary = JsonUtil.as_dict(s)
 		var code: String = str(sd.get("code", "")).strip_edges()
+		if not code.is_empty():
+			set_names[code] = str(sd.get("name", code)).strip_edges()
 		var size: int = JsonUtil.as_int(sd.get("packSize", 0))
 		if not code.is_empty() and size > 0:
 			pack_sizes[code] = size

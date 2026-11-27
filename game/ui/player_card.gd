@@ -17,9 +17,13 @@ const STAGE_ROW_H: float = 70.0
 const STAGE_BESIDE: Vector2 = Vector2(330, 88)
 ## A tile that stretches: its picture runs its whole width.
 const ALL_PICTURE: float = 4096.0
-## A picker window: the height its title, BACK and edges take, and the room its scrollbar needs beside the cards.
-const POPUP_CHROME: float = 150.0
-const POPUP_SCROLLBAR: float = 14.0
+## The picker of heroes and stages: its window, a stage card and a hero tile in its grid, the card shown big.
+const PICKER_SIZE: Vector2 = Vector2(1340, 832)
+const PICKER_STAGE: Vector2 = Vector2(170, 238)
+const PICKER_HERO: Vector2 = Vector2(244, 134)
+const PICKER_BIG_TALL: Vector2 = Vector2(386, 540)
+const PICKER_BIG_WIDE: Vector2 = Vector2(480, 343)
+const PICKER_COLORS: PackedStringArray = ["Red", "Cyan", "Blue", "Green", "Purple", "Yellow"]
 
 var db: CardDb
 var decks: Array[Dictionary] = []
@@ -58,6 +62,13 @@ var _sideboard_on: bool = false
 var swap_handler: Callable = Callable()
 var _body: VBoxContainer
 var _popup: PopupPanel
+## The picker of heroes and stages (_open_picker): {kind, slot, filter, color, search, shown} and its parts.
+var _picker: Dictionary = {}
+var _picker_head: HBoxContainer
+var _picker_filters: HBoxContainer
+var _picker_grid: ScrollContainer
+var _picker_big: VBoxContainer
+var _picker_hint: Label
 var _sb: StyleBoxFlat
 var _chip: UiShape
 ## Someone else's side, only shown (online lobby): {deck_name, heroes, stages, cores}, ids "" for random.
@@ -672,11 +683,141 @@ func _core_button(slot: int) -> Button:
 ## One hero slot of a random deck: a hero (not one picked in another slot) or Random. With a
 ## hero picked the deck is built now; all Random goes back to a deck drawn at the start.
 func _pick_hero(slot: int) -> void:
-	var items: Array[Dictionary] = [{"id": "", "name": "RANDOM", "tex": null}]
-	for c: CardDef in db.catalog.of_type("Hero"):
-		var elsewhere: bool = chosen.has(c.id) and chosen[slot] != c.id
-		items.append({"id": c.id, "name": c.name, "tex": db.thumb(c.id), "used": elsewhere})
-	_open_popup("Hero %d" % (slot + 1), items, func(id: String) -> void:
+	_open_picker("Hero", slot)
+
+
+func _pick_stage(slot: int) -> void:
+	_open_picker("Stage", slot)
+
+
+## One window for the three places (Marko 2026-11-27, mockup pickers: A + B with the head H2). On top the three
+## places as picture tiles, the one being picked gold, and DONE. Under them the cards on the left, whole stage cards
+## or hero pictures, with filters (a stage's terrain; a hero's set and colour) and a search; on the right the card
+## under the pointer, big. A click picks the card for the open place and moves on to the next one still left to
+## the draw. The window was one grid per place, which twelve stages outgrew.
+func _open_picker(kind: String, slot: int) -> void:
+	_picker = {"kind": kind, "slot": slot, "filter": "", "color": "", "search": "", "shown": "-"}
+	for c: Node in _popup.get_children():
+		c.queue_free()
+	var room: Vector2 = get_viewport_rect().size * 0.94
+	var size_ := Vector2(minf(PICKER_SIZE.x, room.x), minf(PICKER_SIZE.y, room.y))
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 12)
+	_popup.add_child(col)
+	_picker_head = HBoxContainer.new()
+	_picker_head.add_theme_constant_override("separation", 12)
+	col.add_child(_picker_head)
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 18)
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(body)
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 10)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(left)
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 12)
+	left.add_child(bar)
+	_picker_filters = HBoxContainer.new()
+	_picker_filters.add_theme_constant_override("separation", 6)
+	_picker_filters.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(_picker_filters)
+	var search := LineEdit.new()
+	search.placeholder_text = "Search a name…"
+	search.custom_minimum_size = Vector2(210, 0)
+	search.clear_button_enabled = true
+	search.text_changed.connect(func(t: String) -> void:
+		_picker["search"] = t.strip_edges()
+		_fill_picker_grid())
+	bar.add_child(search)
+	_picker_grid = ScrollContainer.new()
+	_picker_grid.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_picker_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left.add_child(_picker_grid)
+	var right := VBoxContainer.new()
+	right.add_theme_constant_override("separation", 10)
+	right.custom_minimum_size = Vector2(PICKER_BIG_WIDE.x + 20.0, 0)
+	right.alignment = BoxContainer.ALIGNMENT_CENTER
+	body.add_child(right)
+	_picker_big = VBoxContainer.new()
+	_picker_big.add_theme_constant_override("separation", 8)
+	_picker_big.alignment = BoxContainer.ALIGNMENT_CENTER
+	right.add_child(_picker_big)
+	_picker_hint = UiTheme.label("", 14, Palette.MUTED, false)
+	_picker_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	right.add_child(_picker_hint)
+	_fill_picker_head()
+	_fill_picker_filters()
+	_fill_picker_grid()
+	_picker_show("")
+	_popup.size = Vector2i.ZERO
+	_popup.popup_centered(Vector2i(size_))
+
+
+## Takes a part's children out now. Only queued to be freed they stand beside the new ones for a frame, and the
+## window grows to hold both and does not shrink back.
+func _picker_empty(part: Node) -> void:
+	for c: Node in part.get_children():
+		part.remove_child(c)
+		c.queue_free()
+
+
+func _picker_is_stage() -> bool:
+	return str(_picker.get("kind", "")) == "Stage"
+
+
+## The three picks the picker fills: the stages of the loadout, or the heroes of a random deck.
+func _picker_picks() -> PackedStringArray:
+	return loadout.stages if _picker_is_stage() else chosen
+
+
+## The cards the grid shows now: the kind, less what the filters and the search leave out; heroes in the order of
+## the sets.
+func _picker_cards() -> Array[CardDef]:
+	var out: Array[CardDef] = []
+	var filter: String = str(_picker["filter"])
+	var color: String = str(_picker["color"])
+	var search: String = str(_picker["search"])
+	for c: CardDef in db.catalog.of_type(str(_picker["kind"])):
+		if not filter.is_empty() and _picker_group(c) != filter:
+			continue
+		if not color.is_empty() and c.color != color:
+			continue
+		if not search.is_empty() and not c.name.containsn(search):
+			continue
+		out.append(c)
+	if not _picker_is_stage():
+		var order: Array = db.catalog.set_names.keys()
+		out.sort_custom(func(x: CardDef, y: CardDef) -> bool:
+			var ix: int = order.find(CardCatalog.set_of(x.id))
+			var iy: int = order.find(CardCatalog.set_of(y.id))
+			if ix != iy:
+				return (ix if ix >= 0 else 999) < (iy if iy >= 0 else 999)
+			return x.id < y.id)
+	return out
+
+
+## What a card is filtered by: a stage's terrain ("None" for none), a hero's set.
+func _picker_group(c: CardDef) -> String:
+	if c.type == "Stage":
+		return Terrain.name_of(c.terrain) if c.terrain != Terrain.Type.NONE else "None"
+	return CardCatalog.set_of(c.id)
+
+
+func _picker_slot(slot: int) -> void:
+	_picker["slot"] = slot
+	_fill_picker_head()
+	_fill_picker_grid()
+	_picker_show("")
+
+
+## The card for the open place ("" = Random), then on to the next place still left to the draw.
+func _picker_set(id: String) -> void:
+	var slot: int = JsonUtil.as_int(_picker["slot"])
+	if _picker_is_stage():
+		loadout.stages[slot] = id
+		_changed()
+	else:
 		chosen[slot] = id
 		if "".join(chosen).is_empty():
 			built = {}
@@ -684,19 +825,199 @@ func _pick_hero(slot: int) -> void:
 		else:
 			# The other slots stay "?" (playtest 2026-10-30): the deck is drawn now but only
 			# shown after BUILD or REROLL.
-			_build_random(false))
+			_build_random(false)
+	if not id.is_empty():
+		var picks: PackedStringArray = _picker_picks()
+		for i: int in picks.size():
+			if picks[i].is_empty():
+				_picker["slot"] = i
+				break
+	_fill_picker_head()
+	_fill_picker_grid()
+	_picker_show("")
 
 
-func _pick_stage(slot: int) -> void:
-	var items: Array[Dictionary] = [{"id": "", "name": "RANDOM", "tex": null}]
-	for c: CardDef in db.catalog.of_type("Stage"):
-		var terrain: String = Terrain.name_of(c.terrain) if c.terrain != Terrain.Type.NONE else ""
-		items.append({"id": c.id, "name": c.name + ("\n" + terrain.to_upper() if not terrain.is_empty() else ""),
-			"tex": db.thumb(c.id), "used": loadout.stages.has(c.id) and loadout.stages[slot] != c.id})
-	# Stages as whole cards, so their effect can be read (playtest 2026-10-30).
-	_open_popup("Stage %d" % (slot + 1), items, func(id: String) -> void:
-		loadout.stages[slot] = id
-		_changed(), true)
+## The three places as picture tiles, as on the side they belong to; the open one gold, with PICKING.
+func _fill_picker_head() -> void:
+	_picker_empty(_picker_head)
+	var picks: PackedStringArray = _picker_picks()
+	var word: String = str(_picker["kind"]).to_upper()
+	var open_slot: int = JsonUtil.as_int(_picker["slot"])
+	for i: int in picks.size():
+		var slot: int = i
+		var open: bool = i == open_slot
+		var t := card_tile(db, picks[i], Vector2(240, 88), func() -> void: _picker_slot(slot)) as HeroSlice
+		t.art_w = ALL_PICTURE
+		t.set_mirrored(false)
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if open:
+			t.outline = Palette.GOLD
+			t.outline_width = 4.0
+			t.set_meta("rest_outline", Palette.GOLD)
+		var chip: UiShape = UiShape.chip("%s %d%s" % [word, i + 1, "  ·  PICKING" if open else ""], Palette.GOLD if open else Color(0.07, 0.07, 0.07),
+			Color.BLACK if open else Palette.MUTED, 13, 20.0, 8.0)
+		chip.position = Vector2(18, 7)
+		t.add_child(chip)
+		_picker_head.add_child(t)
+	var done := Button.new()
+	done.text = "DONE"
+	done.theme_type_variation = &"Gold"
+	done.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	done.pressed.connect(func() -> void: _popup.hide())
+	_picker_head.add_child(done)
+	_picker_hint.text = "Click a card to pick it for %s %d" % [word, open_slot + 1]
+
+
+## The filters over the grid: ALL and a chip per terrain the stages have, or per set the heroes come from, and for
+## heroes a diamond per colour.
+func _fill_picker_filters() -> void:
+	_picker_empty(_picker_filters)
+	var groups: Array[String] = []
+	var colors: Array[String] = []
+	for c: CardDef in db.catalog.of_type(str(_picker["kind"])):
+		if not groups.has(_picker_group(c)):
+			groups.append(_picker_group(c))
+		if not colors.has(c.color):
+			colors.append(c.color)
+	if _picker_is_stage():
+		var terrains: Array[String] = ["None", "Ice", "Ramp", "Wind", "Mud", "Fire"]
+		groups.sort_custom(func(x: String, y: String) -> bool: return terrains.find(x) < terrains.find(y))
+	else:
+		var order: Array = db.catalog.set_names.keys()
+		groups.sort_custom(func(x: String, y: String) -> bool:
+			return (order.find(x) if order.has(x) else 999) < (order.find(y) if order.has(y) else 999))
+	var filter: String = str(_picker["filter"])
+	var options: Array[String] = [""]
+	options.append_array(groups)
+	for g: String in options:
+		var value: String = g
+		var text: String = "ALL" if g.is_empty() else ("NO TERRAIN" if g == "None" else str(db.catalog.set_names.get(g, g)).to_upper())
+		var on: bool = filter == g
+		var chip: UiShape = UiShape.chip(text, Palette.FG if on else Palette.SURFACE_2, Color.BLACK if on else Palette.MUTED, 16, 32.0, 14.0)
+		_picker_clicks(chip, func() -> void:
+			_picker["filter"] = value
+			_fill_picker_filters()
+			_fill_picker_grid())
+		_picker_filters.add_child(chip)
+	if _picker_is_stage():
+		return
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(10, 0)
+	_picker_filters.add_child(gap)
+	var color: String = str(_picker["color"])
+	for name: String in PICKER_COLORS:
+		if not colors.has(name):
+			continue
+		var value: String = name
+		var dot: UiShape = UiShape.make(UiShape.Kind.DIAMOND, Palette.hero(name), Vector2(26, 26))
+		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		dot.tooltip_text = name
+		if color == name:
+			dot.outline = Palette.FG
+			dot.outline_width = 3.0
+		elif not color.is_empty():
+			dot.modulate.a = 0.4
+		_picker_clicks(dot, func() -> void:
+			_picker["color"] = "" if str(_picker["color"]) == value else value
+			_fill_picker_filters()
+			_fill_picker_grid())
+		_picker_filters.add_child(dot)
+
+
+## Makes a drawn shape a button: a hand over it, a left click calls `on_click`.
+func _picker_clicks(shape: Control, on_click: Callable) -> void:
+	shape.mouse_filter = Control.MOUSE_FILTER_STOP
+	shape.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	shape.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
+				and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			on_click.call())
+
+
+## The cards: Random first, then whole stage cards (their effect can be read, playtest 2026-10-30) or hero
+## pictures. One picked in another place is dim and says where; the open place's own pick is gold. The pointer
+## over a card shows it big.
+func _fill_picker_grid() -> void:
+	_picker_empty(_picker_grid)
+	var stage: bool = _picker_is_stage()
+	var grid := GridContainer.new()
+	grid.columns = 4 if stage else 3
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	_picker_grid.add_child(grid)
+	var picks: PackedStringArray = _picker_picks()
+	var slot: int = JsonUtil.as_int(_picker["slot"])
+	var tile_size: Vector2 = PICKER_STAGE + Vector2(14, 14) if stage else PICKER_HERO
+	grid.add_child(card_tile(db, "", tile_size, func() -> void: _picker_set("")))
+	for c: CardDef in _picker_cards():
+		var id: String = c.id
+		var at: int = picks.find(id)
+		var used: bool = at >= 0 and at != slot
+		var pick := func() -> void: _picker_set(id)
+		var tile: Control
+		if stage and db.thumb(id) != null:
+			tile = _whole_card(id, pick, used, at == slot)
+		else:
+			tile = card_tile(db, id, tile_size, pick, used)
+			if at == slot:
+				(tile as HeroSlice).outline = Palette.GOLD
+				tile.set_meta("rest_outline", Palette.GOLD)
+		tile.mouse_entered.connect(func() -> void: _picker_show(id))
+		if at >= 0:
+			# On a layer of its own: a whole card is a container and would stretch the tag over the card.
+			var over := Control.new()
+			over.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			over.set_anchors_preset(Control.PRESET_FULL_RECT)
+			var tag: UiShape = UiShape.chip("PICKED %d" % (at + 1), Palette.GOLD, Color.BLACK, 13, 20.0, 8.0)
+			tag.position = Vector2(10, 8)
+			over.add_child(tag)
+			tile.add_child(over)
+		grid.add_child(tile)
+
+
+## The card shown big on the right ("" = the open place's pick, else the first card of the grid): its whole
+## picture, and for a hero its ability's name and text under it.
+func _picker_show(id: String) -> void:
+	if id.is_empty():
+		id = _picker_picks()[JsonUtil.as_int(_picker["slot"])]
+	if id.is_empty():
+		var first: Array[CardDef] = _picker_cards()
+		id = first[0].id if not first.is_empty() else ""
+	if id == str(_picker["shown"]):
+		return
+	_picker["shown"] = id
+	_picker_empty(_picker_big)
+	var card: CardDef = db.catalog.get_card(id) if not id.is_empty() else null
+	if card == null:
+		return
+	var tex: Texture2D = db.large(id)
+	if tex == null:
+		tex = db.thumb(id)
+	if tex != null:
+		var pic := TextureRect.new()
+		pic.texture = tex
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pic.custom_minimum_size = PICKER_BIG_TALL if tex.get_height() > tex.get_width() else PICKER_BIG_WIDE
+		pic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_picker_big.add_child(pic)
+	if card.type != "Hero":
+		return
+	var ability: String = card.ability_name(0)
+	if not ability.is_empty():
+		var name_l: Label = UiTheme.label(ability.to_upper(), 20, Palette.GOLD)
+		name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_picker_big.add_child(name_l)
+	if not card.text.is_empty():
+		var text_l := Label.new()
+		text_l.text = card.text
+		text_l.add_theme_font_size_override("font_size", 15)
+		text_l.add_theme_color_override("font_color", Palette.FG)
+		text_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		text_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		text_l.custom_minimum_size = Vector2(PICKER_BIG_WIDE.x - 20.0, 0)
+		_picker_big.add_child(text_l)
 
 
 ## All six cores in one window (playtest 2026-10-30: one window per slot was awkward): a row per
@@ -823,20 +1144,22 @@ static func _core_short(card: CardDef) -> String:
 	return text.replace("-", "−")
 
 
-## A card as its whole picture (a stage with its effect text); dimmed when picked elsewhere.
-func _whole_card(id: String, on_click: Callable, used: bool) -> Control:
+## A card as its whole picture (a stage with its effect text); dimmed when picked elsewhere, gold edged when
+## `picked` (the pick of the place being filled).
+func _whole_card(id: String, on_click: Callable, used: bool, picked: bool = false) -> Control:
 	var card: CardDef = db.catalog.get_card(id)
 	var tile := PanelContainer.new()
 	# The hover edge goes around the card, outside the picture and as round as its corners (playtest
 	# 2026-11-07: drawn under the picture it only showed as gold bits in the round corners).
 	var sb: StyleBoxFlat = UiTheme.box(Color(0, 0, 0, 0), 11, Color(0, 0, 0, 0), 4, 4)
+	var rest: Color = Palette.GOLD if picked else Color(0, 0, 0, 0)
 	sb.set_border_width_all(3)
-	sb.border_color = Color(0, 0, 0, 0)
+	sb.border_color = rest
 	sb.anti_aliasing = true
 	tile.add_theme_stylebox_override("panel", sb)
 	var art := TextureRect.new()
 	art.texture = db.thumb(id)
-	art.custom_minimum_size = Vector2(170, 238)
+	art.custom_minimum_size = PICKER_STAGE
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	art.modulate = Color(0.4, 0.4, 0.4) if used else Color.WHITE
@@ -846,52 +1169,12 @@ func _whole_card(id: String, on_click: Callable, used: bool) -> Control:
 	tile.mouse_default_cursor_shape = Control.CURSOR_FORBIDDEN if used else Control.CURSOR_POINTING_HAND
 	if not used:
 		tile.mouse_entered.connect(func() -> void: sb.border_color = Palette.GOLD)
-		tile.mouse_exited.connect(func() -> void: sb.border_color = Color(0, 0, 0, 0))
+		tile.mouse_exited.connect(func() -> void: sb.border_color = rest)
 		tile.gui_input.connect(func(e: InputEvent) -> void:
 			if e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
 					and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
 				on_click.call())
 	return tile
-
-
-func _open_popup(title: String, items: Array[Dictionary], on_pick: Callable, whole_cards: bool = false) -> void:
-	for c: Node in _popup.get_children():
-		c.queue_free()
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 12)
-	_popup.add_child(col)
-	col.add_child(UiTheme.label(title.to_upper(), 28))
-	var back := Button.new()
-	back.text = "BACK"
-	back.theme_type_variation = &"Ghost"
-	back.size_flags_horizontal = Control.SIZE_SHRINK_END
-	back.pressed.connect(func() -> void: _popup.hide())
-	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 10)
-	# The window never grows past the screen: more cards than fit scroll inside it (Marko 2026-11-27: with twelve
-	# stages the last row and BACK were under the screen's edge, and nothing scrolled).
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.add_child(grid)
-	col.add_child(scroll)
-	for it: Dictionary in items:
-		var id: String = str(it["id"])
-		var pick := func() -> void:
-			_popup.hide()
-			on_pick.call(id)
-		var used: bool = JsonUtil.as_bool(it.get("used", false))
-		if whole_cards and not id.is_empty() and db.thumb(id) != null:
-			grid.add_child(_whole_card(id, pick, used))
-		else:
-			grid.add_child(card_tile(db, id, Vector2(210, 120) if not whole_cards else Vector2(170, 238), pick, used))
-	col.add_child(back)
-	# As tall as the cards need, up to what the screen has left beside the title, BACK and the window's edges.
-	var need: Vector2 = grid.get_combined_minimum_size()
-	var room: float = maxf(get_viewport_rect().size.y * 0.94 - POPUP_CHROME, 200.0)
-	scroll.custom_minimum_size = Vector2(need.x + (POPUP_SCROLLBAR if need.y > room else 0.0), minf(need.y, room))
-	_popup_fitted()
 
 
 ## Opens the popup as big as what it holds now (it kept the size of the last one: the cores
