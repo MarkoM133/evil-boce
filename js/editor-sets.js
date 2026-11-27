@@ -38,6 +38,12 @@ export function setRow(one) {
   return { code: one.code, name: one.name, number: one.number, packSize: one.packSize, ...(series ? { series } : {}), ...(one.wip ? { wip: true } : {}) };
 }
 
+// The fields typed into a set's settings that differ from what is saved: `edits` is {field: value}, `settled`
+// brings a value to the form it is saved in (a series trimmed, no pack size as the default one).
+export function unsavedKeys(saved, edits, settled = (key, x) => x) {
+  return Object.keys(edits ?? {}).filter(key => settled(key, edits[key]) !== settled(key, saved[key]));
+}
+
 // The series a set stands under in the set row: the one it names, else its own name.
 export const seriesOf = s => (s.series ?? '').trim() || s.name || s.code || '';
 
@@ -100,15 +106,16 @@ export function createSetsView(ctx) {
   // def: { packSize } of the default pack (a Draft that mixes sets); left as it is when not given.
   // Spremanje mijenja samo zadani set (one: { code, name, number, packSize }) u svježe pročitanoj datoteci,
   // da ne pregazi set koji je drugi stroj dodao ili promijenio u međuvremenu. def: veličina default paketa.
+  // `one` may be several sets (Save all): they are written in one go.
   async function save(one, def = null) {
     const text = await fs.readText(ctx.store().root, SETS_PATH);
     let fresh;
     try { fresh = text?.trim() ? JSON.parse(text) : { sets: [] }; } catch { throw new Error('sets.json is being written right now. Try again in a moment.'); }
     fresh.sets ??= [];
-    if (one) {
+    for (const set of one ? [one].flat() : []) {
       // wip: Work in progress (Marko 2026-11-14), the set's cards stay out of Publish.
-      const row = setRow(one);
-      const i = fresh.sets.findIndex(x => x.code === one.code);
+      const row = setRow(set);
+      const i = fresh.sets.findIndex(x => x.code === set.code);
       if (i >= 0) fresh.sets[i] = row; else fresh.sets.push(row);
     }
     if (def) fresh.default = def;
@@ -228,7 +235,7 @@ export function createSetsView(ctx) {
   }
 
   // Returns the row's nodes: the bar, and with every set out the row of the open series' sets under it.
-  function setRow(list) {
+  function rowNodes(list) {
     const mode = rowMode();
     const open = code => { closeAll(false); v.code = code; ctx.render(); };
     const plain = ([code, label]) => h('button', { type: 'button', class: code === v.code ? 'active' : '', onclick: () => open(code) }, label);
@@ -278,7 +285,7 @@ export function createSetsView(ctx) {
     }
     const list = sets();
     v.code ??= list[0]?.code ?? 'Stage';
-    return h('div', { class: 'ce-page ce-sets' }, setRow(list),
+    return h('div', { class: 'ce-page ce-sets' }, rowNodes(list),
       v.code === 'default' ? renderAllSettings(list) : renderSet(list.find(s => s.code === v.code) ?? { code: v.code, name: nameOf(v.code) }, list));
   }
 
@@ -469,14 +476,42 @@ export function createSetsView(ctx) {
   }
 
   // Sve postavke setova i miješanih paketa na jednom mjestu (Marko 2026-11-03): blok po setu, Mixed packs na dnu.
+  // What is typed into a set's settings and not saved yet, by set code (v.edits). It used to live in the form alone:
+  // Save set on one set drew the page again and threw away what was typed into the others (Marko 2026-11-27).
+  v.edits ??= {};
+  const settled = (key, x) => (key === 'series' ? (x ?? '').trim() : key === 'wip' ? !!x : key === 'packSize' ? x ?? DEFAULT_PACK : x);
+  const isDirty = s => unsavedKeys(s, v.edits[s.code], settled).length > 0;
+  const withEdits = s => ({ ...s, ...(v.edits[s.code] ?? {}) });
+  // The page's Save all buttons and "not saved" marks follow what is typed, without drawing the page again.
+  function markUnsaved(list) {
+    const dirty = list.filter(isDirty);
+    for (const s of list) document.getElementById(`set-${s.code}`)?.classList.toggle('unsaved', dirty.includes(s));
+    for (const b of document.querySelectorAll('.ce-saveall')) {
+      b.disabled = !dirty.length || !ctx.canWrite();
+      b.textContent = dirty.length ? `Save all (${dirty.length})` : 'Save all';
+      // Beside a set's own Save it shows only when another set waits too.
+      if (b.dataset.own) b.hidden = !dirty.some(s => s.code !== b.dataset.own);
+    }
+  }
+  const saveAllButton = (list, own = '') => h('button', { class: own ? 'ghost ce-saveall' : 'primary ce-saveall', type: 'button', 'data-own': own || null, hidden: !!own,
+    title: 'Saves every set with changes that are not saved yet', onclick: () => ctx.guard(async () => {
+      const dirty = sets().filter(isDirty);
+      if (!dirty.length) return;
+      await save(dirty.map(withEdits));
+      for (const d of dirty) delete v.edits[d.code];
+      ctx.toast(dirty.length === 1 ? `Set ${dirty[0].code} saved.` : `${dirty.length} sets saved: ${dirty.map(d => d.code).join(', ')}.`);
+      ctx.render();
+    }) }, 'Save all');
+
   function renderAllSettings(list) {
     const page = h('section', { class: 'ce-set ce-all-settings' },
       h('header', { class: 'ce-set-head' },
         h('div', { class: 'ce-set-title' }, h('p', { class: 'muted small' }, 'Card editor / Sets'), h('h1', {}, 'Sets & packs'),
           h('p', { class: 'muted' }, 'Name, series, number and Draft pack of every set; the mixed pack is for a Draft whose cards come from several sets.')),
-        h('div', { class: 'ce-page-actions' }, redrawButton('', 'Redraw all pictures'))),
+        h('div', { class: 'ce-page-actions' }, redrawButton('', 'Redraw all pictures'), saveAllButton(list))),
       list.map(s => h('div', { class: 'ce-settings-block', id: `set-${s.code}` },
-        h('div', { class: 'ce-settings-head' }, packImg(s.code, 'ce-settab-pack', true), h('h2', {}, `${s.name} · ${s.code}`, wipChip(s.code))),
+        h('div', { class: 'ce-settings-head' }, packImg(s.code, 'ce-settab-pack', true), h('h2', {}, `${s.name} · ${s.code}`, wipChip(s.code)),
+          h('span', { class: 'ce-st review ce-unsaved' }, 'NOT SAVED')),
         renderSettings(s, list))),
       // The series already named, offered in every set's SERIES field (so one series is spelled one way).
       h('datalist', { id: 'ce-series' }, seriesNames(list).map(n => h('option', { value: n }))),
@@ -484,31 +519,37 @@ export function createSetsView(ctx) {
         h('div', { class: 'ce-settings-head' }, packImg('default', 'ce-settab-pack', true), h('h2', {}, 'Mixed packs')),
         renderDefaultPanel()));
     if (v.focus) { const at = v.focus; v.focus = null; setTimeout(() => document.getElementById(`set-${at}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
+    requestAnimationFrame(() => markUnsaved(list));
     return page;
   }
 
   function renderSettings(s, list) {
-    const work = { ...s };
+    const work = withEdits(s);
+    const edit = (key, value) => { (v.edits[s.code] ??= {})[key] = value; markUnsaved(list); };
     const field = (label, input, hint) => h('label', { class: 'ce-field' }, h('span', {}, label), input, hint ? h('small', { class: 'muted' }, hint) : null);
     return h('section', { class: 'ce-panel ce-set-settings' },
       h('div', { class: 'ce-row' },
-        field('NAME', h('input', { value: s.name, oninput: e => { work.name = e.target.value; } })),
-        field('SERIES', h('input', { value: s.series ?? '', list: 'ce-series', placeholder: 'e.g. Dragon Quest', oninput: e => { work.series = e.target.value; } }),
+        field('NAME', h('input', { value: work.name, oninput: e => edit('name', e.target.value) })),
+        field('SERIES', h('input', { value: work.series ?? '', list: 'ce-series', placeholder: 'e.g. Dragon Quest', oninput: e => edit('series', e.target.value) }),
           'Sets of one series stand together in the game. Empty: the set\'s own name.'),
-        field('SET NUMBER', h('input', { type: 'number', min: 1, value: s.number, oninput: e => { work.number = Number(e.target.value) || s.number; } })),
-        field('CARDS PER PACK', h('input', { type: 'number', min: 1, max: 30, value: s.packSize ?? DEFAULT_PACK, oninput: e => { work.packSize = Number(e.target.value) || DEFAULT_PACK; } }), 'Draft packs.')),
+        field('SET NUMBER', h('input', { type: 'number', min: 1, value: work.number, oninput: e => edit('number', Number(e.target.value) || s.number) })),
+        field('CARDS PER PACK', h('input', { type: 'number', min: 1, max: 30, value: work.packSize ?? DEFAULT_PACK, oninput: e => edit('packSize', Number(e.target.value) || DEFAULT_PACK) }), 'Draft packs.')),
       h('label', { class: 'ce-check-row' },
-        h('input', { type: 'checkbox', checked: !!s.wip, onchange: e => { work.wip = e.target.checked; } }),
+        h('input', { type: 'checkbox', checked: !!work.wip, onchange: e => edit('wip', e.target.checked) }),
         h('span', {}, h('strong', {}, 'Work in progress'), h('small', { class: 'muted' }, " The set's cards stay out of Publish until this is off. Switch it off when the set is finished; Publish then fixes the codes."))),
       h('div', { class: 'ce-row' },
         imageField(s.code, 'pack.png', 'PACK', 'the booster in Draft'),
         imageField(s.code, 'draft-bg.png', 'DRAFT BACKGROUND', 'behind the pack while it opens')),
       h('div', { class: 'ce-actions' },
         h('button', { class: 'primary', type: 'button', disabled: !ctx.canWrite(), onclick: () => ctx.guard(async () => {
-          await save(work);
-          ctx.toast(`Set ${s.code} saved.`);
+          // This set alone; what is typed into the others stays, with its NOT SAVED mark.
+          await save(withEdits(s));
+          delete v.edits[s.code];
+          const left = sets().filter(isDirty).length;
+          ctx.toast(`Set ${s.code} saved.${left ? ` ${left} other set${left === 1 ? ' is' : 's are'} not saved yet.` : ''}`);
           ctx.render();
-        }) }, 'Save set'),
+        }) }, 'Save this set'),
+        saveAllButton(list, s.code),
         ctx.canWrite() ? null : h('small', { class: 'muted' }, 'Saving needs the shared folder (Chrome or Edge on a computer), or Card Studio opened through Marko\'s computer.')));
   }
 

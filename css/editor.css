@@ -1021,3 +1021,8 @@ button.link.ce-bal-more:hover { color: var(--bone); }
   .ce-setrow2 { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .ce-setrow2 > * { flex: none; }
 }
+
+/* Sets & packs: a set with changes that are not saved yet (Marko 2026-11-27). */
+.ce-unsaved { display: none; margin-left: 10px; }
+.ce-settings-block.unsaved .ce-unsaved { display: inline-block; }
+.ce-settings-block.unsaved .ce-set-settings { box-shadow: inset 3px 0 0 var(--straw); }

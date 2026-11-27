@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setList, setRow, seriesNames, seriesOf, bySeries, pinnedCodes } from '../js/editor-sets.js';
+import { setList, setRow, seriesNames, seriesOf, bySeries, pinnedCodes, unsavedKeys } from '../js/editor-sets.js';
 
 test('sets: saved ones first by number, codes from cards fill in, Stage and Core are not sets', () => {
   const cards = [{ id: 'JO1-001' }, { id: 'OP1-001' }, { id: 'NR1-004' }, { id: 'Stage-001' }, { id: 'Core-001' }];
@@ -30,4 +30,14 @@ test('sets: the set row groups sets by series, and pins are what the browser rem
   assert.deepEqual(pinnedCodes(null, list), ['OP1', 'DQ1', 'JO1', 'DQ2']);
   assert.deepEqual(pinnedCodes(['DQ1', 'XX9', 'OP1'], list), ['DQ1', 'OP1']);
   assert.deepEqual(pinnedCodes([], list), []);
+});
+
+test('sets: what is typed into a set and differs from what is saved is not saved yet', () => {
+  const saved = { code: 'DQ1', name: 'Disciples of Avan', number: 3, packSize: 10 };
+  const settled = (key, x) => (key === 'series' ? (x ?? '').trim() : key === 'wip' ? !!x : x);
+  assert.deepEqual(unsavedKeys(saved, undefined, settled), []);
+  assert.deepEqual(unsavedKeys(saved, { series: 'Dragon Quest', name: 'Disciples of Avan' }, settled), ['series']);
+  // Typed and taken back, or only spaces in a series, or an unticked box that was never ticked: nothing to save.
+  assert.deepEqual(unsavedKeys(saved, { name: 'Disciples of Avan', series: '  ', wip: false }, settled), []);
+  assert.deepEqual(unsavedKeys(saved, { number: 4, wip: true }, settled), ['number', 'wip']);
 });
